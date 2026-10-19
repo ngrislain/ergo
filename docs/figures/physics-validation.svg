@@ -1,0 +1,19 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1040" height="440" viewBox="0 0 1040 440" role="img" aria-labelledby="title desc">
+  <title id="title">Box collision and static snapshot validation</title><desc id="desc">Detailed brick meshes are approximated by body boxes. Saving rejects overlaps, then checks a rigid support certificate or a bounded gravity simulation. Only accepted results publish a manifest; failed models remain working copies.</desc>
+  <defs><marker id="a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0L10 5L0 10Z" fill="#678296"/></marker></defs>
+  <rect width="1040" height="440" rx="14" fill="#f5f9fc"/>
+  <g font-family="Arial,sans-serif" fill="#263e50"><text x="28" y="40" font-size="21" font-weight="bold">A working copy can move. A published snapshot must pass the save gate.</text>
+    <g stroke="#b8ccd9" fill="white"><rect x="30" y="92" width="215" height="264" rx="9"/><rect x="288" y="92" width="195" height="264" rx="9"/><rect x="526" y="92" width="235" height="264" rx="9"/><rect x="804" y="92" width="206" height="264" rx="9"/></g>
+    <g font-size="15" font-weight="bold"><text x="48" y="122">Nominal body boxes</text><text x="306" y="122">Overlap check</text><text x="544" y="122">Stability check</text><text x="823" y="122">Immutable snapshot</text></g>
+    <g transform="translate(64 164)"><rect width="145" height="46" rx="2" fill="#7eafb4"/><ellipse cx="34" cy="0" rx="17" ry="7" fill="#a1cbd0"/><ellipse cx="105" cy="0" rx="17" ry="7" fill="#a1cbd0"/><path d="M-5 3H150V50H-5Z" fill="none" stroke="#ba8a39" stroke-width="2" stroke-dasharray="5 3"/><rect x="8" y="57" width="129" height="43" fill="#efcf8d"/></g>
+    <g font-size="12" fill="#607f94"><text x="48" y="302">Studs are visual.</text><text x="48" y="322">Body boxes define collision.</text></g>
+    <g transform="translate(317 160)"><rect x="0" y="0" width="91" height="55" fill="#a8c6d5"/><rect x="43" y="31" width="91" height="55" fill="#edb39e" fill-opacity=".85"/><rect x="43" y="31" width="48" height="24" fill="#c86c59"/></g>
+    <text x="306" y="282" font-size="13">Positive-volume overlap?</text><text x="306" y="306" font-size="12" fill="#a66455">Reject; keep the working copy.</text><text x="306" y="329" font-size="12" fill="#607f94">Face contact is allowed.</text>
+    <g transform="translate(548 156)"><path d="M0 99H188" stroke="#8fa9b8" stroke-width="3"/><path d="M40 27H142V98H40Z" fill="#a4c6ca" stroke="#799fa7"/><circle cx="92" cy="61" r="5" fill="#365c75"/><path d="M92 65V93" stroke="#365c75" stroke-width="2" marker-end="url(#a)"/><path d="M41 108H141" stroke="#bd8b31" stroke-width="4"/></g>
+    <text x="544" y="298" font-size="12">Static support + wrench certificate</text><text x="544" y="319" font-size="12">Force, torque, and FP tolerances</text><text x="544" y="340" font-size="11" fill="#607f94">Server uses zero simulation steps.</text>
+    <g transform="translate(840 167)"><path d="M0 0H104V100H0Z" fill="#e9f3ed" stroke="#8eafa0"/><path d="M27 46L44 62L79 25" fill="none" stroke="#668e79" stroke-width="5"/></g>
+    <text x="824" y="299" font-size="12">No velocities persisted.</text><text x="824" y="321" font-size="12">Poses + constraints + report.</text>
+    <g stroke="#678296" stroke-width="2" marker-end="url(#a)"><path d="M250 218H280"/><path d="M489 218H518"/><path d="M766 218H796"/></g>
+    <text x="31" y="400" font-size="13" fill="#607f94">Sparse joint/contact constraints govern motion; a custom Hamiltonian formulation is not required.</text>
+  </g>
+</svg>

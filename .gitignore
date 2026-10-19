@@ -1,0 +1,10 @@
+/target/
+/data/
+/web/pkg/
+/web/mcp-pkg/
+**/.ergo-assets/
+/.env
+__pycache__/
+*.pyc
+/.playwright-mcp/
+*.mcp.lock

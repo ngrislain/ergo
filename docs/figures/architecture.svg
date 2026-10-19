@@ -1,0 +1,35 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1160" height="820" viewBox="0 0 1160 820" role="img" aria-labelledby="title desc">
+  <title id="title">Ergo browser, MCP, REST, and object-store architecture</title><desc id="desc">The browser app and a minimal local MCP WASM runtime perform rendering and dynamic physics on the user's device. The native MCP bridge handles stdio, loopback REST jobs, and local working-copy I/O. A lightweight deployed REST server performs identity, asset delivery, and static commit checks, with local or Scaleway S3 storage. Global concurrent publication is planned.</desc>
+  <defs><marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0L10 5L0 10Z" fill="#668397"/></marker></defs>
+  <rect width="1160" height="820" rx="14" fill="#f5f9fc"/>
+  <g font-family="Arial,sans-serif" fill="#263e50">
+    <text x="28" y="39" font-size="22" font-weight="bold">Heavy work stays on the device. The server validates and persists.</text>
+    <rect x="25" y="73" width="455" height="653" rx="10" fill="#edf5f8" stroke="#b8cedb"/>
+    <text x="45" y="103" font-size="18" font-weight="bold">User's device</text>
+    <g fill="white" stroke="#b2c9d7"><rect x="45" y="126" width="410" height="143" rx="7"/><rect x="45" y="326" width="130" height="82" rx="7"/><rect x="215" y="312" width="240" height="115" rx="7"/><rect x="215" y="475" width="240" height="122" rx="7"/><rect x="45" y="632" width="410" height="69" rx="7"/></g>
+    <text x="64" y="154" font-size="16" font-weight="bold">Browser application</text>
+    <g font-size="13"><text x="64" y="181">Leptos UI + shared Rust/WASM client</text><text x="64" y="205">WebGL2 rendering, picking, fog, LOD</text><text x="64" y="229">Client physics, gravity, earthquake, impact tests</text></g>
+    <text x="65" y="357" font-size="14" font-weight="bold">Agent / host</text><text x="65" y="382" font-size="12" fill="#607e92">MCP client</text>
+    <text x="234" y="341" font-size="15" font-weight="bold">Thin native MCP bridge</text><text x="234" y="366" font-size="12">Protocol, jobs, revision checks</text><text x="234" y="389" font-size="12">Loopback REST + local file I/O</text><text x="234" y="412" font-size="11" fill="#607e92">No native renderer or dynamic solver</text>
+    <text x="234" y="505" font-size="15" font-weight="bold">Minimal WASM client</text><text x="234" y="531" font-size="12">Same WebGL2 and physics code</text><text x="234" y="554" font-size="12">On-demand work; no full app UI</text><text x="234" y="577" font-size="11" fill="#607e92">Existing browser / optional headless</text>
+    <text x="64" y="659" font-size="14" font-weight="bold">Local working copy + persistent part cache</text><text x="64" y="682" font-size="12" fill="#607e92">Experimental drafts are not global commits.</text>
+    <rect x="525" y="126" width="245" height="301" rx="8" fill="white" stroke="#b2c9d7"/>
+    <text x="525" y="103" font-size="18" font-weight="bold">Lightweight server</text>
+    <text x="546" y="157" font-size="17" font-weight="bold">Axum REST API</text>
+    <g font-size="13"><text x="546" y="190">Google identity + ownership</text><text x="546" y="219">Model and asset delivery</text><text x="546" y="248">Cache-first part fetching</text><text x="546" y="277">Lazy single-color ground</text><text x="546" y="306">Commit: non-overlap checks</text><text x="546" y="335">Commit: static equilibrium</text><text x="546" y="354">Capacity and FP tolerances</text></g>
+    <text x="546" y="389" font-size="12" fill="#607e92">No rendering / time stepping</text>
+    <text x="835" y="103" font-size="18" font-weight="bold">Persistence</text>
+    <rect x="835" y="126" width="295" height="301" rx="8" fill="white" stroke="#b2c9d7"/>
+    <text x="855" y="157" font-size="16" font-weight="bold">Scaleway S3 or local files</text>
+    <g font-size="13"><text x="855" y="192">User profiles / manifests: JSON</text><text x="855" y="222">Construction / geometry: CBOR</text><text x="855" y="252">Immutable content-hashed objects</text><text x="855" y="282">LDraw source, meshes, and credits</text><text x="855" y="312">Generated ground cells / raster cache</text><text x="855" y="354" font-weight="bold">No application database</text><text x="855" y="392" font-size="12" fill="#607e92">Server credentials remain server-side.</text></g>
+    <rect x="525" y="475" width="605" height="122" rx="8" fill="white" stroke="#b2c9d7"/>
+    <text x="546" y="506" font-size="16" font-weight="bold">Upstream public / licensed data</text><text x="546" y="535" font-size="13">LDraw part files and dependencies</text><text x="842" y="535" font-size="13">OSM / configured raster tiles</text><text x="546" y="568" font-size="12" fill="#607e92">Cache misses only; preserve credits, attribution, and provider caching rules.</text>
+    <rect x="835" y="650" width="295" height="76" rx="8" fill="#f7f5ed" stroke="#c9b78f" stroke-dasharray="6 4"/>
+    <text x="854" y="678" font-size="14" font-weight="bold">Future global commits</text><text x="854" y="701" font-size="12">Global grants, octree leases, fencing</text>
+    <g fill="none" stroke="#668397" stroke-width="2" marker-end="url(#arrow)"><path d="M455 194H516"/><path d="M176 367H206"/><path d="M335 433V465" marker-start="url(#arrow)"/><path d="M455 367H495V247H516"/><path d="M775 194H826"/><path d="M648 433V466" marker-start="url(#arrow)"/><path d="M235 427H190V623"/></g>
+    <g font-size="11" fill="#607e92"><text x="485" y="182">REST</text><text x="180" y="353">stdio</text><text x="347" y="453">REST jobs / results</text><text x="486" y="291">assets</text><text x="780" y="179">object I/O</text><text x="661" y="454">HTTPS data</text><text x="74" y="527">Working-copy I/O</text></g>
+    <path d="M775 397H803V688H826" fill="none" stroke="#b39860" stroke-width="1.5" stroke-dasharray="5 4" marker-end="url(#arrow)"/>
+    <text x="526" y="685" font-size="13" fill="#8b784f">Dashed: specified, not yet implemented.</text>
+    <text x="29" y="775" font-size="14" fill="#58788e">Public world: X east · Y north · Z up. Client test results never bypass the server's commit gate.</text>
+  </g>
+</svg>

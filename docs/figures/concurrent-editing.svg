@@ -1,0 +1,19 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1040" height="440" viewBox="0 0 1040 440" role="img" aria-labelledby="title desc">
+  <title id="title">Small octree-region locks and atomic publication</title><desc id="desc">Two editors work in disjoint octree leaves. A parent lock conflicts with every descendant. Immutable changed leaves and a validation record are staged before a conditional root update checks identity, permissions, leases, and versions.</desc>
+  <defs><marker id="a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0L10 5L0 10Z" fill="#6c8799"/></marker></defs>
+  <rect width="1040" height="440" rx="14" fill="#f5f9fc"/>
+  <g font-family="Arial,sans-serif" fill="#263e50"><text x="28" y="39" font-size="21" font-weight="bold">Edit small regions concurrently; publish one consistent revision.</text>
+    <g stroke="#b7cbd8" fill="white"><rect x="29" y="82" width="335" height="283" rx="9"/><rect x="400" y="82" width="273" height="283" rx="9"/><rect x="709" y="82" width="302" height="283" rx="9"/></g>
+    <text x="48" y="113" font-size="16" font-weight="bold">1024³ block / editing octree</text>
+    <g transform="translate(62 142)" stroke="#99b3c3" fill="#edf4f8"><rect width="266" height="160"/><path d="M133 0V160M0 80H266M66 0V80M0 40H133M199 80V160M133 120H266"/><rect x="2" y="2" width="62" height="36" fill="#81b6b9"/><rect x="201" y="122" width="63" height="36" fill="#f1cd83"/><path d="M1 1H132V79H1Z" fill="none" stroke="#bb7967" stroke-dasharray="5 4" stroke-width="2"/></g>
+    <text x="48" y="329" font-size="12">Teal and amber edits can proceed together.</text><text x="48" y="349" font-size="12" fill="#a06c5d">A parent lease conflicts with every child.</text>
+    <text x="420" y="113" font-size="16" font-weight="bold">Local work + staged objects</text>
+    <g fill="#edf4f8" stroke="#b1c7d5"><rect x="421" y="141" width="231" height="46" rx="5"/><rect x="421" y="202" width="231" height="46" rx="5"/><rect x="421" y="263" width="231" height="46" rx="5"/></g>
+    <g font-size="13"><text x="438" y="169">Immutable changed leaf hashes</text><text x="438" y="230">Collision + support validation</text><text x="438" y="291">Base and dependency versions</text></g><text x="421" y="344" font-size="12" fill="#607f94">Staged uploads are not publication.</text>
+    <text x="729" y="113" font-size="16" font-weight="bold">Atomic coordination root</text>
+    <g font-size="13"><text x="731" y="155">✓ Identity + current region grant</text><text x="731" y="185">✓ Lease generation / fencing</text><text x="731" y="215">✓ Read and write versions</text><text x="731" y="245">✓ Static, overlap-free result</text></g>
+    <rect x="730" y="270" width="260" height="45" rx="5" fill="#dcece5" stroke="#a0bfb1"/><text x="746" y="298" font-size="14" font-weight="bold">Conditional root replacement</text><text x="730" y="344" font-size="12" fill="#607f94">Changed root? Recheck and rebase.</text>
+    <g stroke="#6c8799" stroke-width="2" marker-end="url(#a)"><path d="M370 215H392"/><path d="M679 215H701"/></g>
+    <text x="29" y="401" font-size="13" fill="#607f94">Independent leaf-lock files alone cannot prevent ancestor conflicts, stale writers, or multi-object partial commits.</text>
+  </g>
+</svg>

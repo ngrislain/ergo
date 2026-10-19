@@ -1,0 +1,45 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Ergo local WASM client</title>
+<style>body{font:14px system-ui;margin:24px;color:#263e50;background:#f5f9fc}canvas{width:640px;height:480px;max-width:100%;background:#dfebf2;border-radius:6px}p{max-width:75ch;color:#6c8395}</style></head>
+<body><h1>Ergo local client</h1><p id="status">Connecting the lightweight WASM runtime…</p><canvas id="canvas" width="640" height="480"></canvas>
+<script type="module">
+import init,{LocalClientRuntime} from '/mcp-pkg/ergo_client.js';
+const token=new URLSearchParams(location.hash.slice(1)).get('mcp');
+const headers={'X-Ergo-Client':token};
+const status=document.querySelector('#status');
+async function api(url,options={}){
+  const response=await fetch(url,{...options,headers:{...headers,...options.headers}});
+  if(!response.ok) throw new Error(await response.text());
+  return response.status===204?null:response.json();
+}
+const sleep=ms=>new Promise(resolve=>setTimeout(resolve,ms));
+try{
+  await init();let initial=await api('/api/local/workspace');
+  const runtime=new LocalClientRuntime(document.querySelector('#canvas'),JSON.stringify(initial.scene),JSON.stringify(initial.measurements),initial.revision);
+  let revision=initial.revision;
+  status.textContent='Attached. The control bridge is idle; simulation and WebGL run locally only when requested.';
+  for(;;){
+    let job;try{job=await api('/api/local/jobs/next');}catch(error){status.textContent=`Disconnected: ${error.message}`;break;}
+    if(!job){await sleep(200);continue;}
+    status.textContent=`Running locally: ${job.name}`;
+    let result,assetWarning;
+    try{
+      if(job.name==='place_brick'&&runtime.needs_part(job.arguments.part)){
+        const part=await api(`/api/local/parts/${encodeURIComponent(job.arguments.part)}`);runtime.insert_part(JSON.stringify(part));assetWarning=part.warning;
+      }
+      result=JSON.parse(runtime.execute(job.name,JSON.stringify(job.arguments)));
+      if(assetWarning) result.content.unshift({type:'text',text:assetWarning});
+      const snapshot=runtime.pending_snapshot();
+      if(snapshot&&!result.isError){
+        const committed=await api('/api/local/workspace',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({job_id:job.id,expected_revision:revision,scene:JSON.parse(snapshot)})});
+        revision=committed.revision;runtime.acknowledge();
+      }
+    }catch(error){
+      result={content:[{type:'text',text:`Local client: ${error.message}`}],isError:true};
+      const fresh=await api('/api/local/workspace');runtime.restore(JSON.stringify(fresh.scene),fresh.revision);revision=fresh.revision;
+    }
+    await api('/api/local/jobs/result',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({id:job.id,result})});
+    status.textContent=`Ready. Last tool: ${job.name}. Working-copy revision ${revision}.`;
+  }
+}catch(error){status.textContent=`Could not start local WASM client: ${error.message}`;console.error(error);}
+</script></body></html>

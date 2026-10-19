@@ -1,2 +1,171 @@
-# lego
-A Lego world
+# Ergo
+An Ergo Land
+
+A Rust web workbench for geographically addressed brick constructions, with a
+Leptos UI, WebAssembly/WebGL2 rendering, object-store persistence, and a local
+MCP construction editor.
+
+## Run locally
+
+Install Rust, the WebAssembly target, and the `wasm-bindgen` CLI matching
+`Cargo.lock`:
+
+```sh
+rustup target add wasm32-unknown-unknown
+cargo install wasm-bindgen-cli --version 0.2.129 --locked
+bash scripts/build-web.sh
+cargo run --release -p ergo-server
+```
+
+Open **http://127.0.0.1:3000**. Run commands from the repository root. The server
+creates a local `data/` object store, a labeled development user, and read-only
+fixture examples. Configure `.env` using [`.env.example`](.env.example) for other
+storage/authentication settings. Neither a JavaScript package manager nor a
+database is needed.
+
+## What works
+
+- Instanced 3D brick rendering, orbit/fly/walk navigation, mesh picking, part
+  inspection, layer separation, and a base grid.
+- Frustum/fog-bounded streaming, progressive distance LOD, a resident octree, and bounded persistent
+  browser caching of immutable block/geometry objects.
+- Lazily generated 1024×1024 special baseplates below Z=0, each using one standard
+  color nearest the average source imagery color for that geographic footprint.
+- Cache-first supported LDraw parts: missing meshes/dependencies are pulled and
+  persisted in local storage or S3 with source/license credits.
+- BrickLink Studio `.io`, LDraw `.ldr`/`.mpd`, and Ergo JSON import into a working
+  copy. The starter catalog deliberately allows 27 basic bricks/plates/tiles and
+  20 opaque colors; unsupported parts/colors are reported rather than omitted.
+- Fixed and revolute constraints, collision-aware group nudges, dynamic pulling,
+  gravity simulation, and non-destructive earthquake/falling-object load tests.
+- Persistent nested authoring groups with rigid transforms, validated membership,
+  pivots, and collision/constraint-aware destination edits.
+- Server-side save validation: schema/catalog checks, overlap checks, grounding,
+  static support/wrench checks with numerical tolerances, and measured connector-capacity requirements. The server runs no dynamic simulation.
+- Google OpenID Connect, object-store user profiles, signed HttpOnly sessions,
+  per-user snapshots, and shared read-only examples.
+- A thin stdio/REST MCP bridge and minimal local WASM client with editing,
+  stability feedback, and actual WebGL2 PNG image tools for vision models.
+
+## Coordinates and physical data
+
+The Paris default origin is **48.8566° N, 2.3522° E**. Public axes are X east,
+Y north, Z height. **One 1024³ storage block maps to one arc-second east/north**, not one
+arc-second per individual brick. This convention is configurable.
+Piece bases rest at Z=0; vertical storage boundaries do not create additional floors.
+
+Physics is separate: nominal dimensions use 8 mm stud pitch, 9.6 mm brick height,
+and 3.2 mm plate height; all starter parts have sourced BrickLink mass records.
+The solver uses SI units and standard gravity. Detailed visual meshes coexist
+with simplified body-box collisions and box inertia.
+
+**Connection strength is not guessed.** Publishing ordinary snapshots containing
+joints requires a server-owned measurement book via
+`ERGO_CONNECTION_MEASUREMENTS`. Without it, local drafts and idealized fixture
+examples can be explored, but a real-world connection-strength claim is not made.
+See [physical calibration](docs/physical-calibration.md).
+
+The interactive workspace is currently limited to 5,000 bricks/128 blocks;
+streamed imports can contain up to 200,000 parts. Render paging, a general sparse
+equilibrium search, and calibrated directional fracture remain future work.
+The client gravity probe defaults to one step with settable step count and
+numeric tolerances; the server uses a zero-step static certificate.
+
+## Scaleway S3 and Google sign-in
+
+Set `S3_BUCKET`, `S3_ENDPOINT`, `S3_REGION`, `AWS_ACCESS_KEY_ID`, and
+`AWS_SECRET_ACCESS_KEY`. The default endpoint is `https://s3.fr-par.scw.cloud`
+and the default region is `fr-par`. Geometry/blocks are immutable CBOR objects;
+manifests and user profiles are JSON. Credentials stay on the server.
+
+For Google authentication, configure `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`,
+`ERGO_SESSION_SECRET` (at least 32 random characters), and `ERGO_PUBLIC_URL`.
+Register `<ERGO_PUBLIC_URL>/auth/google/callback` as the authorized Google redirect
+URI. Outside localhost, HTTPS is required. With Google unset, the app uses the
+explicit local development account.
+
+An optional `LDRAW_DIR` supplies local LDraw sources. Otherwise missing supported
+parts are fetched from the official library and cached; `ERGO_ASSET_FETCH=0`
+disables network fetching and exposes a labeled parametric fallback. Default
+ground imagery uses OSM cartographic tiles, not satellite photography; a licensed
+XYZ provider can be configured. See [ground and coordinates](docs/ground-and-coordinates.md),
+[identity and ownership](docs/identity-and-ownership.md)
+and [persistence indexing](docs/persistence-indexing.md).
+
+## Local MCP editor
+
+```sh
+cargo build --release -p ergo-mcp
+./target/release/ergo-mcp --workspace /absolute/path/construction.ergo.json
+```
+
+Build both WASM entry points with `bash scripts/build-web.sh` first. The default
+MCP command opens a minimal client in the existing browser; `--attach` prints its
+local attachment URL and `--headless` uses isolated Chrome for automation. The
+bridge does not load the full application UI or run a native renderer/solver.
+
+The parent directory must exist. The bridge stores only this local working copy;
+it exposes no S3/global commit tool. `view_construction` returns images from
+isometric, north, south, east, west, or top views. `test_solidity` returns
+earthquake/drop-test diagnostics and an optional post-test image.
+`test_moderate_earthquake_stability` supplies a named, two-axis 0.15g-bound preset
+with calibrated-stability feedback and optional post-test images.
+The primary testing tools are `test_stability_by_gravity`,
+`test_visual_appearance` (including arbitrary camera poses), and
+`test_stability_by_earthquake` with configurable local PGA intensity in g.
+`create_group`, `set_group_members`, `transform_group`, `list_groups`, and
+`ungroup` manage nested authoring assemblies.
+
+See [MCP tools and configuration](docs/local-construction-mcp.md).
+
+## Documentation and next features
+
+Start with the [technical documentation index](docs/README.md). It covers display
+indexing, geographic persistence, rigid-body physics, constrained positioning,
+physical calibration, identity, and concurrent editing, with equations and SVG
+figures.
+
+The proposed global shared-world commit layer uses explicit user permissions,
+octree-region leases, dependency checks, and atomic revision publication. It is
+**documented, not yet implemented**. See
+[concurrent global editing](docs/concurrent-global-editing.md) and
+[`TODO.md`](TODO.md) for the implementation backlog. Documentation must stay
+synchronized with code as required by [`AGENTS.md`](AGENTS.md).
+
+## Checks
+
+```sh
+cargo fmt --all --check
+cargo test --workspace
+cargo clippy --workspace --all-targets -- -D warnings
+cargo check -p ergo-viewer --target wasm32-unknown-unknown
+bash scripts/build-web.sh
+python3 scripts/check-docs.py
+python3 scripts/check-execution-boundaries.py
+```
+
+Live Google OAuth and Scaleway behavior require configured external resources;
+native tests exercise local storage, asset caching, ownership/session logic, and
+the shared physics/checking model. MCP rendering/simulation tests use the local
+WASM browser runtime.
+
+End-to-end MCP checks use the built native binary:
+
+```sh
+cargo build -p ergo-mcp
+bash scripts/build-web.sh
+python3 scripts/test-mcp.py
+```
+
+Browser smoke tests require Python Playwright (`scripts/requirements-test.txt`),
+Google Chrome, the built web client, and an isolated running development server:
+
+```sh
+python3 -m pip install -r scripts/requirements-test.txt
+python3 scripts/test-web.py --url http://127.0.0.1:3000
+```
+
+The browser test imports and saves test constructions, so point it at a disposable
+local object store with `ERGO_GROUND_SOURCE=disabled` and `ERGO_ASSET_FETCH=0`.
+This avoids automated requests to public map services. Fixture-based native tests
+cover imagery averaging, palette projection, and persistent ground/part caches.

@@ -1,0 +1,19 @@
+[package]
+name = "ergo-world"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[features]
+default = []
+simulation = ["dep:rapier3d-f64"]
+
+[dependencies]
+serde.workspace = true
+glam.workspace = true
+anyhow.workspace = true
+serde_json.workspace = true
+rapier3d-f64 = { version = "0.26.1", optional = true, features = ["enhanced-determinism"] }
+
+[dev-dependencies]
+serde_json.workspace = true

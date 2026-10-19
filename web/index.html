@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="theme-color" content="#e0ebf1">
+    <meta name="description" content="Explore a world of brick constructions. A Rust, WebAssembly and WebGL2 workbench with spatial streaming and rigid-body simulation.">
+    <title>Ergo — a world, brick by brick</title>
+    <link rel="icon" href="/favicon.svg" type="image/svg+xml">
+    <link rel="stylesheet" href="/style.css">
+  </head>
+  <body>
+    <noscript>Ergo needs JavaScript and WebAssembly to display 3D constructions.</noscript>
+    <script type="module">
+      import init from '/pkg/ergo_viewer.js';
+      init().catch(error => {
+        const message = document.createElement('p');
+        message.className = 'startup-error';
+        message.textContent = `Could not start Ergo: ${error.message}. Build the client with ./scripts/build-web.sh and reload.`;
+        document.body.append(message);
+      });
+      if ('serviceWorker' in navigator) {
+        navigator.serviceWorker.register('/sw.js').catch(console.warn);
+      }
+    </script>
+  </body>
+</html>

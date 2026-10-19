@@ -1,0 +1,24 @@
+[package]
+name = "ergo-assets"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+ergo-world.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+anyhow.workspace = true
+glam.workspace = true
+object_store = { version = "0.12", features = ["aws"] }
+tokio = { version = "1", features = ["sync"] }
+reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "stream"] }
+futures = "0.3"
+ciborium = "0.2"
+sha2 = "0.10"
+hex = "0.4"
+png = "0.17"
+serde_bytes = "0.11"
+
+[dev-dependencies]
+tokio = {version="1",features=["macros","rt-multi-thread"]}

@@ -1,0 +1,31 @@
+[package]
+name = "ergo-server"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+ergo-world.workspace = true
+ergo-assets.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+glam.workspace = true
+anyhow.workspace = true
+axum = { version = "0.8", features = ["multipart"] }
+tokio = { version = "1", features = ["macros", "rt-multi-thread", "net", "signal"] }
+tower-http = { version = "0.6", features = ["fs", "trace", "compression-gzip"] }
+object_store = { version = "0.12", features = ["aws"] }
+futures = "0.3"
+ciborium = "0.2"
+sha2 = "0.10"
+hex = "0.4"
+uuid = { version = "1", features = ["v4"] }
+zip = { version = "2.4", default-features = false, features = ["deflate"] }
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+dotenvy = "0.15"
+reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
+jsonwebtoken = "9"
+hmac = "0.12"
+base64 = "0.22"
+url = "2"

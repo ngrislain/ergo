@@ -1,0 +1,1333 @@
+use ergo_client::renderer::{NavigationInput, NavigationMode, Renderer};
+use ergo_world::{
+    Block, BlockCoord, Brick, JointKind, JointSpec, WorldExport, WorldManifest, catalog,
+    physics::{self, Simulation, SimulationStats},
+    spatial::Relation,
+};
+use glam::DVec3;
+use gloo_net::http::Request;
+use leptos::{html, prelude::*};
+use serde::Deserialize;
+use std::{
+    cell::RefCell,
+    collections::{BTreeMap, HashSet},
+    rc::Rc,
+};
+use wasm_bindgen::{JsCast, JsValue};
+use wasm_bindgen_futures::spawn_local;
+
+type Handle = StoredValue<Rc<RefCell<Client>>, LocalStorage>;
+
+#[derive(Clone, Copy)]
+struct Ui {
+    worlds: RwSignal<Vec<WorldManifest>>,
+    current: RwSignal<Option<WorldManifest>>,
+    selected: RwSignal<Option<Brick>>,
+    relations: RwSignal<Vec<Relation>>,
+    message: RwSignal<String>,
+    error: RwSignal<Option<String>>,
+    count: RwSignal<usize>,
+    blocks: RwSignal<usize>,
+    gpu: RwSignal<usize>,
+    draws: RwSignal<usize>,
+    nodes: RwSignal<usize>,
+    fps: RwSignal<u32>,
+    playing: RwSignal<bool>,
+    stats: RwSignal<SimulationStats>,
+    dirty: RwSignal<bool>,
+    first: RwSignal<Option<u32>>,
+    joint_count: RwSignal<usize>,
+    busy: RwSignal<bool>,
+    user: RwSignal<String>,
+    google: RwSignal<bool>,
+    signed_in: RwSignal<bool>,
+    storage: RwSignal<String>,
+    ground_status: RwSignal<String>,
+    ground_attribution: RwSignal<Option<(String, String)>>,
+    fog: RwSignal<f64>,
+    authoring_groups: RwSignal<Vec<ergo_world::groups::Group>>,
+    group_selection: RwSignal<Vec<u32>>,
+    navigation: RwSignal<NavigationMode>,
+}
+
+impl Ui {
+    fn new() -> Self {
+        Self {
+            worlds: RwSignal::new(Vec::new()),
+            current: RwSignal::new(None),
+            selected: RwSignal::new(None),
+            relations: RwSignal::new(Vec::new()),
+            message: RwSignal::new("Opening your workbench…".into()),
+            error: RwSignal::new(None),
+            count: RwSignal::new(0),
+            blocks: RwSignal::new(0),
+            gpu: RwSignal::new(0),
+            draws: RwSignal::new(0),
+            nodes: RwSignal::new(0),
+            fps: RwSignal::new(0),
+            playing: RwSignal::new(false),
+            stats: RwSignal::new(SimulationStats::default()),
+            dirty: RwSignal::new(false),
+            first: RwSignal::new(None),
+            joint_count: RwSignal::new(0),
+            busy: RwSignal::new(false),
+            user: RwSignal::new("Connecting…".into()),
+            google: RwSignal::new(false),
+            signed_in: RwSignal::new(false),
+            storage: RwSignal::new("Connecting".into()),
+            ground_status: RwSignal::new("Ground: loading map colors".into()),
+            ground_attribution: RwSignal::new(None),
+            fog: RwSignal::new(2200.0),
+            authoring_groups: RwSignal::new(Vec::new()),
+            group_selection: RwSignal::new(Vec::new()),
+            navigation: RwSignal::new(NavigationMode::Orbit),
+        }
+    }
+    fn fail(self, error: impl ToString) {
+        self.error.set(Some(error.to_string()));
+        self.busy.set(false);
+    }
+}
+
+struct Client {
+    renderer: Option<Renderer>,
+    world: Option<WorldManifest>,
+    blocks: BTreeMap<BlockCoord, Block>,
+    pending: HashSet<String>,
+    ground_pending: HashSet<(i64, i64)>,
+    ground_retry: std::collections::HashMap<(i64, i64), f64>,
+    navigation_keys: HashSet<String>,
+    known_cells: HashSet<BlockCoord>,
+    default_geo: ergo_world::GeoReference,
+    generation: u64,
+    ready: bool,
+    load_all: bool,
+    start_when_loaded: bool,
+    simulation: Option<Simulation>,
+    playing: bool,
+    joints: Vec<JointSpec>,
+    fixed: Vec<u32>,
+    groups: Vec<ergo_world::groups::Group>,
+    undo: Option<WorldExport>,
+    pointer: Option<(f64, f64, f64, f64, i16, bool)>,
+    accumulator: f64,
+    ui: Ui,
+}
+
+impl Client {
+    fn new(ui: Ui) -> Self {
+        Self {
+            renderer: None,
+            world: None,
+            blocks: BTreeMap::new(),
+            pending: HashSet::new(),
+            ground_pending: HashSet::new(),
+            ground_retry: Default::default(),
+            default_geo: Default::default(),
+            navigation_keys: HashSet::new(),
+            known_cells: HashSet::new(),
+            generation: 0,
+            ready: false,
+            load_all: false,
+            start_when_loaded: false,
+            simulation: None,
+            playing: false,
+            joints: Vec::new(),
+            fixed: Vec::new(),
+            groups: Vec::new(),
+            undo: None,
+            pointer: None,
+            accumulator: 0.0,
+            ui,
+        }
+    }
+    fn scene(&self) -> anyhow::Result<WorldExport> {
+        let world = self
+            .world
+            .as_ref()
+            .ok_or_else(|| anyhow::anyhow!("Open a construction first"))?;
+        let renderer = self
+            .renderer
+            .as_ref()
+            .ok_or_else(|| anyhow::anyhow!("Renderer is not ready"))?;
+        anyhow::ensure!(
+            self.complete(),
+            "Load the complete construction before editing, simulating, or saving"
+        );
+        Ok(WorldExport {
+            schema: ergo_world::SCHEMA_VERSION,
+            name: world.name.clone(),
+            geo: world.geo,
+            bricks: renderer.bricks.clone(),
+            meshes: renderer.meshes.clone(),
+            joints: self.joints.clone(),
+            fixed_bricks: self.fixed.clone(),
+            ground: renderer.ground.values().cloned().collect(),
+            groups: self.groups.clone(),
+        })
+    }
+    fn complete(&self) -> bool {
+        self.world.as_ref().is_some_and(|w| {
+            self.renderer
+                .as_ref()
+                .is_some_and(|r| r.bricks.len() == w.brick_count)
+                && self.blocks.len() == w.blocks.len()
+        })
+    }
+    fn refresh_selection(&self) {
+        let Some(r) = &self.renderer else {
+            return;
+        };
+        self.ui.selected.set(r.selected_brick());
+        self.ui
+            .relations
+            .set(r.selected.map(|id| r.relations(id)).unwrap_or_default());
+        self.ui.joint_count.set(self.joints.len());
+    }
+    fn rebuild(&mut self) {
+        let mut bricks = BTreeMap::new();
+        for block in self.blocks.values() {
+            for b in &block.bricks {
+                bricks.entry(b.id).or_insert_with(|| b.clone());
+            }
+        }
+        if let Some(r) = &mut self.renderer {
+            r.set_bricks(bricks.into_values().collect());
+        }
+        self.refresh_selection();
+    }
+    fn request_all(&mut self) -> anyhow::Result<()> {
+        let world = self
+            .world
+            .as_ref()
+            .ok_or_else(|| anyhow::anyhow!("Open a construction first"))?;
+        anyhow::ensure!(
+            world.brick_count <= physics::MAX_SIMULATION_BRICKS && world.blocks.len() <= 128,
+            "The interactive physics/edit workspace is limited to 5,000 bricks and 128 blocks. Larger worlds remain streamable"
+        );
+        self.load_all = true;
+        Ok(())
+    }
+    fn require_all(&mut self) -> anyhow::Result<()> {
+        self.request_all()?;
+        anyhow::ensure!(
+            self.complete(),
+            "Loading the complete construction. Try again when the loading indicator finishes"
+        );
+        Ok(())
+    }
+    fn remember(&mut self) -> anyhow::Result<()> {
+        self.require_all()?;
+        if self.undo.is_none() {
+            self.undo = Some(self.scene()?);
+        }
+        self.ui.dirty.set(true);
+        Ok(())
+    }
+    fn begin_physics(&mut self) -> anyhow::Result<()> {
+        self.remember()?;
+        if self.simulation.is_none() {
+            let r = self.renderer.as_ref().unwrap();
+            self.simulation = Some(Simulation::new(
+                &r.bricks,
+                &r.meshes,
+                &self.joints,
+                &self.fixed,
+                false,
+            )?);
+        }
+        self.renderer.as_mut().unwrap().explode = 0.0;
+        self.renderer.as_mut().unwrap().changed();
+        self.playing = true;
+        self.ui.playing.set(true);
+        self.ui
+            .message
+            .set("Gravity simulation · bounding-box collisions".into());
+        Ok(())
+    }
+    fn freeze_simulation(&mut self) {
+        self.playing = false;
+        self.ui.playing.set(false);
+        if let Some(sim) = self.simulation.take() {
+            self.joints = sim.current_joints();
+            self.renderer.as_mut().unwrap().set_bricks(sim.bricks());
+        }
+    }
+    fn move_selected(&mut self, delta: DVec3, pull: bool) -> anyhow::Result<()> {
+        self.remember()?;
+        let id = self
+            .renderer
+            .as_ref()
+            .and_then(|r| r.selected)
+            .ok_or_else(|| anyhow::anyhow!("Select a brick in the viewport"))?;
+        if pull {
+            self.begin_physics()?;
+            let brick = self.renderer.as_ref().unwrap().selected_brick().unwrap();
+            self.simulation
+                .as_mut()
+                .unwrap()
+                .drive(id, brick.position + delta)?;
+            self.ui.message.set(
+                "Pulling the selected brick; joints and collisions constrain its motion".into(),
+            );
+            return Ok(());
+        }
+        self.freeze_simulation();
+        let group = physics::connected_group(id, &self.joints);
+        anyhow::ensure!(
+            !self.fixed.iter().any(|id| group.contains(id)),
+            "The group contains an anchored brick"
+        );
+        anyhow::ensure!(
+            !self
+                .joints
+                .iter()
+                .any(|j| !matches!(j.kind, JointKind::Fixed)
+                    && (group.contains(&j.a) || group.contains(&j.b))),
+            "Use Pull in simulation to move an articulated group"
+        );
+        let r = self.renderer.as_mut().unwrap();
+        physics::can_translate(&r.bricks, &group, delta)?;
+        let mut bricks = r.bricks.clone();
+        for brick in &mut bricks {
+            if group.contains(&brick.id) {
+                brick.translated(delta);
+            }
+        }
+        for joint in &mut self.joints {
+            if group.contains(&joint.a) && group.contains(&joint.b) {
+                joint.anchor += delta;
+            }
+        }
+        r.set_bricks(bricks);
+        self.refresh_selection();
+        self.ui.message.set(format!(
+            "Moved {} connected bricks; overlap check passed",
+            group.len()
+        ));
+        Ok(())
+    }
+}
+
+fn with_client<T>(handle: Handle, f: impl FnOnce(&mut Client) -> T) -> T {
+    handle.with_value(|c| f(&mut c.borrow_mut()))
+}
+fn act(handle: Handle, f: impl FnOnce(&mut Client) -> anyhow::Result<()>) {
+    with_client(handle, |c| {
+        c.ui.error.set(None);
+        if let Err(e) = f(c) {
+            c.ui.fail(e);
+        }
+    });
+}
+
+async fn json<T: serde::de::DeserializeOwned>(url: &str) -> anyhow::Result<T> {
+    let response = Request::get(url).send().await?;
+    if !response.ok() {
+        anyhow::bail!(response.text().await?);
+    }
+    Ok(response.json().await?)
+}
+
+fn logout(ui: Ui) {
+    spawn_local(async move {
+        let result: anyhow::Result<()> = async {
+            let response = Request::post("/api/auth/logout")
+                .header("X-Ergo-Request", "1")
+                .send()
+                .await?;
+            anyhow::ensure!(response.ok(), "Could not sign out");
+            let window = web_sys::window().unwrap();
+            if let Ok(caches) = window.caches()
+                && let Ok(keys) = wasm_bindgen_futures::JsFuture::from(caches.keys()).await
+            {
+                for key in js_sys::Array::from(&keys)
+                    .iter()
+                    .filter_map(|k| k.as_string())
+                    .filter(|k| k.starts_with("ergo-"))
+                {
+                    let _ = wasm_bindgen_futures::JsFuture::from(caches.delete(&key)).await;
+                }
+            }
+            window
+                .location()
+                .reload()
+                .map_err(|_| anyhow::anyhow!("Signed out; reload the page to continue"))?;
+            Ok(())
+        }
+        .await;
+        if let Err(error) = result {
+            ui.fail(error);
+        }
+    });
+}
+
+async fn object<T: serde::de::DeserializeOwned>(world: &str, hash: &str) -> anyhow::Result<T> {
+    let response = Request::get(&format!("/api/worlds/{world}/objects/{hash}"))
+        .send()
+        .await?;
+    if !response.ok() {
+        anyhow::bail!(response.text().await?);
+    }
+    let bytes = response.binary().await?;
+    Ok(ciborium::from_reader(bytes.as_slice())?)
+}
+
+fn open_world(handle: Handle, world: WorldManifest) {
+    let generation = with_client(handle, |c| {
+        c.generation += 1;
+        c.world = Some(world.clone());
+        c.known_cells = world.blocks.iter().map(|b| b.coord).collect();
+        c.navigation_keys.clear();
+        c.blocks.clear();
+        c.pending.clear();
+        c.ground_pending.clear();
+        c.ground_retry.clear();
+        c.ready = false;
+        c.load_all = false;
+        c.start_when_loaded = false;
+        c.simulation = None;
+        c.playing = false;
+        c.undo = None;
+        c.joints = world.joints.clone();
+        c.fixed = world.fixed_bricks.clone();
+        c.groups = world.groups.clone();
+        c.ui.authoring_groups.set(c.groups.clone());
+        c.ui.group_selection.set(Vec::new());
+        if let Some(r) = &mut c.renderer {
+            r.clear();
+            r.fit(world.bounds);
+            for block in &world.ground {
+                r.set_ground(block.clone());
+            }
+            if world.bounds.size().max_element() > 1024.0
+                && let Some(first) = world.blocks.first()
+            {
+                r.target = first.coord.origin() + DVec3::new(512.0, 32.0, 512.0);
+                r.distance = 900.0;
+                r.changed();
+            }
+        }
+        c.ui.current.set(Some(world.clone()));
+        c.ui.dirty.set(false);
+        c.ui.playing.set(false);
+        c.ui.stats.set(SimulationStats::default());
+        c.ui.selected.set(None);
+        c.ui.first.set(None);
+        c.ui.error.set(None);
+        c.ui.message.set("Loading part geometries…".into());
+        c.ui.busy.set(true);
+        c.ui.joint_count.set(c.joints.len());
+        c.generation
+    });
+    spawn_local(async move {
+        let result: anyhow::Result<BTreeMap<String, ergo_world::geometry::Mesh>> = async {
+            let mut meshes = BTreeMap::new();
+            for (part, hash) in &world.geometry {
+                let mut mesh: ergo_world::geometry::Mesh = object(&world.id, hash).await?;
+                if mesh.quality != "ldraw" {
+                    #[derive(Deserialize)]
+                    struct PartAsset {
+                        mesh: ergo_world::geometry::Mesh,
+                    }
+                    if let Ok(asset) = json::<PartAsset>(&format!("/api/parts/{part}")).await
+                        && asset.mesh.quality == "ldraw"
+                    {
+                        mesh = asset.mesh;
+                    }
+                }
+                meshes.insert(part.clone(), mesh);
+            }
+            Ok(meshes)
+        }
+        .await;
+        with_client(handle, |c| {
+            if c.generation != generation {
+                return;
+            }
+            match result {
+                Ok(meshes) => {
+                    c.renderer.as_mut().unwrap().meshes = meshes;
+                    c.ready = true;
+                    c.ui.message
+                        .set("Streaming visible blocks inside the fog horizon…".into());
+                }
+                Err(e) => c.ui.fail(e),
+            }
+        });
+    });
+}
+
+fn open_draft(handle: Handle, scene: WorldExport) -> anyhow::Result<()> {
+    let blocks = ergo_world::partition(&scene.bricks)?;
+    let bounds = ergo_world::bounds(&scene.bricks).ok_or_else(|| anyhow::anyhow!("Empty model"))?;
+    with_client(handle, |c| {
+        c.generation += 1;
+        c.pending.clear();
+        c.ground_pending.clear();
+        c.ground_retry.clear();
+        c.simulation = None;
+        c.playing = false;
+        c.ready = true;
+        c.load_all = true;
+        c.start_when_loaded = false;
+        c.undo = None;
+        c.joints = scene.joints.clone();
+        c.fixed = scene.fixed_bricks.clone();
+        c.groups = scene.groups.clone();
+        c.ui.authoring_groups.set(c.groups.clone());
+        c.ui.group_selection.set(Vec::new());
+        let world = WorldManifest {
+            schema: scene.schema,
+            id: "draft".into(),
+            name: scene.name,
+            source: "Unpublished workspace".into(),
+            brick_count: scene.bricks.len(),
+            bounds,
+            geo: scene.geo,
+            blocks: blocks
+                .values()
+                .map(|b| ergo_world::BlockInfo {
+                    coord: b.coord,
+                    key: b.coord.key(),
+                    brick_count: b.bricks.len(),
+                })
+                .collect(),
+            geometry: BTreeMap::new(),
+            proxy_parts: Vec::new(),
+            notes: Vec::new(),
+            joints: c.joints.clone(),
+            fixed_bricks: c.fixed.clone(),
+            validation: ergo_world::validation::ValidationReport {
+                collision_model: "bounding boxes".into(),
+                method: "Not yet validated".into(),
+                inferred_joints: 0,
+                checked_bricks: 0,
+                max_displacement: 0.0,
+                physical_calibration: "Not yet validated".into(),
+                tolerances: Default::default(),
+            },
+            owner: "workspace".into(),
+            ground: scene.ground.clone(),
+            groups: scene.groups.clone(),
+        };
+        c.blocks = blocks;
+        c.world = Some(world.clone());
+        c.known_cells = world.blocks.iter().map(|b| b.coord).collect();
+        c.navigation_keys.clear();
+        let r = c.renderer.as_mut().unwrap();
+        r.clear();
+        r.meshes = scene.meshes;
+        r.set_bricks(scene.bricks);
+        r.fit(bounds);
+        for block in scene.ground {
+            r.set_ground(block);
+        }
+        c.ui.current.set(Some(world));
+        c.ui.dirty.set(true);
+        c.ui.playing.set(false);
+        c.ui.busy.set(false);
+        c.ui.message.set(
+            "Imported into the workspace. Saving checks overlaps and gravity stability".into(),
+        );
+        c.refresh_selection();
+    });
+    Ok(())
+}
+
+fn pump(handle: Handle) {
+    pump_ground(handle);
+    let requests = with_client(handle, |c| {
+        if !c.ready || c.simulation.is_some() || c.ui.dirty.get_untracked() {
+            return Vec::new();
+        }
+        let Some(world) = c.world.clone() else {
+            return Vec::new();
+        };
+        let Some(r) = &mut c.renderer else {
+            return Vec::new();
+        };
+        let camera = BlockCoord::at(r.eye());
+        let mut desired;
+        loop {
+            let visibility = r.visibility();
+            desired = world
+                .blocks
+                .iter()
+                .filter(|b| {
+                    c.load_all
+                        || visibility.contains(ergo_world::Aabb::new(
+                            b.coord.origin(),
+                            b.coord.origin() + DVec3::splat(1024.0),
+                        ))
+                })
+                .cloned()
+                .collect::<Vec<_>>();
+            if c.load_all
+                || (desired.len() <= 128
+                    && desired.iter().map(|b| b.brick_count).sum::<usize>() <= 200_000)
+            {
+                break;
+            }
+            if r.fog_distance <= 200.0 {
+                c.ui.fail("A visible storage cell exceeds the resident budget; subdivide this dense block into render pages");
+                return Vec::new();
+            }
+            r.fog_distance = (r.fog_distance * 0.75).max(200.0);
+            r.distance = r.distance.min(r.fog_distance * 0.85);
+            r.changed();
+        }
+        desired.sort_by_key(|b| {
+            (b.coord.0 - camera.0).abs()
+                + (b.coord.1 - camera.1).abs()
+                + (b.coord.2 - camera.2).abs()
+        });
+        let keep: HashSet<_> = desired.iter().map(|b| b.coord).collect();
+        let before = c.blocks.len();
+        c.blocks.retain(|coord, _| keep.contains(coord));
+        if before != c.blocks.len() {
+            c.rebuild();
+        }
+        let available = 4_usize.saturating_sub(c.pending.len());
+        let requests: Vec<_> = desired
+            .into_iter()
+            .filter(|b| !c.blocks.contains_key(&b.coord) && !c.pending.contains(&b.key))
+            .take(available)
+            .collect();
+        if requests.is_empty() && c.pending.is_empty() {
+            c.ui.busy.set(false);
+            if c.blocks.is_empty() {
+                c.ui.message.set(
+                    "No occupied blocks near the camera. Fit the construction or go to a location"
+                        .into(),
+                );
+            }
+        }
+        requests
+            .into_iter()
+            .map(|b| {
+                c.pending.insert(b.key.clone());
+                (world.id.clone(), b, c.generation)
+            })
+            .collect::<Vec<_>>()
+    });
+    for (world, info, generation) in requests {
+        spawn_local(async move {
+            let block: anyhow::Result<Block> = object(&world, &info.key).await;
+            with_client(handle, |c| {
+                if c.generation != generation {
+                    return;
+                }
+                c.pending.remove(&info.key);
+                match block {
+                    Ok(block) => {
+                        if !c.load_all
+                            && c.renderer.as_ref().is_some_and(|r| {
+                                !r.visibility().contains(ergo_world::Aabb::new(
+                                    block.coord.origin(),
+                                    block.coord.origin() + DVec3::splat(1024.0),
+                                ))
+                            })
+                        {
+                            return;
+                        }
+                        if c.blocks.values().map(|b| b.bricks.len()).sum::<usize>()
+                            + block.bricks.len()
+                            > 200_000
+                        {
+                            c.ready = false;
+                            c.ui.fail(
+                                "Resident block budget exceeded. Reduce the fog/view distance",
+                            );
+                            return;
+                        }
+                        c.blocks.insert(block.coord, block);
+                        c.rebuild();
+                        c.ui.busy.set(!c.pending.is_empty());
+                        c.ui.message.set(
+                            if c.complete() {
+                                "Construction loaded · browser download cache enabled"
+                            } else {
+                                "Visible blocks loaded · distance LOD and fog enabled"
+                            }
+                            .into(),
+                        );
+                        if c.start_when_loaded && c.complete() {
+                            c.start_when_loaded = false;
+                            if let Err(e) = c.begin_physics() {
+                                c.ui.fail(e);
+                            }
+                        }
+                    }
+                    Err(e) => {
+                        c.ready = false;
+                        c.ui.fail(e);
+                    }
+                }
+            });
+        });
+    }
+}
+
+fn pump_ground(handle: Handle) {
+    let requests = with_client(handle, |c| {
+        let Some(renderer) = &mut c.renderer else {
+            return Vec::new();
+        };
+        let geo = c.world.as_ref().map(|w| w.geo).unwrap_or(c.default_geo);
+        let mut cells = renderer.visible_ground_cells();
+        cells.sort_by(|a, b| {
+            let distance = |(x, y): (i64, i64)| {
+                ((x as f64 + 0.5) * 1024.0 - renderer.eye().x)
+                    .hypot((y as f64 + 0.5) * 1024.0 - renderer.eye().z)
+            };
+            distance(*a).total_cmp(&distance(*b))
+        });
+        let keep: HashSet<_> = cells.iter().copied().collect();
+        let before = renderer.ground.len();
+        renderer.ground.retain(|key, _| keep.contains(key));
+        if before != renderer.ground.len() {
+            renderer.changed();
+        }
+        for key in &cells {
+            if !renderer.ground.contains_key(key)
+                && let Some(block) = c
+                    .world
+                    .as_ref()
+                    .and_then(|w| w.ground.iter().find(|b| (b.coord.0, b.coord.2) == *key))
+            {
+                renderer.set_ground(block.clone());
+            }
+        }
+        let now = js_sys::Date::now();
+        let available = 4_usize.saturating_sub(c.ground_pending.len());
+        let needed: Vec<_> = cells
+            .into_iter()
+            .filter(|key| {
+                !c.ground_pending.contains(key)
+                    && renderer.ground.get(key).is_none_or(|block| {
+                        block.fallback_reason.is_some()
+                            && now - c.ground_retry.get(key).copied().unwrap_or(0.0) > 60_000.0
+                    })
+            })
+            .take(available)
+            .collect();
+        needed
+            .into_iter()
+            .map(|(x, y)| {
+                c.ground_pending.insert((x, y));
+                (x, y, geo, c.generation)
+            })
+            .collect::<Vec<_>>()
+    });
+    for (x, y, geo, generation) in requests {
+        spawn_local(async move {
+            let north = !y;
+            let url = format!(
+                "/api/ground/{x}/{north}?latitude={}&longitude={}&arcseconds_per_block={}",
+                geo.latitude, geo.longitude, geo.arcseconds_per_block
+            );
+            let result = json::<ergo_world::terrain::GroundBlock>(&url).await;
+            with_client(handle, |c| {
+                if c.generation != generation {
+                    return;
+                }
+                c.ground_pending.remove(&(x, y));
+                c.ground_retry.insert((x, y), js_sys::Date::now());
+                let block = result.unwrap_or_else(|e| {
+                    ergo_world::terrain::GroundBlock::fallback(x, north, e.to_string())
+                });
+                if let Some(reason) = &block.fallback_reason {
+                    c.ui.ground_status
+                        .set(format!("Ground: palette fallback ({reason})"));
+                } else {
+                    c.ui.ground_status
+                        .set(format!("Ground: {} · standard brick palette", block.source));
+                }
+                if let Some(url) = &block.attribution_url {
+                    c.ui.ground_attribution
+                        .set(Some((block.attribution.clone(), url.clone())));
+                }
+                if let Some(renderer) = &mut c.renderer {
+                    renderer.set_ground(block);
+                }
+            });
+        });
+    }
+}
+
+#[component]
+pub fn App() -> impl IntoView {
+    let ui = Ui::new();
+    let handle = StoredValue::new_local(Rc::new(RefCell::new(Client::new(ui))));
+    provide_context(handle);
+    provide_context(ui);
+    let canvas = NodeRef::<html::Canvas>::new();
+    let mounted = StoredValue::new(false);
+    Effect::new(move |_| {
+        if mounted.get_value() {
+            return;
+        }
+        let Some(node) = canvas.get() else {
+            return;
+        };
+        mounted.set_value(true);
+        let renderer = Renderer::new(node);
+        match renderer {
+            Ok(r) => with_client(handle, |c| c.renderer = Some(r)),
+            Err(e) => {
+                ui.fail(e.as_string().unwrap_or_default());
+                return;
+            }
+        }
+        let mut last = js_sys::Date::now();
+        let mut frames = 0;
+        let mut measured = last;
+        let mut ticks = 0;
+        gloo_timers::callback::Interval::new(16, move || {
+            let now = js_sys::Date::now();
+            let delta = ((now - last) / 1000.0).clamp(0.0, 0.1);
+            last = now;
+            frames += 1;
+            ticks += 1;
+            with_client(handle, |c| {
+                if c.playing {
+                    c.accumulator = (c.accumulator + delta).min(8.0 * physics::TIMESTEP);
+                    if let Some(sim) = &mut c.simulation {
+                        while c.accumulator >= physics::TIMESTEP {
+                            sim.step();
+                            c.accumulator -= physics::TIMESTEP;
+                        }
+                        c.renderer.as_mut().unwrap().set_bricks(sim.bricks());
+                        if ticks % 15 == 0 {
+                            ui.stats.set(sim.stats());
+                        }
+                    }
+                }
+                if let Some(r) = &mut c.renderer {
+                    let keys = &c.navigation_keys;
+                    let pressed = |values: &[&str]| values.iter().any(|k| keys.contains(*k));
+                    let input = NavigationInput {
+                        forward: (pressed(&["w", "arrowup"]) as i32
+                            - pressed(&["s", "arrowdown"]) as i32)
+                            as f64,
+                        right: (pressed(&["d", "arrowright"]) as i32
+                            - pressed(&["a", "arrowleft"]) as i32)
+                            as f64,
+                        up: (pressed(&["e"]) as i32 - pressed(&["q"]) as i32) as f64,
+                        boost: keys.contains("shift"),
+                        jump: keys.contains(" "),
+                    };
+                    let known = &c.known_cells;
+                    let loaded = &c.blocks;
+                    r.navigate(input, delta, &|cell| {
+                        known.contains(&cell) && !loaded.contains_key(&cell)
+                    });
+                    r.render();
+                    if ticks % 15 == 0 {
+                        ui.count.set(r.bricks.len());
+                        ui.blocks.set(c.blocks.len());
+                        ui.gpu.set(r.gpu_bytes);
+                        ui.draws.set(r.draw_calls);
+                        ui.nodes.set(r.tree.node_count());
+                        if ui.fog.get_untracked() != r.fog_distance {
+                            ui.fog.set(r.fog_distance);
+                        }
+                        if ui.navigation.get_untracked() != r.navigation {
+                            ui.navigation.set(r.navigation);
+                        }
+                        let _ = r
+                            .canvas
+                            .set_attribute("data-navigation", r.navigation.name());
+                        let _ = r.canvas.set_attribute(
+                            "data-camera-position",
+                            &serde_json::to_string(&ergo_world::coordinates::public(r.eye()))
+                                .unwrap(),
+                        );
+                    }
+                }
+                if ticks % 15 == 0 {
+                    c.refresh_selection();
+                }
+            });
+            if ticks % 12 == 0 {
+                pump(handle);
+            }
+            if now - measured > 1000.0 {
+                ui.fps
+                    .set((frames as f64 * 1000.0 / (now - measured)) as u32);
+                frames = 0;
+                measured = now;
+            }
+        })
+        .forget();
+        spawn_local(async move {
+            #[derive(Deserialize)]
+            struct Config {
+                storage: String,
+                geo: ergo_world::GeoReference,
+            }
+            #[derive(Deserialize)]
+            struct Me {
+                name: String,
+                google_enabled: bool,
+                signed_in: bool,
+            }
+            if let Ok(config) = json::<Config>("/api/config").await {
+                ui.storage.set(config.storage);
+                with_client(handle, |c| c.default_geo = config.geo);
+            }
+            if let Ok(me) = json::<Me>("/api/auth/me").await {
+                ui.user.set(me.name);
+                ui.google.set(me.google_enabled);
+                ui.signed_in.set(me.signed_in);
+            }
+            match json::<Vec<WorldManifest>>("/api/worlds").await {
+                Ok(worlds) => {
+                    let first = worlds
+                        .iter()
+                        .find(|w| w.name.contains("pavilion"))
+                        .or(worlds.first())
+                        .cloned();
+                    ui.worlds.set(worlds);
+                    if let Some(world) = first {
+                        open_world(handle, world);
+                    } else {
+                        ui.busy.set(false);
+                        ui.message
+                            .set("Import a Studio construction to start exploring".into());
+                    }
+                }
+                Err(e) => ui.fail(e),
+            }
+        });
+    });
+    view! {
+        <header class="app-header">
+            <a class="brand" href="/" aria-label="Ergo home"><span class="brand-mark"><i></i><i></i><i></i><i></i></span>"ergo"<span class="brand-description">"A world, brick by brick."</span></a>
+            <div class="header-actions"><span class="account-name">{move ||ui.user.get()}</span><Show when=move ||ui.google.get()&&!ui.signed_in.get()><a class="button quiet" href="/auth/google">"Sign in with Google"</a></Show><Show when=move ||ui.google.get()&&ui.signed_in.get()><button class="button quiet" on:click=move |_|logout(ui)>"Sign out"</button></Show><button class="button primary" on:click=move |_|show_dialog("import-dialog")>"＋ Import construction"</button></div>
+        </header>
+        <main class="workbench">
+            <aside class="left-dock"><ConstructionBrowser/><div class="dock-bottom"><span class="storage-dot"></span>{move ||ui.storage.get()}<p>"27 common parts · 20 colors"</p></div></aside>
+            <section class="viewport-area" aria-label="3D construction workbench">
+                <div class="scene-heading"><div><p class="scene-location">"World origin"<span>{move ||ui.current.get().map(|w|format!("{:.4}°, {:.4}°",w.geo.latitude,w.geo.longitude)).unwrap_or_default()}</span></p><h1>{move ||ui.current.get().map(|w|w.name).unwrap_or_else(||"Your next construction".into())}</h1><p>{move ||ui.current.get().map(|w|if w.id=="draft" {"Workspace draft".into()} else {format!("{} bricks in {} spatial block{}",number(w.brick_count),w.blocks.len(),if w.blocks.len()==1{""}else{"s"})}).unwrap_or_default()}</p></div><span class="snapshot-badge" class:draft=move ||ui.dirty.get()>{move ||if ui.dirty.get(){"Working copy"}else if ui.current.get().is_some_and(|w|w.owner=="examples"){"Fixture example"}else{"Validated snapshot"}}</span></div>
+                <canvas node_ref=canvas id="world-canvas" tabindex="0" aria-label=move ||format!("3D brick construction. {} navigation. Drag to look; focus canvas for keyboard controls.",ui.navigation.get().name())
+                    on:contextmenu=move |e|e.prevent_default()
+                    on:pointerdown=move |e|with_client(handle,|c|{let x=e.client_x() as f64;let y=e.client_y() as f64;c.pointer=Some((x,y,x,y,e.button(),e.shift_key()));if let Some(r)=&c.renderer{let _=r.canvas.set_pointer_capture(e.pointer_id());}})
+                    on:pointermove=move |e|with_client(handle,|c|{if let Some((sx,sy,lx,ly,button,shift))=c.pointer {let x=e.client_x() as f64;let y=e.client_y() as f64;if let Some(r)=&mut c.renderer {if (button==2||shift)&&r.navigation==NavigationMode::Orbit{r.pan(x-lx,y-ly);}else{r.orbit(x-lx,y-ly);}}c.pointer=Some((sx,sy,x,y,button,shift));}})
+                    on:pointerup=move |e|with_client(handle,|c|{if let Some((sx,sy,_,_,button,_))=c.pointer.take(){let x=e.client_x() as f64;let y=e.client_y() as f64;if (x-sx).hypot(y-sy)<5.0&&button==0 {if let Some(r)=&mut c.renderer{let rect=r.canvas.get_bounding_client_rect();r.pick(x-rect.left(),y-rect.top());}c.refresh_selection();}}})
+                    on:wheel=move |e|{e.prevent_default();with_client(handle,|c|{if let Some(r)=&mut c.renderer{r.zoom(e.delta_y());}});}
+                    on:keydown=move |e| {
+                        if e.ctrl_key()||e.meta_key()||e.alt_key(){return;}let key=e.key().to_lowercase();
+                        if ["w","a","s","d","q","e","shift"," ","arrowup","arrowdown","arrowleft","arrowright"].contains(&key.as_str()){e.prevent_default();with_client(handle,|c|{c.navigation_keys.insert(key.clone());if let Some(r)=&mut c.renderer&&r.navigation==NavigationMode::Orbit{match key.as_str(){"arrowleft"=>r.pan(-30.0,0.0),"arrowright"=>r.pan(30.0,0.0),"arrowup"=>r.pan(0.0,-30.0),"arrowdown"=>r.pan(0.0,30.0),_=>{}}}});}
+                        if key=="f" {fit(handle);}
+                    }
+                    on:keyup=move |e|with_client(handle,|c|{c.navigation_keys.remove(&e.key().to_lowercase());})
+                    on:blur=move |_|with_client(handle,|c|c.navigation_keys.clear())
+                ></canvas>
+                <div class="view-tools"><button title="Fit construction (F)" aria-label="Fit construction" on:click=move |_|fit(handle)>"⊡"</button><button title="Zoom in / faster" aria-label="Zoom in" on:click=move |_|with_client(handle,|c|{if let Some(r)=&mut c.renderer{r.zoom(-180.0);}})>"＋"</button><button title="Zoom out / slower" aria-label="Zoom out" on:click=move |_|with_client(handle,|c|{if let Some(r)=&mut c.renderer{r.zoom(180.0);}})>"−"</button><button title="Top view" aria-label="Top view" on:click=move |_|with_client(handle,|c|{if let Some(r)=&mut c.renderer{r.set_navigation(NavigationMode::Orbit);r.pitch=1.55;r.changed();}})>"⌑"</button></div>
+                <div class="mobile-navigation" role="group" aria-label="Mobile navigation mode">{[("Orbit",NavigationMode::Orbit),("Fly",NavigationMode::Fly),("Walk",NavigationMode::Walk)].into_iter().map(|(label,mode)|view!{<button class:active=move ||ui.navigation.get()==mode on:click=move |_|navigation_mode(handle,mode)>{label}</button>}).collect_view()}</div>
+                <Show when=move ||ui.navigation.get()!=NavigationMode::Orbit><div class="movement-pad" role="group" aria-label="Movement controls">{[("Forward","↑","w"),("Left","←","a"),("Back","↓","s"),("Right","→","d")].into_iter().map(|(label,symbol,key)|view!{<button aria-label=label title=label on:pointerdown=move |e|{e.prevent_default();with_client(handle,|c|{c.navigation_keys.insert(key.into());});} on:pointerup=move |_|with_client(handle,|c|{c.navigation_keys.remove(key);}) on:pointerleave=move |_|with_client(handle,|c|{c.navigation_keys.remove(key);}) on:keydown=move |e|{if e.key()==" "||e.key()=="Enter"{e.prevent_default();with_client(handle,|c|{c.navigation_keys.insert(key.into());});}} on:keyup=move |_|with_client(handle,|c|{c.navigation_keys.remove(key);})>{symbol}</button>}).collect_view()}<Show when=move ||ui.navigation.get()==NavigationMode::Fly>{[("Descend","⇣","q"),("Ascend","⇡","e")].into_iter().map(|(label,symbol,key)|view!{<button aria-label=label title=label on:pointerdown=move |e|{e.prevent_default();with_client(handle,|c|{c.navigation_keys.insert(key.into());});} on:pointerup=move |_|with_client(handle,|c|{c.navigation_keys.remove(key);}) on:pointerleave=move |_|with_client(handle,|c|{c.navigation_keys.remove(key);})>{symbol}</button>}).collect_view()}</Show></div></Show>
+                <div class="north-marker"><span>"N"</span><svg viewBox="0 0 40 40" aria-hidden="true"><path d="M20 3 L29 33 L20 27 L11 33 Z" fill="#334b61"/><path d="M20 3 L20 27 L11 33 Z" fill="#8c9faf"/></svg></div>
+                <div class="viewport-footer"><span>{move ||if ui.navigation.get()==NavigationMode::Orbit{"Drag to orbit / Shift + drag to pan / Scroll to zoom"}else if ui.navigation.get()==NavigationMode::Fly{"Drag to look / WASD + Q/E to fly / Shift faster"}else{"Drag to look / WASD to walk / Space jump / Shift faster"}}</span><span class="render-badge">"WebGL2"<b>{move ||format!("{} fps",ui.fps.get())}</b></span></div>
+                <div class="map-attribution" title=move ||ui.ground_status.get()><Show when=move ||ui.ground_attribution.get().is_some() fallback=move ||view!{<span>"Ground: palette fallback"</span>}><a target="_blank" rel="noopener noreferrer" href=move ||ui.ground_attribution.get().map(|(_,url)|url).unwrap_or_default()>{move ||ui.ground_attribution.get().map(|(label,_)|label).unwrap_or_default()}</a></Show></div>
+                <Show when=move ||ui.busy.get()><div class="loading-pill" role="status"><span class="spinner"></span>"Loading construction…"</div></Show>
+            </section>
+            <aside class="right-dock"><BrickInspector/><SimulationControls/></aside>
+        </main>
+        <footer class="status-bar"><span class="status-message" role="status">{move ||ui.message.get()}</span><span>{move ||format!("{} blocks · {} bricks · {} draw calls · {:.1} MB GPU",ui.blocks.get(),number(ui.count.get()),ui.draws.get(),ui.gpu.get() as f64/1e6)}</span></footer>
+        <Show when=move ||ui.error.get().is_some()><div class="error-toast" role="alert"><div><strong>"Action could not be completed"</strong><p>{move ||ui.error.get().unwrap_or_default()}</p></div><button aria-label="Dismiss error" on:click=move |_|ui.error.set(None)>"×"</button></div></Show>
+        <ImportDialog/><LocationDialog/><ConstraintDialog/><SolidityDialog/><GroupsDialog/>
+    }
+}
+
+fn number(n: usize) -> String {
+    let s = n.to_string();
+    let mut out = String::new();
+    for (i, c) in s.chars().enumerate() {
+        if i > 0 && (s.len() - i).is_multiple_of(3) {
+            out.push(',');
+        }
+        out.push(c);
+    }
+    out
+}
+fn fit(handle: Handle) {
+    with_client(handle, |c| {
+        if let Some(w) = &c.world
+            && let Some(r) = &mut c.renderer
+        {
+            let b = ergo_world::bounds(&r.bricks).unwrap_or(w.bounds);
+            r.fit(b);
+        }
+    });
+}
+fn navigation_mode(handle: Handle, mode: NavigationMode) {
+    with_client(handle, |c| {
+        c.navigation_keys.clear();
+        if let Some(r) = &mut c.renderer {
+            r.set_navigation(mode);
+        }
+        c.ui.navigation.set(mode);
+        c.ui.message.set(format!(
+            "{} navigation · camera changes stay local",
+            mode.name()
+        ));
+    });
+}
+fn show_dialog(id: &str) {
+    if let Some(dialog) = web_sys::window()
+        .and_then(|w| w.document())
+        .and_then(|d| d.get_element_by_id(id))
+        .and_then(|e| e.dyn_into::<web_sys::HtmlDialogElement>().ok())
+    {
+        let _ = dialog.show_modal();
+    }
+}
+fn close_dialog(id: &str) {
+    if let Some(dialog) = web_sys::window()
+        .and_then(|w| w.document())
+        .and_then(|d| d.get_element_by_id(id))
+        .and_then(|e| e.dyn_into::<web_sys::HtmlDialogElement>().ok())
+    {
+        dialog.close();
+    }
+}
+
+fn group_action(handle: Handle, edit: impl FnOnce(&mut WorldExport) -> anyhow::Result<()>) {
+    act(handle, |c| {
+        c.require_all()?;
+        c.freeze_simulation();
+        let mut scene = c.scene()?;
+        edit(&mut scene)?;
+        ergo_world::groups::validate(&scene.bricks, &scene.groups)?;
+        c.remember()?;
+        c.groups = scene.groups;
+        c.joints = scene.joints;
+        c.fixed = scene.fixed_bricks;
+        c.renderer.as_mut().unwrap().set_bricks(scene.bricks);
+        c.ui.authoring_groups.set(c.groups.clone());
+        c.refresh_selection();
+        c.ui.message
+            .set("Group edit applied to the local working copy".into());
+        Ok(())
+    });
+}
+fn group_ids(value: &str) -> anyhow::Result<Vec<u32>> {
+    value
+        .split([',', ' ', '\n', ';'])
+        .filter(|s| !s.is_empty())
+        .map(|s| s.trim().parse::<u32>().map_err(Into::into))
+        .collect()
+}
+
+#[component]
+fn GroupsDialog() -> impl IntoView {
+    let handle = expect_context::<Handle>();
+    let ui = expect_context::<Ui>();
+    let name = RwSignal::new("New group".to_owned());
+    let pieces = RwSignal::new(String::new());
+    let children = RwSignal::new(String::new());
+    let selected = RwSignal::new(0_u32);
+    let reparent = RwSignal::new(false);
+    view! {
+        <dialog id="groups-dialog" class="modal">
+            <div class="modal-heading"><h2>"Piece and assembly groups"</h2><button type="button" class="icon-button" aria-label="Close groups dialog" on:click=move |_|close_dialog("groups-dialog")>"×"</button></div>
+            <p>"Groups contain pieces and other groups. Rigid edits move their descendants together; physical joints still determine attachment and stability."</p>
+            <label>"Selected group"<select prop:value=move ||selected.get().to_string() on:change=move |e|{let id=event_target_value(&e).parse().unwrap_or(0);selected.set(id);if let Some(group)=ui.authoring_groups.get_untracked().iter().find(|g|g.id==id){pieces.set(group.members.iter().filter_map(|m|if let ergo_world::groups::Member::Piece{id}=m{Some(id.to_string())}else{None}).collect::<Vec<_>>().join(", "));children.set(group.members.iter().filter_map(|m|if let ergo_world::groups::Member::Group{id}=m{Some(id.to_string())}else{None}).collect::<Vec<_>>().join(", "));}}><option value="0">"Choose a group"</option>{move ||ui.authoring_groups.get().into_iter().map(|g|view!{<option value=g.id.to_string()>{format!("#{} · {}",g.id,g.name)}</option>}).collect_view()}</select></label>
+            <label>"New group name"<input type="text" maxlength="120" prop:value=move ||name.get() on:input=move |e|name.set(event_target_value(&e))/></label>
+            <div class="form-columns"><label>"Piece IDs"<input type="text" placeholder="1, 2, 3" prop:value=move ||pieces.get() on:input=move |e|pieces.set(event_target_value(&e))/></label><label>"Child group IDs"<input type="text" placeholder="4, 5" prop:value=move ||children.get() on:input=move |e|children.set(event_target_value(&e))/></label></div>
+            <button class="button quiet small" on:click=move |_|pieces.set(ui.group_selection.get_untracked().iter().map(u32::to_string).collect::<Vec<_>>().join(", "))>{move ||format!("Use viewport selection ({} pieces)",ui.group_selection.get().len())}</button>
+            <label class="toggle-row"><span>"Reparent when replacing members"</span><input type="checkbox" on:change=move |e|reparent.set(event_target_checked(&e))/></label>
+            <div class="inspector-actions"><button class="button primary" on:click=move |_|group_action(handle,|scene|{let mut members=group_ids(&pieces.get_untracked())?.into_iter().map(|id|ergo_world::groups::Member::Piece{id}).collect::<Vec<_>>();members.extend(group_ids(&children.get_untracked())?.into_iter().map(|id|ergo_world::groups::Member::Group{id}));let id=ergo_world::groups::create(scene,name.get_untracked(),members,None)?;selected.set(id);Ok(())})>"Create group"</button>
+                <button class="button quiet" disabled=move ||selected.get()==0 on:click=move |_|group_action(handle,|scene|{let mut members=group_ids(&pieces.get_untracked())?.into_iter().map(|id|ergo_world::groups::Member::Piece{id}).collect::<Vec<_>>();members.extend(group_ids(&children.get_untracked())?.into_iter().map(|id|ergo_world::groups::Member::Group{id}));ergo_world::groups::set_members(scene,selected.get_untracked(),members,reparent.get_untracked())})>"Replace members"</button>
+            </div>
+            <h3 class="group-transform-heading">"Transform selected group"</h3>
+            <div class="move-grid">{[("−X",DVec3::NEG_X),("+X",DVec3::X),("−Y",DVec3::Z),("+Y",DVec3::NEG_Z),("−Z",DVec3::NEG_Y),("+Z",DVec3::Y)].into_iter().map(|(label,delta)|view!{<button class="button quiet small" disabled=move ||selected.get()==0 on:click=move |_|group_action(handle,|scene|{ergo_world::groups::transform(scene,selected.get_untracked(),delta,DVec3::Y,0.0,None)?;Ok(())})>{label}</button>}).collect_view()}</div>
+            <div class="inspector-actions"><button class="button quiet small" disabled=move ||selected.get()==0 on:click=move |_|group_action(handle,|scene|{ergo_world::groups::transform(scene,selected.get_untracked(),DVec3::ZERO,DVec3::Y,std::f64::consts::FRAC_PI_2,None)?;Ok(())})>"Rotate 90° about Z"</button>
+                <button class="button quiet small" disabled=move ||selected.get()==0 on:click=move |_|act(handle,|c|{c.require_all()?;let scene=c.scene()?;let (ids,_)=ergo_world::groups::descendants(&scene.groups,selected.get_untracked())?;let bounds=ergo_world::groups::bounds(&scene,selected.get_untracked())?;let r=c.renderer.as_mut().unwrap();r.highlighted=ids;if let Some(bounds)=bounds{r.fit(bounds);}r.changed();Ok(())})>"Focus / highlight"</button>
+                <button class="button quiet small" disabled=move ||selected.get()==0 on:click=move |_|group_action(handle,|scene|{ergo_world::groups::ungroup(scene,selected.get_untracked())?;selected.set(0);Ok(())})>"Ungroup"</button>
+            </div>
+            <p class="subtle">"Transforms preserve real piece dimensions. Destination overlaps, floor crossings, anchored pieces, cycles, and constraints to outside pieces are rejected."</p>
+        </dialog>
+    }
+}
+
+#[component]
+fn ConstructionBrowser() -> impl IntoView {
+    let ui = expect_context::<Ui>();
+    let handle = expect_context::<Handle>();
+    view! {
+        <div class="dock-section browser"><div class="section-heading"><h2>"Constructions"</h2><span class="count-badge">{move ||ui.worlds.get().len()}</span></div>
+            <p class="subtle">"Your corner of a much bigger world."</p>
+            <div class="world-list">{move ||ui.worlds.get().into_iter().map(|world|{let id=world.id.clone();let model=world.clone();view!{
+                <button class="world-item" class:active=move ||ui.current.get().is_some_and(|w|w.id==id) on:click=move |_|open_world(handle,model.clone())><span class="world-thumbnail">{if world.name.contains("pavilion"){ "⌂" }else{"▦"}}</span><span><strong>{world.name.clone()}</strong><small>{format!("{} bricks",number(world.brick_count))}</small></span><span class="world-more">"›"</span></button>
+            }}).collect_view()}</div>
+            <button class="button full quiet import-secondary" on:click=move |_|show_dialog("import-dialog")>"＋ Import from Studio"</button>
+        </div>
+        <div class="dock-section"><div class="section-heading"><h2>"World coordinates"</h2><button class="icon-button" title="Go to GPS position" on:click=move |_|show_dialog("location-dialog")>"◎"</button></div>
+            <div class="origin-diagram"><span class="origin-point"></span><span>"World origin"<small>"X east · Y north · Z up"</small></span><svg viewBox="0 0 72 45" aria-hidden="true"><path d="M5 34L33 18L66 34L38 49ZM33 18V0M5 34V17L33 0L66 17V34M5 17L38 34L66 17M38 34V49" fill="none" stroke="currentColor"/></svg></div>
+            <div class="coordinate-rule"><strong>"1,024 × 1,024 × 1,024"</strong><span>"brick units per block"</span></div><p class="subtle">"Each block spans 1 arc-second east and north. Gravity points to its baseplate."</p>
+            <button class="text-button" on:click=move |_|show_dialog("location-dialog")>"Go to a location"<span>"↗"</span></button>
+        </div>
+        <div class="dock-section"><h2>"Viewport"</h2><label class="toggle-row"><span>"Base grid"</span><input type="checkbox" checked on:change=move |e|with_client(handle,|c|{if let Some(r)=&mut c.renderer{r.grid=event_target_checked(&e);}})/></label>
+            <div class="navigation-modes" role="group" aria-label="Navigation mode">{[("Orbit",NavigationMode::Orbit),("Fly",NavigationMode::Fly),("Walk",NavigationMode::Walk)].into_iter().map(|(label,mode)|view!{<button class:active=move ||ui.navigation.get()==mode aria-pressed=move ||(ui.navigation.get()==mode).to_string() on:click=move |_|navigation_mode(handle,mode)>{label}</button>}).collect_view()}</div>
+            <p class="subtle compact">{move ||if ui.navigation.get()==NavigationMode::Orbit{"Drag to orbit; shift-drag to pan."}else if ui.navigation.get()==NavigationMode::Fly{"Focus the canvas: WASD fly, Q/E descend/ascend, Shift faster."}else{"Focus the canvas: WASD walk, Space jump, Shift faster. Body-box collisions enabled."}}</p>
+            <Show when=move ||ui.navigation.get()==NavigationMode::Walk><label class="range-label" for="eye-height">"Eye height"<span>"brick units"</span></label><input id="eye-height" type="number" min="1" max="32" step="0.5" value="4" on:input=move |e|with_client(handle,|c|{if let Some(r)=&mut c.renderer{let value=event_target_value(&e).parse::<f64>().unwrap_or(4.0).clamp(1.0,32.0);let difference=value-r.walk_eye_height;r.walk_eye_height=value;r.target.y+=difference;r.changed();}})/></Show>
+            <label class="range-label" for="explode">"Separate layers"<span>"Visual only"</span></label><input id="explode" type="range" min="0" max="1" step="0.02" value="0" on:input=move |e|with_client(handle,|c|{if c.simulation.is_none()&&let Some(r)=&mut c.renderer{r.explode=event_target_value(&e).parse().unwrap_or(0.0);r.changed();}})/>
+            <label class="range-label" for="fog-distance">"Viewing distance (fog)"<span>{move ||format!("{:.0} studs",ui.fog.get())}</span></label><input id="fog-distance" type="range" min="200" max="4096" step="100" prop:value=move ||ui.fog.get().to_string() on:input=move |e|{let value=event_target_value(&e).parse::<f64>().unwrap_or(2200.0);ui.fog.set(value);with_client(handle,|c|{if let Some(r)=&mut c.renderer{r.fog_distance=value;r.distance=r.distance.min(value*0.9);r.changed();}});}/>
+            <p class="subtle compact">"Visible blocks only · automatic distance LOD"</p>
+            <p class="subtle compact">{move ||format!("{} octree nodes · geometry instanced on GPU",ui.nodes.get())}</p>
+        </div>
+    }
+}
+
+#[component]
+fn BrickInspector() -> impl IntoView {
+    let ui = expect_context::<Ui>();
+    let handle = expect_context::<Handle>();
+    let pull = RwSignal::new(false);
+    view! {
+        <div class="dock-section inspector"><div class="section-heading"><h2>"Brick inspector"</h2><span class="selection-dot" class:has-selection=move ||ui.selected.get().is_some()></span></div>
+            <Show when=move ||ui.selected.get().is_some() fallback=move ||view!{<div class="empty-inspector"><svg viewBox="0 0 80 70" aria-hidden="true"><path d="M12 29L40 13L68 29V49L40 65L12 49Z M12 29L40 46L68 29 M40 46V65" fill="none" stroke="currentColor" stroke-width="1.5"/><ellipse cx="40" cy="16" rx="11" ry="6" fill="#f7fafc" stroke="currentColor"/><path d="M29 16V23C29 31 51 31 51 23V16" fill="none" stroke="currentColor"/></svg><strong>"Every brick has a story."</strong><p>"Select one in the scene to inspect its geometry and connections."</p></div>}>
+                <div class="selected-part"><span class="part-color" style:background=move ||ui.selected.get().map(|b|format!("#{:06x}",b.rgb)).unwrap_or_default()></span><div><h3>{move ||ui.selected.get().map(|b|catalog::part_name(&b.part).to_owned()).unwrap_or_default()}</h3><p>{move ||ui.selected.get().map(|b|format!("{} · #{}",b.part.trim_end_matches(".dat"),b.id)).unwrap_or_default()}</p></div></div>
+                <dl class="part-properties"><dt>"Color"</dt><dd>{move ||ui.selected.get().map(|b|catalog::color_name(b.color)).unwrap_or_default()}</dd><dt>"Origin (X,Y,Z)"</dt><dd>{move ||ui.selected.get().map(|b|format!("{:.1}, {:.1}, {:.1}",b.position.x,-b.position.z,b.position.y)).unwrap_or_default()}</dd><dt>"Base height Z"</dt><dd>{move ||ui.selected.get().map(|b|format!("{:.3}",b.bounds.min.y)).unwrap_or_default()}</dd><dt>"Connections"</dt><dd>{move ||ui.relations.get().iter().filter(|r|r.certainty=="inferred").count()}</dd></dl>
+                <div class="swatches" aria-label="Available brick colors">{catalog::COLORS.iter().map(|&(code,name)|view!{<button class="swatch" title=name aria-label=name style:background=format!("#{:06x}",ergo_world::color_rgb(code)) on:click=move |_|act(handle,|c|{c.remember()?;c.freeze_simulation();let r=c.renderer.as_mut().unwrap();if let Some(id)=r.selected{for b in &mut r.bricks{if b.id==id{b.color=code;b.rgb=ergo_world::color_rgb(code);}}r.changed();}c.refresh_selection();Ok(())})></button>}).collect_view()}</div>
+                <div class="inspector-actions"><button class="button quiet small" on:click=move |_|{ui.first.set(ui.selected.get_untracked().map(|b|b.id));ui.message.set("First brick selected. Select a second brick, then add a connection".into());}>"Use as first brick"</button><button class="button quiet small" disabled=move ||ui.first.get().is_none() on:click=move |_|show_dialog("constraint-dialog")>"Connect…"</button><button class="button quiet small" on:click=move |_|{if let Some(brick)=ui.selected.get_untracked(){ui.group_selection.update(|ids|{if !ids.contains(&brick.id){ids.push(brick.id);}});ui.message.set(format!("{} pieces selected for grouping",ui.group_selection.get_untracked().len()));}}>"Add to group selection"</button></div>
+                <label class="toggle-row"><span>"Pull in simulation"</span><input type="checkbox" on:change=move |e|pull.set(event_target_checked(&e))/></label>
+                <div class="move-grid" aria-label="Move selected connected group">{[("−X",DVec3::NEG_X),("+X",DVec3::X),("−Y",DVec3::Z),("+Y",DVec3::NEG_Z),("−Z",DVec3::NEG_Y),("+Z",DVec3::Y)].into_iter().map(|(label,delta)|view!{<button class="button quiet small" on:click=move |_|act(handle,|c|c.move_selected(delta, pull.get_untracked()))>{label}</button>}).collect_view()}</div>
+                <button class="text-button" on:click=move |_|act(handle,|c|{c.remember()?;c.freeze_simulation();let id=c.renderer.as_ref().and_then(|r|r.selected).unwrap();if c.fixed.contains(&id){c.fixed.retain(|i|*i!=id);c.ui.message.set("Brick released from its anchor".into());}else{c.fixed.push(id);c.ui.message.set("Brick anchored in world space".into());}Ok(())})>"Toggle world anchor"</button>
+                <details class="connections"><summary>"Nearby contacts"</summary>{move ||ui.relations.get().into_iter().take(12).map(|r|view!{<p>{format!("#{} · {} ({})",r.brick_id,r.kind,r.certainty)}</p>}).collect_view()}</details>
+            </Show>
+        </div>
+    }
+}
+
+#[component]
+fn SimulationControls() -> impl IntoView {
+    let ui = expect_context::<Ui>();
+    let handle = expect_context::<Handle>();
+    view! {
+        <div class="dock-section simulation"><div class="section-heading"><h2>"Physics sandbox"</h2><span class="beta-badge">"Rigid bodies"</span></div><p class="subtle">"Gravity, body-box collisions, and fixed or axle constraints."</p>
+            <div class="simulation-buttons"><button class="button primary" on:click=move |_|act(handle,|c|{if c.playing{c.playing=false;c.ui.playing.set(false);if let Some(s)=&mut c.simulation{s.release_drive();}Ok(())}else{if !c.complete(){c.request_all()?;c.start_when_loaded=true;c.ui.busy.set(true);c.ui.message.set("Loading all supports and connected bodies before simulation…".into());Ok(())}else{c.begin_physics()}}})>{move ||if ui.playing.get(){"Ⅱ Pause"}else{"▷ Run gravity"}}</button><button class="button quiet" title="Restore last saved or imported state" on:click=move |_|act(handle,|c|{c.freeze_simulation();let scene=c.undo.take().ok_or_else(||anyhow::anyhow!("No workspace changes to reset"))?;c.joints=scene.joints;c.fixed=scene.fixed_bricks;c.groups=scene.groups;c.ui.authoring_groups.set(c.groups.clone());c.renderer.as_mut().unwrap().set_bricks(scene.bricks);c.ui.stats.set(SimulationStats::default());c.ui.dirty.set(c.world.as_ref().is_some_and(|w|w.id=="draft"));c.refresh_selection();c.ui.message.set("Workspace reset".into());Ok(())})>"Reset"</button></div>
+            <dl class="simulation-stats"><div><dt>"Connections"</dt><dd>{move ||number(ui.joint_count.get())}</dd></div><div><dt>"Moved > 0.1"</dt><dd>{move ||ui.stats.get().moved}</dd></div><div><dt>"Time"</dt><dd>{move ||format!("{:.1}s",ui.stats.get().elapsed)}</dd></div></dl>
+            <p class="physics-note">"A sandbox uses the complete construction, up to 5,000 bricks. Saved models must be overlap-free and stable under gravity."</p>
+            <button class="button quiet full" on:click=move |_|show_dialog("solidity-dialog")>"Test solidity…"</button>
+            <button class="button quiet full group-button" on:click=move |_|show_dialog("groups-dialog")>{move ||format!("Groups… ({})",ui.authoring_groups.get().len())}</button>
+            <button class="button full save-button" disabled=move ||ui.busy.get()||!ui.dirty.get() on:click=move |_|save(handle)>"Validate & save snapshot"</button>
+            <button class="text-button" on:click=move |_|export_scene(handle)>"Export workspace JSON"<span>"↓"</span></button>
+        </div>
+    }
+}
+
+#[component]
+fn SolidityDialog() -> impl IntoView {
+    let handle = expect_context::<Handle>();
+    let ui = expect_context::<Ui>();
+    let kind = RwSignal::new("earthquake".to_owned());
+    let amplitude = RwSignal::new("2".to_owned());
+    let frequency = RwSignal::new("5".to_owned());
+    let duration = RwSignal::new("2".to_owned());
+    let mass = RwSignal::new("0.05".to_owned());
+    let height = RwSignal::new("0.1".to_owned());
+    let size = RwSignal::new("0.01".to_owned());
+    let busy = RwSignal::new(false);
+    let report = RwSignal::new(None::<ergo_world::solidity::SolidityReport>);
+    view! {
+        <dialog id="solidity-dialog" class="modal">
+            <form on:submit=move |e| {
+                e.prevent_default();report.set(None);busy.set(true);
+                let input: anyhow::Result<_>=with_client(handle,|c| {
+                    c.require_all()?;c.freeze_simulation();let scene=c.scene()?;
+                    let case=if kind.get_untracked()=="earthquake" {
+                        ergo_world::solidity::LoadCase::Earthquake(ergo_world::solidity::Earthquake{displacement_amplitude_m:amplitude.get_untracked().parse::<f64>()?/1000.0,frequency_hz:frequency.get_untracked().parse()?,duration_s:duration.get_untracked().parse()?,direction:DVec3::X})
+                    } else {
+                        let bounds=ergo_world::bounds(&scene.bricks).ok_or_else(||anyhow::anyhow!("Empty construction"))?;
+                        let target=c.renderer.as_ref().and_then(|r|r.selected_brick()).map(|b|b.bounds.center()).unwrap_or(bounds.center());
+                        ergo_world::solidity::LoadCase::FallingObject(ergo_world::solidity::FallingObject{mass_kg:mass.get_untracked().parse()?,dimensions_m:DVec3::splat(size.get_untracked().parse()?),target_world:DVec3::new(target.x,bounds.max.y,target.z),release_height_m:height.get_untracked().parse()?})
+                    };
+                    Ok((scene,case))
+                });
+                spawn_local(async move {
+                    gloo_timers::future::TimeoutFuture::new(30).await;
+                    match input.and_then(|(scene,case)|ergo_world::solidity::test(&scene,case)) {
+                        Ok((_,_,result))=>report.set(Some(result)),Err(e)=>ui.fail(e),
+                    }
+                    busy.set(false);
+                });
+            }>
+                <div class="modal-heading"><h2>"Test the construction's solidity"</h2><button type="button" class="icon-button" aria-label="Close solidity dialog" on:click=move |_|close_dialog("solidity-dialog")>"×"</button></div>
+                <p>"Run a non-destructive load case. Results apply to this waveform or impact and the model's available connector calibration."</p>
+                <label>"Load case"<select on:change=move |e|kind.set(event_target_value(&e))><option value="earthquake">"Earthquake / horizontal baseplate shake"</option><option value="falling_object">"Falling box above the selected brick or center"</option></select></label>
+                <Show when=move ||kind.get()=="earthquake" fallback=move ||view! {
+                    <div class="form-columns"><label>"Object mass (kg)"<input type="number" min="0.0001" max="10" step="any" value="0.05" on:input=move |e|mass.set(event_target_value(&e))/></label><label>"Release height (m)"<input type="number" min="0.01" max="2" step="any" value="0.1" on:input=move |e|height.set(event_target_value(&e))/></label></div>
+                    <label>"Box side length (m)"<input type="number" min="0.001" max="1" step="any" value="0.01" on:input=move |e|size.set(event_target_value(&e))/></label>
+                }>
+                    <div class="form-columns"><label>"Displacement amplitude (mm)"<input type="number" min="0" max="50" step="any" value="2" on:input=move |e|amplitude.set(event_target_value(&e))/></label><label>"Frequency (Hz)"<input type="number" min="0.1" max="20" step="any" value="5" on:input=move |e|frequency.set(event_target_value(&e))/></label></div>
+                    <label>"Shake duration (s)"<input type="number" min="0.1" max="4" step="any" value="2" on:input=move |e|duration.set(event_target_value(&e))/></label>
+                </Show>
+                <Show when=move ||report.get().is_some()>
+                    <div class="solidity-result" role="status"><h3>{move ||report.get().map(|r|if r.survived_declared_case{"Survived the declared load case"}else{"Movement or failure detected"}).unwrap_or_default()}</h3>
+                        <p>{move ||report.get().map(|r|format!("Peak movement: {:.2} mm · broken connections: {} · final drift: {:.3} brick units",r.peak_displacement_m*1000.0,r.broken_connections,r.statistics.max_displacement)).unwrap_or_default()}</p>
+                        <p>{move ||report.get().map(|r|if r.connector_capacities_complete{"Connector thresholds are present; friction and box inertia remain approximations."}else{"Connector capacities are missing. This is an idealized diagnostic, not calibrated strength certification."}).unwrap_or_default()}</p>
+                    </div>
+                </Show>
+                <div class="modal-footer"><span>"Working copy remains unchanged"</span><button class="button primary" type="submit" disabled=move ||busy.get()>{move ||if busy.get(){"Testing…"}else{"Run load test"}}</button></div>
+            </form>
+        </dialog>
+    }
+}
+
+fn save(handle: Handle) {
+    let scene = with_client(handle, |c| {
+        c.freeze_simulation();
+        c.ui.error.set(None);
+        c.ui.busy.set(true);
+        c.ui.message
+            .set("Checking overlaps and gravity stability before saving…".into());
+        c.scene()
+    });
+    spawn_local(async move {
+        let result: anyhow::Result<WorldManifest> = async {
+            let scene = scene?;
+            let response = Request::post("/api/worlds")
+                .header("X-Ergo-Request", "1")
+                .json(&scene)?
+                .send()
+                .await?;
+            if !response.ok() {
+                let value: serde_json::Value = response.json().await?;
+                anyhow::bail!(value["error"].as_str().unwrap_or("Save failed").to_owned());
+            }
+            Ok(response.json().await?)
+        }
+        .await;
+        match result {
+            Ok(world) => {
+                let ui = with_client(handle, |c| c.ui);
+                ui.worlds.update(|list| list.push(world.clone()));
+                open_world(handle, world);
+            }
+            Err(e) => with_client(handle, |c| c.ui.fail(e)),
+        }
+    });
+}
+
+fn export_scene(handle: Handle) {
+    act(handle, |c| {
+        c.freeze_simulation();
+        let scene = c.scene()?;
+        let text = serde_json::to_string_pretty(&scene)?;
+        let parts = js_sys::Array::new();
+        parts.push(&JsValue::from_str(&text));
+        let blob = web_sys::Blob::new_with_str_sequence(&parts)
+            .map_err(|_| anyhow::anyhow!("Cannot create download"))?;
+        let url = web_sys::Url::create_object_url_with_blob(&blob)
+            .map_err(|_| anyhow::anyhow!("Cannot create download URL"))?;
+        let document = web_sys::window().unwrap().document().unwrap();
+        let a = document
+            .create_element("a")
+            .unwrap()
+            .dyn_into::<web_sys::HtmlAnchorElement>()
+            .unwrap();
+        a.set_href(&url);
+        a.set_download("construction.ergo.json");
+        a.click();
+        web_sys::Url::revoke_object_url(&url).ok();
+        Ok(())
+    });
+}
+
+#[derive(Deserialize)]
+struct ImportPreview {
+    scene: WorldExport,
+    notes: Vec<String>,
+}
+
+#[component]
+fn ImportDialog() -> impl IntoView {
+    let ui = expect_context::<Ui>();
+    let handle = expect_context::<Handle>();
+    let file = NodeRef::<html::Input>::new();
+    let name = RwSignal::new(String::new());
+    let lat = RwSignal::new("48.8566".to_owned());
+    let lon = RwSignal::new("2.3522".to_owned());
+    view! {<dialog id="import-dialog" class="modal"><form on:submit=move |e|{e.prevent_default();let Some(selected)=file.get().and_then(|e|e.files()).and_then(|f|f.get(0))else{ui.fail("Choose a file first");return;};let data=web_sys::FormData::new().unwrap();data.append_with_blob_and_filename("file",&selected,&selected.name()).unwrap();data.append_with_str("name",&name.get_untracked()).unwrap();if !selected.name().ends_with(".json"){data.append_with_str("latitude",&lat.get_untracked()).unwrap();data.append_with_str("longitude",&lon.get_untracked()).unwrap();}ui.busy.set(true);close_dialog("import-dialog");spawn_local(async move{let result:anyhow::Result<ImportPreview>=async{let response=Request::post("/api/import").header("X-Ergo-Request","1").body(data)?.send().await?;if !response.ok(){let value:serde_json::Value=response.json().await?;anyhow::bail!(value["error"].as_str().unwrap_or("Import failed").to_owned());}Ok(response.json().await?)}.await;match result{Ok(preview)=>{if let Err(e)=open_draft(handle,preview.scene){ui.fail(e);}else if !preview.notes.is_empty(){ui.message.set(format!("Imported with {} geometry notes; catalog parametric meshes used where needed",preview.notes.len()));}},Err(e)=>ui.fail(e)}});}><div class="modal-heading"><h2>"Bring your bricks into the world."</h2><button type="button" class="icon-button" aria-label="Close import dialog" on:click=move |_|close_dialog("import-dialog")>"×"</button></div><p>"Open a BrickLink Studio model or an exported LDraw construction. Imports enter a working copy before validation."</p><label class="file-input" for="model-file"><strong>"Choose a construction"</strong><span>"Studio .io · LDraw .ldr / .mpd · Ergo .json"</span><input node_ref=file id="model-file" type="file" accept=".io,.ldr,.mpd,.json" required/></label><label>"Construction name"<input type="text" placeholder="My Paris construction" on:input=move |e|name.set(event_target_value(&e))/></label><div class="form-columns"><label>"Latitude"<input type="number" step="any" min="-90" max="90" value="48.8566" on:input=move |e|lat.set(event_target_value(&e))/></label><label>"Longitude"<input type="number" step="any" min="-180" max="180" value="2.3522" on:input=move |e|lon.set(event_target_value(&e))/></label></div><details><summary>"Supported parts and colors"</summary><p>"The starter catalog includes 27 common basic bricks, plates, and tiles, and 20 colors. Unsupported pieces and colors stop the import."</p><div class="catalog-parts">{catalog::PARTS.iter().map(|(part,name)|view!{<span>{format!("{} · {}",part.trim_end_matches(".dat"),name)}</span>}).collect_view()}</div></details><div class="modal-footer"><span>"Maximum upload 128 MiB"</span><button class="button primary" type="submit">"Open in workspace"</button></div></form></dialog>}
+}
+
+#[component]
+fn LocationDialog() -> impl IntoView {
+    let ui = expect_context::<Ui>();
+    let handle = expect_context::<Handle>();
+    let lat = RwSignal::new("48.8566".to_owned());
+    let lon = RwSignal::new("2.3522".to_owned());
+    view! {
+        <dialog id="location-dialog" class="modal narrow">
+            <form on:submit=move |e| {
+                e.prevent_default();
+                act(handle,|c| {
+                    let geo=c.world.as_ref().map(|w|w.geo).unwrap_or_default();
+                    let position=geo.to_world(lat.get_untracked().parse()?,lon.get_untracked().parse()?)?;
+                    if let Some(r)=&mut c.renderer { r.teleport(position); }
+                    c.ui.message.set(format!("Moved to block {}",BlockCoord::at(position).key()));
+                    Ok(())
+                });
+                close_dialog("location-dialog");
+            }>
+                <div class="modal-heading"><h2>"Go to a location"</h2><button type="button" class="icon-button" aria-label="Close location dialog" on:click=move |_|close_dialog("location-dialog")>"×"</button></div>
+                <p>"A storage block maps to one arc-second in latitude and longitude."</p>
+                <label>"Latitude"<input type="number" step="any" min="-90" max="90" prop:value=move ||lat.get() on:input=move |e|lat.set(event_target_value(&e))/></label>
+                <label>"Longitude"<input type="number" step="any" min="-180" max="180" prop:value=move ||lon.get() on:input=move |e|lon.set(event_target_value(&e))/></label>
+                <button type="button" class="button quiet full" on:click=move |_| {
+                    let Ok(geo)=web_sys::window().unwrap().navigator().geolocation() else { ui.fail("Geolocation is unavailable"); return; };
+                    let success=wasm_bindgen::closure::Closure::once_into_js(move |position:web_sys::Position| {
+                        lat.set(position.coords().latitude().to_string());lon.set(position.coords().longitude().to_string());
+                    });
+                    let error=wasm_bindgen::closure::Closure::once_into_js(move |_:JsValue|ui.fail("Location access failed. Enter coordinates manually or allow location access in your browser"));
+                    geo.get_current_position_with_error_callback(success.unchecked_ref(),Some(error.unchecked_ref())).ok();
+                }>"Use my current location"</button>
+                <div class="modal-footer"><span>"X east · Y north · Z up"</span><button class="button primary" type="submit">"Go to coordinates"</button></div>
+            </form>
+        </dialog>
+    }
+}
+
+#[component]
+fn ConstraintDialog() -> impl IntoView {
+    let ui = expect_context::<Ui>();
+    let handle = expect_context::<Handle>();
+    let kind = RwSignal::new("fixed".to_owned());
+    let axis = RwSignal::new("x".to_owned());
+    view! {
+        <dialog id="constraint-dialog" class="modal narrow">
+            <form on:submit=move |e| {
+                e.prevent_default();
+                act(handle,|c| {
+                    c.remember()?; c.freeze_simulation();
+                    let a=ui.first.get_untracked().ok_or_else(||anyhow::anyhow!("Choose the first brick"))?;
+                    let b=c.renderer.as_ref().and_then(|r|r.selected).ok_or_else(||anyhow::anyhow!("Select the second brick"))?;
+                    anyhow::ensure!(a!=b,"Choose two different bricks");
+                    let r=c.renderer.as_ref().unwrap();
+                    let ba=r.bricks.iter().find(|b|b.id==a).ok_or_else(||anyhow::anyhow!("First brick is no longer loaded"))?;
+                    let bb=r.bricks.iter().find(|brick|brick.id==b).unwrap();
+                    let anchor=(ba.bounds.center()+bb.bounds.center())*0.5;
+                    let kind=if kind.get_untracked()=="fixed" { JointKind::Fixed } else {
+                        JointKind::Revolute{axis:match axis.get_untracked().as_str(){"y"=>DVec3::NEG_Z,"z"=>DVec3::Y,_=>DVec3::X},limits:None}
+                    };
+                    c.joints.retain(|j|!((j.a==a&&j.b==b)||(j.a==b&&j.b==a)));
+                    c.joints.push(JointSpec{a,b,anchor,kind,break_force:None,break_torque:None,strength_source:None});
+                    c.refresh_selection();ui.message.set("Connection added to the working copy; measured capacity is required for publication".into());
+                    Ok(())
+                });
+                close_dialog("constraint-dialog");
+            }>
+                <div class="modal-heading"><h2>"Connect two bricks"</h2><button type="button" class="icon-button" aria-label="Close connection dialog" on:click=move |_|close_dialog("constraint-dialog")>"×"</button></div>
+                <p>{move ||format!("Brick #{} to brick #{}",ui.first.get().unwrap_or(0),ui.selected.get().map(|b|b.id).unwrap_or(0))}</p>
+                <label>"Connection type"<select on:change=move |e|kind.set(event_target_value(&e))><option value="fixed">"Fixed connection"</option><option value="revolute">"Axle / revolute hinge"</option></select></label>
+                <Show when=move ||kind.get()=="revolute"><label>"World-space axle direction"<select on:change=move |e|axis.set(event_target_value(&e))><option value="x">"X (east–west)"</option><option value="y">"Y (north–south)"</option><option value="z">"Z (vertical)"</option></select></label></Show>
+                <p class="subtle">"The anchor starts halfway between the brick centers. JSON exports support exact anchor coordinates and optional angle limits."</p>
+                <div class="modal-footer"><span>"Explicit constraint in working copy"</span><button class="button primary" type="submit">"Add connection"</button></div>
+            </form>
+        </dialog>
+    }
+}
