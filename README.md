@@ -13,7 +13,7 @@ Install Rust, the WebAssembly target, and the `wasm-bindgen` CLI matching
 ```sh
 rustup target add wasm32-unknown-unknown
 cargo install wasm-bindgen-cli --version 0.2.129 --locked
-bash scripts/build-web.sh
+cargo xtask build-web
 cargo run --release -p ergo-server
 ```
 
@@ -23,10 +23,20 @@ fixture examples. Configure `.env` using [`.env.example`](.env.example) for othe
 storage/authentication settings. Neither a JavaScript package manager nor a
 database is needed.
 
+`cargo xtask build-web` runs the Rust build orchestrator in `crates/xtask`.
+It compiles both WASM entry points separately and generates their bindings with
+`wasm-bindgen`, honoring Cargo's configured target directory. The task runs
+explicitly, so ordinary server builds/tests do not require the WASM toolchain.
+`scripts/build-web.sh` remains a forwarding compatibility wrapper.
+
 ## What works
 
 - Instanced 3D brick rendering, orbit/fly/walk navigation, mesh picking, part
   inspection, layer separation, and a base grid.
+  Fly uses arrows to steer and A/Z to accelerate/slow. Walk uses up/down to move,
+  left/right to turn, A/Z for speed, and Space to jump; focus the canvas first.
+  Walking steps up 3 vertical units; unobstructed jumps peak 12 units above
+  takeoff, with metric gravity, body collisions, ceiling hits, and landing.
 - Frustum/fog-bounded streaming, progressive distance LOD, a resident octree, and bounded persistent
   browser caching of immutable block/geometry objects.
 - Lazily generated 1024×1024 special baseplates below Z=0, each using one standard
@@ -44,6 +54,9 @@ database is needed.
   static support/wrench checks with numerical tolerances, and measured connector-capacity requirements. The server runs no dynamic simulation.
 - Google OpenID Connect, object-store user profiles, signed HttpOnly sessions,
   per-user snapshots, and shared read-only examples.
+- An authenticated shared-world REST API with versioned region grants, optimistic
+  commits, stable content-derived piece identities, paged spatial access, and
+  on-demand validation of complete affected mechanical domains.
 - A thin stdio/REST MCP bridge and minimal local WASM client with editing,
   stability feedback, and actual WebGL2 PNG image tools for vision models.
 
@@ -77,6 +90,8 @@ Set `S3_BUCKET`, `S3_ENDPOINT`, `S3_REGION`, `AWS_ACCESS_KEY_ID`, and
 `AWS_SECRET_ACCESS_KEY`. The default endpoint is `https://s3.fr-par.scw.cloud`
 and the default region is `fr-par`. Geometry/blocks are immutable CBOR objects;
 manifests and user profiles are JSON. Credentials stay on the server.
+Shared-world heads, packed indexes, policies, and geometry use a separate CBOR
+namespace. Local development uses a filesystem-lock CAS adapter.
 
 For Google authentication, configure `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`,
 `ERGO_SESSION_SECRET` (at least 32 random characters), and `ERGO_PUBLIC_URL`.
@@ -99,7 +114,7 @@ cargo build --release -p ergo-mcp
 ./target/release/ergo-mcp --workspace /absolute/path/construction.ergo.json
 ```
 
-Build both WASM entry points with `bash scripts/build-web.sh` first. The default
+Build both WASM entry points with `cargo xtask build-web` first. The default
 MCP command opens a minimal client in the existing browser; `--attach` prints its
 local attachment URL and `--headless` uses isolated Chrome for automation. The
 bridge does not load the full application UI or run a native renderer/solver.
@@ -120,16 +135,44 @@ See [MCP tools and configuration](docs/local-construction-mcp.md).
 
 ## Documentation and next features
 
+### Concurrent CBOR/S3 transaction library
+
+[`ergo-transactions`](crates/transactions/) provides immutable geometry-block
+octrees, atomic multi-block commits through a conditional S3 root update,
+read/predicate dependency validation, automatic rebase of disjoint subtree edits,
+and materialized historical snapshots. Separate shard roots provide independent
+publication domains. Ancestor/descendant edits conflict; cross-branch geometry
+dependencies can be registered with transactional reads or `watch`.
+The follow-ups include atomic accepted-revision indexes, adaptive dense spatial
+pages, paged rules, cross-assembly joints, scoped discovery catalogs, revision SSE,
+opt-in group publication, and explicit owner-configured retention.
+
+```sh
+cargo test -p ergo-transactions
+# With exported S3_BUCKET/AWS credentials; defaults to Scaleway fr-par:
+cargo run -p ergo-transactions --example s3_edits
+```
+
+See [transactional storage](docs/transactional-storage.md) for the API, independence
+rules, S3 endpoint checks, and scaling limits. It also backs the permission-checked
+shared-world REST API; private snapshot saves retain their own workflow. See
+[shared-world editing](docs/concurrent-global-editing.md).
+Use [storage operations](docs/storage-operations.md) for paging APIs, legacy
+upgrade/backfill commands, retention policy, and deployment flags.
+
 Start with the [technical documentation index](docs/README.md). It covers display
 indexing, geographic persistence, rigid-body physics, constrained positioning,
 physical calibration, identity, and concurrent editing, with equations and SVG
 figures.
 
-The proposed global shared-world commit layer uses explicit user permissions,
-octree-region leases, dependency checks, and atomic revision publication. It is
-**documented, not yet implemented**. See
+Shared worlds have **no aggregate size or piece-count cap**. The server loads
+spatial pages and follows identity/constraint references on demand. Limits apply
+to each import/edit working set; oversized dependency closures are rejected
+explicitly. Piece IDs hash immutable creation records; edits change their
+content-addressed versions without changing identity. Coordination is optimistic;
+region leases are an optional future extension. See
 [concurrent global editing](docs/concurrent-global-editing.md) and
-[`TODO.md`](TODO.md) for the implementation backlog. Documentation must stay
+[`TODO.md`](TODO.md) for the remaining implementation backlog. Documentation must stay
 synchronized with code as required by [`AGENTS.md`](AGENTS.md).
 
 ## Checks
@@ -139,7 +182,7 @@ cargo fmt --all --check
 cargo test --workspace
 cargo clippy --workspace --all-targets -- -D warnings
 cargo check -p ergo-viewer --target wasm32-unknown-unknown
-bash scripts/build-web.sh
+cargo xtask build-web
 python3 scripts/check-docs.py
 python3 scripts/check-execution-boundaries.py
 ```
@@ -153,7 +196,7 @@ End-to-end MCP checks use the built native binary:
 
 ```sh
 cargo build -p ergo-mcp
-bash scripts/build-web.sh
+cargo xtask build-web
 python3 scripts/test-mcp.py
 ```
 

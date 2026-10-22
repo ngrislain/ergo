@@ -1,4 +1,11 @@
-use ergo_client::renderer::{NavigationInput, NavigationMode, Renderer};
+use ergo_client::{
+    navigation::{
+        Control, DEFAULT_EYE_HEIGHT, MAX_EYE_HEIGHT, MIN_EYE_HEIGHT, NavigationInput,
+        NavigationMode, NavigationStatus,
+    },
+    renderer::Renderer,
+    walking::{JUMP_HEIGHT, STEP_HEIGHT},
+};
 use ergo_world::{
     Block, BlockCoord, Brick, JointKind, JointSpec, WorldExport, WorldManifest, catalog,
     physics::{self, Simulation, SimulationStats},
@@ -47,7 +54,7 @@ struct Ui {
     fog: RwSignal<f64>,
     authoring_groups: RwSignal<Vec<ergo_world::groups::Group>>,
     group_selection: RwSignal<Vec<u32>>,
-    navigation: RwSignal<NavigationMode>,
+    navigation: RwSignal<NavigationStatus>,
 }
 
 impl Ui {
@@ -80,7 +87,7 @@ impl Ui {
             fog: RwSignal::new(2200.0),
             authoring_groups: RwSignal::new(Vec::new()),
             group_selection: RwSignal::new(Vec::new()),
-            navigation: RwSignal::new(NavigationMode::Orbit),
+            navigation: RwSignal::new(NavigationStatus::default()),
         }
     }
     fn fail(self, error: impl ToString) {
@@ -96,7 +103,7 @@ struct Client {
     pending: HashSet<String>,
     ground_pending: HashSet<(i64, i64)>,
     ground_retry: std::collections::HashMap<(i64, i64), f64>,
-    navigation_keys: HashSet<String>,
+    navigation_controls: HashSet<Control>,
     known_cells: HashSet<BlockCoord>,
     default_geo: ergo_world::GeoReference,
     generation: u64,
@@ -124,7 +131,7 @@ impl Client {
             ground_pending: HashSet::new(),
             ground_retry: Default::default(),
             default_geo: Default::default(),
-            navigation_keys: HashSet::new(),
+            navigation_controls: HashSet::new(),
             known_cells: HashSet::new(),
             generation: 0,
             ready: false,
@@ -378,7 +385,7 @@ fn open_world(handle: Handle, world: WorldManifest) {
         c.generation += 1;
         c.world = Some(world.clone());
         c.known_cells = world.blocks.iter().map(|b| b.coord).collect();
-        c.navigation_keys.clear();
+        c.navigation_controls.clear();
         c.blocks.clear();
         c.pending.clear();
         c.ground_pending.clear();
@@ -514,7 +521,7 @@ fn open_draft(handle: Handle, scene: WorldExport) -> anyhow::Result<()> {
         c.blocks = blocks;
         c.world = Some(world.clone());
         c.known_cells = world.blocks.iter().map(|b| b.coord).collect();
-        c.navigation_keys.clear();
+        c.navigation_controls.clear();
         let r = c.renderer.as_mut().unwrap();
         r.clear();
         r.meshes = scene.meshes;
@@ -805,25 +812,32 @@ pub fn App() -> impl IntoView {
                     }
                 }
                 if let Some(r) = &mut c.renderer {
-                    let keys = &c.navigation_keys;
-                    let pressed = |values: &[&str]| values.iter().any(|k| keys.contains(*k));
-                    let input = NavigationInput {
-                        forward: (pressed(&["w", "arrowup"]) as i32
-                            - pressed(&["s", "arrowdown"]) as i32)
-                            as f64,
-                        right: (pressed(&["d", "arrowright"]) as i32
-                            - pressed(&["a", "arrowleft"]) as i32)
-                            as f64,
-                        up: (pressed(&["e"]) as i32 - pressed(&["q"]) as i32) as f64,
-                        boost: keys.contains("shift"),
-                        jump: keys.contains(" "),
-                    };
+                    let input =
+                        NavigationInput::from_controls(c.navigation_controls.iter().copied());
                     let known = &c.known_cells;
                     let loaded = &c.blocks;
                     r.navigate(input, delta, &|cell| {
                         known.contains(&cell) && !loaded.contains_key(&cell)
                     });
                     r.render();
+                    let status = r.navigation.status();
+                    if status.mode != NavigationMode::Orbit || ticks % 15 == 0 {
+                        let _ = r
+                            .canvas
+                            .set_attribute("data-navigation", status.mode.name());
+                        let _ = r
+                            .canvas
+                            .set_attribute("data-navigation-speed", &status.speed.to_string());
+                        let _ = r.canvas.set_attribute(
+                            "data-camera-position",
+                            &serde_json::to_string(&ergo_world::coordinates::public(r.eye()))
+                                .unwrap(),
+                        );
+                        let _ = r.canvas.set_attribute(
+                            "data-camera-rotation",
+                            &serde_json::to_string(&[r.yaw, r.pitch]).unwrap(),
+                        );
+                    }
                     if ticks % 15 == 0 {
                         ui.count.set(r.bricks.len());
                         ui.blocks.set(c.blocks.len());
@@ -833,17 +847,9 @@ pub fn App() -> impl IntoView {
                         if ui.fog.get_untracked() != r.fog_distance {
                             ui.fog.set(r.fog_distance);
                         }
-                        if ui.navigation.get_untracked() != r.navigation {
-                            ui.navigation.set(r.navigation);
+                        if ui.navigation.get_untracked() != status {
+                            ui.navigation.set(status);
                         }
-                        let _ = r
-                            .canvas
-                            .set_attribute("data-navigation", r.navigation.name());
-                        let _ = r.canvas.set_attribute(
-                            "data-camera-position",
-                            &serde_json::to_string(&ergo_world::coordinates::public(r.eye()))
-                                .unwrap(),
-                        );
                     }
                 }
                 if ticks % 15 == 0 {
@@ -911,25 +917,25 @@ pub fn App() -> impl IntoView {
             <aside class="left-dock"><ConstructionBrowser/><div class="dock-bottom"><span class="storage-dot"></span>{move ||ui.storage.get()}<p>"27 common parts · 20 colors"</p></div></aside>
             <section class="viewport-area" aria-label="3D construction workbench">
                 <div class="scene-heading"><div><p class="scene-location">"World origin"<span>{move ||ui.current.get().map(|w|format!("{:.4}°, {:.4}°",w.geo.latitude,w.geo.longitude)).unwrap_or_default()}</span></p><h1>{move ||ui.current.get().map(|w|w.name).unwrap_or_else(||"Your next construction".into())}</h1><p>{move ||ui.current.get().map(|w|if w.id=="draft" {"Workspace draft".into()} else {format!("{} bricks in {} spatial block{}",number(w.brick_count),w.blocks.len(),if w.blocks.len()==1{""}else{"s"})}).unwrap_or_default()}</p></div><span class="snapshot-badge" class:draft=move ||ui.dirty.get()>{move ||if ui.dirty.get(){"Working copy"}else if ui.current.get().is_some_and(|w|w.owner=="examples"){"Fixture example"}else{"Validated snapshot"}}</span></div>
-                <canvas node_ref=canvas id="world-canvas" tabindex="0" aria-label=move ||format!("3D brick construction. {} navigation. Drag to look; focus canvas for keyboard controls.",ui.navigation.get().name())
+                <canvas node_ref=canvas id="world-canvas" tabindex="0" aria-label=move ||format!("3D brick construction. {} navigation. Drag to look; focus canvas for keyboard controls.",ui.navigation.get().mode.name())
                     on:contextmenu=move |e|e.prevent_default()
                     on:pointerdown=move |e|with_client(handle,|c|{let x=e.client_x() as f64;let y=e.client_y() as f64;c.pointer=Some((x,y,x,y,e.button(),e.shift_key()));if let Some(r)=&c.renderer{let _=r.canvas.set_pointer_capture(e.pointer_id());}})
-                    on:pointermove=move |e|with_client(handle,|c|{if let Some((sx,sy,lx,ly,button,shift))=c.pointer {let x=e.client_x() as f64;let y=e.client_y() as f64;if let Some(r)=&mut c.renderer {if (button==2||shift)&&r.navigation==NavigationMode::Orbit{r.pan(x-lx,y-ly);}else{r.orbit(x-lx,y-ly);}}c.pointer=Some((sx,sy,x,y,button,shift));}})
+                    on:pointermove=move |e|with_client(handle,|c|{if let Some((sx,sy,lx,ly,button,shift))=c.pointer {let x=e.client_x() as f64;let y=e.client_y() as f64;if let Some(r)=&mut c.renderer {if (button==2||shift)&&r.navigation.mode()==NavigationMode::Orbit{r.pan(x-lx,y-ly);}else{r.orbit(x-lx,y-ly);}}c.pointer=Some((sx,sy,x,y,button,shift));}})
                     on:pointerup=move |e|with_client(handle,|c|{if let Some((sx,sy,_,_,button,_))=c.pointer.take(){let x=e.client_x() as f64;let y=e.client_y() as f64;if (x-sx).hypot(y-sy)<5.0&&button==0 {if let Some(r)=&mut c.renderer{let rect=r.canvas.get_bounding_client_rect();r.pick(x-rect.left(),y-rect.top());}c.refresh_selection();}}})
                     on:wheel=move |e|{e.prevent_default();with_client(handle,|c|{if let Some(r)=&mut c.renderer{r.zoom(e.delta_y());}});}
                     on:keydown=move |e| {
-                        if e.ctrl_key()||e.meta_key()||e.alt_key(){return;}let key=e.key().to_lowercase();
-                        if ["w","a","s","d","q","e","shift"," ","arrowup","arrowdown","arrowleft","arrowright"].contains(&key.as_str()){e.prevent_default();with_client(handle,|c|{c.navigation_keys.insert(key.clone());if let Some(r)=&mut c.renderer&&r.navigation==NavigationMode::Orbit{match key.as_str(){"arrowleft"=>r.pan(-30.0,0.0),"arrowright"=>r.pan(30.0,0.0),"arrowup"=>r.pan(0.0,-30.0),"arrowdown"=>r.pan(0.0,30.0),_=>{}}}});}
-                        if key=="f" {fit(handle);}
+                        if e.ctrl_key()||e.meta_key()||e.alt_key(){return;}
+                        if let Some(control)=Control::from_key(&e.key()){e.prevent_default();navigation_control(handle,control,true);}
+                        if e.key().eq_ignore_ascii_case("f") {fit(handle);}
                     }
-                    on:keyup=move |e|with_client(handle,|c|{c.navigation_keys.remove(&e.key().to_lowercase());})
-                    on:blur=move |_|with_client(handle,|c|c.navigation_keys.clear())
+                    on:keyup=move |e|{if let Some(control)=Control::from_key(&e.key()){navigation_control(handle,control,false);}}
+                    on:blur=move |_|with_client(handle,|c|c.navigation_controls.clear())
                 ></canvas>
                 <div class="view-tools"><button title="Fit construction (F)" aria-label="Fit construction" on:click=move |_|fit(handle)>"⊡"</button><button title="Zoom in / faster" aria-label="Zoom in" on:click=move |_|with_client(handle,|c|{if let Some(r)=&mut c.renderer{r.zoom(-180.0);}})>"＋"</button><button title="Zoom out / slower" aria-label="Zoom out" on:click=move |_|with_client(handle,|c|{if let Some(r)=&mut c.renderer{r.zoom(180.0);}})>"−"</button><button title="Top view" aria-label="Top view" on:click=move |_|with_client(handle,|c|{if let Some(r)=&mut c.renderer{r.set_navigation(NavigationMode::Orbit);r.pitch=1.55;r.changed();}})>"⌑"</button></div>
-                <div class="mobile-navigation" role="group" aria-label="Mobile navigation mode">{[("Orbit",NavigationMode::Orbit),("Fly",NavigationMode::Fly),("Walk",NavigationMode::Walk)].into_iter().map(|(label,mode)|view!{<button class:active=move ||ui.navigation.get()==mode on:click=move |_|navigation_mode(handle,mode)>{label}</button>}).collect_view()}</div>
-                <Show when=move ||ui.navigation.get()!=NavigationMode::Orbit><div class="movement-pad" role="group" aria-label="Movement controls">{[("Forward","↑","w"),("Left","←","a"),("Back","↓","s"),("Right","→","d")].into_iter().map(|(label,symbol,key)|view!{<button aria-label=label title=label on:pointerdown=move |e|{e.prevent_default();with_client(handle,|c|{c.navigation_keys.insert(key.into());});} on:pointerup=move |_|with_client(handle,|c|{c.navigation_keys.remove(key);}) on:pointerleave=move |_|with_client(handle,|c|{c.navigation_keys.remove(key);}) on:keydown=move |e|{if e.key()==" "||e.key()=="Enter"{e.prevent_default();with_client(handle,|c|{c.navigation_keys.insert(key.into());});}} on:keyup=move |_|with_client(handle,|c|{c.navigation_keys.remove(key);})>{symbol}</button>}).collect_view()}<Show when=move ||ui.navigation.get()==NavigationMode::Fly>{[("Descend","⇣","q"),("Ascend","⇡","e")].into_iter().map(|(label,symbol,key)|view!{<button aria-label=label title=label on:pointerdown=move |e|{e.prevent_default();with_client(handle,|c|{c.navigation_keys.insert(key.into());});} on:pointerup=move |_|with_client(handle,|c|{c.navigation_keys.remove(key);}) on:pointerleave=move |_|with_client(handle,|c|{c.navigation_keys.remove(key);})>{symbol}</button>}).collect_view()}</Show></div></Show>
+                <NavigationModes mobile=true/>
+                <Show when=move ||ui.navigation.get().mode!=NavigationMode::Orbit><MovementPad/></Show>
                 <div class="north-marker"><span>"N"</span><svg viewBox="0 0 40 40" aria-hidden="true"><path d="M20 3 L29 33 L20 27 L11 33 Z" fill="#334b61"/><path d="M20 3 L20 27 L11 33 Z" fill="#8c9faf"/></svg></div>
-                <div class="viewport-footer"><span>{move ||if ui.navigation.get()==NavigationMode::Orbit{"Drag to orbit / Shift + drag to pan / Scroll to zoom"}else if ui.navigation.get()==NavigationMode::Fly{"Drag to look / WASD + Q/E to fly / Shift faster"}else{"Drag to look / WASD to walk / Space jump / Shift faster"}}</span><span class="render-badge">"WebGL2"<b>{move ||format!("{} fps",ui.fps.get())}</b></span></div>
+                <div class="viewport-footer"><span>{move ||ui.navigation.get().mode.instructions()}</span><span class="render-badge">"WebGL2"<b>{move ||format!("{} fps",ui.fps.get())}</b></span></div>
                 <div class="map-attribution" title=move ||ui.ground_status.get()><Show when=move ||ui.ground_attribution.get().is_some() fallback=move ||view!{<span>"Ground: palette fallback"</span>}><a target="_blank" rel="noopener noreferrer" href=move ||ui.ground_attribution.get().map(|(_,url)|url).unwrap_or_default()>{move ||ui.ground_attribution.get().map(|(label,_)|label).unwrap_or_default()}</a></Show></div>
                 <Show when=move ||ui.busy.get()><div class="loading-pill" role="status"><span class="spinner"></span>"Loading construction…"</div></Show>
             </section>
@@ -939,6 +945,64 @@ pub fn App() -> impl IntoView {
         <Show when=move ||ui.error.get().is_some()><div class="error-toast" role="alert"><div><strong>"Action could not be completed"</strong><p>{move ||ui.error.get().unwrap_or_default()}</p></div><button aria-label="Dismiss error" on:click=move |_|ui.error.set(None)>"×"</button></div></Show>
         <ImportDialog/><LocationDialog/><ConstraintDialog/><SolidityDialog/><GroupsDialog/>
     }
+}
+
+#[component]
+fn NavigationModes(#[prop(optional)] mobile: bool) -> impl IntoView {
+    let ui = expect_context::<Ui>();
+    let handle = expect_context::<Handle>();
+    view! {
+        <div class=if mobile {"mobile-navigation"} else {"navigation-modes"} role="group" aria-label=if mobile {"Mobile navigation mode"} else {"Navigation mode"}>
+            {NavigationMode::ALL.into_iter().map(|mode| view! {
+                <button class:active=move ||ui.navigation.get().mode==mode aria-pressed=move ||(ui.navigation.get().mode==mode).to_string() on:click=move |_|navigation_mode(handle,mode)>{mode.label()}</button>
+            }).collect_view()}
+        </div>
+    }
+}
+
+#[component]
+fn MovementPad() -> impl IntoView {
+    view! {
+        <div class="movement-pad" role="group" aria-label="Movement controls">
+            {Control::ALL.into_iter().map(|control| view! {<MovementButton control/>}).collect_view()}
+        </div>
+    }
+}
+
+#[component]
+fn MovementButton(control: Control) -> impl IntoView {
+    let ui = expect_context::<Ui>();
+    let handle = expect_context::<Handle>();
+    let label = move || control.label(ui.navigation.get().mode);
+    view! {
+        <button hidden=move ||control==Control::Jump&&ui.navigation.get().mode!=NavigationMode::Walk aria-label=label title=label
+            on:pointerdown=move |e|{e.prevent_default();navigation_control(handle,control,true);}
+            on:pointerup=move |_|navigation_control(handle,control,false)
+            on:pointerleave=move |_|navigation_control(handle,control,false)
+            on:pointercancel=move |_|navigation_control(handle,control,false)
+            on:keydown=move |e|{if e.key()==" "||e.key()=="Enter"{e.prevent_default();navigation_control(handle,control,true);}}
+            on:keyup=move |_|navigation_control(handle,control,false)
+            on:blur=move |_|navigation_control(handle,control,false)
+        >{control.symbol()}</button>
+    }
+}
+
+fn navigation_control(handle: Handle, control: Control, pressed: bool) {
+    with_client(handle, |c| {
+        if pressed {
+            c.navigation_controls.insert(control);
+            if let Some(r) = &mut c.renderer
+                && r.navigation.mode() == NavigationMode::Orbit
+            {
+                let input = NavigationInput::from_controls([control]);
+                if input.turn != 0.0 || input.vertical != 0.0 {
+                    r.pan(-input.turn * 30.0, -input.vertical * 30.0);
+                }
+            }
+        } else {
+            c.navigation_controls.remove(&control);
+        }
+    });
 }
 
 fn number(n: usize) -> String {
@@ -964,11 +1028,11 @@ fn fit(handle: Handle) {
 }
 fn navigation_mode(handle: Handle, mode: NavigationMode) {
     with_client(handle, |c| {
-        c.navigation_keys.clear();
+        c.navigation_controls.clear();
         if let Some(r) = &mut c.renderer {
             r.set_navigation(mode);
+            c.ui.navigation.set(r.navigation.status());
         }
-        c.ui.navigation.set(mode);
         c.ui.message.set(format!(
             "{} navigation · camera changes stay local",
             mode.name()
@@ -1071,9 +1135,14 @@ fn ConstructionBrowser() -> impl IntoView {
             <button class="text-button" on:click=move |_|show_dialog("location-dialog")>"Go to a location"<span>"↗"</span></button>
         </div>
         <div class="dock-section"><h2>"Viewport"</h2><label class="toggle-row"><span>"Base grid"</span><input type="checkbox" checked on:change=move |e|with_client(handle,|c|{if let Some(r)=&mut c.renderer{r.grid=event_target_checked(&e);}})/></label>
-            <div class="navigation-modes" role="group" aria-label="Navigation mode">{[("Orbit",NavigationMode::Orbit),("Fly",NavigationMode::Fly),("Walk",NavigationMode::Walk)].into_iter().map(|(label,mode)|view!{<button class:active=move ||ui.navigation.get()==mode aria-pressed=move ||(ui.navigation.get()==mode).to_string() on:click=move |_|navigation_mode(handle,mode)>{label}</button>}).collect_view()}</div>
-            <p class="subtle compact">{move ||if ui.navigation.get()==NavigationMode::Orbit{"Drag to orbit; shift-drag to pan."}else if ui.navigation.get()==NavigationMode::Fly{"Focus the canvas: WASD fly, Q/E descend/ascend, Shift faster."}else{"Focus the canvas: WASD walk, Space jump, Shift faster. Body-box collisions enabled."}}</p>
-            <Show when=move ||ui.navigation.get()==NavigationMode::Walk><label class="range-label" for="eye-height">"Eye height"<span>"brick units"</span></label><input id="eye-height" type="number" min="1" max="32" step="0.5" value="4" on:input=move |e|with_client(handle,|c|{if let Some(r)=&mut c.renderer{let value=event_target_value(&e).parse::<f64>().unwrap_or(4.0).clamp(1.0,32.0);let difference=value-r.walk_eye_height;r.walk_eye_height=value;r.target.y+=difference;r.changed();}})/></Show>
+            <NavigationModes/>
+            <p class="subtle compact">{move ||ui.navigation.get().mode.instructions()}</p>
+            <Show when=move ||ui.navigation.get().mode!=NavigationMode::Orbit><p class="subtle compact">"Focus the canvas for keyboard controls."</p><p class="subtle compact">{move ||format!("Speed: {:.1} studs/s",ui.navigation.get().speed)}</p></Show>
+            <Show when=move ||ui.navigation.get().mode==NavigationMode::Walk>
+                <p class="subtle compact">{format!("Step up ≤{STEP_HEIGHT} vertical units · Jump height {JUMP_HEIGHT} units with gravity and collisions.")}</p>
+                <label class="range-label" for="eye-height">"Eye height"<span>"brick units"</span></label>
+                <input id="eye-height" type="number" min=MIN_EYE_HEIGHT max=MAX_EYE_HEIGHT step="0.5" value=ui.navigation.get_untracked().eye_height on:input=move |e|with_client(handle,|c|{if let Some(r)=&mut c.renderer{r.set_eye_height(event_target_value(&e).parse().unwrap_or(DEFAULT_EYE_HEIGHT));}})/>
+            </Show>
             <label class="range-label" for="explode">"Separate layers"<span>"Visual only"</span></label><input id="explode" type="range" min="0" max="1" step="0.02" value="0" on:input=move |e|with_client(handle,|c|{if c.simulation.is_none()&&let Some(r)=&mut c.renderer{r.explode=event_target_value(&e).parse().unwrap_or(0.0);r.changed();}})/>
             <label class="range-label" for="fog-distance">"Viewing distance (fog)"<span>{move ||format!("{:.0} studs",ui.fog.get())}</span></label><input id="fog-distance" type="range" min="200" max="4096" step="100" prop:value=move ||ui.fog.get().to_string() on:input=move |e|{let value=event_target_value(&e).parse::<f64>().unwrap_or(2200.0);ui.fog.set(value);with_client(handle,|c|{if let Some(r)=&mut c.renderer{r.fog_distance=value;r.distance=r.distance.min(value*0.9);r.changed();}});}/>
             <p class="subtle compact">"Visible blocks only · automatic distance LOD"</p>

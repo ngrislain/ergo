@@ -7,15 +7,17 @@ license.workspace = true
 [dependencies]
 ergo-world.workspace = true
 ergo-assets.workspace = true
+ergo-transactions.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 glam.workspace = true
 anyhow.workspace = true
 axum = { version = "0.8", features = ["multipart"] }
-tokio = { version = "1", features = ["macros", "rt-multi-thread", "net", "signal"] }
+tokio = { version = "1", features = ["macros", "rt-multi-thread", "net", "signal", "sync", "time"] }
 tower-http = { version = "0.6", features = ["fs", "trace", "compression-gzip"] }
 object_store = { version = "0.12", features = ["aws"] }
 futures = "0.3"
+async-stream = "0.3"
 ciborium = "0.2"
 sha2 = "0.10"
 hex = "0.4"
@@ -29,3 +31,6 @@ jsonwebtoken = "9"
 hmac = "0.12"
 base64 = "0.22"
 url = "2"
+
+[dev-dependencies]
+tower = { version = "0.5", features = ["util"] }

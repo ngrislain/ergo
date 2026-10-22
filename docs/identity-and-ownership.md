@@ -62,6 +62,28 @@ caches authentication responses or profile/world-list responses.
 
 ## Configuration
 
+### Shared-world grants
+
+`/api/shared-worlds/*` uses the same signed sessions and same-origin write header.
+Creating a world establishes its owner. Existing-world reads require ownership or
+an explicit user grant; writes must lie in the grant's block-octree prefixes.
+Only the owner may grant/revoke. Region grants authorize writes and world reads;
+they do not promise regional read secrecy.
+
+Policies are immutable CBOR versions selected by the same transaction root as
+geometry. Publication validates its policy read, so concurrent revocation
+invalidates a prepared edit. Google identity and profile last-write-wins fields
+are never treated as permission assertions. Mesh delivery first resolves an
+authorized piece in an accepted revision; knowing a content hash is not a grant.
+
+Stable piece identities hash immutable creation records (including an instance
+nonce and verified creating actor); pose/mesh edits select new immutable versions.
+This is separate from Google user IDs and temporary local physics indices. See
+[shared-world editing](concurrent-global-editing.md) for paging, operation budgets,
+and model/retention semantics.
+
+### OAuth environment
+
 Create a Google OAuth **web application** client and register exactly:
 
 ```text

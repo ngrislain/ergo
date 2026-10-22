@@ -51,7 +51,7 @@ keep the GPS address mapping separate. See [physical calibration](physical-calib
 
 ## Cell ownership and replication
 
-The initial block format contains whole brick records in every intersected cell.
+The private-snapshot block format contains whole brick records in every intersected cell.
 Brick IDs remain unique within a construction. On load, all replicas with the
 same ID represent one brick and must agree on its pose and part ID.
 
@@ -67,10 +67,12 @@ The upper bound is half-open so a face exactly on a boundary does not create a
 zero-volume neighbor reference. Render bounds include studs; physics bounds do
 not. Replication is bounded and malformed oversized objects are rejected.
 
-**Proposed large-world format:** keep one authoritative owner record and store
-small references in neighboring pages. That avoids large duplicate payloads and
-permits independent page revision. Cross-page references must carry the owner
-revision/hash, rather than resolve to mutable current data.
+**Implemented shared-world format:** spatial blocks contain global piece IDs;
+an authoritative identity trie selects each piece's version in the same immutable
+snapshot. Cross-page replicas do not contain separately editable geometry copies.
+Stable IDs hash creation records including an instance nonce; pose edits change
+versions while preserving identity. Metadata and reads are described in
+[shared-world editing](concurrent-global-editing.md).
 
 ## Current object layout
 
@@ -97,6 +99,13 @@ block payloads across snapshots.
 HTTP object routes are scoped to an authorized world. Knowing a hash is not an
 authorization grant; the server verifies the caller's manifest access and checks
 that the hash occurs in that manifest before fetching the object.
+
+Shared worlds use a separate `<prefix>/shared/<world-uuid>/` namespace containing
+CBOR heads, packed octree objects, and optional maintenance coordination state.
+The head's metadata has no flat geometry list or aggregate size/count cap.
+Assemblies are bounded authoring/import batches; arbitrarily many can coexist.
+The shared mesh route resolves a piece in an authorized accepted revision before
+delivering its referenced immutable CBOR, rather than accepting arbitrary blob keys.
 
 ## Why CBOR rather than JSON or SQLite?
 
@@ -136,17 +145,36 @@ after a partial upload; this is safe but needs eventual garbage collection.
 Each save currently creates a new world ID, avoiding concurrent overwrite of
 an existing snapshot.
 
-For a future mutable branch head, publish immutable revisions first and update
-the head using an object-store conditional write against the previously observed
-ETag/version. Do not assume atomic rename or multi-object transactions. Verify
-the exact conditional-write and consistency behavior of the configured Scaleway
-endpoint before relying on it.
+The standalone [`ergo-transactions` library](transactional-storage.md) implements
+mutable branch/shard heads over a separate persistent CBOR octree. It publishes
+immutable revisions first, then conditionally updates one head using the observed
+ETag/version, with dependency validation and independent-edit rebase on contention.
+It also backs the application's separate permissioned shared-world API without
+replacing private flat manifests or save endpoints.
+Do not assume atomic rename or multi-object transactions. Verify the exact
+conditional-write and consistency behavior of the configured Scaleway endpoint
+before relying on it.
 
 ## What a scalable spatial catalog needs
 
-The initial manifest is a flat sparse list of cells. Camera lookup scans it, and
+The private manifest is a flat sparse list of cells. Camera lookup scans it, and
 listing constructions reads per-owner manifests. This is appropriate for a
 starter dataset but becomes a bottleneck if the manifest itself is enormous.
+
+`GET /api/worlds?limit=...` now uses a derived summary index and bounded pages;
+the no-query private UI route remains compatible. Private backfills and the
+permission-filtered shared user/geographic catalogs are documented in
+[storage operations](storage-operations.md#discovery-catalogs). Advertisements are
+not authorization grants or a multi-world transaction snapshot.
+
+Shared-world storage instead uses packed signed-coordinate octree directories,
+paged block references, and full-hash identity lookup. Normal reads/validation
+load a neighborhood and its dependency closure; oversized per-operation working
+sets fail explicitly. The browser still uses private manifests until shared-world
+UI integration is added.
+Spatial layout 2 adds adaptive local cells and bounding-reference pages, so
+ordinary neighborhood queries do not decode every piece in a dense storage block.
+Assembly rules are also paged by membership, adjacency, and constraint references.
 
 **Proposed hierarchy:** organize the geographic plane into coarse regions, each
 with a directory of occupied vertical layers and child page ranges. Fetch the
@@ -191,8 +219,9 @@ Store connection endpoints as stable brick IDs, not offsets into a downloaded
 array. A future paged graph needs per-page adjacency and cross-page dependency
 summaries so physics can load the complete mechanical island.
 
-Garbage collection should trace reachable manifests and their object hashes,
-respect retention periods, and delete unreferenced objects only after a grace
-period longer than in-flight publication. Large installations can shard manifests
-and reachability summaries; they do not need to introduce a database merely to
-get started.
+The shared transaction collector uses durable pins and a maintenance barrier,
+streams object inventory, and stores reachability metadata temporarily on disk.
+It retains the selected accepted-history window and can compact a bounded region. A grace
+period alone does not protect an old orphan reused by an in-flight writer.
+Private-manifest/cache GC remains separate work. No external persistent database
+is introduced by the shared storage protocol.

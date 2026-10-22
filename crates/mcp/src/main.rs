@@ -306,7 +306,7 @@ fn main() -> Result<()> {
             "--web-dir" => web = args.next().context("Missing web directory")?.into(),
             "--help" => {
                 eprintln!(
-                    "ergo-mcp --workspace path.json [--measurements file.json] [--attach | --headless] [--web-dir web]\nThe default opens a minimal WASM client in the existing browser. Heavy work runs there, over the local REST bridge. Build it with scripts/build-web.sh."
+                    "ergo-mcp --workspace path.json [--measurements file.json] [--attach | --headless] [--web-dir web]\nThe default opens a minimal WASM client in the existing browser. Heavy work runs there, over the local REST bridge. Build it with cargo xtask build-web."
                 );
                 return Ok(());
             }
@@ -316,7 +316,7 @@ fn main() -> Result<()> {
     measurements.validate()?;
     ensure!(
         web.join("mcp-pkg/ergo_client.js").exists(),
-        "Build the minimal WASM client first: bash scripts/build-web.sh"
+        "Build the minimal WASM client first: cargo xtask build-web"
     );
     let lock = OpenOptions::new()
         .create(true)

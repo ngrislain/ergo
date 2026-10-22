@@ -1,5 +1,7 @@
 mod auth;
+mod catalog;
 mod import;
+mod shared;
 mod store;
 
 use anyhow::{Context, Result};
@@ -25,6 +27,7 @@ struct AppState {
     auth: auth::Auth,
     parts: ergo_assets::PartCache,
     ground: ergo_assets::ground::GroundCache,
+    shared: shared::SharedWorlds,
 }
 
 struct ApiError(anyhow::Error);
@@ -76,11 +79,30 @@ async fn config(State(s): State<AppState>) -> Json<Config> {
     })
 }
 
+#[derive(Deserialize)]
+struct WorldsQuery {
+    limit: Option<usize>,
+    cursor: Option<String>,
+}
 async fn worlds(
     State(s): State<AppState>,
     headers: HeaderMap,
-) -> Result<Json<Vec<WorldManifest>>, ApiError> {
-    Ok(Json(s.store.manifests(&s.auth.principal(&headers)).await?))
+    Query(q): Query<WorldsQuery>,
+) -> Result<Response, ApiError> {
+    let principal = s.auth.principal(&headers);
+    if q.limit.is_some() || q.cursor.is_some() {
+        return Ok(Json(
+            catalog::page(
+                &s.store,
+                &principal,
+                q.limit.unwrap_or(32),
+                q.cursor.as_deref(),
+            )
+            .await?,
+        )
+        .into_response());
+    }
+    Ok(Json(s.store.manifests(&principal).await?).into_response())
 }
 
 async fn part_asset(
@@ -326,6 +348,107 @@ async fn main() -> Result<()> {
         )
         .init();
     let store = Store::from_env()?;
+    let mut args = env::args().skip(1);
+    if let Some(command) = args.next() {
+        let id = args.next().context("Expected a shared-world UUID")?;
+        if command == "private-rebuild-catalog" {
+            anyhow::ensure!(args.next().is_none(), "Unexpected argument");
+            catalog::rebuild(&store, &id).await?;
+            return Ok(());
+        }
+        let shared = shared::SharedWorlds::from_env(store.clone())?;
+        let repo = shared.repo(&id)?;
+        match command.as_str() {
+            "shared-gc" => {
+                anyhow::ensure!(
+                    args.next().is_none(),
+                    "Usage: ergo-server shared-gc WORLD_ID"
+                );
+                println!(
+                    "{}",
+                    serde_json::to_string_pretty(&shared.collect(&id).await?)?
+                );
+            }
+            "shared-maintenance-status" => {
+                anyhow::ensure!(
+                    args.next().is_none(),
+                    "Usage: ergo-server shared-maintenance-status WORLD_ID"
+                );
+                println!(
+                    "{}",
+                    serde_json::to_string_pretty(&repo.maintenance_status().await?)?
+                );
+            }
+            "shared-prune" => {
+                anyhow::ensure!(
+                    args.next().is_none(),
+                    "Usage: ergo-server shared-prune WORLD_ID"
+                );
+                println!(
+                    "{}",
+                    serde_json::to_string_pretty(&shared.prune(&id).await?)?
+                );
+            }
+            "shared-index-history" => {
+                anyhow::ensure!(args.next().is_none(), "Unexpected argument");
+                let mut maintenance = repo.maintenance().await?;
+                maintenance.index_history("main").await?;
+                maintenance.finish().await?;
+            }
+            "shared-rebuild-catalog" => {
+                anyhow::ensure!(args.next().is_none(), "Unexpected argument");
+                shared.rebuild_catalog(&id).await?;
+            }
+            "shared-upgrade-rules" => {
+                anyhow::ensure!(args.next().is_none(), "Unexpected argument");
+                println!("{}", shared.upgrade_rules(&id).await?);
+            }
+            "shared-upgrade-spatial" => {
+                anyhow::ensure!(args.next().is_none(), "Unexpected argument");
+                println!("{}", shared.upgrade_spatial(&id).await?);
+            }
+            "shared-compact" => {
+                let region: ergo_transactions::OctreePath = args
+                    .next()
+                    .context("Expected an octree region path")?
+                    .parse()?;
+                let max_nodes = args
+                    .next()
+                    .map(|s| s.parse())
+                    .transpose()?
+                    .unwrap_or(10_000);
+                anyhow::ensure!(
+                    args.next().is_none(),
+                    "Usage: ergo-server shared-compact WORLD_ID REGION [MAX_NODES]"
+                );
+                let mut maintenance = repo.maintenance().await?;
+                tracing::info!(
+                    token = maintenance.token(),
+                    "Bounded shared-world compaction barrier acquired"
+                );
+                let result = maintenance.compact_region("main", &region, max_nodes).await;
+                let release = maintenance.finish().await;
+                if let Err(error) = result {
+                    if let Err(release) = release {
+                        tracing::warn!(error = %release, "Maintenance remains fenced");
+                    }
+                    return Err(error.into());
+                }
+                release?;
+            }
+            "shared-recover-pin" | "shared-recover-maintenance" => {
+                let token = args.next().context("Expected a pin ID or maintenance token; interrupted holders and requests must already be stopped/settled")?;
+                anyhow::ensure!(args.next().is_none(), "Unexpected extra argument");
+                if command == "shared-recover-pin" {
+                    repo.recover_abandoned_pin(&token).await?;
+                } else {
+                    repo.recover_maintenance(&token).await?;
+                }
+            }
+            _ => anyhow::bail!("Unknown server command: {command}"),
+        }
+        return Ok(());
+    }
     let auth = auth::Auth::from_env()?;
     if !auth.google {
         auth::seed_development_user(&store).await?;
@@ -381,6 +504,7 @@ async fn main() -> Result<()> {
     let parts = store.part_cache()?;
     let ground = store.ground_cache()?;
     let state = AppState {
+        shared: shared::SharedWorlds::from_env(store.clone())?,
         store,
         geo,
         library: env::var_os("LDRAW_DIR").map(PathBuf::from),
@@ -389,6 +513,7 @@ async fn main() -> Result<()> {
         ground,
     };
     let app = Router::new()
+        .merge(shared::routes())
         .route("/api/config", get(config))
         .route(
             "/api/catalog",

@@ -64,6 +64,9 @@ delivery, lazy ground generation, and part-asset caching. Its main routes includ
 - `/api/worlds`: list accessible snapshots or validate/publish a new private snapshot.
 - `/api/worlds/{id}` and `/api/worlds/{id}/objects/{hash}`: authorized metadata/data.
 - `/api/import`: parse into an uncommitted working copy.
+- `/api/shared-worlds/*`: create worlds, import bounded assemblies, page spatial
+  references, load individual pieces/meshes, publish edits, and manage grants/history.
+  There is no whole-world geometry export route.
 - `/api/parts/{part}`: retrieve or pull and persist a supported LDraw part.
 - `/api/ground/{x}/{y}`: retrieve or lazily generate a horizontal ground cell.
 
@@ -126,20 +129,57 @@ geographic mapping details.
 
 ## Current versus future collaboration
 
-Private immutable snapshots and shared read-only examples are implemented. The
-global shared branch, user/region commit grants, hierarchical octree leases,
-fencing, and distributed publication protocol are specified in
-[concurrent global editing](concurrent-global-editing.md), but are future work.
+[`ergo-transactions`](transactional-storage.md) backs a reusable library and the
+authenticated [shared-world REST service](concurrent-global-editing.md). Packed
+immutable CBOR octrees, predicate validation, single-head CAS, and parent-linked
+materialized checkpoints provide optimistic publication. The service adds verified
+identity, owner/region grants, stable creation-record IDs, reference-only spatial
+replicas, and on-demand complete dependency-domain validation. Normal edits have
+no world-wide geometry scan, aggregate size cap, or global size counter.
+
+World creation captures an immutable server-owned physics model. Later edits use
+that version while unloaded regions remain untouched. Durable pins and explicit
+maintenance barriers protect retention; collection streams inventory using
+disk-backed reachability metadata. Region leases remain an optional future feature.
+
+Format-3 heads publish accepted-revision indexes atomically. Adaptive block-local
+references and paged membership/adjacency rows keep dense edits bounded; explicit
+global joints connect assemblies. Derived user/geographic catalogs check current
+authorization on every result. SSE shares one poll per watched world/process and
+closes snapshot pins between polls. Optional bounded group publication preserves
+individual audit records; owner retention remains disabled unless configured.
+See [storage operations](storage-operations.md) for APIs, migrations, and flags.
+
+Private snapshots/read-only examples remain supported. Shared-world UI/MCP tools,
+cross-shard atomicity, and region-boundary mechanical certificates are future work.
+Library actor/message fields alone are not authentication; the shared REST gate
+supplies the verified actor and certificate.
 
 WebGPU acceleration is also proposed, not implemented. The baseline remains
 WebGL2 rendering plus WASM CPU simulation. If profiling justifies a GPU solver,
 keeping simulation and rendering buffers on a common WebGPU backend is preferable
 to repeated GPU→CPU→WebGL2 transfers. Server commit checks remain independent.
 
+## Build orchestration
+
+`cargo xtask build-web` is an explicit Rust workspace task. It compiles the browser
+app and the minimal MCP client as separate WASM artifacts and runs `wasm-bindgen`
+for each. Cargo metadata supplies the artifact directory, including configured
+`target-dir` / `CARGO_TARGET_DIR` overrides. Outputs remain `web/pkg` and
+`web/mcp-pkg`, matching the REST/static-file entry points.
+
+This orchestration runs outside a package `build.rs`: ordinary native server
+builds/tests stay independent of the WASM target and binding generator. The
+legacy shell entry point forwards to the same Rust task.
+
 ## Source map
 
 - `crates/viewer/src/app.rs`: browser UI, REST data loading, and streaming orchestration.
 - `crates/client/src/renderer.rs`: shared WebGL2 drawing, picking, fog, and LOD.
+- `crates/client/src/navigation.rs`: shared typed controls, input conversion,
+  mode/speed/eye-height settings, and read-only UI status.
+- `crates/client/src/walking.rs`: local 3-unit stepping, 12-unit ballistic jumps,
+  body-box collision checks, and native controller regression tests.
 - `crates/client/src/runtime.rs`: minimal WASM MCP tool implementation.
 - `web/mcp.html`: small local REST/job adapter, without the application UI.
 - `crates/mcp/src/main.rs`: thin stdio/REST bridge and local file persistence.
@@ -148,3 +188,8 @@ to repeated GPU→CPU→WebGL2 transfers. Server commit checks remain independen
 - `crates/world/src/physics.rs` and `solidity.rs`: optional client simulation feature.
 - `crates/assets/`: cache-first part delivery and lazy imagery-average ground generation.
 - `crates/server/`: deployed REST API, authentication, and local/S3 persistence.
+- `crates/transactions/`: standalone optimistic CBOR octree transaction library.
+- `crates/server/src/shared/`: scoped REST permissions, birth identities, spatial
+  paging, frozen models, and bounded dependency discovery/validation.
+- `crates/server/src/catalog.rs`: private summary pagination and explicit backfill.
+- `crates/xtask/src/main.rs` and `.cargo/config.toml`: Rust web-build task and Cargo alias.

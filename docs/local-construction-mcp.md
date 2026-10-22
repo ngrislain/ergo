@@ -18,7 +18,7 @@ Build the native binary from the repository root:
 
 ```sh
 cargo build --release -p ergo-mcp
-bash scripts/build-web.sh
+cargo xtask build-web
 ./target/release/ergo-mcp --workspace /absolute/path/construction.ergo.json
 ```
 

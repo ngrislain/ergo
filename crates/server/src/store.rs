@@ -1,7 +1,11 @@
 use anyhow::{Context, Result, ensure};
 use ergo_world::{BlockInfo, SCHEMA_VERSION, WorldExport, WorldManifest, bounds, partition};
 use futures::TryStreamExt;
-use object_store::{ObjectStore, aws::AmazonS3Builder, local::LocalFileSystem, path::Path};
+use object_store::{
+    ObjectStore,
+    aws::{AmazonS3Builder, S3ConditionalPut},
+    path::Path,
+};
 use serde::{Serialize, de::DeserializeOwned};
 use sha2::{Digest, Sha256};
 use std::{collections::BTreeMap, env, sync::Arc};
@@ -9,10 +13,10 @@ use std::{collections::BTreeMap, env, sync::Arc};
 #[derive(Clone)]
 pub struct Store {
     pub backend: Arc<dyn ObjectStore>,
-    prefix: String,
+    pub(crate) prefix: String,
     pub kind: String,
-    measurements: Arc<ergo_world::physical::ConnectionMeasurements>,
-    static_tolerances: ergo_world::validation::StaticTolerances,
+    pub(crate) measurements: Arc<ergo_world::physical::ConnectionMeasurements>,
+    pub(crate) static_tolerances: ergo_world::validation::StaticTolerances,
 }
 
 impl Store {
@@ -61,6 +65,7 @@ impl Store {
                         .unwrap_or_else(|_| "https://s3.fr-par.scw.cloud".into()),
                 )
                 .with_virtual_hosted_style_request(false)
+                .with_conditional_put(S3ConditionalPut::ETagMatch)
                 .build()
                 .context("Invalid S3 configuration")?;
             let prefix = env::var("S3_PREFIX")
@@ -78,7 +83,7 @@ impl Store {
             let dir = env::var("ERGO_DATA_DIR").unwrap_or_else(|_| "data".into());
             std::fs::create_dir_all(&dir)?;
             Ok(Self {
-                backend: Arc::new(LocalFileSystem::new_with_prefix(dir)?),
+                backend: Arc::new(ergo_transactions::local::LocalCasStore::new(dir)?),
                 prefix: String::new(),
                 kind: "Local object store".into(),
                 measurements,
@@ -87,7 +92,7 @@ impl Store {
         }
     }
 
-    fn path(&self, key: &str) -> Path {
+    pub(crate) fn path(&self, key: &str) -> Path {
         Path::from(if self.prefix.is_empty() {
             key.into()
         } else {
@@ -262,6 +267,7 @@ impl Store {
             groups: scene.groups,
         };
         // Publish only after every immutable object exists. Each import is a new world.
+        crate::catalog::register(self, &manifest).await?;
         self.put(
             &format!("worlds/{}/{}/manifest.json", manifest.owner, manifest.id),
             serde_json::to_vec_pretty(&manifest)?,

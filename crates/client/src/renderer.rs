@@ -1,3 +1,7 @@
+use crate::{
+    navigation::{MAX_FRAME_DT, Navigation, NavigationInput, NavigationMode, TURN_RATE},
+    walking::{Scene as WalkScene, Walker},
+};
 use ergo_world::{
     Aabb, Brick,
     geometry::{Mesh, fallback_mesh, mesh_ray},
@@ -72,29 +76,11 @@ struct GpuMesh {
     instances: i32,
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum NavigationMode {
-    Orbit,
-    Fly,
-    Walk,
-}
-impl NavigationMode {
-    pub fn name(self) -> &'static str {
-        match self {
-            Self::Orbit => "orbit",
-            Self::Fly => "fly",
-            Self::Walk => "walk",
-        }
-    }
-}
-#[derive(Clone, Copy, Default)]
-pub struct NavigationInput {
-    pub forward: f64,
-    pub right: f64,
-    pub up: f64,
-    pub boost: bool,
-    pub jump: bool,
-}
+const DISPLAY_SCALE: DVec3 = DVec3::new(
+    1.0,
+    ergo_world::physical::BRICK_HEIGHT_M / ergo_world::physical::STUD_PITCH_M,
+    1.0,
+);
 
 pub struct Renderer {
     pub canvas: HtmlCanvasElement,
@@ -117,11 +103,8 @@ pub struct Renderer {
     pub fov_degrees: f64,
     pub fog_distance: f64,
     pub lod_counts: [usize; 4],
-    pub navigation: NavigationMode,
-    pub fly_speed: f64,
-    pub walk_speed: f64,
-    pub walk_eye_height: f64,
-    walk_velocity: f64,
+    pub navigation: Navigation,
+    walker: Walker,
     capture_mode: bool,
     origin: DVec3,
     dirty: bool,
@@ -173,11 +156,8 @@ impl Renderer {
             capture_mode,
             fog_distance: 2200.0,
             lod_counts: [0; 4],
-            navigation: NavigationMode::Orbit,
-            fly_speed: 64.0,
-            walk_speed: 18.0,
-            walk_eye_height: 4.0,
-            walk_velocity: 0.0,
+            navigation: Navigation::default(),
+            walker: Walker::default(),
             origin: DVec3::ZERO,
             dirty: true,
             draw_calls: 0,
@@ -208,7 +188,7 @@ impl Renderer {
         }
     }
     pub fn visibility(&self) -> Visibility {
-        let display = DVec3::new(1.0, 1.2, 1.0);
+        let display = DISPLAY_SCALE;
         let origin = (self.target / 1024.0).floor() * 1024.0;
         let aspect = (self.canvas.client_width().max(1) as f64)
             / (self.canvas.client_height().max(1) as f64);
@@ -271,7 +251,7 @@ impl Renderer {
             return Err("Invalid camera".into());
         }
         let delta = position - target;
-        self.navigation = NavigationMode::Orbit;
+        self.navigation.set_mode(NavigationMode::Orbit);
         self.target = target;
         self.distance = delta.length();
         self.yaw = delta.x.atan2(delta.z);
@@ -344,7 +324,7 @@ impl Renderer {
     }
 
     pub fn fit(&mut self, bounds: Aabb) {
-        self.navigation = NavigationMode::Orbit;
+        self.navigation.set_mode(NavigationMode::Orbit);
         self.target = bounds.center();
         self.distance = bounds.size().length().max(8.0) * 1.35;
         self.pitch = 0.65;
@@ -353,27 +333,27 @@ impl Renderer {
     }
 
     pub fn eye(&self) -> DVec3 {
-        self.target
-            + DVec3::new(
-                self.yaw.sin() * self.pitch.cos(),
-                self.pitch.sin(),
-                self.yaw.cos() * self.pitch.cos(),
-            ) * self.distance
+        self.target + self.backward() * self.distance
+    }
+
+    fn set_eye(&mut self, eye: DVec3) {
+        self.target = eye - self.backward() * self.distance;
+        self.dirty = true;
     }
 
     pub fn orbit(&mut self, dx: f64, dy: f64) {
         let eye = self.eye();
         self.yaw -= dx * 0.007;
         self.pitch = (self.pitch + dy * 0.006).clamp(
-            if self.navigation == NavigationMode::Orbit {
+            if self.navigation.mode() == NavigationMode::Orbit {
                 0.08
             } else {
                 -1.5
             },
             1.5,
         );
-        if self.navigation != NavigationMode::Orbit {
-            self.target = eye - self.backward() * self.distance;
+        if self.navigation.mode() != NavigationMode::Orbit {
+            self.set_eye(eye);
         }
         self.dirty = true;
     }
@@ -381,10 +361,10 @@ impl Renderer {
     pub fn pan(&mut self, dx: f64, dy: f64) {
         let side = DVec3::new(self.yaw.cos(), 0.0, -self.yaw.sin());
         let forward = DVec3::new(self.yaw.sin(), 0.0, self.yaw.cos());
-        if self.navigation == NavigationMode::Walk {
+        if self.navigation.mode() == NavigationMode::Walk {
             return;
         }
-        let scale = if self.navigation == NavigationMode::Orbit {
+        let scale = if self.navigation.mode() == NavigationMode::Orbit {
             self.distance
         } else {
             20.0
@@ -398,20 +378,8 @@ impl Renderer {
     }
 
     pub fn zoom(&mut self, amount: f64) {
-        if self.navigation != NavigationMode::Orbit {
-            let speed = if self.navigation == NavigationMode::Fly {
-                &mut self.fly_speed
-            } else {
-                &mut self.walk_speed
-            };
-            *speed = (*speed * (-amount * 0.001).exp()).clamp(
-                2.0,
-                if self.navigation == NavigationMode::Fly {
-                    2048.0
-                } else {
-                    128.0
-                },
-            );
+        if self.navigation.mode() != NavigationMode::Orbit {
+            self.navigation.scroll(amount);
             return;
         }
         self.distance =
@@ -426,7 +394,7 @@ impl Renderer {
         )
     }
     pub fn set_navigation(&mut self, mode: NavigationMode) {
-        if mode == self.navigation {
+        if !self.navigation.set_mode(mode) {
             return;
         }
         let mut eye = self.eye();
@@ -442,76 +410,42 @@ impl Renderer {
             self.pitch = delta.y.atan2(delta.x.hypot(delta.z));
         } else {
             if mode == NavigationMode::Walk {
-                let mut floor =
-                    self.support_height(eye.x, eye.z, (eye.y - self.walk_eye_height).max(0.0));
-                if !self.walk_clear(DVec3::new(eye.x, floor, eye.z)) {
-                    floor = self.support_height(eye.x, eye.z, f64::INFINITY);
+                let height = self.navigation.eye_height();
+                let scene = WalkScene::new(&self.bricks, &self.tree, height, &|_| false);
+                let mut floor = scene.support_height(eye.x, eye.z, (eye.y - height).max(0.0));
+                if !scene.clear(DVec3::new(eye.x, floor, eye.z)) {
+                    floor = scene.support_height(eye.x, eye.z, f64::INFINITY);
                 }
-                eye.y = floor + self.walk_eye_height;
+                eye.y = floor + height;
                 self.pitch = 0.0;
-                self.walk_velocity = 0.0;
+                self.walker = Walker::default();
             }
             self.distance = 1.0;
-            self.target = eye - self.backward();
+            self.set_eye(eye);
         }
-        self.navigation = mode;
         self.dirty = true;
     }
     pub fn teleport(&mut self, position: DVec3) {
-        if self.navigation == NavigationMode::Orbit {
+        if self.navigation.mode() == NavigationMode::Orbit {
             self.target = position + DVec3::Y * 5.0;
             self.distance = 100.0;
         } else {
             let eye = position
                 + DVec3::Y
-                    * if self.navigation == NavigationMode::Walk {
-                        self.walk_eye_height
+                    * if self.navigation.mode() == NavigationMode::Walk {
+                        self.navigation.eye_height()
                     } else {
                         30.0
                     };
             self.distance = 1.0;
-            self.target = eye - self.backward();
-            self.walk_velocity = 0.0;
+            self.set_eye(eye);
+            self.walker = Walker::default();
         }
         self.dirty = true;
     }
-    fn support_height(&self, x: f64, z: f64, ceiling: f64) -> f64 {
-        let query = Aabb::new(
-            DVec3::new(x - 0.28, -0.001, z - 0.28),
-            DVec3::new(
-                x + 0.28,
-                if ceiling.is_finite() {
-                    ceiling.max(0.0)
-                } else {
-                    ergo_world::MAX_WORLD_COORD
-                },
-                z + 0.28,
-            ),
-        );
-        self.tree
-            .query(query)
-            .into_iter()
-            .map(|i| self.bricks[i].bounds)
-            .filter(|b| {
-                b.max.y <= ceiling + 1e-4
-                    && x + 0.24 >= b.min.x
-                    && x - 0.24 <= b.max.x
-                    && z + 0.24 >= b.min.z
-                    && z - 0.24 <= b.max.z
-            })
-            .map(|b| b.max.y)
-            .fold(0.0, f64::max)
-    }
-    fn walk_clear(&self, feet: DVec3) -> bool {
-        let body = Aabb::new(
-            feet + DVec3::new(-0.28, 0.001, -0.28),
-            feet + DVec3::new(0.28, self.walk_eye_height + 0.25, 0.28),
-        );
-        !self.tree.query(body).into_iter().any(|i| {
-            let b = self.bricks[i].bounds;
-            let overlap = body.max.min(b.max) - body.min.max(b.min);
-            overlap.min_element() > 1e-4
-        })
+    pub fn set_eye_height(&mut self, height: f64) {
+        self.target.y += self.navigation.set_eye_height(height);
+        self.dirty = true;
     }
     pub fn navigate(
         &mut self,
@@ -519,97 +453,40 @@ impl Renderer {
         dt: f64,
         blocked: &dyn Fn(ergo_world::BlockCoord) -> bool,
     ) {
-        if self.navigation == NavigationMode::Orbit {
+        if self.navigation.mode() == NavigationMode::Orbit {
             return;
         }
-        let dt = dt.clamp(0.0, 0.05);
+        let dt = dt.clamp(0.0, MAX_FRAME_DT);
         let original = self.eye();
         let mut eye = original;
-        let boost = if input.boost { 3.0 } else { 1.0 };
-        let right = DVec3::new(self.yaw.cos(), 0.0, -self.yaw.sin());
-        if self.navigation == NavigationMode::Fly {
-            let mut direction = -self.backward() * input.forward
-                + right * input.right
-                + DVec3::Y * (input.up / 1.2);
-            let length = (direction * DVec3::new(1.0, 1.2, 1.0)).length();
-            if length > 1.0 {
-                direction /= length;
-            }
-            eye += direction * self.fly_speed * boost * dt;
+        let orientation = (self.yaw, self.pitch);
+        self.yaw += input.turn * TURN_RATE * dt;
+        self.navigation.accelerate(input.throttle, dt);
+        let status = self.navigation.status();
+        if self.navigation.mode() == NavigationMode::Fly {
+            self.pitch = (self.pitch - input.vertical * TURN_RATE * dt).clamp(-1.5, 1.5);
+            let mut direction = -self.backward();
+            let length = (direction * DISPLAY_SCALE).length();
+            direction /= length;
+            eye += direction * status.speed * dt;
         } else {
-            let mut direction = DVec3::new(-self.yaw.sin(), 0.0, -self.yaw.cos()) * input.forward
-                + right * input.right;
-            if direction.length() > 1.0 {
-                direction = direction.normalize();
-            }
-            let delta = direction * self.walk_speed * boost * dt;
-            let count = (delta.x.abs().max(delta.z.abs()) / 0.1)
-                .ceil()
-                .clamp(1.0, 256.0) as usize;
-            let mut feet = eye - DVec3::Y * self.walk_eye_height;
-            if !self.walk_clear(feet) {
-                feet.y = self.support_height(feet.x, feet.z, f64::INFINITY);
-                self.walk_velocity = 0.0;
-            }
-            for _ in 0..count {
-                for axis in [0, 2] {
-                    let mut next = feet;
-                    next[axis] += delta[axis] / count as f64;
-                    let support = self.support_height(next.x, next.z, feet.y + 1.0 / 3.0 + 1e-4);
-                    next.y = feet.y.max(support);
-                    if !blocked(ergo_world::BlockCoord::at(
-                        next + DVec3::Y * (self.walk_eye_height * 0.5),
-                    )) && self.walk_clear(next)
-                    {
-                        feet = next;
-                    }
-                }
-            }
-            let support = self.support_height(feet.x, feet.z, feet.y + 1e-4);
-            if input.jump && (feet.y - support).abs() < 0.001 {
-                self.walk_velocity = (2.0 * ergo_world::physical::GRAVITY_M_S2
-                    / ergo_world::physical::BRICK_HEIGHT_M
-                    * 0.6667)
-                    .sqrt();
-            }
-            self.walk_velocity -=
-                ergo_world::physical::GRAVITY_M_S2 / ergo_world::physical::BRICK_HEIGHT_M * dt;
-            let next = feet.y + self.walk_velocity * dt;
-            if next <= support {
-                feet.y = support;
-                self.walk_velocity = 0.0;
-            } else if next > feet.y {
-                let height = self.walk_eye_height + 0.25;
-                let sweep = Aabb::new(
-                    feet + DVec3::new(-0.28, height, -0.28),
-                    DVec3::new(feet.x + 0.28, next + height, feet.z + 0.28),
-                );
-                let ceiling = self
-                    .tree
-                    .query(sweep)
-                    .into_iter()
-                    .map(|i| self.bricks[i].bounds)
-                    .filter(|b| b.min.y >= feet.y + height - 1e-4)
-                    .map(|b| b.min.y)
-                    .min_by(f64::total_cmp);
-                if let Some(ceiling) = ceiling {
-                    feet.y = (ceiling - height - 1e-4).max(support);
-                    self.walk_velocity = 0.0;
-                } else {
-                    feet.y = next;
-                }
-            } else {
-                feet.y = next;
-            }
-            eye = feet + DVec3::Y * self.walk_eye_height;
+            let direction = DVec3::new(-self.yaw.sin(), 0.0, -self.yaw.cos()) * input.vertical;
+            let scene = WalkScene::new(&self.bricks, &self.tree, status.eye_height, blocked);
+            let feet = self.walker.advance(
+                &scene,
+                eye - DVec3::Y * status.eye_height,
+                direction * status.speed,
+                dt,
+                input.jump,
+            );
+            eye = feet + DVec3::Y * status.eye_height;
         }
         eye = eye.clamp(
             DVec3::splat(-ergo_world::MAX_WORLD_COORD),
             DVec3::splat(ergo_world::MAX_WORLD_COORD),
         );
-        if (eye - original).length_squared() > 1e-20 {
-            self.target = eye - self.backward() * self.distance;
-            self.dirty = true;
+        if (eye - original).length_squared() > 1e-20 || orientation != (self.yaw, self.pitch) {
+            self.set_eye(eye);
         }
     }
 
@@ -641,7 +518,7 @@ impl Renderer {
         let h = self.canvas.client_height() as f64;
         let projection =
             DMat4::perspective_rh_gl(self.fov_degrees.to_radians(), w / h, 0.1, self.fog_distance);
-        let display = DVec3::new(1.0, 1.2, 1.0);
+        let display = DISPLAY_SCALE;
         let view = DMat4::look_at_rh(self.eye() * display, self.target * display, DVec3::Y);
         let inverse = (projection * view * DMat4::from_scale(display)).inverse();
         let near = inverse.project_point3(DVec3::new(x / w * 2.0 - 1.0, 1.0 - y / h * 2.0, -1.0));
@@ -717,7 +594,7 @@ impl Renderer {
         gl.clear_color(0.87, 0.92, 0.95, 1.0);
         gl.clear(Gl::COLOR_BUFFER_BIT | Gl::DEPTH_BUFFER_BIT);
         gl.use_program(Some(&self.program));
-        let display = glam::Vec3::new(1.0, 1.2, 1.0);
+        let display = DISPLAY_SCALE.as_vec3();
         let eye = (self.eye() - self.origin).as_vec3() * display;
         let view = Mat4::look_at_rh(
             eye,
@@ -802,10 +679,10 @@ impl Renderer {
             if !visibility.contains(bounds) {
                 continue;
             }
-            let distance = ((bounds.center() - self.eye()) * DVec3::new(1.0, 1.2, 1.0))
+            let distance = ((bounds.center() - self.eye()) * DISPLAY_SCALE)
                 .length()
                 .max(0.1);
-            let size = (bounds.size() * DVec3::new(1.0, 1.2, 1.0)).length() * pixels / distance;
+            let size = (bounds.size() * DISPLAY_SCALE).length() * pixels / distance;
             let lod = if self.selected == Some(brick.id) || size >= 24.0 {
                 0
             } else if size >= 8.0 {
@@ -938,7 +815,7 @@ impl Visibility {
             return false;
         }
         let nearest = self.eye.clamp(bounds.min, bounds.max);
-        ((self.eye - nearest) * DVec3::new(1.0, 1.2, 1.0)).length() <= self.far
+        ((self.eye - nearest) * DISPLAY_SCALE).length() <= self.far
     }
 }
 fn instance(out: &mut Vec<f32>, matrix: DMat4, rgb: u32, selected: bool) {

@@ -1,106 +1,131 @@
-# Snapshots, committed deltas, and history
+# Snapshots, committed substitutions, and history
 
-## Recommendation and current status
+## Implemented records
 
-Retain immutable committed deltas alongside snapshots, with a materialized current
-root for fast reads. A viewer must not replay an unbounded event history to draw
-the current world.
+The [transaction library](transactional-storage.md) stores immutable parent-linked
+commits alongside a materialized current octree. The [shared-world REST gate](concurrent-global-editing.md)
+adds verified actor identity, policy/model references, dependency footprints, and
+static validation certificates. Private `/api/worlds` snapshots are still separate
+imports/saves without a mutable shared branch.
 
-This document specifies the **planned global history layer**. The current server
-creates immutable private snapshots whose blocks/meshes share content-addressed
-objects. It does not yet record parent-linked semantic deltas or expose a mutable
-global branch head. See [concurrent editing](concurrent-global-editing.md).
+There are three distinct records:
 
-## Three different records
+- **Working-copy operations:** local authoring, experiments, drag samples, and
+  simulation output. They are not accepted shared-world changes.
+- **Committed substitutions:** ordered exact subtree replacements/removals with
+  generation fences, relative to an accepted parent. `base` preserves the original
+  execution revision when independent edits were rebased onto a newer parent.
+- **Snapshot/checkpoint:** the materialized root referenced by each accepted commit.
+  Unchanged geometry/index objects are shared by content hash.
 
-- **Working-copy edits:** transient or locally persisted authoring operations,
-  including temporarily unstable arrangements. They support interactive feedback.
-- **Committed delta:** an immutable, authenticated record of an accepted change
-  relative to a particular base revision.
-- **Snapshot/checkpoint:** a materialized revision selecting complete current
-  leaf, geometry, group, and constraint state.
+An explicit application-level semantic modeling log is not implemented. In
+particular, the library does not infer how arbitrary transformations or boolean
+modeling commands should commute inside the same leaf.
 
-Do not write every drag sample, physics timestep, earthquake frame, or rendered
-frame to global history. A simulation produces an experimental working result;
-only an explicitly accepted, revalidated static result becomes a commit.
+## Reads and reconstruction
 
-## State and replay
-
-For checkpoint state $S_c$ and deltas $D_{c+1},\ldots,D_n$:
+If $D_i$ is the accepted exact substitution sequence, conceptually:
 
 $$
-S_n=\operatorname{apply}(D_n,\ldots\operatorname{apply}(D_{c+1},S_c)\ldots).
+S_n=\operatorname{apply}(D_n,\ldots\operatorname{apply}(D_1,S_0)\ldots).
 $$
 
-This defines recovery and historical reconstruction. Hot reads should instead
-follow the current materialized tree root directly:
+Normal readers never perform that replay. They use:
 
 $$
-\text{branch head}\rightarrow\text{current root hash}
-\rightarrow\text{visible leaf hashes}\rightarrow\text{objects}.
+\text{head}\rightarrow\text{commit}\rightarrow\text{materialized root}
+\rightarrow\text{spatial/identity pages}\rightarrow\text{objects}.
 $$
 
-A commit can produce new immutable versions of only changed octree leaves and
-their ancestors. Unchanged subtrees and geometry remain shared by hash. Therefore
-maintaining a materialized current root does not require copying the whole world.
+`snapshot(commit_id)` directly opens a historical root. Packed unary edges avoid
+one object per address digit. The world need not fit in RAM; spatial pages and
+individual global piece records are loaded on demand. Shared-world point reads
+and pages accept a revision so a view can retain one consistent snapshot.
 
-## What a committed delta should contain
+Piece **identity** is a hash of its immutable creation record, not its current
+pose. Current piece versions and meshes remain independently content-addressed.
+An undo/revert service could publish selected prior values as a new commit;
+rewriting the branch head or old audit history is not an implemented undo API.
 
-- Commit ID/hash, schema version, parent/base revision, and optional merge parents.
-- Verified actor ID, timestamp, message, policy revision, and lease/fencing data.
-- Stable affected piece/group/constraint IDs and the operation's spatial footprint.
-- Preconditions: expected prior object versions or leaf hashes.
-- Semantic authoring operations where useful: create/remove a piece, change group
-  membership, rigidly transform a group, or edit a connector.
-- Authoritative before/after leaf hashes and metadata changes, so replay does not
-  depend on reproducing a nondeterministic physics simulation.
-- The server validation report, tolerances, and physical-data references.
+## Audit metadata
 
-Semantic commands help human review, undo, and rebasing. Materialized before/after
-state is still important: replaying a spring solver or GPU simulation years later
-must not be required to recover the accepted poses.
+A library commit contains format, transaction ID, sequence, parent, execution
+base, root, substitutions, optional audit metadata CID, explicit blob attachments,
+actor, and message. Library actor/message values are untrusted caller metadata.
 
-## Atomic publication
+The shared REST service fills audit records from authenticated server execution:
 
-Upload changed data, the immutable delta, and materialized metadata first. Then
-conditionally update the authoritative coordination root against its observed
-ETag/version, with permission, dependency, and fencing checks against that same
-state. Readers either see the old revision or the complete new revision.
+- Verified actor and accepted execution base.
+- Policy content hash and frozen physics-model CID.
+- Changed and affected global piece identities.
+- Watched spatial predicates and charged working-set sizes.
+- Static certificate, tolerances, and calibration description when geometry remains
+  in the affected domain.
 
-An uploaded delta that was never published is staged garbage, not a committed
-change. Neither a delta file nor several independently replaced leaf heads
-provides an S3 multi-object transaction. The exact endpoint CAS behavior must be
-verified before claiming the distributed guarantees.
+Creation records, server-normalized meshes, and model objects are explicit commit
+attachments. Even values superseded by a later substitution in the same commit
+remain uploaded because the ordered record references them. Acceptance never
+requires replaying a nondeterministic dynamics simulation.
 
-## Checkpoints and retention
+`GET /api/shared-worlds/{id}/history` returns bounded commit/audit pages after
+checking current access. Format-3 heads atomically publish a Merkle acceptance
+index with CID and sequence lookup, avoiding ancestry scans. Legacy heads can be
+explicitly upgraded. SSE coalesces revision notifications and reports resets; it
+does not retain an unbounded queue or pin every old snapshot. See
+[storage operations](storage-operations.md).
 
-Create checkpoints based on measured replay work—operation count, changed bytes,
-and recovery time—rather than a hard-coded number chosen without data. Current
-viewing remains independent of checkpoint frequency because it uses the latest
-materialized root.
+## Publication and uncertain outcomes
 
-Keep committed history initially, but define retention separately from
-checkpointing. A checkpoint is not permission to erase the audit trail or objects
-needed by older reachable revisions. Garbage collection must trace retained
-branches, tags, checkpoints, commits, and their referenced blobs, with a grace
-period for in-flight publication.
+Upload all referenced immutable objects first, then conditionally replace one head
+using its observed ETag/version. The shared gate's policy, identity, spatial, and
+rule reads participate in the same transaction. A conflicting revocation or
+dependency change prevents publication.
 
-Map-source caches and failed staged uploads have different lifecycles from user
-commit history. Cache TTLs should not dictate the retention of accepted user work.
+An uploaded commit is not proof of acceptance. A lost acknowledgement can leave
+an unknown outcome; `was_committed` checks accepted parent history. SDK retries
+that surface a 412 after hidden success are reconciled before another publication
+attempt. A negative history check is not proof that a timed-out request has settled.
+In coordinated mode, cancelled/uncertain root mutations retain their durable pin.
 
-## Related systems and distinctions
+## Retention and maintenance
 
-Git is useful as an analogy for content-addressed snapshots, parent-linked
-commits, shared immutable objects, branches, and tags. Conceptually Git commits
-reference snapshots; packfile delta compression is a separate storage optimization.
-Ergo should likewise avoid confusing an audit delta log with physical compression.
+Every accepted revision is already a checkpoint, so viewing does not depend on
+periodic event replay. History defaults to keeping all revisions. An owner can
+configure keep-last-N; explicit maintenance prunes older acceptance entries before
+collection. At least the current revision remains accepted. Pruned historical
+access returns HTTP 410, and increasing retention does not restore deleted history.
 
-[Apache Iceberg](https://iceberg.apache.org/spec/) provides related reading on
-snapshots, manifests, and immutable data-file references. Its catalog and table
-semantics are not an implementation dependency or a claim that Ergo is a data
-lake. The intended collaboration protocol remains an object-store-only design
-with a deliberately small authoritative coordination operation.
+The implemented collector removes unreachable staged data behind an exclusive
+namespace maintenance barrier. Durable reader/writer pins prevent collecting
+active bases or in-flight publication objects. No pin or barrier expires by age.
+The collector traces heads, retained acceptance entries, roots, edit values,
+audit metadata, attachments, and schema links. Legacy unindexed heads still trace
+parent/base history; indexed branches do not retain pruned provenance forever.
+Current birth/mesh/model links survive removal of their import commit.
+Inventory is streamed; the mark set and frontier live in temporary
+sharded disk files rather than a world-sized RAM collection.
 
-Optimistic read/write validation and leases are discussed in the annotated
-[concurrency references](references.md#concurrent-object-store-editing). They
-explain why saved deltas alone do not solve concurrent conflicting edits.
+Regional tombstone compaction is separately budgeted. It publishes a new root
+without changing retained historical roots. A checkpoint is never permission to
+delete history or the blobs needed by a historical reader. Failed/cancelled
+maintenance remains fenced until the holder and outstanding requests are settled
+and an operator explicitly recovers it.
+
+Group publication retains a separate commit/root/audit per compatible member,
+with one final head CAS. Live readers see the final group state; intermediate
+member states remain accessible through retained indexed history. Conflicting
+members fail independently. Each uncertain member receives its own candidate CID,
+not some other request's success. See
+[group publication](storage-operations.md#optional-group-publication-and-benchmarks).
+
+Cache TTLs, ground imagery retention, and source-asset cache expiry do not dictate
+accepted shared-world history. Bucket-wide age expiry on content-addressed objects
+is unsafe. See [maintenance operations](concurrent-global-editing.md#retention-and-maintenance).
+
+## Related systems
+
+Git is an analogy for immutable snapshots, parent-linked commits, shared objects,
+and branches; physical delta compression is a separate optimization. Ergo does not
+currently implement binary delta chains or packfiles.
+[Apache Iceberg](https://iceberg.apache.org/spec/) is useful related reading on
+snapshots and immutable-file references, but is not an implementation dependency.

@@ -28,8 +28,13 @@ pub struct Group {
 }
 
 pub fn validate(bricks: &[Brick], groups: &[Group]) -> Result<()> {
+    validate_ids(bricks.iter().map(|b| b.id), groups)
+}
+
+/// Validate authoring references without materializing unrelated geometry.
+pub fn validate_ids(ids: impl IntoIterator<Item = u32>, groups: &[Group]) -> Result<()> {
     ensure!(groups.len() <= 200_000, "Too many authoring groups");
-    let pieces: HashSet<_> = bricks.iter().map(|b| b.id).collect();
+    let pieces: HashSet<_> = ids.into_iter().collect();
     let index: HashMap<_, _> = groups.iter().map(|g| (g.id, g)).collect();
     ensure!(index.len() == groups.len(), "Duplicate group IDs");
     let mut parents = HashMap::new();

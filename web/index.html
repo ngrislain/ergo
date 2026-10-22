@@ -16,7 +16,7 @@
       init().catch(error => {
         const message = document.createElement('p');
         message.className = 'startup-error';
-        message.textContent = `Could not start Ergo: ${error.message}. Build the client with ./scripts/build-web.sh and reload.`;
+        message.textContent = `Could not start Ergo: ${error.message}. Build the client with cargo xtask build-web and reload.`;
         document.body.append(message);
       });
       if ('serviceWorker' in navigator) {

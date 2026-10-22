@@ -110,8 +110,16 @@ ACM Transactions on Database Systems, 1981.
 
 This motivates read/write validation and why disjoint staged changes can be
 rebased while overlapping semantic dependencies must be checked again. The
-shared-world commit protocol is specified but not yet implemented; current
-private snapshots avoid overwriting a mutable global head.
+shared-world REST service implements optimistic dependency validation and root
+publication; private snapshots remain a separate workflow.
+
+The separate implemented [`ergo-transactions` library](transactional-storage.md)
+now provides that optimistic storage substrate: persistent CBOR octrees,
+read/predicate validation, disjoint-edit rebasing, and conditional single-shard
+publication. The permissioned service adds bounded on-demand dependency discovery
+without loading the world. Unlike an in-memory TL2 adaptation, the library has no per-location
+locks or global version-clock object; immutable subtree hashes and replacement
+generations provide dependency versions, and one head CAS publishes a transaction.
 
 ### C2. Leases and stale holders
 
@@ -120,9 +128,10 @@ for Distributed File Cache Consistency**, SOSP, 1989.
 [DOI: 10.1145/74850.74870](https://doi.org/10.1145/74850.74870).
 
 Useful background for expiry, renewal, and failure recovery. A lease timestamp
-alone does not make independent S3 writes transactional. Ergo's future protocol
-also needs hierarchical conflict checks, fencing, and atomic publication against
-one observed coordination revision.
+alone does not make independent S3 writes transactional. Ergo currently uses
+optimistic version checks and atomic root publication. Optional region leases are
+future work. GC pins/barriers deliberately do not expire by time; they protect
+immutable retention rather than reserving interactive editing regions.
 
 ## Earthquake inputs and physical calibration
 

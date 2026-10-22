@@ -8,11 +8,13 @@ use anyhow::{Result, ensure};
 use glam::DVec3;
 use std::collections::{HashSet, VecDeque};
 
+pub const INFERRED_JOINT_HALO: f64 = 0.003;
+
 pub fn inferred_joints(bricks: &[Brick]) -> Vec<JointSpec> {
     let tree = Octree::new(bricks.iter().map(|b| b.bounds).collect());
     let mut out = Vec::new();
     for (i, brick) in bricks.iter().enumerate() {
-        for j in tree.query(brick.bounds.expanded(0.003)) {
+        for j in tree.query(brick.bounds.expanded(INFERRED_JOINT_HALO)) {
             if j <= i {
                 continue;
             }
@@ -33,10 +35,19 @@ pub fn inferred_joints(bricks: &[Brick]) -> Vec<JointSpec> {
     out
 }
 pub fn validate_joints(bricks: &[Brick], joints: &[JointSpec], fixed: &[u32]) -> Result<()> {
-    let ids: HashSet<_> = bricks.iter().map(|b| b.id).collect();
-    ensure!(ids.len() == bricks.len(), "Duplicate brick IDs");
+    validate_joint_ids(bricks.iter().map(|b| b.id), joints, fixed)
+}
+
+pub fn validate_joint_ids(
+    ids: impl IntoIterator<Item = u32>,
+    joints: &[JointSpec],
+    fixed: &[u32],
+) -> Result<()> {
+    let input: Vec<_> = ids.into_iter().collect();
+    let ids: HashSet<_> = input.iter().copied().collect();
+    ensure!(ids.len() == input.len(), "Duplicate brick IDs");
     ensure!(
-        joints.len() <= bricks.len().saturating_mul(12),
+        joints.len() <= ids.len().saturating_mul(12),
         "Too many constraints"
     );
     for j in joints {

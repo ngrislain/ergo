@@ -100,6 +100,32 @@ impl Principal {
 }
 
 impl Auth {
+    #[cfg(test)]
+    pub(crate) fn test_session(user: &str) -> (Self, HeaderMap) {
+        let auth = Self {
+            google: true,
+            client_id: String::new(),
+            secret: String::new(),
+            signing: vec![42; 32],
+            public_url: "http://localhost:3000".into(),
+            http: reqwest::Client::new(),
+            keys: Arc::new(RwLock::new(None)),
+        };
+        let value = auth
+            .sign(&Session {
+                user_id: user.into(),
+                expires: now() + 60,
+            })
+            .unwrap();
+        let mut headers = HeaderMap::new();
+        headers.insert(
+            header::COOKIE,
+            format!("ergo_session={value}").parse().unwrap(),
+        );
+        headers.insert("X-Ergo-Request", HeaderValue::from_static("1"));
+        (auth, headers)
+    }
+
     pub fn from_env() -> Result<Self> {
         let client_id = env::var("GOOGLE_CLIENT_ID").unwrap_or_default();
         let secret = env::var("GOOGLE_CLIENT_SECRET").unwrap_or_default();

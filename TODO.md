@@ -74,25 +74,51 @@ are complete. Future designs must not be described as existing guarantees.
 
 ## Global shared-world commits
 
-See [concurrent global editing](docs/concurrent-global-editing.md) for the proposed
-protocol and invariants. This collaboration layer is not yet implemented.
+See [concurrent global editing](docs/concurrent-global-editing.md) for the
+implemented optimistic REST protocol. The world has no aggregate size/count cap;
+the limits and paging work below concern individual operations and indexes.
 
-- [ ] Add a global branch/revision model separate from per-user private snapshots.
-- [ ] Store versioned user/region commit grants and implement administrative grant
-  and revoke operations; Google authentication must not imply commit permission.
-- [ ] Add authoritative brick ownership and revisioned cross-leaf references.
-- [ ] Implement octree-region leases with ancestor/descendant conflict checks,
-  all-or-nothing multi-region acquisition, renewals, expiry, and fencing.
-- [ ] Track swept collision read sets and cross-region mechanical dependencies.
+- [x] Add a standalone immutable CBOR octree transaction library with root CAS,
+  read/predicate validation, replacement fences, disjoint-edit rebase, sharded
+  heads, materialized checkpoints, and parent-linked substitution history.
+- [x] Integrate authenticated REST commits, region grants, on-demand complete
+  contact/constraint/group closure discovery, and server static validation.
+- [x] Add packed paths, a byte-budgeted shared LRU, bounded-object reads, paginated
+  scans, and an in-memory/S3 concurrent workload benchmark executable.
+- [x] Add durable reader/writer pins, exclusive maintenance barriers, disk-backed
+  streaming mark/sweep, and node-budgeted regional tombstone compaction.
+- [x] Add a shared branch/revision model separate from per-user private snapshots.
+- [x] Store versioned owner/region grants and atomically invalidate prepared edits
+  on revocation; identity alone does not authorize another user's world.
+- [x] Add authoritative global piece IDs derived from immutable creation records,
+  separately versioned geometry, and reference-only cross-block replicas.
+- [x] Track conservative swept predicates and complete old/new dependency closures;
+  reject oversized edit working sets without truncating unloaded supports.
+- [x] Add atomic root publication, dependency conflict detection, and safe rebase.
+- [x] Add immutable authenticated audit/certificate attachments and paged history.
+- [x] Keep a materialized checkpoint at every commit; viewing requires no replay.
+- [ ] Run concurrent benchmarks against the configured live object-store endpoint.
 - [ ] Validate Scaleway conditional-write semantics with real integration tests.
-- [ ] Implement atomic coordination-root publication, permission/fence checks,
-  semantic conflict detection, and safe rebase of disjoint edits.
-- [ ] Add immutable audit records, revision subscriptions, branch history,
-  retention policies, and reachable-object garbage collection.
-- [ ] Store parent-linked committed deltas and periodic checkpoints while keeping
-  a materialized current root; do not make rendering replay an unbounded history.
-- [ ] Paginate per-user/global catalogs and build hierarchical geographic region
-  directories instead of scanning full flat manifests.
+- [x] Add opt-in bounded group publication, individual commit/audit results,
+  per-member uncertain-outcome reporting, and grouped benchmark mode. Enable only
+  after measuring the deployment's actual hot-shard workload.
+- [x] Add atomic CID/sequence acceptance indexes and explicit legacy upgrades.
+- [x] Add explicit cross-assembly joints with endpoint permissions, incident
+  predicates, complete dependency validation, and dangling-delete checks.
+- [x] Page adaptive spatial references and assembly membership/adjacency/rule rows;
+  migrate old layouts through streamed single-publication maintenance.
+- [x] Add bounded authorization-aware SSE, shared per-world polling, resume/reset
+  handling, coalescing, and no permanent subscriber snapshot pin.
+- [x] Add opt-in owner keep-last-N, explicit pruning, and schema-linked collection
+  preserving live birth records, meshes, models, and selected history.
+- [ ] Optional: boundary certificates/model migration. Current policy rejects
+  oversized closures and retains the frozen world model.
+- [ ] Add optional hierarchical leases only if a future workflow requires them;
+  optimistic validation is the implemented coordination policy.
+- [x] Add private-summary/shared-user catalog pages, hierarchical geographic
+  discovery, pre-publication advertisements, permission filtering, and backfills.
+- [ ] Update the legacy private-world UI to consume summary pages instead of its
+  compatibility full-list route (UI work, not a shared storage prerequisite).
 
 ## MCP and agent feedback
 

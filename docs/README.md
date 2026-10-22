@@ -11,7 +11,8 @@ or Scaleway's S3-compatible object store. User profiles also live in object stor
   bridge, minimal WASM runtime, REST API, and object storage, with an SVG overview.
 - [Ground and coordinates](ground-and-coordinates.md): public Z-up schema, lazy
   single-color baseplates, imagery averaging, palette projection, and source policy.
-- [Navigation](navigation.md): orbit, fly, walk, controls, eye height, and collision behavior.
+- [Navigation](navigation.md): orbit/fly/walk controls, 3-unit steps, 12-unit ballistic
+  jumps, eye height, and collision behavior.
 - [Nested groups](groups.md): piece/group membership, rigid transforms, pivots, and physics separation.
 
 - [3D indexing for efficient display](3d-display-indexing.md): resident sets,
@@ -32,7 +33,14 @@ or Scaleway's S3-compatible object store. User profiles also live in object stor
 - [Identity, ownership, and object-store-only metadata](identity-and-ownership.md):
   Google OpenID Connect, stateless sessions, authorization, and object layout.
 - [Concurrent editing of the global model](concurrent-global-editing.md):
-  octree regions, hierarchical leases, permissioned commits, and atomic publication.
+  unbounded worlds, stable creation-record identities, region grants, bounded
+  on-demand dependency domains, spatial paging, and atomic publication.
+- [Transactional CBOR/S3 library](transactional-storage.md): implemented immutable
+  octree transactions, independent edits, read/predicate validation, root CAS,
+  packed paths, caching, history, durable pins, streaming collection, and shard limits.
+- [Storage operations and paging](storage-operations.md): acceptance indexes,
+  retention, dense spatial/rule pages, cross-assembly joints, catalogs, revision
+  SSE, group publication, benchmarks, and legacy upgrades.
 - [Snapshots, deltas, and history](commit-history.md): immutable accepted changes,
   materialized current roots, checkpoints, replay, retention, and garbage collection.
 - [Local construction MCP tools](local-construction-mcp.md): agent editing,
@@ -59,12 +67,19 @@ frustum/fog streaming, distance LOD, instanced WebGL2 drawing, an in-memory octr
 LDraw/Studio assembly import, box-based rigid-body physics, fixed/revolute joints,
 and a server-side save-validation gate.
 
+`ergo-transactions` also backs the authenticated shared-world REST service.
+Shared worlds have no aggregate size/count limit. Each edit loads its spatial
+and mechanical working set; oversized closures are rejected explicitly.
+
 The following are implementation limits, not mathematical limits of the design:
 
 - Imports contain at most 200,000 parts; uploads are at most 128 MiB.
 - The resident set contains at most 128 blocks and 200,000 brick references.
 - Interactive simulation/editing uses a complete construction of at most 5,000
   bricks and 128 blocks. It does not simulate a camera-clipped fragment.
+- Shared REST edits default to 5,000 loaded/candidate identities and 128 MiB of
+  charged CBOR per operation. These configurable budgets are not world-size limits.
+  Shared-world UI/MCP integration is still future work.
 - The server uses a constructive static support/wrench certificate, with no
   time-integrated fallback. Uncertified cases are rejected conservatively.
 - The starter catalog contains 27 common part geometries and 20 opaque colors.
@@ -86,6 +101,10 @@ The following are implementation limits, not mathematical limits of the design:
 - `crates/world/src/physical.rs`: metric dimensions, sourced masses, and connector measurements.
 - `crates/world/src/solidity.rs`: gravity, earthquake, and dropped-object test cases.
 - `crates/server/src/store.rs`: immutable object publication and metadata access.
+- `crates/transactions/`: reusable CBOR octree transactions and S3 CAS publication.
+- `crates/server/src/shared/`: permissioned paged commits, global birth identities,
+  and bounded on-demand mechanical dependency validation.
+- `crates/server/src/catalog.rs`: private-world summary pages and legacy backfill.
 - `crates/server/src/auth.rs`: Google authentication and signed sessions.
 - `crates/client/src/renderer.rs`: shared WebGL2 drawing, picking, LOD, fog, and navigation.
 - `crates/viewer/src/app.rs`: Leptos controls and streaming orchestration.
@@ -93,6 +112,8 @@ The following are implementation limits, not mathematical limits of the design:
 - `crates/mcp/src/main.rs`: thin stdio/REST bridge; `crates/client/src/runtime.rs`
   and `web/mcp.html`: minimal local WASM tool execution.
 - `crates/assets/`: cache-first missing-part fetches and lazy imagery-derived ground.
+- `crates/xtask/src/main.rs`: explicit Rust WASM/binding build orchestration via
+  `cargo xtask build-web`; native server builds remain independent.
 
 ## References
 
