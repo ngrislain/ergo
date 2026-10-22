@@ -258,3 +258,40 @@ member attempts; provider-internal HTTP retries are not counted separately.
 In-memory runs validate the harness and grouping,
 not Scaleway latency or throughput. Live verification still requires exported S3
 bucket, endpoint, and credentials, using the existing isolated test/benchmark prefixes.
+
+## Live Scaleway verification — 2026-10-22
+
+The unmodified `v0.2.0` transaction implementation was exercised against the
+regional `https://s3.fr-par.scw.cloud` endpoint with private local credentials:
+
+- Bucket HEAD and isolated-prefix LIST returned HTTP 200.
+- The opt-in live test passed five 16-writer conditional-write races, each with
+  exactly one winner and immediate winning-value visibility. Independent-edit
+  rebasing and old materialized snapshot reads also passed.
+- An independent benchmark with four writers, two shards, two edits per writer,
+  4 KiB payloads, and coordinated GC admission verified the final eight-leaf count.
+- A grouped benchmark with four writers, one shard, groups of four, the same edit
+  count/payload size, and coordinated admission also verified eight final leaves.
+  Group publication used two logical head-CAS calls.
+
+The benchmark checks leaf counts rather than decoding every stored payload; the
+live transaction smoke test separately reads and verifies its scalar CBOR values.
+These are bounded functional smoke runs, not scale qualification. Observed commit
+latency was several seconds; the tiny sample and differing arrival/shard profiles
+do not establish maximum throughput or a grouping speedup. Live physical deletion,
+retention pruning, garbage-collection recovery, fault injection, and bucket
+versioning/delete-marker behavior were not exercised by these runs.
+
+Test objects were retained for inspection under:
+
+```text
+ergo-transaction-tests/92605b1a-ab18-42d4-8be9-291642284a5b/
+ergo-transaction-bench/5216338c-4f4e-4044-9bcd-f9fd0cfad09c/
+ergo-transaction-bench/addf681b-7258-464a-a6d3-16bf69f13e1e/
+```
+
+The earlier denied attempt at
+`ergo-transaction-tests/d1d54813-d48a-4bdd-ba3e-93838bad399c/` stopped at its first
+PUT with HTTP 403; it did not reach a transaction. A bucket-specific endpoint was
+corrected in the ignored local configuration before testing. No credential values
+are recorded here, and the `v0.2.0` tag is not changed by this verification record.

@@ -97,8 +97,10 @@ the limits and paging work below concern individual operations and indexes.
 - [x] Add atomic root publication, dependency conflict detection, and safe rebase.
 - [x] Add immutable authenticated audit/certificate attachments and paged history.
 - [x] Keep a materialized checkpoint at every commit; viewing requires no replay.
-- [ ] Run concurrent benchmarks against the configured live object-store endpoint.
-- [ ] Validate Scaleway conditional-write semantics with real integration tests.
+- [x] Run bounded independent/grouped benchmarks against live Scaleway fr-par
+  (2026-10-22). Functional checks pass; large-scale performance remains unqualified.
+- [x] Exercise live Scaleway conditional writes: five 16-writer same-ETag races,
+  immediate visibility, independent-edit rebase, and historical snapshots pass.
 - [x] Add opt-in bounded group publication, individual commit/audit results,
   per-member uncertain-outcome reporting, and grouped benchmark mode. Enable only
   after measuring the deployment's actual hot-shard workload.
