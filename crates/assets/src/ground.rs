@@ -1,5 +1,5 @@
 //! On-demand raster sampling for ground blocks. No bulk prefetch, rendering, or
-//! simulation. OSM defaults include attribution, stable identification, >=7-day
+//! simulation. Satellite/aerial defaults include attribution, stable identification, >=7-day
 //! source caching, conditional refresh, and serialized/coalesced source fetches.
 use anyhow::{Context, Result, ensure};
 use ergo_world::{
@@ -46,12 +46,21 @@ pub struct GroundCache {
     failures: Arc<std::sync::Mutex<HashMap<String, (Instant, String)>>>,
 }
 impl GroundCache {
+    pub fn provider(&self) -> &str {
+        &self.provider
+    }
     pub fn is_enabled(&self) -> bool {
         self.enabled
     }
     pub fn new(store: Arc<dyn ObjectStore>, prefix: String) -> Result<Self> {
+        let source = std::env::var("ERGO_GROUND_SOURCE").unwrap_or_else(|_| "satellite".into());
+        ensure!(
+            ["satellite", "osm", "disabled"].contains(&source.as_str()),
+            "ERGO_GROUND_SOURCE must be satellite, osm, or disabled"
+        );
+        let satellite = source != "osm";
         let template = std::env::var("ERGO_MAP_TILE_URL")
-            .unwrap_or_else(|_| "https://tile.openstreetmap.org/{z}/{x}/{y}.png".into());
+            .unwrap_or_else(|_| if satellite {"https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}".into()}else{"https://tile.openstreetmap.org/{z}/{x}/{y}.png".into()});
         ensure!(
             ["{z}", "{x}", "{y}"].iter().all(|p| template.contains(p)),
             "Map tile URL must have z/x/y placeholders"
@@ -68,14 +77,12 @@ impl GroundCache {
             http,
             template,
             provider: std::env::var("ERGO_MAP_PROVIDER")
-                .unwrap_or_else(|_| "OpenStreetMap Carto".into()),
+                .unwrap_or_else(|_| if satellite {"Esri World Imagery (satellite/aerial)".into()}else{"OpenStreetMap Carto".into()}),
             attribution: std::env::var("ERGO_MAP_ATTRIBUTION")
-                .unwrap_or_else(|_| "© OpenStreetMap contributors".into()),
+                .unwrap_or_else(|_| if satellite {"Tiles © Esri — Source: Esri, Maxar, Earthstar Geographics, and the GIS User Community".into()}else{"© OpenStreetMap contributors".into()}),
             attribution_url: std::env::var("ERGO_MAP_ATTRIBUTION_URL")
-                .unwrap_or_else(|_| "https://www.openstreetmap.org/copyright".into()),
-            enabled: std::env::var("ERGO_GROUND_SOURCE")
-                .ok()
-                .is_none_or(|v| v != "disabled"),
+                .unwrap_or_else(|_| if satellite {"https://www.arcgis.com/home/item.html?id=10df2279f9684e4a9f6a7f08febac2a9".into()}else{"https://www.openstreetmap.org/copyright".into()}),
+            enabled: source!="disabled",
             gate: Arc::new(tokio::sync::Mutex::new(())),
             failures: Arc::new(std::sync::Mutex::new(HashMap::new())),
         })
@@ -348,6 +355,22 @@ pub fn mercator(lat: f64, lon: f64, zoom: u32) -> Result<(u32, u32, u32, u32)> {
     ))
 }
 fn decode(bytes: &[u8]) -> Result<(u32, u32, Vec<u8>)> {
+    if bytes.starts_with(&[0xff, 0xd8]) {
+        let mut decoder = jpeg_decoder::Decoder::new(Cursor::new(bytes));
+        decoder.read_info()?;
+        let info = decoder.info().context("JPEG has no image header")?;
+        ensure!(
+            info.width == 256 && info.height == 256,
+            "Expected a 256×256 raster tile"
+        );
+        let data = decoder.decode()?;
+        let rgb = match info.pixel_format {
+            jpeg_decoder::PixelFormat::RGB24 => data,
+            jpeg_decoder::PixelFormat::L8 => data.into_iter().flat_map(|v| [v; 3]).collect(),
+            _ => anyhow::bail!("Unsupported JPEG pixel format"),
+        };
+        return Ok((256, 256, rgb));
+    }
     let mut decoder = png::Decoder::new(Cursor::new(bytes));
     decoder.set_transformations(png::Transformations::EXPAND | png::Transformations::STRIP_16);
     let mut reader = decoder.read_info()?;
@@ -380,6 +403,22 @@ fn decode(bytes: &[u8]) -> Result<(u32, u32, Vec<u8>)> {
         _ => anyhow::bail!("Unsupported raster format"),
     };
     Ok((256, 256, rgb))
+}
+
+#[cfg(test)]
+mod jpeg_tests {
+    #[test]
+    fn satellite_jpeg_tiles_decode_without_a_live_imagery_request() {
+        // Synthetic solid RGB(20,120,40), 256x256 JPEG, Pillow q90/optimize.
+        let mut bytes=hex::decode("ffd8ffe000104a46494600010100000100010000ffdb0043000302020302020303030304030304050805050404050a070706080c0a0c0c0b0a0b0b0d0e12100d0e110e0b0b1016101113141515150c0f171816141812141514ffdb00430103040405040509050509140d0b0d1414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414ffc00011080100010003012200021101031101ffc4001500010100000000000000000000000000000007ffc40014100100000000000000000000000000000000ffc400160101010100000000000000000000000000000607ffc40014110100000000000000000000000000000000ffda000c03010002110311003f008100826180").unwrap();
+        bytes.extend(std::iter::repeat_n(0, 382));
+        bytes.extend([0xff, 0xd9]);
+        let (width, height, rgb) = super::decode(&bytes).unwrap();
+        assert_eq!((width, height, rgb.len()), (256, 256, 256 * 256 * 3));
+        for (actual, expected) in rgb[..3].iter().zip([20, 120, 40]) {
+            assert!(actual.abs_diff(expected) <= 2);
+        }
+    }
 }
 
 #[cfg(test)]

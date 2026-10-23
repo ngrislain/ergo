@@ -16,8 +16,24 @@ pub fn tools() -> Value {
     let views = json!({"type":"array","items":{"type":"string","enum":["isometric","north","south","east","west","top"]},"minItems":1,"maxItems":4});
     let width = json!({"type":"integer","minimum":160,"maximum":1024});
     let height = json!({"type":"integer","minimum":120,"maximum":768});
+    let mut publish = tool(
+        "publish_construction",
+        "Publish the local working copy through the configured authenticated shared-world API. Omit world_id to create a world, or import a new assembly into an existing world. Return confirmed revision/assembly metadata URL; preserve validation, permission, conflict, and unknown-outcome errors. This is not an update of a previously published assembly.",
+        json!({"world_id":{"type":"string"},"base_revision":{"type":"string"},"name":{"type":"string"},"expected_local_revision":{"type":"integer","minimum":0,"maximum":4294967295_u64},"authenticated_editing":{"type":"boolean"}}),
+        &[],
+        false,
+    );
+    publish["annotations"]["openWorldHint"] = json!(true);
+    let mut allowance = tool(
+        "get_edit_allowance",
+        "Read the signed-in actor's remaining shared-world brick-change allowance and refill period. Paid entitlements bypass pacing, not permission or physical validation.",
+        json!({}),
+        &[],
+        true,
+    );
+    allowance["annotations"]["openWorldHint"] = json!(true);
     json!({"tools":[
-        tool("get_catalog","List common parts/colors, physical units, and limits.",json!({}),&[],true),
+        tool("get_catalog","Recommend standard parts and colors first. Any resolvable Studio/LDraw .dat part can be placed by ID. Set include_extended for the full embedded color palette, or part to inspect resolved geometry. Measured physics is required for publication.",json!({"include_extended":{"type":"boolean"},"part":{"type":"string"}}),&[],true),
         tool("list_bricks","List IDs, poses, bounds, and sourced masses.",json!({"offset":{"type":"integer","minimum":0},"limit":{"type":"integer","minimum":1,"maximum":200}}),&[],true),
         tool("inspect_brick","Inspect a brick, metric dimensions, mass provenance, contacts, and constraints.",json!({"id":int}),&["id"],true),
         tool("place_brick","Place a supported part by minimum corner [east,north,height]. Reject overlap atomically; return client stability feedback.",json!({"part":{"type":"string"},"color":{"type":"integer"},"min_corner":vec,"quarter_turns":{"type":"integer"}}),&["part","color","min_corner"],false),
@@ -38,7 +54,9 @@ pub fn tools() -> Value {
         tool("simulate_gravity","Run client gravity and retain the resulting local working pose (not a global commit).",json!({"seconds":{"type":"number","minimum":0,"maximum":4}}),&[],false),
         tool("view_construction","Return actual local WebGL2 images from 1–4 preset viewpoints.",json!({"views":views,"width":width,"height":height}),&[],true),
         tool("undo","Restore the preceding local working copy.",json!({}),&[],false),
-        tool("export_construction","Flush and identify the configured local JSON working copy. No global publication.",json!({}),&[],true)
+        tool("export_construction","Flush and identify the configured local JSON working copy. No global publication.",json!({}),&[],true),
+        publish,
+        allowance
     ]})
 }
 pub fn validate_input(value: &Value, schema: &Value, path: &str) -> Result<()> {

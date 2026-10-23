@@ -53,13 +53,22 @@ impl LocalClientRuntime {
     }
     pub fn insert_part(&mut self, asset: &str) -> Result<(), JsValue> {
         let value: Value = serde_json::from_str(asset).map_err(js_error)?;
-        let mesh: ergo_world::geometry::Mesh =
+        let mut mesh: ergo_world::geometry::Mesh =
             serde_json::from_value(value.get("mesh").cloned().unwrap_or(value))
                 .map_err(js_error)?;
         ensure_js(
             mesh.schema == ergo_world::SCHEMA_VERSION,
             "Wrong part schema",
         )?;
+        mesh.physical = self
+            .measurements
+            .parts
+            .iter()
+            .find(|p| p.part == mesh.part)
+            .cloned();
+        if let Some(record) = &mesh.physical {
+            mesh.body_bounds = record.body_bounds;
+        }
         self.scene.meshes.insert(mesh.part.clone(), mesh);
         Ok(())
     }
@@ -134,6 +143,11 @@ fn text(value: Value) -> Value {
 impl LocalClientRuntime {
     fn prepared(&self) -> (WorldExport, Option<String>) {
         let mut scene = self.scene.clone();
+        let part_issue = self
+            .measurements
+            .normalize_scene(&mut scene)
+            .err()
+            .map(|e| e.to_string());
         let pairs: HashSet<_> = scene
             .joints
             .iter()
@@ -149,14 +163,18 @@ impl LocalClientRuntime {
             .apply(&scene.bricks, &mut scene.joints)
             .err()
             .map(|e| e.to_string());
-        (scene, issue)
+        (scene, part_issue.or(issue))
     }
     fn feedback(&self) -> Value {
         if self.scene.bricks.is_empty() {
             return json!({"revision":self.revision,"brick_count":0,"publication_ready":false,"message":"Empty local working copy"});
         }
         let (mut scene, issue) = self.prepared();
-        let validation = ergo_world::validation::validate_static(&mut scene);
+        let validation = ergo_world::validation::validate_static_with_measurements(
+            &mut scene,
+            Default::default(),
+            &self.measurements,
+        );
         let valid = validation.is_ok();
         json!({"revision":self.revision,"brick_count":scene.bricks.len(),"overlap_free":overlap_free(&scene).is_ok(),"static_under_current_joint_model":valid,"publication_ready":valid&&issue.is_none(),"stability_report":validation.as_ref().ok(),"failure":validation.err().map(|e|e.to_string()),"calibration_issue":issue,"global_commit_available":false,"execution":"local-wasm-client","next_action":if valid{"Inspect visual feedback and connector calibration before requesting an authorized commit."}else{"Add support or fix the reported constraint/contact. A client gravity test can provide additional diagnostics but cannot override the server certificate."}})
     }
@@ -269,9 +287,18 @@ impl LocalClientRuntime {
     }
     fn call(&mut self, name: &str, args: Value) -> Result<Value> {
         match name {
-            "get_catalog" => Ok(text(
-                json!({"catalog":ergo_world::catalog::catalog(),"units":{"position":"X east, Y north, Z up; X/Y 8 mm, Z 9.6 mm","force":"N","torque":"N m","mass":"kg"},"execution":"local-wasm-client"}),
-            )),
+            "get_catalog" => {
+                let catalog = if args["include_extended"].as_bool().unwrap_or(false) {
+                    ergo_world::catalog::catalog()
+                } else {
+                    ergo_world::catalog::preferred_catalog()
+                };
+                let part = args["part"].as_str().map(canonical);
+                let asset = part.as_ref().and_then(|p|self.scene.meshes.get(p)).map(|m|json!({"part":m.part,"quality":m.quality,"bounds":m.bounds,"mass_kg":self.measurements.mass_kg(&m.part).ok()}));
+                Ok(text(
+                    json!({"catalog":catalog,"requested_part":asset,"units":{"position":"X east, Y north, Z up; X/Y 8 mm, Z 9.6 mm","force":"N","torque":"N m","mass":"kg"},"execution":"local-wasm-client"}),
+                ))
+            }
             "list_bricks" => {
                 let offset = args.get("offset").and_then(Value::as_u64).unwrap_or(0) as usize;
                 let limit = args
@@ -280,7 +307,7 @@ impl LocalClientRuntime {
                     .unwrap_or(50)
                     .min(200) as usize;
                 Ok(text(
-                    json!({"revision":self.revision,"total":self.scene.bricks.len(),"bricks":self.scene.bricks.iter().skip(offset).take(limit).map(|b|json!({"id":b.id,"part":b.part,"color":b.color,"position":ergo_world::coordinates::public(b.position),"bounds":b.bounds,"mass_kg":ergo_world::physical::mass_kg(&b.part).ok()})).collect::<Vec<_>>()}),
+                    json!({"revision":self.revision,"total":self.scene.bricks.len(),"bricks":self.scene.bricks.iter().skip(offset).take(limit).map(|b|json!({"id":b.id,"part":b.part,"color":b.color,"position":ergo_world::coordinates::public(b.position),"bounds":b.bounds,"mass_kg":self.measurements.mass_kg(&b.part).ok()})).collect::<Vec<_>>()}),
                 ))
             }
             "inspect_brick" => {
@@ -299,7 +326,7 @@ impl LocalClientRuntime {
                     .filter_map(|b| ergo_world::spatial::relation(brick, b))
                     .collect();
                 Ok(text(
-                    json!({"brick":brick,"mass_kg":ergo_world::physical::mass_kg(&brick.part)?,"mass_source":ergo_world::physical::mass_source(&brick.part),"body_dimensions_m":ergo_world::coordinates::dimensions(ergo_world::physical::to_meters(brick.bounds.size())),"contacts":contacts,"constraints":self.scene.joints.iter().filter(|j|j.a==id||j.b==id).collect::<Vec<_>>()}),
+                    json!({"brick":brick,"mass_kg":self.measurements.mass_kg(&brick.part).ok(),"mass_source":self.measurements.parts.iter().find(|p|p.part==brick.part).map(|p|p.source.clone()).or_else(||ergo_world::physical::mass_kg(&brick.part).ok().map(|_|ergo_world::physical::mass_source(&brick.part))),"body_dimensions_m":ergo_world::coordinates::dimensions(ergo_world::physical::to_meters(brick.bounds.size())),"contacts":contacts,"constraints":self.scene.joints.iter().filter(|j|j.a==id||j.b==id).collect::<Vec<_>>()}),
                 ))
             }
             "place_brick" => {
@@ -514,9 +541,10 @@ impl LocalClientRuntime {
                     rotation_radians: settings.rotation_tolerance_radians,
                     ..Default::default()
                 };
-                let certificate = ergo_world::validation::validate_static_with_tolerances(
+                let certificate = ergo_world::validation::validate_static_with_measurements(
                     &mut static_scene,
                     tolerances,
+                    &self.measurements,
                 );
                 let certified = certificate.is_ok();
                 let (_, _, report) = ergo_world::solidity::test(

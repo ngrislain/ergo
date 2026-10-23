@@ -115,6 +115,23 @@ impl GeoReference {
             (self.longitude + p.x * scale + 180.0).rem_euclid(360.0) - 180.0,
         ]
     }
+    /// Surface distance to a construction footprint, in meters. Different
+    /// construction origins and longitude wrapping must not be compared as raw X/Y.
+    pub fn distance_to_bounds_m(self, gps: [f64; 2], bounds: Aabb) -> anyhow::Result<f64> {
+        let point = self.to_world(gps[0], gps[1])?;
+        let nearest = self.to_gps(DVec3::new(
+            point.x.clamp(bounds.min.x, bounds.max.x),
+            0.,
+            point.z.clamp(bounds.min.z, bounds.max.z),
+        ));
+        let latitude = gps[0].to_radians();
+        let other = nearest[0].to_radians();
+        let delta_latitude = other - latitude;
+        let delta_longitude = (nearest[1] - gps[1]).to_radians();
+        let a = (delta_latitude * 0.5).sin().powi(2)
+            + latitude.cos() * other.cos() * (delta_longitude * 0.5).sin().powi(2);
+        Ok(2. * 6_371_000. * a.clamp(0., 1.).sqrt().asin())
+    }
 }
 
 #[derive(Clone, Copy, Debug, Serialize, Deserialize)]
@@ -348,8 +365,11 @@ pub fn bounds(bricks: &[Brick]) -> Option<Aabb> {
 }
 
 pub fn color_rgb(code: u32) -> u32 {
-    if code & 0xFF000000 == 0x02000000 {
+    if matches!(code >> 24, 2 | 3) {
         return code & 0xFFFFFF;
+    }
+    if let Some(rgb) = catalog::extended_rgb(code) {
+        return rgb;
     }
     match code {
         0 => 0x252a32,
@@ -386,13 +406,44 @@ pub fn color_rgb(code: u32) -> u32 {
         323 => 0xadd9d0,
         378 => 0x9ba99e,
         484 => 0xa65331,
-        _ => 0xb6a9c9,
+        _ => catalog::extended_rgb(code).unwrap_or(0xb6a9c9),
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn nearest_footprint_distance_respects_origins_and_longitude_wrapping() {
+        let bounds = Aabb::new(DVec3::ZERO, DVec3::splat(10.));
+        let paris = GeoReference::default();
+        assert!(
+            paris
+                .distance_to_bounds_m(paris.to_gps(DVec3::splat(5.)), bounds)
+                .unwrap()
+                < 1e-6
+        );
+        let far = GeoReference {
+            latitude: 49.,
+            ..paris
+        };
+        assert!(
+            far.distance_to_bounds_m(paris.to_gps(DVec3::ZERO), bounds)
+                .unwrap()
+                > 1000.
+        );
+        let date_line = GeoReference {
+            latitude: 0.,
+            longitude: 179.999,
+            arcseconds_per_block: 1.,
+        };
+        assert!(
+            date_line
+                .distance_to_bounds_m([0., -179.999], bounds)
+                .unwrap()
+                < 300.
+        );
+    }
 
     #[test]
     fn negative_cells_use_floor_not_truncation() {

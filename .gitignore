@@ -8,3 +8,10 @@ __pycache__/
 *.pyc
 /.playwright-mcp/
 *.mcp.lock
+**/ergo-mcp-token
+**/.terraform/
+**/*.tfstate
+**/*.tfstate.*
+**/*.tfplan
+**/*.tfvars
+crash.log

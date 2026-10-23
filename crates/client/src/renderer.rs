@@ -58,10 +58,20 @@ void main() {
     vec3 base = v_color;
     float specular = pow(max(dot(reflect(-light, n), normalize(eye-v_position)), 0.0), 45.0) * 0.12;
     vec3 shaded = base * (0.44 + 0.25 * hemi + 0.32 * diffuse) + specular;
-    if (floor_mode == 1) {
+    if (floor_mode == 1 && n.y > 0.5) {
         vec2 cell = abs(fract(v_position.xz / 4.0 - 0.5) - 0.5) / fwidth(v_position.xz / 4.0);
         float line = 1.0 - min(min(cell.x,cell.y),1.0);
         shaded = base * 0.96 - float(grid) * line * 0.035;
+        // Distant studs are a derivative-filtered surface detail. Nearby studs
+        // have real shared cylinder geometry, including their visible sides.
+        vec2 p = fract(v_position.xz) - 0.5;
+        float radius = length(p);
+        float footprint = max(length(dFdx(v_position.xz)), length(dFdy(v_position.xz)));
+        float detail = 1.0 - smoothstep(0.15,0.6,footprint);
+        float rim = smoothstep(0.23,0.29,radius) * (1.0-smoothstep(0.29,0.34,radius));
+        vec3 stud_normal = normalize(vec3(p.x*rim*6.0,1.0,p.y*rim*6.0));
+        float relief = (max(dot(stud_normal,light),0.0)-max(dot(vec3(0,1,0),light),0.0))*0.26-rim*0.1;
+        shaded += base * relief * detail;
     }
     if (v_selected > 0.5) shaded = mix(shaded, vec3(1.0,0.65,0.13),0.52);
     float fog = smoothstep(fog_limits.x,fog_limits.y,distance(eye,v_position));
@@ -111,6 +121,7 @@ pub struct Renderer {
     pub draw_calls: usize,
     pub triangles: usize,
     pub gpu_bytes: usize,
+    pub ground_stud_instances: usize,
 }
 
 impl Renderer {
@@ -163,6 +174,7 @@ impl Renderer {
             draw_calls: 0,
             triangles: 0,
             gpu_bytes: 0,
+            ground_stud_instances: 0,
         })
     }
 
@@ -704,9 +716,13 @@ impl Renderer {
             }
             let key = format!("{}|{lod}", brick.part);
             if lod == 1 {
-                self.lod_meshes
-                    .entry(key.clone())
-                    .or_insert_with(|| fallback_mesh(&brick.part));
+                self.lod_meshes.entry(key.clone()).or_insert_with(|| {
+                    if ergo_world::geometry::part_spec(&brick.part).is_some() {
+                        fallback_mesh(&brick.part)
+                    } else {
+                        ergo_world::geometry::body_mesh(&brick.part, mesh.body_bounds)
+                    }
+                });
             }
             if lod == 2 {
                 self.lod_meshes.entry(key.clone()).or_insert_with(|| {
@@ -742,7 +758,8 @@ impl Renderer {
             );
         }
         let ground = ergo_world::geometry::ground_mesh();
-        for (x, y) in self.visible_ground_cells() {
+        let visible_ground = self.visible_ground_cells();
+        for &(x, y) in &visible_ground {
             let color = self
                 .ground
                 .get(&(x, y))
@@ -762,6 +779,44 @@ impl Renderer {
                 false,
             );
         }
+        self.ground_stud_instances = 0;
+        let eye = self.eye();
+        let maximum_distance = (pixels * 0.6 / 4.).min(100.);
+        if (eye.y - ergo_world::terrain::GROUND_TOP).abs() * DISPLAY_SCALE.y < maximum_distance {
+            let cells: HashSet<_> = visible_ground.into_iter().collect();
+            let center_x = eye.x.floor() as i64;
+            let center_z = eye.z.floor() as i64;
+            for x in center_x - 48..=center_x + 48 {
+                for z in center_z - 48..=center_z + 48 {
+                    let cell = (x.div_euclid(1024), z.div_euclid(1024));
+                    if !cells.contains(&cell) {
+                        continue;
+                    }
+                    let position = DVec3::new(
+                        x as f64 + 0.5,
+                        ergo_world::terrain::GROUND_TOP,
+                        z as f64 + 0.5,
+                    );
+                    if ((position - eye) * DISPLAY_SCALE).length() > maximum_distance
+                        || !visibility.contains(Aabb::new(
+                            position - DVec3::new(0.3, 0., 0.3),
+                            position + DVec3::new(0.3, 1. / 6., 0.3),
+                        ))
+                    {
+                        continue;
+                    }
+                    let color = self.ground.get(&cell).map(|b| b.color).unwrap_or(71);
+                    instance(
+                        groups.entry("__ground_studs__".into()).or_default(),
+                        DMat4::from_translation(position - self.origin),
+                        ergo_world::color_rgb(color),
+                        false,
+                    );
+                    self.ground_stud_instances += 1;
+                }
+            }
+        }
+        let studs = ergo_world::geometry::ground_stud_mesh();
         self.gpu.retain(|key, mesh| {
             if groups.contains_key(key) {
                 true
@@ -776,6 +831,8 @@ impl Renderer {
         for (key, data) in groups {
             let cpu = if key == "__ground__" || key == "__aggregate__" {
                 &ground
+            } else if key == "__ground_studs__" {
+                &studs
             } else if key.ends_with("|0") {
                 &self.meshes[key.strip_suffix("|0").unwrap()]
             } else {

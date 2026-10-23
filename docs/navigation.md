@@ -5,11 +5,31 @@ The full browser app provides a selector in the viewport panel and on mobile.
 The minimal MCP runtime renders requested camera poses without running a
 continuous navigation loop.
 
+## Full-screen exploration
+
+Use **Enter full screen** in the viewport toolbar, or **Shift+F** while the
+canvas is focused. The world fills the screen and Orbit/Fly/Walk selectors,
+movement controls, view tools, and attribution stay available. The canvas is
+focused automatically, so keyboard navigation continues immediately. **Esc** or
+**Exit full screen** restores the workbench without resetting the camera or model.
+Where the browser Fullscreen API is unavailable or denied, the same control uses
+a viewport-filling layout within the browser window. Camera mode and position
+are preserved in both cases; the fullscreen preference is not persisted.
+
 ## Orbit
 
 Drag to orbit around the focus; shift/right-drag pans; the wheel zooms. **F** or
 the fit button focuses the construction. Selecting a piece before returning to
 orbit can use it as the focus. The top-view control returns to orbit mode.
+
+**Nearest construction**, or **N** with the canvas focused, finds the closest
+construction in the user's accessible construction catalog (including the
+current working copy). Distance is measured from the current camera's geographic
+position to each construction footprint, respecting different geographic origins
+and longitude wrapping. It focuses the current construction or opens the closest
+accessible snapshot or a discovered shared-world region. An unsaved working copy is not replaced by this shortcut;
+save/export it before opening another snapshot. This searches catalog metadata,
+not every piece in an unbounded shared world.
 
 ## Fly
 

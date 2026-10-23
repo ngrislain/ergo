@@ -735,7 +735,7 @@ checksum = "a1731451909bde27714eacba19c2566362a7f35224f52b153d3f42cf60f72472"
 
 [[package]]
 name = "ergo-assets"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "anyhow",
  "ciborium",
@@ -743,6 +743,7 @@ dependencies = [
  "futures",
  "glam",
  "hex",
+ "jpeg-decoder",
  "object_store",
  "png",
  "reqwest",
@@ -755,7 +756,7 @@ dependencies = [
 
 [[package]]
 name = "ergo-client"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "anyhow",
  "console_error_panic_hook",
@@ -770,7 +771,7 @@ dependencies = [
 
 [[package]]
 name = "ergo-mcp"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "anyhow",
  "axum",
@@ -790,7 +791,7 @@ dependencies = [
 
 [[package]]
 name = "ergo-server"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "anyhow",
  "async-stream",
@@ -823,7 +824,7 @@ dependencies = [
 
 [[package]]
 name = "ergo-transactions"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "async-trait",
  "bytes",
@@ -842,7 +843,7 @@ dependencies = [
 
 [[package]]
 name = "ergo-viewer"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "anyhow",
  "ciborium",
@@ -864,7 +865,7 @@ dependencies = [
 
 [[package]]
 name = "ergo-world"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "anyhow",
  "glam",
@@ -1565,6 +1566,12 @@ name = "itoa"
 version = "1.0.18"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "8f42a60cbdf9a97f5d2305f08a87dc4e09308d1276d28c869c684d7777685682"
+
+[[package]]
+name = "jpeg-decoder"
+version = "0.3.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "00810f1d8b74be64b13dbf3db89ac67740615d6c891f0e7b6179326533011a07"
 
 [[package]]
 name = "js-sys"
@@ -4015,7 +4022,7 @@ checksum = "3ad82d2a33cdc9674dc7465672f271e096168fcdbe0f799d9e6db8c5892679dc"
 
 [[package]]
 name = "xtask"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "serde_json",
 ]

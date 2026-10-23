@@ -108,6 +108,23 @@ impl Queues {
 }
 impl Prepared {
     pub(super) async fn publish_with(self, service: &SharedWorlds) -> SharedResult<Accepted> {
+        let cost = if self.audit.changed_pieces.is_empty() {
+            self.audit.affected_pieces.len()
+        } else {
+            self.audit.changed_pieces.len()
+        };
+        let ticket = service.pacing.reserve(&self.actor, cost).await?;
+        let result = self.publish_unpaced(service).await;
+        if let Err(error) = &result
+            && error.status.is_client_error()
+            && let Some(ticket) = ticket
+            && let Err(refund) = service.pacing.refund(ticket).await
+        {
+            tracing::warn!(error=%refund,"Edit allowance refund requires reconciliation");
+        }
+        result
+    }
+    async fn publish_unpaced(self, service: &SharedWorlds) -> SharedResult<Accepted> {
         if !service.group_commit {
             return self.publish().await;
         }

@@ -1,8 +1,10 @@
-//! A deliberately curated starter catalog, not a claim of BrickLink sales rank.
-use crate::{Brick, color_rgb, geometry::part_spec};
+//! Preferred standard parts/colors, plus open-ended LDraw/Studio asset support.
+use crate::{Brick, color_rgb};
 use anyhow::{Result, ensure};
 use serde::Serialize;
 use std::collections::BTreeSet;
+#[path = "ldraw_colors.rs"]
+mod ldraw_colors;
 
 pub const PARTS: &[(&str, &str)] = &[
     ("3005.dat", "Brick 1 × 1"),
@@ -78,28 +80,53 @@ pub fn color_name(color: u32) -> &'static str {
         .iter()
         .find(|(c, _)| *c == color)
         .map(|(_, name)| *name)
-        .unwrap_or("Unsupported color")
+        .or_else(|| {
+            ldraw_colors::COLORS
+                .iter()
+                .find(|(c, _, _, _)| *c == color)
+                .map(|(_, name, _, _)| *name)
+        })
+        .unwrap_or("Custom color")
+}
+
+pub fn valid_part(part: &str) -> bool {
+    part.ends_with(".dat")
+        && part
+            .bytes()
+            .all(|b| b.is_ascii_alphanumeric() || b"-_. /".contains(&b))
+        && crate::ldraw::normalize_name(part).is_ok_and(|name| name == part)
+}
+pub fn extended_rgb(color: u32) -> Option<u32> {
+    ldraw_colors::COLORS
+        .iter()
+        .find(|(code, _, _, _)| *code == color)
+        .map(|(_, _, rgb, _)| *rgb)
+}
+pub fn known_color(color: u32) -> bool {
+    matches!(color >> 24, 2 | 3)
+        || extended_rgb(color).is_some()
+        || COLORS.iter().any(|(code, _)| *code == color)
 }
 
 pub fn validate(bricks: &[Brick]) -> Result<()> {
     let parts: BTreeSet<_> = bricks
         .iter()
-        .filter(|b| !PARTS.iter().any(|(p, _)| *p == b.part) || part_spec(&b.part).is_none())
+        .filter(|b| !valid_part(&b.part))
         .map(|b| b.part.clone())
         .collect();
     let colors: BTreeSet<_> = bricks
         .iter()
-        .filter(|b| !COLORS.iter().any(|(c, _)| *c == b.color) || b.rgb != color_rgb(b.color))
+        .filter(|b| b.rgb > 0xffffff || [16, 24].contains(&b.color))
         .map(|b| b.color)
         .collect();
     ensure!(
         parts.is_empty(),
-        "Unsupported parts in the starter catalog: {}",
+        "Invalid LDraw part IDs: {}",
         parts.into_iter().take(30).collect::<Vec<_>>().join(", ")
     );
     ensure!(
         colors.is_empty(),
-        "Unsupported or custom colors: {colors:?}. Use one of the 20 starter colors"
+        "Unresolved inherited colors or invalid RGB values: {colors:?}"
     );
     Ok(())
 }
@@ -108,29 +135,89 @@ pub fn validate(bricks: &[Brick]) -> Result<()> {
 pub struct Catalog {
     pub parts: Vec<Part>,
     pub colors: Vec<Color>,
+    pub part_resolution: &'static str,
 }
 #[derive(Serialize)]
 pub struct Part {
     pub id: &'static str,
     pub name: &'static str,
+    pub recommended: bool,
 }
 #[derive(Serialize)]
 pub struct Color {
     pub code: u32,
     pub name: &'static str,
     pub rgb: u32,
+    pub alpha: u8,
+    pub recommended: bool,
 }
 
 pub fn catalog() -> Catalog {
     Catalog {
-        parts: PARTS.iter().map(|(id, name)| Part { id, name }).collect(),
+        parts: PARTS
+            .iter()
+            .map(|(id, name)| Part {
+                id,
+                name,
+                recommended: true,
+            })
+            .collect(),
         colors: COLORS
             .iter()
             .map(|(code, name)| Color {
                 code: *code,
                 name,
                 rgb: color_rgb(*code),
+                alpha: 255,
+                recommended: true,
             })
+            .chain(
+                ldraw_colors::COLORS
+                    .iter()
+                    .filter(|(code, _, _, _)| {
+                        !COLORS.iter().any(|(c, _)| c == code) && ![16, 24].contains(code)
+                    })
+                    .map(|(code, name, _, alpha)| Color {
+                        code: *code,
+                        name,
+                        rgb: color_rgb(*code),
+                        alpha: *alpha,
+                        recommended: false,
+                    }),
+            )
             .collect(),
+        part_resolution: "Any resolvable LDraw/Studio .dat ID; listed parts are recommendations, not an allowlist. Non-standard parts require real geometry and sourced physical measurements for publication.",
+    }
+}
+
+pub fn preferred_catalog() -> Catalog {
+    let mut catalog = catalog();
+    catalog.colors.retain(|c| c.recommended);
+    catalog
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    #[test]
+    fn complete_palette_and_open_parts_keep_standard_recommendations_first() {
+        let catalog = catalog();
+        assert!(catalog.colors.len() > 300);
+        assert!(catalog.colors[..COLORS.len()].iter().all(|c| c.recommended));
+        assert!(
+            catalog.colors[COLORS.len()..]
+                .iter()
+                .all(|c| !c.recommended)
+        );
+        assert_eq!(preferred_catalog().colors.len(), COLORS.len());
+        assert_eq!(
+            catalog.colors.iter().find(|c| c.code == 47).unwrap().alpha,
+            128
+        );
+        assert_eq!(color_rgb(47), 0xfcfcfc);
+        assert!(valid_part("3039.dat"));
+        assert!(valid_part("973pb1234.dat"));
+        assert!(!valid_part("../part.dat"));
+        assert!(!valid_part("part?x=.dat"));
     }
 }

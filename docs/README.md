@@ -12,7 +12,11 @@ or Scaleway's S3-compatible object store. User profiles also live in object stor
 - [Ground and coordinates](ground-and-coordinates.md): public Z-up schema, lazy
   single-color baseplates, imagery averaging, palette projection, and source policy.
 - [Navigation](navigation.md): orbit/fly/walk controls, 3-unit steps, 12-unit ballistic
-  jumps, eye height, and collision behavior.
+  jumps, eye height, full-screen exploration, nearest construction, and collisions.
+- [Sign-in and agent access](access-and-onboarding.md): landing/SSO pages, token
+  setup, shared-world navigation, edit pacing, and operator-managed paid entitlement.
+- [Studio/LDraw catalog](studio-catalog.md): open-ended parts, sourced colors,
+  standard-first MCP discovery, and measured-physics publication requirements.
 - [Nested groups](groups.md): piece/group membership, rigid transforms, pivots, and physics separation.
 
 - [3D indexing for efficient display](3d-display-indexing.md): resident sets,
@@ -41,10 +45,12 @@ or Scaleway's S3-compatible object store. User profiles also live in object stor
 - [Storage operations and paging](storage-operations.md): acceptance indexes,
   retention, dense spatial/rule pages, cross-assembly joints, catalogs, revision
   SSE, group publication, benchmarks, and legacy upgrades.
+- [Scaleway deployment](scaleway-deployment.md): OpenTofu, container packaging,
+  the existing `ergo` bucket, scale-to-zero, Google SSO, and `ergosandbox.com` DNS/TLS.
 - [Snapshots, deltas, and history](commit-history.md): immutable accepted changes,
   materialized current roots, checkpoints, replay, retention, and garbage collection.
-- [Local construction MCP tools](local-construction-mcp.md): agent editing,
-  structured physics feedback, and rendered images for vision models.
+- [Construction MCP tools](local-construction-mcp.md): agent editing,
+  structured physics feedback, rendered images, and authenticated remote publication.
 - [Annotated references and related systems](references.md): academic background,
   comparable systems, relevance to Ergo, and explicit implementation distinctions.
 
@@ -79,11 +85,14 @@ The following are implementation limits, not mathematical limits of the design:
   bricks and 128 blocks. It does not simulate a camera-clipped fragment.
 - Shared REST edits default to 5,000 loaded/candidate identities and 128 MiB of
   charged CBOR per operation. These configurable budgets are not world-size limits.
-  Shared-world UI/MCP integration is still future work.
+  Shared-world navigation uses a bounded read-only region; full CAD editing of
+  shared domains in the browser remains future work. MCP/REST publication is implemented.
 - The server uses a constructive static support/wrench certificate, with no
   time-integrated fallback. Uncertified cases are rejected conservatively.
-- The starter catalog contains 27 common part geometries and 20 opaque colors.
-  This is a curated selection, not a measured BrickLink popularity ranking.
+- The recommendation catalog contains 27 common part geometries and 20 opaque
+  colors; other Studio/LDraw part IDs resolve on demand, and the embedded color
+  catalog comes from 322 official LDraw definitions. This is standard-first
+  guidance, not an availability restriction or measured popularity ranking.
 - Physics uses nominal metric dimensions and sourced catalog masses. Realistic
   connection capacities must come from operator-supplied measurements; no universal
   clutch-force default is invented. A finite gravity test is not a structural proof.
@@ -109,7 +118,8 @@ The following are implementation limits, not mathematical limits of the design:
 - `crates/client/src/renderer.rs`: shared WebGL2 drawing, picking, LOD, fog, and navigation.
 - `crates/viewer/src/app.rs`: Leptos controls and streaming orchestration.
 - `web/sw.js`: bounded persistent browser cache.
-- `crates/mcp/src/main.rs`: thin stdio/REST bridge; `crates/client/src/runtime.rs`
+- `crates/mcp/src/main.rs`: thin stdio/REST bridge; `crates/mcp/src/publish.rs`
+  handles authenticated shared-world publication; `crates/client/src/runtime.rs`
   and `web/mcp.html`: minimal local WASM tool execution.
 - `crates/assets/`: cache-first missing-part fetches and lazy imagery-derived ground.
 - `crates/xtask/src/main.rs`: explicit Rust WASM/binding build orchestration via

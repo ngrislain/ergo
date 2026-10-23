@@ -23,6 +23,11 @@ fixture examples. Configure `.env` using [`.env.example`](.env.example) for othe
 storage/authentication settings. Neither a JavaScript package manager nor a
 database is needed.
 
+Local development also accepts **http://localhost:3000**. If an import or save
+reports **Unexpected request origin**, open the configured `ERGO_PUBLIC_URL` or
+set it to the browser-facing origin and restart the server. Google-enabled and
+non-loopback deployments require that origin to match.
+
 `cargo xtask build-web` runs the Rust build orchestrator in `crates/xtask`.
 It compiles both WASM entry points separately and generates their bindings with
 `wasm-bindgen`, honoring Cargo's configured target directory. The task runs
@@ -31,7 +36,7 @@ explicitly, so ordinary server builds/tests do not require the WASM toolchain.
 
 ## What works
 
-- Instanced 3D brick rendering, orbit/fly/walk navigation, mesh picking, part
+- Instanced 3D brick rendering, full-screen orbit/fly/walk navigation, nearest-construction navigation, mesh picking, part
   inspection, layer separation, and a base grid.
   Fly uses arrows to steer and A/Z to accelerate/slow. Walk uses up/down to move,
   left/right to turn, A/Z for speed, and Space to jump; focus the canvas first.
@@ -39,13 +44,14 @@ explicitly, so ordinary server builds/tests do not require the WASM toolchain.
   takeoff, with metric gravity, body collisions, ceiling hits, and landing.
 - Frustum/fog-bounded streaming, progressive distance LOD, a resident octree, and bounded persistent
   browser caching of immutable block/geometry objects.
-- Lazily generated 1024×1024 special baseplates below Z=0, each using one standard
-  color nearest the average source imagery color for that geographic footprint.
+- Lazily generated studded 1024×1024 special baseplates below Z=0, each using one
+  standard color nearest the average satellite/aerial image color for that footprint.
 - Cache-first supported LDraw parts: missing meshes/dependencies are pulled and
   persisted in local storage or S3 with source/license credits.
 - BrickLink Studio `.io`, LDraw `.ldr`/`.mpd`, and Ergo JSON import into a working
-  copy. The starter catalog deliberately allows 27 basic bricks/plates/tiles and
-  20 opaque colors; unsupported parts/colors are reported rather than omitted.
+  copy. The 27 basic bricks/plates/tiles and 20 opaque colors are preferred agent
+  recommendations; other Studio/LDraw parts resolve on demand, with a full sourced
+  LDraw color palette and explicit measured-physics requirements for publication.
 - Fixed and revolute constraints, collision-aware group nudges, dynamic pulling,
   gravity simulation, and non-destructive earthquake/falling-object load tests.
 - Persistent nested authoring groups with rigid transforms, validated membership,
@@ -53,12 +59,15 @@ explicitly, so ordinary server builds/tests do not require the WASM toolchain.
 - Server-side save validation: schema/catalog checks, overlap checks, grounding,
   static support/wrench checks with numerical tolerances, and measured connector-capacity requirements. The server runs no dynamic simulation.
 - Google OpenID Connect, object-store user profiles, signed HttpOnly sessions,
-  per-user snapshots, and shared read-only examples.
+  a landing/setup page with MCP/API tokens, per-user snapshots, and fixture examples.
+- Collaborative shared worlds with configurable per-user pacing (default 5,000
+  changed bricks refilled per day); paid entitlements bypass pacing, not validation.
 - An authenticated shared-world REST API with versioned region grants, optimistic
   commits, stable content-derived piece identities, paged spatial access, and
-  on-demand validation of complete affected mechanical domains.
+  on-demand validation of complete affected mechanical domains, and bounded shared-world navigation.
 - A thin stdio/REST MCP bridge and minimal local WASM client with editing,
-  stability feedback, and actual WebGL2 PNG image tools for vision models.
+  stability feedback, actual WebGL2 PNG image tools for vision models, and
+  authenticated shared-world publication with accepted-revision read-back.
 
 ## Coordinates and physical data
 
@@ -86,6 +95,13 @@ numeric tolerances; the server uses a zero-step static certificate.
 
 ## Scaleway S3 and Google sign-in
 
+For a complete scale-to-zero deployment at **https://ergosandbox.com**, use
+the [OpenTofu configuration](infra/scaleway/) and
+[Scaleway deployment guide](docs/scaleway-deployment.md). It uses the existing
+`ergo` bucket, a single API/web container, apex DNS, and managed HTTPS.
+Container builds and runtime smoke tests use Podman; Dockerfile compatibility
+does not require Docker Desktop.
+
 Set `S3_BUCKET`, `S3_ENDPOINT`, `S3_REGION`, `AWS_ACCESS_KEY_ID`, and
 `AWS_SECRET_ACCESS_KEY`. The default endpoint is `https://s3.fr-par.scw.cloud`
 and the default region is `fr-par`. Geometry/blocks are immutable CBOR objects;
@@ -101,11 +117,17 @@ explicit local development account.
 
 An optional `LDRAW_DIR` supplies local LDraw sources. Otherwise missing supported
 parts are fetched from the official library and cached; `ERGO_ASSET_FETCH=0`
-disables network fetching and exposes a labeled parametric fallback. Default
-ground imagery uses OSM cartographic tiles, not satellite photography; a licensed
-XYZ provider can be configured. See [ground and coordinates](docs/ground-and-coordinates.md),
+disables network fetching and exposes a labeled parametric fallback for standard
+parts; non-standard parts require their actual geometry. Default ground imagery
+uses Esri World Imagery satellite/aerial tiles; an alternative XYZ provider can
+be configured. See [ground and coordinates](docs/ground-and-coordinates.md),
 [identity and ownership](docs/identity-and-ownership.md)
 and [persistence indexing](docs/persistence-indexing.md).
+
+The root is the sign-in/setup landing page; `/app` is the workbench. See
+[account/MCP/API onboarding and edit pacing](docs/access-and-onboarding.md) and
+[Studio catalog support](docs/studio-catalog.md). Paid-plan entitlement is currently
+operator-managed; checkout/payment-webhook integration is future work.
 
 ## Local MCP editor
 
@@ -119,8 +141,12 @@ MCP command opens a minimal client in the existing browser; `--attach` prints it
 local attachment URL and `--headless` uses isolated Chrome for automation. The
 bridge does not load the full application UI or run a native renderer/solver.
 
-The parent directory must exist. The bridge stores only this local working copy;
-it exposes no S3/global commit tool. `view_construction` returns images from
+The parent directory must exist. Edits are stored in this local working copy.
+`publish_construction` can publish a new shared-world assembly through the
+authenticated REST service when `ERGO_PUBLISH_URL` and a user delegation token
+are configured. The bridge confirms the accepted revision by remote read-back;
+S3 credentials stay on the server. See [publication setup](docs/local-construction-mcp.md#remote-publication-setup).
+`view_construction` returns images from
 isometric, north, south, east, west, or top views. `test_solidity` returns
 earthquake/drop-test diagnostics and an optional post-test image.
 `test_moderate_earthquake_stability` supplies a named, two-axis 0.15g-bound preset
@@ -134,6 +160,8 @@ The primary testing tools are `test_stability_by_gravity`,
 See [MCP tools and configuration](docs/local-construction-mcp.md).
 
 ## Documentation and next features
+
+See the [release notes](CHANGELOG.md) for the current version's changes and limits.
 
 ### Concurrent CBOR/S3 transaction library
 
@@ -195,10 +223,28 @@ WASM browser runtime.
 End-to-end MCP checks use the built native binary:
 
 ```sh
-cargo build -p ergo-mcp
+cargo build -p ergo-mcp -p ergo-server
 cargo xtask build-web
 python3 scripts/test-mcp.py
+python3 scripts/test-mcp-publish.py
 ```
+
+Run the complete isolated browser flow with the configured Playwright Python environment:
+
+```sh
+python3 scripts/test-web-isolated.py
+```
+
+Verify a built Scaleway image with Podman:
+
+```sh
+python3 scripts/test-container.py --image localhost/ergo:v0.3.0
+```
+
+The publication check starts an isolated server and exercises signed delegation,
+MCP/WASM construction, new/existing-world imports, persistent remote read-back,
+and authorization/physics rejection. It uses a disposable filesystem object store;
+live Google and Scaleway integration still require configured external resources.
 
 Browser smoke tests require Python Playwright (`scripts/requirements-test.txt`),
 Google Chrome, the built web client, and an isolated running development server:

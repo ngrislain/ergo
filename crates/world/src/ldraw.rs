@@ -252,6 +252,7 @@ pub fn bake_mesh(
         bounds,
         body_bounds: bounds,
         credits: Vec::new(),
+        physical: None,
     })
 }
 

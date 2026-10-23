@@ -25,6 +25,35 @@ use wasm_bindgen_futures::spawn_local;
 
 type Handle = StoredValue<Rc<RefCell<Client>>, LocalStorage>;
 
+#[derive(Clone, Deserialize)]
+struct SharedMetadata {
+    name: String,
+    geo: ergo_world::GeoReference,
+}
+#[derive(Clone, Deserialize)]
+struct SharedLocation {
+    world: String,
+    metadata: SharedMetadata,
+    coord: Option<BlockCoord>,
+}
+#[derive(Deserialize)]
+struct SharedPage {
+    items: Vec<SharedLocation>,
+    next: Option<String>,
+}
+struct SharedView {
+    id: String,
+    coord: [i64; 3],
+    last_check: f64,
+    loading: bool,
+    revision: String,
+}
+#[derive(Deserialize)]
+struct SharedRegion {
+    scene: WorldExport,
+    revision: String,
+}
+
 #[derive(Clone, Copy)]
 struct Ui {
     worlds: RwSignal<Vec<WorldManifest>>,
@@ -55,6 +84,9 @@ struct Ui {
     authoring_groups: RwSignal<Vec<ergo_world::groups::Group>>,
     group_selection: RwSignal<Vec<u32>>,
     navigation: RwSignal<NavigationStatus>,
+    fullscreen: RwSignal<bool>,
+    shared_locations: RwSignal<Vec<SharedLocation>>,
+    shared_cursor: RwSignal<Option<String>>,
 }
 
 impl Ui {
@@ -88,6 +120,9 @@ impl Ui {
             authoring_groups: RwSignal::new(Vec::new()),
             group_selection: RwSignal::new(Vec::new()),
             navigation: RwSignal::new(NavigationStatus::default()),
+            fullscreen: RwSignal::new(false),
+            shared_locations: RwSignal::new(Vec::new()),
+            shared_cursor: RwSignal::new(None),
         }
     }
     fn fail(self, error: impl ToString) {
@@ -97,12 +132,14 @@ impl Ui {
 }
 
 struct Client {
+    shared: Option<SharedView>,
     renderer: Option<Renderer>,
     world: Option<WorldManifest>,
     blocks: BTreeMap<BlockCoord, Block>,
     pending: HashSet<String>,
     ground_pending: HashSet<(i64, i64)>,
     ground_retry: std::collections::HashMap<(i64, i64), f64>,
+    ground_provider: Option<String>,
     navigation_controls: HashSet<Control>,
     known_cells: HashSet<BlockCoord>,
     default_geo: ergo_world::GeoReference,
@@ -124,12 +161,14 @@ struct Client {
 impl Client {
     fn new(ui: Ui) -> Self {
         Self {
+            shared: None,
             renderer: None,
             world: None,
             blocks: BTreeMap::new(),
             pending: HashSet::new(),
             ground_pending: HashSet::new(),
             ground_retry: Default::default(),
+            ground_provider: None,
             default_geo: Default::default(),
             navigation_controls: HashSet::new(),
             known_cells: HashSet::new(),
@@ -204,6 +243,10 @@ impl Client {
         self.refresh_selection();
     }
     fn request_all(&mut self) -> anyhow::Result<()> {
+        anyhow::ensure!(
+            self.shared.is_none(),
+            "This is a bounded shared-world navigation view, not a complete editable mechanical domain. Use the MCP/shared-world API for edits."
+        );
         let world = self
             .world
             .as_ref()
@@ -380,9 +423,266 @@ async fn object<T: serde::de::DeserializeOwned>(world: &str, hash: &str) -> anyh
     Ok(ciborium::from_reader(bytes.as_slice())?)
 }
 
+fn shared_manifest(
+    id: &str,
+    scene: &WorldExport,
+    coord: [i64; 3],
+    blocks: &BTreeMap<BlockCoord, Block>,
+) -> WorldManifest {
+    let center = BlockCoord::from(coord).origin() + DVec3::new(512., 16., 512.);
+    WorldManifest {
+        schema: ergo_world::SCHEMA_VERSION,
+        id: format!("shared:{id}"),
+        name: scene.name.clone(),
+        source: "Shared-world spatial view".into(),
+        brick_count: scene.bricks.len(),
+        bounds: ergo_world::bounds(&scene.bricks).unwrap_or(ergo_world::Aabb::new(
+            center - DVec3::splat(16.),
+            center + DVec3::splat(16.),
+        )),
+        geo: scene.geo,
+        blocks: blocks
+            .values()
+            .filter(|b| !b.bricks.is_empty())
+            .map(|b| ergo_world::BlockInfo {
+                coord: b.coord,
+                key: b.coord.key(),
+                brick_count: b.bricks.len(),
+            })
+            .collect(),
+        geometry: BTreeMap::new(),
+        proxy_parts: Vec::new(),
+        notes: vec!["Read-only bounded region; edit through the shared-world API/MCP".into()],
+        joints: Vec::new(),
+        fixed_bricks: Vec::new(),
+        validation: ergo_world::validation::ValidationReport {
+            collision_model: "View only".into(),
+            method: "Bounded region, not a full mechanical certificate".into(),
+            inferred_joints: 0,
+            checked_bricks: 0,
+            max_displacement: 0.,
+            physical_calibration: "No physical claim for a clipped navigation view".into(),
+            tolerances: Default::default(),
+        },
+        owner: "shared".into(),
+        ground: Vec::new(),
+        groups: Vec::new(),
+    }
+}
+
+fn open_shared(handle: Handle, location: SharedLocation) {
+    let coord: [i64; 3] = location
+        .coord
+        .unwrap_or_else(|| BlockCoord::from([0, 0, 0]))
+        .into();
+    with_client(handle, |c| {
+        c.generation += 1;
+        c.blocks.clear();
+        c.pending.clear();
+        c.ground_pending.clear();
+        c.ground_retry.clear();
+        c.known_cells.clear();
+        c.navigation_controls.clear();
+        c.simulation = None;
+        c.playing = false;
+        c.undo = None;
+        c.joints.clear();
+        c.fixed.clear();
+        c.groups.clear();
+        c.load_all = false;
+        c.start_when_loaded = false;
+        c.ready = false;
+        let scene = WorldExport {
+            schema: ergo_world::SCHEMA_VERSION,
+            name: location.metadata.name,
+            geo: location.metadata.geo,
+            bricks: Vec::new(),
+            meshes: BTreeMap::new(),
+            joints: Vec::new(),
+            fixed_bricks: Vec::new(),
+            groups: Vec::new(),
+            ground: Vec::new(),
+        };
+        let manifest = shared_manifest(&location.world, &scene, coord, &c.blocks);
+        c.world = Some(manifest.clone());
+        if let Some(renderer) = &mut c.renderer {
+            renderer.clear();
+            renderer.fit(manifest.bounds);
+        }
+        c.ui.current.set(Some(manifest));
+        c.ui.dirty.set(false);
+        c.ui.playing.set(false);
+        c.ui.selected.set(None);
+        c.ui.authoring_groups.set(Vec::new());
+        c.ui.group_selection.set(Vec::new());
+        c.ui.busy.set(true);
+        c.shared = Some(SharedView {
+            id: location.world.clone(),
+            coord,
+            last_check: 0.,
+            loading: true,
+            revision: String::new(),
+        });
+    });
+    request_shared_region(handle, location.world, coord, true);
+}
+
+fn request_shared_region(handle: Handle, id: String, coord: [i64; 3], fit_view: bool) {
+    let generation = with_client(handle, |c| c.generation);
+    spawn_local(async move {
+        let url = format!(
+            "/api/shared-worlds/{id}/view?x={}&y={}&z={}",
+            coord[0], coord[1], coord[2]
+        );
+        let result = json::<SharedRegion>(&url).await;
+        with_client(handle, |c| {
+            if c.generation != generation || c.shared.as_ref().is_none_or(|s| s.id != id) {
+                return;
+            }
+            if let Some(shared) = &mut c.shared {
+                shared.loading = false;
+                shared.last_check = js_sys::Date::now();
+                shared.coord = coord;
+            }
+            match result {
+                Ok(region) => {
+                    if let Some(shared) = &mut c.shared {
+                        shared.revision = region.revision.clone();
+                    }
+                    let scene = region.scene;
+                    let mut blocks = match ergo_world::partition(&scene.bricks) {
+                        Ok(blocks) => blocks,
+                        Err(error) => {
+                            c.ui.fail(error);
+                            return;
+                        }
+                    };
+                    for dx in -1..=1 {
+                        for dy in -1..=1 {
+                            for dz in -1..=1 {
+                                let cell =
+                                    BlockCoord::from([coord[0] + dx, coord[1] + dy, coord[2] + dz]);
+                                blocks.entry(cell).or_insert(Block {
+                                    schema: ergo_world::SCHEMA_VERSION,
+                                    coord: cell,
+                                    bricks: Vec::new(),
+                                });
+                            }
+                        }
+                    }
+                    let manifest = shared_manifest(&id, &scene, coord, &blocks);
+                    c.blocks = blocks;
+                    c.known_cells = c.blocks.keys().copied().collect();
+                    c.world = Some(manifest.clone());
+                    if let Some(renderer) = &mut c.renderer {
+                        let ground = std::mem::take(&mut renderer.ground);
+                        renderer.clear();
+                        renderer.ground = ground;
+                        renderer.meshes = scene.meshes;
+                        renderer.set_bricks(scene.bricks);
+                        if fit_view {
+                            renderer.fit(manifest.bounds);
+                        }
+                    }
+                    c.ready = true;
+                    c.ui.current.set(Some(manifest));
+                    c.ui.selected.set(None);
+                    c.ui.busy.set(false);
+                    c.ui.message.set(format!(
+                        "Shared-world region loaded · revision {} · edit using MCP / API",
+                        &region.revision[..region.revision.len().min(12)]
+                    ));
+                }
+                Err(error) => c.ui.fail(error),
+            }
+        });
+    });
+}
+
+fn pump_shared(handle: Handle) {
+    let request = with_client(handle, |c| {
+        let eye = c.renderer.as_ref()?.eye();
+        let shared = c.shared.as_mut()?;
+        let coord: [i64; 3] = BlockCoord::at(eye).into();
+        if shared.loading
+            || (coord == shared.coord && js_sys::Date::now() - shared.last_check < 5000.)
+        {
+            return None;
+        }
+        let same_region = coord == shared.coord;
+        shared.loading = true;
+        Some((
+            shared.id.clone(),
+            coord,
+            same_region,
+            c.generation,
+            shared.revision.clone(),
+        ))
+    });
+    if let Some((id, coord, same_region, generation, revision)) = request {
+        if !same_region {
+            request_shared_region(handle, id, coord, false);
+            return;
+        }
+        spawn_local(async move {
+            #[derive(Deserialize)]
+            struct HeadRevision {
+                revision: String,
+            }
+            match json::<HeadRevision>(&format!("/api/shared-worlds/{id}")).await {
+                Ok(head) if head.revision != revision => {
+                    if with_client(handle, |c| c.generation == generation) {
+                        request_shared_region(handle, id, coord, false);
+                    }
+                }
+                result => with_client(handle, |c| {
+                    if c.generation != generation {
+                        return;
+                    }
+                    if let Some(shared) = &mut c.shared {
+                        shared.loading = false;
+                        shared.last_check = js_sys::Date::now();
+                    }
+                    if let Err(error) = result {
+                        c.ui.fail(error);
+                    }
+                }),
+            }
+        });
+    }
+}
+
+fn more_shared_regions(handle: Handle) {
+    let cursor = with_client(handle, |c| c.ui.shared_cursor.get_untracked());
+    if let Some(cursor) = cursor {
+        with_client(handle, |c| c.ui.shared_cursor.set(None));
+        spawn_local(async move {
+            let encoded = js_sys::encode_uri_component(&cursor)
+                .as_string()
+                .unwrap_or_default();
+            match json::<SharedPage>(&format!(
+                "/api/shared-worlds?quad=&limit=32&cursor={encoded}"
+            ))
+            .await
+            {
+                Ok(page) => with_client(handle, |c| {
+                    c.ui.shared_locations
+                        .update(|items| items.extend(page.items));
+                    c.ui.shared_cursor.set(page.next);
+                }),
+                Err(error) => with_client(handle, |c| {
+                    c.ui.shared_cursor.set(Some(cursor));
+                    c.ui.fail(error);
+                }),
+            }
+        });
+    }
+}
+
 fn open_world(handle: Handle, world: WorldManifest) {
     let generation = with_client(handle, |c| {
         c.generation += 1;
+        c.shared = None;
         c.world = Some(world.clone());
         c.known_cells = world.blocks.iter().map(|b| b.coord).collect();
         c.navigation_controls.clear();
@@ -405,7 +705,12 @@ fn open_world(handle: Handle, world: WorldManifest) {
             r.clear();
             r.fit(world.bounds);
             for block in &world.ground {
-                r.set_ground(block.clone());
+                if c.ground_provider
+                    .as_ref()
+                    .is_none_or(|provider| provider == &block.source)
+                {
+                    r.set_ground(block.clone());
+                }
             }
             if world.bounds.size().max_element() > 1024.0
                 && let Some(first) = world.blocks.first()
@@ -470,6 +775,7 @@ fn open_draft(handle: Handle, scene: WorldExport) -> anyhow::Result<()> {
     let bounds = ergo_world::bounds(&scene.bricks).ok_or_else(|| anyhow::anyhow!("Empty model"))?;
     with_client(handle, |c| {
         c.generation += 1;
+        c.shared = None;
         c.pending.clear();
         c.ground_pending.clear();
         c.ground_retry.clear();
@@ -528,7 +834,12 @@ fn open_draft(handle: Handle, scene: WorldExport) -> anyhow::Result<()> {
         r.set_bricks(scene.bricks);
         r.fit(bounds);
         for block in scene.ground {
-            r.set_ground(block);
+            if c.ground_provider
+                .as_ref()
+                .is_none_or(|provider| provider == &block.source)
+            {
+                r.set_ground(block);
+            }
         }
         c.ui.current.set(Some(world));
         c.ui.dirty.set(true);
@@ -544,6 +855,10 @@ fn open_draft(handle: Handle, scene: WorldExport) -> anyhow::Result<()> {
 
 fn pump(handle: Handle) {
     pump_ground(handle);
+    if with_client(handle, |c| c.shared.is_some()) {
+        pump_shared(handle);
+        return;
+    }
     let requests = with_client(handle, |c| {
         if !c.ready || c.simulation.is_some() || c.ui.dirty.get_untracked() {
             return Vec::new();
@@ -698,10 +1013,14 @@ fn pump_ground(handle: Handle) {
         }
         for key in &cells {
             if !renderer.ground.contains_key(key)
-                && let Some(block) = c
-                    .world
-                    .as_ref()
-                    .and_then(|w| w.ground.iter().find(|b| (b.coord.0, b.coord.2) == *key))
+                && let Some(block) = c.world.as_ref().and_then(|w| {
+                    w.ground.iter().find(|b| {
+                        (b.coord.0, b.coord.2) == *key
+                            && c.ground_provider
+                                .as_ref()
+                                .is_none_or(|provider| provider == &b.source)
+                    })
+                })
             {
                 renderer.set_ground(block.clone());
             }
@@ -771,6 +1090,26 @@ pub fn App() -> impl IntoView {
     provide_context(ui);
     let canvas = NodeRef::<html::Canvas>::new();
     let mounted = StoredValue::new(false);
+    let fullscreen_listener =
+        leptos::leptos_dom::helpers::window_event_listener_untyped("fullscreenchange", move |_| {
+            let active = web_sys::window()
+                .and_then(|w| w.document())
+                .and_then(|d| d.fullscreen_element())
+                .is_some_and(|e| e.id() == "world-viewport");
+            ui.fullscreen.set(active);
+            focus_world_canvas();
+        });
+    let escape_listener =
+        leptos::leptos_dom::helpers::window_event_listener(leptos::ev::keydown, move |event| {
+            if event.key() == "Escape" && ui.fullscreen.get_untracked() {
+                event.prevent_default();
+                toggle_fullscreen(ui);
+            }
+        });
+    on_cleanup(move || {
+        fullscreen_listener.remove();
+        escape_listener.remove();
+    });
     Effect::new(move |_| {
         if mounted.get_value() {
             return;
@@ -816,8 +1155,9 @@ pub fn App() -> impl IntoView {
                         NavigationInput::from_controls(c.navigation_controls.iter().copied());
                     let known = &c.known_cells;
                     let loaded = &c.blocks;
+                    let shared_view = c.shared.is_some();
                     r.navigate(input, delta, &|cell| {
-                        known.contains(&cell) && !loaded.contains_key(&cell)
+                        (shared_view || known.contains(&cell)) && !loaded.contains_key(&cell)
                     });
                     r.render();
                     let status = r.navigation.status();
@@ -828,6 +1168,10 @@ pub fn App() -> impl IntoView {
                         let _ = r
                             .canvas
                             .set_attribute("data-navigation-speed", &status.speed.to_string());
+                        let _ = r.canvas.set_attribute(
+                            "data-ground-studs",
+                            &r.ground_stud_instances.to_string(),
+                        );
                         let _ = r.canvas.set_attribute(
                             "data-camera-position",
                             &serde_json::to_string(&ergo_world::coordinates::public(r.eye()))
@@ -872,6 +1216,8 @@ pub fn App() -> impl IntoView {
             struct Config {
                 storage: String,
                 geo: ergo_world::GeoReference,
+                #[serde(default)]
+                ground_provider: Option<String>,
             }
             #[derive(Deserialize)]
             struct Me {
@@ -881,12 +1227,53 @@ pub fn App() -> impl IntoView {
             }
             if let Ok(config) = json::<Config>("/api/config").await {
                 ui.storage.set(config.storage);
-                with_client(handle, |c| c.default_geo = config.geo);
+                with_client(handle, |c| {
+                    c.default_geo = config.geo;
+                    c.ground_provider = config.ground_provider;
+                });
             }
             if let Ok(me) = json::<Me>("/api/auth/me").await {
                 ui.user.set(me.name);
                 ui.google.set(me.google_enabled);
                 ui.signed_in.set(me.signed_in);
+            }
+            if let Ok(page) = json::<SharedPage>("/api/shared-worlds?quad=&limit=32").await {
+                ui.shared_locations.set(page.items);
+                ui.shared_cursor.set(page.next);
+            }
+            let parameters = web_sys::window()
+                .and_then(|w| w.location().search().ok())
+                .and_then(|query| web_sys::UrlSearchParams::new_with_str(&query).ok());
+            if let Some(parameters) = parameters
+                && let Some(id) = parameters.get("shared_world")
+            {
+                #[derive(Deserialize)]
+                struct SharedHead {
+                    metadata: SharedMetadata,
+                }
+                let encoded = js_sys::encode_uri_component(&id)
+                    .as_string()
+                    .unwrap_or_default();
+                match json::<SharedHead>(&format!("/api/shared-worlds/{encoded}")).await {
+                    Ok(head) => {
+                        let coord = ["x", "y", "z"].map(|key| {
+                            parameters
+                                .get(key)
+                                .and_then(|n| n.parse::<i64>().ok())
+                                .unwrap_or(0)
+                        });
+                        open_shared(
+                            handle,
+                            SharedLocation {
+                                world: id,
+                                metadata: head.metadata,
+                                coord: Some(BlockCoord::from(coord)),
+                            },
+                        );
+                    }
+                    Err(error) => ui.fail(error),
+                }
+                return;
             }
             match json::<Vec<WorldManifest>>("/api/worlds").await {
                 Ok(worlds) => {
@@ -899,9 +1286,14 @@ pub fn App() -> impl IntoView {
                     if let Some(world) = first {
                         open_world(handle, world);
                     } else {
-                        ui.busy.set(false);
-                        ui.message
-                            .set("Import a Studio construction to start exploring".into());
+                        if let Some(location) = ui.shared_locations.get_untracked().first().cloned()
+                        {
+                            open_shared(handle, location);
+                        } else {
+                            ui.busy.set(false);
+                            ui.message
+                                .set("Import a Studio construction to start exploring".into());
+                        }
                     }
                 }
                 Err(e) => ui.fail(e),
@@ -914,9 +1306,9 @@ pub fn App() -> impl IntoView {
             <div class="header-actions"><span class="account-name">{move ||ui.user.get()}</span><Show when=move ||ui.google.get()&&!ui.signed_in.get()><a class="button quiet" href="/auth/google">"Sign in with Google"</a></Show><Show when=move ||ui.google.get()&&ui.signed_in.get()><button class="button quiet" on:click=move |_|logout(ui)>"Sign out"</button></Show><button class="button primary" on:click=move |_|show_dialog("import-dialog")>"＋ Import construction"</button></div>
         </header>
         <main class="workbench">
-            <aside class="left-dock"><ConstructionBrowser/><div class="dock-bottom"><span class="storage-dot"></span>{move ||ui.storage.get()}<p>"27 common parts · 20 colors"</p></div></aside>
-            <section class="viewport-area" aria-label="3D construction workbench">
-                <div class="scene-heading"><div><p class="scene-location">"World origin"<span>{move ||ui.current.get().map(|w|format!("{:.4}°, {:.4}°",w.geo.latitude,w.geo.longitude)).unwrap_or_default()}</span></p><h1>{move ||ui.current.get().map(|w|w.name).unwrap_or_else(||"Your next construction".into())}</h1><p>{move ||ui.current.get().map(|w|if w.id=="draft" {"Workspace draft".into()} else {format!("{} bricks in {} spatial block{}",number(w.brick_count),w.blocks.len(),if w.blocks.len()==1{""}else{"s"})}).unwrap_or_default()}</p></div><span class="snapshot-badge" class:draft=move ||ui.dirty.get()>{move ||if ui.dirty.get(){"Working copy"}else if ui.current.get().is_some_and(|w|w.owner=="examples"){"Fixture example"}else{"Validated snapshot"}}</span></div>
+            <aside class="left-dock"><ConstructionBrowser/><div class="dock-bottom"><span class="storage-dot"></span>{move ||ui.storage.get()}<p>"Standard parts first · Studio / LDraw"</p></div></aside>
+            <section id="world-viewport" class="viewport-area" class:is-fullscreen=move ||ui.fullscreen.get() aria-label="3D construction workbench">
+                <div class="scene-heading"><div><p class="scene-location">"World origin"<span>{move ||ui.current.get().map(|w|format!("{:.4}°, {:.4}°",w.geo.latitude,w.geo.longitude)).unwrap_or_default()}</span></p><h1>{move ||ui.current.get().map(|w|w.name).unwrap_or_else(||"Your next construction".into())}</h1><p>{move ||ui.current.get().map(|w|if w.id=="draft" {"Workspace draft".into()} else {format!("{} bricks in {} spatial block{}",number(w.brick_count),w.blocks.len(),if w.blocks.len()==1{""}else{"s"})}).unwrap_or_default()}</p></div><span class="snapshot-badge" class:draft=move ||ui.dirty.get()>{move ||if ui.dirty.get(){"Working copy"}else if ui.current.get().is_some_and(|w|w.owner=="examples"){"Fixture example"}else if ui.current.get().is_some_and(|w|w.owner=="shared"){"Shared world view"}else{"Validated snapshot"}}</span></div>
                 <canvas node_ref=canvas id="world-canvas" tabindex="0" aria-label=move ||format!("3D brick construction. {} navigation. Drag to look; focus canvas for keyboard controls.",ui.navigation.get().mode.name())
                     on:contextmenu=move |e|e.prevent_default()
                     on:pointerdown=move |e|with_client(handle,|c|{let x=e.client_x() as f64;let y=e.client_y() as f64;c.pointer=Some((x,y,x,y,e.button(),e.shift_key()));if let Some(r)=&c.renderer{let _=r.canvas.set_pointer_capture(e.pointer_id());}})
@@ -926,23 +1318,26 @@ pub fn App() -> impl IntoView {
                     on:keydown=move |e| {
                         if e.ctrl_key()||e.meta_key()||e.alt_key(){return;}
                         if let Some(control)=Control::from_key(&e.key()){e.prevent_default();navigation_control(handle,control,true);}
-                        if e.key().eq_ignore_ascii_case("f") {fit(handle);}
+                        if e.key().eq_ignore_ascii_case("f") && !e.repeat() {if e.shift_key(){e.prevent_default();toggle_fullscreen(ui);}else{fit(handle);}}
+                        if e.key().eq_ignore_ascii_case("n") && !e.repeat() {e.prevent_default();nearest_construction(handle);}
                     }
                     on:keyup=move |e|{if let Some(control)=Control::from_key(&e.key()){navigation_control(handle,control,false);}}
                     on:blur=move |_|with_client(handle,|c|c.navigation_controls.clear())
                 ></canvas>
-                <div class="view-tools"><button title="Fit construction (F)" aria-label="Fit construction" on:click=move |_|fit(handle)>"⊡"</button><button title="Zoom in / faster" aria-label="Zoom in" on:click=move |_|with_client(handle,|c|{if let Some(r)=&mut c.renderer{r.zoom(-180.0);}})>"＋"</button><button title="Zoom out / slower" aria-label="Zoom out" on:click=move |_|with_client(handle,|c|{if let Some(r)=&mut c.renderer{r.zoom(180.0);}})>"−"</button><button title="Top view" aria-label="Top view" on:click=move |_|with_client(handle,|c|{if let Some(r)=&mut c.renderer{r.set_navigation(NavigationMode::Orbit);r.pitch=1.55;r.changed();}})>"⌑"</button></div>
+                <div class="view-tools"><button title="Fit construction (F)" aria-label="Fit construction" on:click=move |_|fit(handle)>"⊡"</button><button title="Zoom in / faster" aria-label="Zoom in" on:click=move |_|with_client(handle,|c|{if let Some(r)=&mut c.renderer{r.zoom(-180.0);}})>"＋"</button><button title="Zoom out / slower" aria-label="Zoom out" on:click=move |_|with_client(handle,|c|{if let Some(r)=&mut c.renderer{r.zoom(180.0);}})>"−"</button><button title="Top view" aria-label="Top view" on:click=move |_|with_client(handle,|c|{if let Some(r)=&mut c.renderer{r.set_navigation(NavigationMode::Orbit);r.pitch=1.55;r.changed();}})>"⌑"</button><button title="Full screen (Shift+F; Esc to exit)" aria-label=move ||if ui.fullscreen.get(){"Exit full screen"}else{"Enter full screen"} aria-pressed=move ||ui.fullscreen.get().to_string() on:click=move |_|toggle_fullscreen(ui)>"⛶"</button></div>
+                <button class="nearest-construction" title="Go to nearest construction (N)" aria-label="Nearest construction" on:click=move |_|nearest_construction(handle)>"⌖ Nearest construction"</button>
                 <NavigationModes mobile=true/>
                 <Show when=move ||ui.navigation.get().mode!=NavigationMode::Orbit><MovementPad/></Show>
                 <div class="north-marker"><span>"N"</span><svg viewBox="0 0 40 40" aria-hidden="true"><path d="M20 3 L29 33 L20 27 L11 33 Z" fill="#334b61"/><path d="M20 3 L20 27 L11 33 Z" fill="#8c9faf"/></svg></div>
                 <div class="viewport-footer"><span>{move ||ui.navigation.get().mode.instructions()}</span><span class="render-badge">"WebGL2"<b>{move ||format!("{} fps",ui.fps.get())}</b></span></div>
                 <div class="map-attribution" title=move ||ui.ground_status.get()><Show when=move ||ui.ground_attribution.get().is_some() fallback=move ||view!{<span>"Ground: palette fallback"</span>}><a target="_blank" rel="noopener noreferrer" href=move ||ui.ground_attribution.get().map(|(_,url)|url).unwrap_or_default()>{move ||ui.ground_attribution.get().map(|(label,_)|label).unwrap_or_default()}</a></Show></div>
                 <Show when=move ||ui.busy.get()><div class="loading-pill" role="status"><span class="spinner"></span>"Loading construction…"</div></Show>
+                <Show when=move ||ui.fullscreen.get()><ErrorToast/></Show>
             </section>
-            <aside class="right-dock"><BrickInspector/><SimulationControls/></aside>
+            <aside class="right-dock"><BrickInspector/><Show when=move ||ui.current.get().is_some_and(|w|w.owner=="shared") fallback=move ||view!{<SimulationControls/>}><div class="dock-section"><h2>"Shared-world navigation"</h2><p class="subtle compact">"This is a bounded spatial view. Edit complete constructions through MCP or the API; the server checks permissions, edit allowance, and measured physics."</p><a class="button full quiet" href="/#connect">"Edit with MCP / API"</a></div></Show></aside>
         </main>
         <footer class="status-bar"><span class="status-message" role="status">{move ||ui.message.get()}</span><span>{move ||format!("{} blocks · {} bricks · {} draw calls · {:.1} MB GPU",ui.blocks.get(),number(ui.count.get()),ui.draws.get(),ui.gpu.get() as f64/1e6)}</span></footer>
-        <Show when=move ||ui.error.get().is_some()><div class="error-toast" role="alert"><div><strong>"Action could not be completed"</strong><p>{move ||ui.error.get().unwrap_or_default()}</p></div><button aria-label="Dismiss error" on:click=move |_|ui.error.set(None)>"×"</button></div></Show>
+        <Show when=move ||!ui.fullscreen.get()><ErrorToast/></Show>
         <ImportDialog/><LocationDialog/><ConstraintDialog/><SolidityDialog/><GroupsDialog/>
     }
 }
@@ -958,6 +1353,12 @@ fn NavigationModes(#[prop(optional)] mobile: bool) -> impl IntoView {
             }).collect_view()}
         </div>
     }
+}
+
+#[component]
+fn ErrorToast() -> impl IntoView {
+    let ui = expect_context::<Ui>();
+    view! {<Show when=move ||ui.error.get().is_some()><div class="error-toast" role="alert"><div><strong>"Action could not be completed"</strong><p>{move ||ui.error.get().unwrap_or_default()}</p></div><button aria-label="Dismiss error" on:click=move |_|ui.error.set(None)>"×"</button></div></Show>}
 }
 
 #[component]
@@ -1026,6 +1427,124 @@ fn fit(handle: Handle) {
         }
     });
 }
+fn nearest_construction(handle: Handle) {
+    let (ui, current, gps) = with_client(handle, |c| {
+        let geo = c.world.as_ref().map(|w| w.geo).unwrap_or(c.default_geo);
+        (
+            c.ui,
+            c.world.as_ref().map(|w| w.id.clone()),
+            geo.to_gps(c.renderer.as_ref().map(|r| r.eye()).unwrap_or_default()),
+        )
+    });
+    let mut worlds = ui.worlds.get_untracked();
+    if let Some(mut world) = ui.current.get_untracked()
+        && !worlds.iter().any(|w| w.id == world.id)
+    {
+        if let Some(bounds) = with_client(handle, |c| {
+            c.renderer
+                .as_ref()
+                .and_then(|r| ergo_world::bounds(&r.bricks))
+        }) {
+            world.bounds = bounds;
+        }
+        worlds.push(world);
+    }
+    let nearest = worlds
+        .into_iter()
+        .filter_map(|world| {
+            world
+                .geo
+                .distance_to_bounds_m(gps, world.bounds)
+                .ok()
+                .map(|distance| (world, distance))
+        })
+        .min_by(|(a, da), (b, db)| da.total_cmp(db).then_with(|| a.id.cmp(&b.id)));
+    let shared = ui
+        .shared_locations
+        .get_untracked()
+        .into_iter()
+        .filter_map(|location| {
+            let coord = location.coord?;
+            let bounds =
+                ergo_world::Aabb::new(coord.origin(), coord.origin() + DVec3::splat(1024.));
+            location
+                .metadata
+                .geo
+                .distance_to_bounds_m(gps, bounds)
+                .ok()
+                .map(|distance| (location, distance))
+        })
+        .min_by(|(_, a), (_, b)| a.total_cmp(b));
+    if let Some((location, distance)) = shared
+        && nearest.as_ref().is_none_or(|(_, d)| distance < *d)
+    {
+        if ui.dirty.get_untracked() {
+            ui.fail("Save or export your working copy before opening another construction.");
+            return;
+        }
+        let name = location.metadata.name.clone();
+        open_shared(handle, location);
+        ui.message.set(format!(
+            "Nearest shared construction region: {name} ({distance:.0} m from the camera)"
+        ));
+        focus_world_canvas();
+        return;
+    }
+    let Some((world, distance)) = nearest else {
+        ui.fail("No accessible constructions were found. Import one to start exploring.");
+        return;
+    };
+    if current.as_ref() == Some(&world.id) {
+        fit(handle);
+    } else {
+        if ui.dirty.get_untracked() {
+            ui.fail("Save or export your working copy before opening another construction.");
+            return;
+        }
+        open_world(handle, world.clone());
+    }
+    ui.message.set(format!(
+        "Nearest construction: {} ({distance:.0} m from the camera)",
+        world.name
+    ));
+    focus_world_canvas();
+}
+fn focus_world_canvas() {
+    if let Some(canvas) = web_sys::window()
+        .and_then(|w| w.document())
+        .and_then(|d| d.get_element_by_id("world-canvas"))
+        .and_then(|e| e.dyn_into::<web_sys::HtmlElement>().ok())
+    {
+        let _ = canvas.focus();
+    }
+}
+fn toggle_fullscreen(ui: Ui) {
+    let Some(document) = web_sys::window().and_then(|w| w.document()) else {
+        return;
+    };
+    let entering = !ui.fullscreen.get_untracked();
+    ui.fullscreen.set(entering);
+    if entering {
+        // The CSS immersive layout is also the fallback on browsers that do not
+        // support element fullscreen or reject the request (e.g. embedded views).
+        if let Some(element) = document.get_element_by_id("world-viewport")
+            && let Ok(method) =
+                js_sys::Reflect::get(element.as_ref(), &JsValue::from_str("requestFullscreen"))
+            && let Ok(method) = method.dyn_into::<js_sys::Function>()
+            && let Ok(promise) = method
+                .call0(element.as_ref())
+                .and_then(|v| v.dyn_into::<js_sys::Promise>())
+        {
+            spawn_local(async move {
+                let _ = wasm_bindgen_futures::JsFuture::from(promise).await;
+                focus_world_canvas();
+            });
+        }
+    } else if document.fullscreen_element().is_some() {
+        document.exit_fullscreen();
+    }
+    focus_world_canvas();
+}
 fn navigation_mode(handle: Handle, mode: NavigationMode) {
     with_client(handle, |c| {
         c.navigation_controls.clear();
@@ -1038,6 +1557,7 @@ fn navigation_mode(handle: Handle, mode: NavigationMode) {
             mode.name()
         ));
     });
+    focus_world_canvas();
 }
 fn show_dialog(id: &str) {
     if let Some(dialog) = web_sys::window()
@@ -1127,6 +1647,11 @@ fn ConstructionBrowser() -> impl IntoView {
             <div class="world-list">{move ||ui.worlds.get().into_iter().map(|world|{let id=world.id.clone();let model=world.clone();view!{
                 <button class="world-item" class:active=move ||ui.current.get().is_some_and(|w|w.id==id) on:click=move |_|open_world(handle,model.clone())><span class="world-thumbnail">{if world.name.contains("pavilion"){ "⌂" }else{"▦"}}</span><span><strong>{world.name.clone()}</strong><small>{format!("{} bricks",number(world.brick_count))}</small></span><span class="world-more">"›"</span></button>
             }}).collect_view()}</div>
+            <Show when=move ||!ui.shared_locations.get().is_empty()><div class="section-heading shared-world-heading"><h2>"Shared worlds"</h2></div><div class="world-list shared-world-list">{move ||ui.shared_locations.get().into_iter().map(|location|(location.world.clone(),location)).collect::<BTreeMap<_,_>>().into_values().map(|location|{
+                let name=location.metadata.name.clone();let item=location.clone();
+                view!{<button class="world-item" on:click=move |_|open_shared(handle,item.clone())><span class="world-thumbnail">"◎"</span><span><strong>{name}</strong><small>"Navigate shared regions"</small></span><span class="world-more">"›"</span></button>}
+            }).collect_view()}</div></Show>
+            <Show when=move ||ui.shared_cursor.get().is_some()><button class="text-button" on:click=move |_|more_shared_regions(handle)>"More shared regions"</button></Show>
             <button class="button full quiet import-secondary" on:click=move |_|show_dialog("import-dialog")>"＋ Import from Studio"</button>
         </div>
         <div class="dock-section"><div class="section-heading"><h2>"World coordinates"</h2><button class="icon-button" title="Go to GPS position" on:click=move |_|show_dialog("location-dialog")>"◎"</button></div>

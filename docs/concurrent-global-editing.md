@@ -140,14 +140,27 @@ whole-world revalidation. A new world can use a new configured model.
 All routes below require a signed-in identity; writes also require the same-origin
 request header. Public coordinates remain X east, Y north, Z up.
 
+MCP/API clients can use a short-lived user delegation issued by `/api/auth/mcp-token`
+for shared-world reads, creation, assembly imports, and geometry commits. It cannot
+change grants, retention, or account plans. `publish_construction` uses the routes below and
+confirms the accepted revision/assembly by read-back; it never accesses S3
+directly. See [MCP setup and outcome handling](local-construction-mcp.md#remote-publication-setup).
+
 - `POST /api/shared-worlds`: `{name, geo}` creates an empty world and returns its
   UUID, revision, policy, and small metadata. It does not require seed geometry.
+  Add `authenticated_editing: true` to allow all signed-in users to edit it;
+  absent/false retains owner/region-grant access. MCP-created worlds default true.
 - `POST /api/shared-worlds/{id}/assemblies`: `{base, scene}` imports a bounded
   `WorldExport` batch using the world's geographic origin. Returns its stable
   assembly ID, import-local → global piece mapping, accepted revision, and audit.
   Construction pieces, joints, fixed references, and groups are persisted; ground
   cache records are not authored terrain. The world uses the declared Z=0 floor.
 - `GET /api/shared-worlds/{id}`: small head/metadata only, never a world export.
+- `GET /api/shared-worlds/{id}/view?x=0&y=0&z=0`: bounded read-only 3×3×3-block
+  region for browser navigation, with accepted revision and geometry. It is
+  capped at 5,000 pieces (or a smaller configured budget) and 16 MiB CBOR reads;
+  no complete mechanical-domain certificate or editable fragment is implied.
+- `GET /api/shared-worlds/allowance`: the current actor's pacing allowance.
 - `GET /api/shared-worlds/{id}/blocks?revision=CID&region=PATH&limit=64&after=PATH`:
   spatial block-reference page. Region is a block-octree prefix (`/` by default);
   limit is 1–128. The returned `next` is passed as `after` with the same revision.
@@ -168,7 +181,8 @@ request header. Public coordinates remain X east, Y north, Z up.
   Dangling references and inconsistent membership are rejected.
 - `GET /api/shared-worlds/{id}/joints/{joint}?revision=CID` and the paged
   `/pieces/{piece}/joints` route expose explicit cross-assembly links.
-- `PUT /api/shared-worlds/{id}/grants`: `{base, grants}`; owner-only grant/revoke.
+- `PUT /api/shared-worlds/{id}/grants`: `{base, grants, authenticated_editing?}`;
+  owner-only grant/revoke or collaborative-access toggle.
 - `GET /api/shared-worlds/{id}/history?limit=20&cursor=CID`: parent-linked commit
   and audit pages, limit 1–100. Pass `next` as the next page's cursor. Historical
   reads require current permission and an accepted branch revision.
@@ -191,6 +205,11 @@ Do not blindly repeat non-idempotent imports after an unknown outcome; inspect
 accepted history first. See [transaction failure handling](transactional-storage.md).
 
 ## Retention and maintenance
+
+HTTP 429 reports free-user edit pacing, independently of world size. The default
+capacity/refill is 5,000 brick changes per 86400 seconds, persisted per actor
+across worlds and instances. Paid entitlement removes pacing, not authorization,
+physical validation, or working-set limits. See [access and pacing](access-and-onboarding.md).
 
 The service uses coordinated GC mode per world. Durable reader/writer pins block
 an exclusive maintenance barrier. No pin or barrier expires by wall time. Normal
@@ -235,6 +254,8 @@ rate. Use the repeatable benchmark in
 [transactional storage](transactional-storage.md) against the actual endpoint.
 
 The implemented follow-ups, configuration, and legacy migration commands are in
-[storage operations](storage-operations.md). Shared-world UI/MCP controls, model
-migration/boundary certificates, and cross-shard atomicity remain future work.
+[storage operations](storage-operations.md). Full shared-world CAD editing UI,
+native MCP updates of existing assemblies, model migration/boundary certificates,
+and cross-shard atomicity remain future work; shared navigation and publication
+are implemented.
 Hierarchical leases are an optional later extension, not part of current coordination.

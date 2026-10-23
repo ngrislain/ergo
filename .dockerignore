@@ -1,0 +1,15 @@
+*
+!Cargo.toml
+!Cargo.lock
+!.cargo/
+!.cargo/config.toml
+!crates/
+!crates/**
+!web/
+!web/**
+web/pkg/
+web/mcp-pkg/
+**/target/
+**/.env
+**/.env.*
+**/.ergo-assets/

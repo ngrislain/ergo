@@ -9,11 +9,13 @@ mod events;
 mod group_commit;
 mod joints;
 mod model;
+pub(crate) mod pacing;
 mod paged;
 mod retention;
 mod spatial;
 #[cfg(test)]
 mod tests;
+mod view;
 mod working;
 
 use crate::{AppState, auth::Principal, store::Store};
@@ -41,6 +43,7 @@ pub struct SharedError {
     message: String,
     candidate: Option<ContentId>,
     world: Option<String>,
+    retry_after: Option<u64>,
 }
 impl SharedError {
     fn forbidden() -> Self {
@@ -66,6 +69,7 @@ impl SharedError {
             message: message.into(),
             candidate: None,
             world: None,
+            retry_after: None,
         }
     }
 }
@@ -108,7 +112,13 @@ impl From<ergo_transactions::Error> for SharedError {
 }
 impl IntoResponse for SharedError {
     fn into_response(self) -> Response {
-        (self.status, Json(serde_json::json!({"error": self.message, "candidate": self.candidate, "world": self.world}))).into_response()
+        let mut response=(self.status, Json(serde_json::json!({"error": self.message, "candidate": self.candidate, "world": self.world,"retry_after_seconds":self.retry_after}))).into_response();
+        if let Some(seconds) = self.retry_after {
+            response
+                .headers_mut()
+                .insert("Retry-After", seconds.to_string().parse().unwrap());
+        }
+        response
     }
 }
 type SharedResult<T> = std::result::Result<T, SharedError>;
@@ -122,6 +132,7 @@ pub struct SharedWorlds {
     event_period: std::time::Duration,
     queues: std::sync::Arc<group_commit::Queues>,
     group_commit: bool,
+    pub(crate) pacing: pacing::Pacing,
 }
 impl SharedWorlds {
     pub fn new(store: Store) -> Result<Self> {
@@ -131,6 +142,7 @@ impl SharedWorlds {
             format!("{}/shared", store.prefix)
         };
         Ok(Self {
+            pacing: pacing::Pacing::disabled(store.clone()),
             root: Repository::new(store.backend.clone(), &prefix)?
                 .with_cache_capacity(64 * 1024 * 1024)
                 .with_coordinated_gc(),
@@ -144,6 +156,7 @@ impl SharedWorlds {
     }
     pub fn from_env(store: Store) -> Result<Self> {
         let mut service = Self::new(store)?;
+        service.pacing = pacing::Pacing::from_env(service.store.clone())?;
         if let Ok(v) = std::env::var("ERGO_SHARED_GROUP_COMMIT") {
             anyhow::ensure!(
                 ["0", "1", "false", "true"].contains(&v.as_str()),
@@ -245,6 +258,7 @@ impl SharedWorlds {
             owner: actor.into(),
             grants: Vec::new(),
             keep_last: None,
+            authenticated_editing: request.authenticated_editing,
         };
         tx.put(&root(0), &policy).await?;
         tx.put(&root(2), &metadata).await?;
@@ -321,6 +335,7 @@ impl SharedWorlds {
             "Imported coordinates must use the world's geographic origin"
         );
         crate::import::validate_export(&mut request.scene)?;
+        ws.model.measurements.normalize_scene(&mut request.scene)?;
         let mut ids = BTreeSet::new();
         ensure!(
             request
@@ -596,6 +611,9 @@ impl SharedWorlds {
             return Err(SharedError::forbidden());
         }
         ws.policy.grants = request.grants;
+        if let Some(enabled) = request.authenticated_editing {
+            ws.policy.authenticated_editing = enabled;
+        }
         ws.policy.validate()?;
         self.advertise_users(
             id,
@@ -691,7 +709,9 @@ impl Prepared {
 pub fn routes() -> Router<AppState> {
     Router::new()
         .route("/api/shared-worlds", get(catalog::list).post(create))
+        .route("/api/shared-worlds/allowance", get(allowance))
         .route("/api/shared-worlds/{id}", get(head))
+        .route("/api/shared-worlds/{id}/view", get(view::view))
         .route("/api/shared-worlds/{id}/assemblies", post(import))
         .route(
             "/api/shared-worlds/{id}/assemblies/{assembly}",
@@ -721,16 +741,37 @@ pub fn routes() -> Router<AppState> {
         .route("/api/shared-worlds/{id}/events", get(events::subscribe))
 }
 fn reader(s: &AppState, h: &HeaderMap) -> SharedResult<Principal> {
-    let p = s.auth.principal(h);
+    let p = s
+        .auth
+        .shared_principal(h)
+        .map_err(|_| SharedError::unauthorized())?;
     if p.id.is_none() {
         return Err(SharedError::unauthorized());
     }
     Ok(p)
 }
+async fn allowance(
+    State(s): State<AppState>,
+    headers: HeaderMap,
+) -> SharedResult<Json<serde_json::Value>> {
+    let actor = reader(&s, &headers)?.required()?;
+    let mut status = s.shared.pacing.status(&actor).await?;
+    status["actor"] = serde_json::json!(actor);
+    Ok(Json(status))
+}
 fn writer(s: &AppState, h: &HeaderMap) -> SharedResult<String> {
+    if h.contains_key(axum::http::header::AUTHORIZATION) {
+        return Err(SharedError::forbidden());
+    }
     reader(s, h)?;
     s.auth
         .check_write(h)
+        .map_err(|e| SharedError::status(StatusCode::FORBIDDEN, &e.to_string()))
+}
+fn publisher(s: &AppState, h: &HeaderMap) -> SharedResult<String> {
+    reader(s, h)?;
+    s.auth
+        .check_publish(h)
         .map_err(|e| SharedError::status(StatusCode::FORBIDDEN, &e.to_string()))
 }
 async fn create(
@@ -738,7 +779,7 @@ async fn create(
     h: HeaderMap,
     Json(body): Json<NewWorld>,
 ) -> SharedResult<Json<Head>> {
-    Ok(Json(s.shared.create(&writer(&s, &h)?, body).await?))
+    Ok(Json(s.shared.create(&publisher(&s, &h)?, body).await?))
 }
 #[derive(Deserialize)]
 struct RevisionQuery {
@@ -775,7 +816,7 @@ async fn import(
     Path(id): Path<String>,
     Json(body): Json<ImportRequest>,
 ) -> SharedResult<Json<Imported>> {
-    Ok(Json(s.shared.import(&id, &writer(&s, &h)?, body).await?))
+    Ok(Json(s.shared.import(&id, &publisher(&s, &h)?, body).await?))
 }
 async fn commit(
     State(s): State<AppState>,
@@ -785,7 +826,7 @@ async fn commit(
 ) -> SharedResult<Json<Accepted>> {
     Ok(Json(
         s.shared
-            .prepare(&id, &writer(&s, &h)?, body)
+            .prepare(&id, &editor(&s, &h)?, body)
             .await?
             .publish_with(&s.shared)
             .await?,
@@ -798,6 +839,12 @@ async fn grants(
     Json(body): Json<GrantRequest>,
 ) -> SharedResult<Json<ContentId>> {
     Ok(Json(s.shared.grants(&id, &writer(&s, &h)?, body).await?))
+}
+fn editor(s: &AppState, h: &HeaderMap) -> SharedResult<String> {
+    reader(s, h)?;
+    s.auth
+        .check_shared_edit(h)
+        .map_err(|e| SharedError::status(StatusCode::FORBIDDEN, &e.to_string()))
 }
 async fn piece(
     State(s): State<AppState>,

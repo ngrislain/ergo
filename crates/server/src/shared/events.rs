@@ -157,7 +157,7 @@ pub(super) async fn subscribe(
     let stream = async_stream::stream! {
         let mut previous=cursor;let mut sequence=last_sequence;let mut reset=reset;
         loop{
-            if auth.principal(&headers).id.as_deref()!=Some(&actor){yield Ok::<_,Infallible>(Event::default().event("revoked").data("session expired"));break;}
+            if auth.shared_principal(&headers).ok().and_then(|p|p.id).as_deref()!=Some(&actor){yield Ok::<_,Infallible>(Event::default().event("revoked").data("session expired"));break;}
             let observed=receiver.borrow_and_update().clone();
             match observed{
                 Observed::Revision{id,sequence:now,floor,policy}=>{

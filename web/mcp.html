@@ -24,7 +24,7 @@ try{
     status.textContent=`Running locally: ${job.name}`;
     let result,assetWarning;
     try{
-      if(job.name==='place_brick'&&runtime.needs_part(job.arguments.part)){
+      if((job.name==='place_brick'||job.name==='get_catalog'&&job.arguments.part)&&runtime.needs_part(job.arguments.part)){
         const part=await api(`/api/local/parts/${encodeURIComponent(job.arguments.part)}`);runtime.insert_part(JSON.stringify(part));assetWarning=part.warning;
       }
       result=JSON.parse(runtime.execute(job.name,JSON.stringify(job.arguments)));

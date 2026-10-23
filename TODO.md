@@ -43,10 +43,10 @@ are complete. Future designs must not be described as existing guarantees.
 
 ## Imports, parts, and assets
 
-- [ ] Expand the deliberately restricted common-part/color catalog using an
-  explicit selection policy and sourced popularity metrics if required.
-- [ ] Add wheel, axle, pin, and hinge geometries plus connector metadata; joint
-  support alone does not imply these parts exist in the starter catalog.
+- [x] Replace the starter allowlist with on-demand Studio/LDraw part resolution,
+  the sourced complete LDraw color catalog, and standard-first MCP recommendations.
+- [ ] Add exact wheel/axle/pin/hinge collision and connector metadata; visual
+  geometry already resolves on demand, while measured physics remains required.
 - [ ] Exercise Studio import against representative current and legacy `.io`
   archives, assemblies, custom parts, and alternate ZIP encryption variants.
 - [ ] Add LDraw texture/BFC/material support and preserve construction steps.
@@ -59,6 +59,10 @@ are complete. Future designs must not be described as existing guarantees.
 
 - [x] Persist nested authoring groups and rigid transforms, independent of physical bonds.
 - [x] Add orbit, fly, and walk camera modes with keyboard/touch controls.
+- [x] Add full-screen exploration, camera-relative nearest-construction navigation,
+  and bounded shared-world region viewing with permission-filtered discovery.
+- [ ] Add an exact global nearest-construction spatial search beyond the current
+  loaded private catalog/shared discovery pages and their coarse block hints.
 
 - [ ] Replace sampled translation checks with continuous shape casts, including
   rotational sweeps and constrained sliding along obstacles.
@@ -124,9 +128,22 @@ the limits and paging work below concern individual operations and indexes.
 
 ## MCP and agent feedback
 
-- [ ] Add authenticated delegation and a permission-checked global commit tool only
-  after the shared-world commit service exists. Local tools must not write S3
-  heads directly.
+- [x] Add an MCP `publish_construction` tool that publishes a local working copy
+  remotely through the existing shared-world REST commit service. Support
+  authenticated user delegation, world/region permissions, server-side validation,
+  and revision-conflict handling. Return the remote world/assembly ID, accepted
+  revision, and revision-qualified metadata URL only after confirmed publication; keep S3 credentials
+  and direct head writes on the server. Document configuration and add an
+  end-to-end agent build → publish → remote read-back test, including rejected
+  unauthorized or invalid constructions.
+- [ ] Add idempotent MCP publication/recovery receipts, updates of previously
+  published assemblies, and complete shared-world CAD editing in the browser.
+- [x] Add landing/Google SSO pages, token generation/copy/download, direct API/MCP
+  instructions, browser-assisted CLI setup, and real shared-world navigation URLs.
+- [x] Add persistent per-user time-based brick-change pacing and operator-managed
+  unlimited paid entitlement without bypassing permissions or physical validation.
+- [ ] Integrate a payment provider/checkout and verified, idempotent billing webhooks
+  to synchronize the existing server-owned paid entitlement.
 - [ ] Extend local expected-revision/job-expiry checks to coordinated multi-client
   working copies, cancellable long simulations,
   progress notifications, and richer machine-readable failure witnesses.
@@ -164,7 +181,7 @@ the limits and paging work below concern individual operations and indexes.
 
 - [ ] Add live Scaleway and Google OAuth integration coverage using configured
   test resources and authorized redirect URLs.
-- [ ] Add per-user quotas, request throttling, import/solver job isolation, and
+- [ ] Add storage quotas, request throttling, import/solver job isolation, and
   bounded background validation queues.
 - [ ] Add individual session revocation if required; signed stateless cookies
   currently support expiry and global signing-key rotation.
@@ -172,3 +189,9 @@ the limits and paging work below concern individual operations and indexes.
   documentation links, and SVG validity.
 - [ ] Publish deployment images, operational metrics, backup/restore procedures,
   and benchmark datasets with documented scale limits.
+- [x] Add validated/mocked OpenTofu deployment definitions for a scale-to-zero
+  Scaleway container, existing ergo bucket, and ergosandbox.com DNS/TLS.
+- [x] Build and smoke-test the Linux/AMD64 API/web image with Podman, including
+  non-root startup, the full browser flow, import/save/read-back, and SIGTERM.
+- [ ] Publish the image to the deployment registry and exercise the actual
+  Scaleway resources, custom-domain certificate, Google SSO, and production S3.

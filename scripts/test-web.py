@@ -5,6 +5,7 @@ import math
 import pathlib
 import tempfile
 import json
+import re
 import urllib.request
 from playwright.sync_api import sync_playwright, expect
 
@@ -28,10 +29,42 @@ def main():
         page.on("pageerror", lambda error: errors.append(str(error)))
         page.on("response", lambda response: cached.append(response.url)
                 if response.from_service_worker and "x-ergo-bytes" in response.headers else None)
+        # The root is a login/setup landing page, not an anonymous workbench.
         page.goto(args.url)
+        expect(page.get_by_role("heading", name="A shared world. Built brick by brick.", exact=True)).to_be_visible(timeout=30000)
+        expect(page.get_by_role("button", name="Generate access token", exact=True)).to_be_enabled()
+        page.screenshot(path=str(artifacts / "landing-desktop.png"), full_page=True)
+        page.set_viewport_size({"width":390,"height":844})
+        assert page.evaluate("document.documentElement.scrollWidth <= innerWidth"), page.evaluate("() => [...document.querySelectorAll('body *')].filter(e => e.getBoundingClientRect().right > innerWidth+1).map(e=>({tag:e.tagName,classes:e.className,right:e.getBoundingClientRect().right})).slice(0,10)")
+        page.screenshot(path=str(artifacts / "landing-mobile.png"), full_page=True)
+        page.set_viewport_size({"width":1440,"height":950})
+        page.get_by_role("button", name="Generate access token", exact=True).click()
+        token_field = page.get_by_role("textbox", name="MCP and API token", exact=True)
+        expect(token_field).to_be_visible()
+        token = token_field.input_value()
+        assert len(token) > 50
+        assert "ERGO_PUBLISH_TOKEN_FILE" in page.locator(".connection-code").first.inner_text()
+        page.context.grant_permissions(["clipboard-read", "clipboard-write"])
+        page.get_by_role("button", name="Copy token", exact=True).click()
+        expect(page.get_by_role("button", name="Copied", exact=True)).to_be_visible()
+        assert page.evaluate("navigator.clipboard.readText()") == token
+        with page.expect_download() as downloaded:
+            page.get_by_role("button", name="Download MCP token", exact=True).click()
+        assert pathlib.Path(downloaded.value.path()).read_text() == token
+        allowance = page.request.get(args.url + "/api/shared-worlds/allowance", headers={"Authorization": "Bearer " + token})
+        assert allowance.status == 200 and allowance.json()["actor"] == "development"
+        assert page.evaluate("token => !Object.values(localStorage).includes(token)", token)
+        page.route("**/api/auth/me", lambda route: route.fulfill(json={"id":None,"name":"Guest","google_enabled":True,"signed_in":False,"development":False,"edit_allowance":None}))
+        page.reload()
+        expect(page.get_by_role("link", name="Continue with Google", exact=True)).to_have_attribute("href", re.compile(r"^/auth/google\?return_to="))
+        expect(page.get_by_role("button", name="Generate access token", exact=True)).to_be_disabled()
+        page.unroute("**/api/auth/me")
+        page.goto(args.url + "/app")
         page.wait_for_load_state("networkidle")
         expect(page.locator(".status-message")).to_contain_text("Construction loaded", timeout=30000)
         expect(page.locator("#world-canvas")).to_be_visible()
+        page.wait_for_function("Number(document.querySelector('#world-canvas').dataset.groundStuds) > 0")
+        assert int(page.locator("#world-canvas").get_attribute("data-ground-studs")) <= 97 * 97
         assert page.evaluate("document.querySelector('canvas').getContext('webgl2') !== null")
         page.locator("#world-canvas").click()
         expect(page.locator(".selected-part h3")).to_be_visible()
@@ -153,6 +186,34 @@ def main():
         expect(canvas).to_have_attribute("data-navigation", "orbit")
         page.screenshot(path=str(artifacts / "smoke-desktop.png"))
 
+        # Full-screen keeps camera/navigation controls and supports both exits.
+        viewport = page.locator("#world-viewport")
+        page.get_by_role("button", name="Enter full screen", exact=True).click()
+        expect(viewport).to_have_class(re.compile(r"is-fullscreen"))
+        page.wait_for_function("() => document.fullscreenElement?.id === 'world-viewport'")
+        assert page.evaluate("() => {const r=document.querySelector('#world-viewport').getBoundingClientRect();return r.x===0&&r.y===0&&Math.abs(r.width-innerWidth)<1&&Math.abs(r.height-innerHeight)<1;}")
+        viewport.get_by_role("button", name="Walk", exact=True).click()
+        expect(canvas).to_be_focused()
+        expect(canvas).to_have_attribute("data-navigation", "walk")
+        page.get_by_role("button", name="Exit full screen", exact=True).click()
+        expect(viewport).not_to_have_class(re.compile(r"is-fullscreen"))
+        expect(canvas).to_have_attribute("data-navigation", "walk")
+        canvas.focus()
+        page.keyboard.press("Shift+f")
+        expect(viewport).to_have_class(re.compile(r"is-fullscreen"))
+        page.keyboard.press("Escape")
+        expect(viewport).not_to_have_class(re.compile(r"is-fullscreen"))
+        # Browsers/embedded views that deny Fullscreen still get immersive CSS.
+        page.evaluate("() => {window.originalFullscreen=Element.prototype.requestFullscreen;Element.prototype.requestFullscreen=()=>Promise.reject(new Error('Fullscreen denied by test'));}")
+        try:
+            page.get_by_role("button", name="Enter full screen", exact=True).click()
+            expect(viewport).to_have_class(re.compile(r"is-fullscreen"))
+            page.keyboard.press("Escape")
+            expect(viewport).not_to_have_class(re.compile(r"is-fullscreen"))
+        finally:
+            page.evaluate("() => {Element.prototype.requestFullscreen=window.originalFullscreen;}")
+        page.get_by_role("button", name="Fit construction", exact=True).click()
+
         model = pathlib.Path(directory) / "single.ldr"
         model.write_text("0 Browser smoke construction\n1 4 0 0 0 1 0 0 0 1 0 0 0 1 3003.dat\n")
 
@@ -196,6 +257,8 @@ def main():
 
         page.locator(".world-item").filter(has_text="Paris garden pavilion").click()
         expect(page.locator(".status-message")).to_contain_text("Construction loaded", timeout=30000)
+        page.get_by_role("button", name="Nearest construction", exact=True).click()
+        expect(page.locator(".status-message")).to_contain_text("Nearest construction", timeout=30000)
         page.set_viewport_size({"width": 390, "height": 844})
         expect(page.locator("#world-canvas")).to_be_visible()
         assert page.evaluate("document.documentElement.scrollWidth <= innerWidth")
@@ -203,8 +266,34 @@ def main():
         assert not errors, errors
         # Reopening the same immutable scene should hit the bounded download cache.
         assert cached, "No persistent model-cache hit was observed"
+        # Published shared worlds have a real, bounded navigation view, while
+        # editing/simulation never treats this fragment as a complete assembly.
+        snapshots = page.request.get(args.url + "/api/worlds").json()
+        saved = next(world for world in snapshots if world["name"] == "Browser smoke construction")
+        scene = page.request.get(args.url + "/api/worlds/" + saved["id"] + "/export").json()
+        auth = {"Authorization":"Bearer " + token,"X-Ergo-Request":"1"}
+        response = page.request.post(args.url + "/api/shared-worlds", headers=auth,
+                                     data={"name":"Browser shared world","geo":scene["geo"],"authenticated_editing":True})
+        assert response.status == 200, response.text()
+        head = response.json()
+        published = page.request.post(args.url + "/api/shared-worlds/" + head["id"] + "/assemblies",
+                                      headers=auth,data={"base":head["revision"],"scene":scene})
+        assert published.status == 200, published.text()
+        page.set_viewport_size({"width":1440,"height":950})
+        page.goto(args.url + "/app?shared_world=" + head["id"])
+        expect(page.locator("h1")).to_have_text("Browser shared world",timeout=30000)
+        expect(page.locator(".snapshot-badge")).to_have_text("Shared world view")
+        expect(page.locator(".status-message")).to_contain_text("Shared-world region loaded",timeout=30000)
+        page.get_by_role("button", name="Enter full screen", exact=True).click()
+        expect(page.locator("#world-viewport")).to_have_class(re.compile(r"is-fullscreen"))
+        page.keyboard.press("Escape")
+        expect(page.get_by_role("button", name="▷ Run gravity", exact=True)).to_have_count(0)
+        expect(page.get_by_role("link", name="Edit with MCP / API", exact=True)).to_have_attribute("href","/#connect")
+        assert page.request.get(args.url + "/api/shared-worlds/" + head["id"],headers=auth).json()["revision"] == published.json()["accepted"]["revision"]
+        page.screenshot(path=str(artifacts / "shared-world.png"))
+        assert not errors, errors
         browser.close()
-        print("Web smoke passed: WebGL, picking, fly steering/throttle, walk movement/turning/speed/jump, on-screen throttle, import/save, gravity/reset, solidity report, overlap rejection, cache reuse, and mobile layout.")
+        print("Web smoke passed: landing/SSO setup, token generation/copy/download, API access, WebGL/studded ground, nearest construction, fly/walk controls, full-screen entry/exit/fallback, import/save, gravity/reset, solidity report, overlap rejection, cache reuse, and mobile layout.")
 
 
 if __name__ == "__main__":

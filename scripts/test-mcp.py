@@ -16,11 +16,14 @@ def main():
     args = parser.parse_args()
     with tempfile.TemporaryDirectory(prefix="ergo-mcp-test-") as directory:
         workspace = pathlib.Path(directory) / "construction.json"
+        library = pathlib.Path(directory) / "ldraw"
+        (library / "parts").mkdir(parents=True)
+        (library / "parts" / "custom-part.dat").write_text("0 Synthetic custom part\n0 Author: Test fixture\n0 !LICENSE Synthetic test fixture\n4 16 -20 0 -20 20 0 -20 20 0 20 -20 0 20\n4 16 -20 24 -20 -20 24 20 20 24 20 20 24 -20\n")
         process = subprocess.Popen(
             [str(pathlib.Path(args.binary).resolve()), "--workspace", str(workspace), "--headless"],
             stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
             text=True,
-            env={**os.environ,"ERGO_ASSET_FETCH":"0"},
+            env={**os.environ,"ERGO_ASSET_FETCH":"0","LDRAW_DIR":str(library)},
         )
         assert process.stdin is not None and process.stdout is not None and process.stderr is not None
         sequence = 0
@@ -97,6 +100,13 @@ def main():
             assert call("set_group_members", group_id=child, group_ids=[parent])["isError"] is True
             assert len(call("list_groups")["structuredContent"]["groups"]) == 2
             assert len(json.loads(workspace.read_text())["groups"]) == 2
+            assert len(call("get_catalog")["structuredContent"]["catalog"]["colors"]) == 20
+            assert len(call("get_catalog", include_extended=True)["structuredContent"]["catalog"]["colors"]) > 300
+            custom = call("get_catalog", part="custom-part")
+            assert custom["structuredContent"]["requested_part"]["quality"] == "ldraw", custom
+            custom = call("place_brick", part="custom-part", color=47, min_corner=[16, 2, 0])
+            assert custom["isError"] is False and custom["structuredContent"]["publication_ready"] is False, custom
+            assert "sourced" in custom["structuredContent"]["failure"]
             assert workspace.exists()
             print("MCP smoke passed: tool discovery, collision rollback, gravity, camera PNGs, parameterized/two-axis earthquakes, and non-destructive tests.")
         finally:

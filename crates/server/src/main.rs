@@ -17,7 +17,11 @@ use ergo_world::{GeoReference, SCHEMA_VERSION, WorldExport, WorldManifest};
 use serde::{Deserialize, Serialize};
 use std::{env, path::PathBuf};
 use store::Store;
-use tower_http::{compression::CompressionLayer, services::ServeDir, trace::TraceLayer};
+use tower_http::{
+    compression::CompressionLayer,
+    services::{ServeDir, ServeFile},
+    trace::TraceLayer,
+};
 
 #[derive(Clone)]
 struct AppState {
@@ -63,6 +67,7 @@ struct Config {
     block_size: u32,
     simulation_limit: usize,
     ground_source: &'static str,
+    ground_provider: String,
 }
 
 async fn config(State(s): State<AppState>) -> Json<Config> {
@@ -76,6 +81,7 @@ async fn config(State(s): State<AppState>) -> Json<Config> {
         } else {
             "disabled"
         },
+        ground_provider: s.ground.provider().to_owned(),
     })
 }
 
@@ -351,6 +357,20 @@ async fn main() -> Result<()> {
     let mut args = env::args().skip(1);
     if let Some(command) = args.next() {
         let id = args.next().context("Expected a shared-world UUID")?;
+        if command == "user-plan" {
+            let plan = args
+                .next()
+                .context("Usage: ergo-server user-plan USER_ID free|paid")?;
+            anyhow::ensure!(
+                args.next().is_none() && ["free", "paid"].contains(&plan.as_str()),
+                "Usage: ergo-server user-plan USER_ID free|paid"
+            );
+            shared::pacing::Pacing::from_env(store)?
+                .set_unlimited(&id, plan == "paid")
+                .await?;
+            println!("Updated edit plan for {id}: {plan}");
+            return Ok(());
+        }
         if command == "private-rebuild-catalog" {
             anyhow::ensure!(args.next().is_none(), "Unexpected argument");
             catalog::rebuild(&store, &id).await?;
@@ -528,8 +548,11 @@ async fn main() -> Result<()> {
         .route("/api/import", post(upload))
         .route("/api/auth/me", get(auth::me))
         .route("/api/auth/logout", post(auth::logout))
+        .route("/api/auth/mcp-token", post(auth::mcp_token))
         .route("/auth/google", get(auth::login))
         .route("/auth/google/callback", get(auth::callback))
+        .route_service("/app", ServeFile::new("web/index.html"))
+        .route_service("/login", ServeFile::new("web/index.html"))
         .fallback_service(ServeDir::new("web").append_index_html_on_directories(true))
         .layer(DefaultBodyLimit::max(128 * 1024 * 1024))
         .layer(CompressionLayer::new())
@@ -539,9 +562,22 @@ async fn main() -> Result<()> {
     let listener = tokio::net::TcpListener::bind(&addr).await?;
     tracing::info!("Ergo listening at http://{addr}");
     axum::serve(listener, app)
-        .with_graceful_shutdown(async {
-            tokio::signal::ctrl_c().await.ok();
-        })
+        .with_graceful_shutdown(shutdown_signal())
         .await?;
     Ok(())
+}
+
+async fn shutdown_signal() {
+    #[cfg(unix)]
+    {
+        let mut terminate =
+            tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate())
+                .expect("Install SIGTERM handler");
+        tokio::select! {
+            _ = tokio::signal::ctrl_c() => {},
+            _ = terminate.recv() => {},
+        }
+    }
+    #[cfg(not(unix))]
+    tokio::signal::ctrl_c().await.ok();
 }

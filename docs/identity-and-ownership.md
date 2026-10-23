@@ -44,9 +44,39 @@ expire after seven days; changing the signing secret invalidates all of them.
 Per-user session epochs stored in profile objects are a possible future
 revocation design if this becomes necessary.
 
-Authenticated writes require a custom same-origin request header and reject a
-mismatched Origin header. OAuth state/nonce validation is separate from normal
-application write protection.
+Writes require `X-Ergo-Request: 1`. When present, the `Origin` header must match
+the canonical HTTP(S) origin configured by `ERGO_PUBLIC_URL` (including scheme
+and port). In local development with Google unset and a loopback public URL,
+other loopback origins (`localhost`, IPv4 loopback, or `[::1]`) using the same
+scheme are also accepted when their host and port match the request's `Host`
+header. This supports alternate local names and development ports without
+allowing cross-origin writes. Forwarded host headers are not used for this check.
+Google-enabled and non-loopback deployments accept only the configured origin;
+requests without `Origin`, such as native API clients, still need the custom
+header and a permitted identity. OAuth state/nonce validation is separate from
+normal application write protection.
+
+### MCP user delegation
+
+`POST /api/auth/mcp-token` accepts a signed-in browser session, the same-origin
+write header/check, and `{ "expires_in_seconds": 3600 }` (the field is optional).
+The response is `Cache-Control: no-store` and contains `token`, `expires_at`,
+`audience`, and `scope`. The signed delegation uses a distinct purpose/actor
+payload, so it cannot be exchanged for a session cookie or vice versa. Lifetime
+is 1–86400 seconds and is capped at the issuing session's expiry. The audience
+must match the canonical `ERGO_PUBLIC_URL`; server signing-secret rotation
+invalidates outstanding delegations. Individual revocation is not implemented.
+
+Shared-world GET routes accept the delegation as `Authorization: Bearer TOKEN`.
+New tokens authorize world creation, assembly import, and geometry commits, still requiring
+`X-Ergo-Request: 1` and checking any supplied `Origin`. Current owner/region policy
+is rechecked at publication. Grant/retention changes, private snapshots, account
+plans, and token issuance do not accept delegated authority. Older publication-only
+tokens cannot perform geometry commits; the edit-token purpose is distinct. Invalid
+bearer credentials do not fall back to a cookie or development identity on shared
+routes. The native MCP bridge holds the configured token; it is never sent to the
+local WASM client, included in tool arguments, or embedded in returned URLs.
+See [MCP publication setup](local-construction-mcp.md#remote-publication-setup).
 
 ## Ownership and cached objects
 
@@ -66,7 +96,9 @@ caches authentication responses or profile/world-list responses.
 
 `/api/shared-worlds/*` uses the same signed sessions and same-origin write header.
 Creating a world establishes its owner. Existing-world reads require ownership or
-an explicit user grant; writes must lie in the grant's block-octree prefixes.
+an explicit user grant unless `authenticated_editing` is enabled. That opt-in
+policy permits any signed-in identity to read/edit the world; otherwise writes
+must lie in the grant's block-octree prefixes.
 Only the owner may grant/revoke. Region grants authorize writes and world reads;
 they do not promise regional read secrecy.
 
@@ -94,11 +126,24 @@ Configure `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, a random
 `ERGO_SESSION_SECRET` of at least 32 characters, and `ERGO_PUBLIC_URL`.
 Outside localhost, the public URL must use HTTPS.
 
+`ERGO_PUBLIC_URL` defaults to `http://127.0.0.1:3000` and must be an HTTP(S)
+origin without credentials, a non-root path, query, or fragment. Host names and
+default ports are normalized. If an import or save reports **Unexpected request
+origin**, open the configured public URL or set `ERGO_PUBLIC_URL` to the browser's
+origin and restart the server. For reverse-proxy deployments, use the external
+browser-facing origin rather than the internal bind address.
+
 With Google credentials unset, the server creates an explicitly named local
 development profile in the same object store. This is a development mode, not
 Google authentication. Configure Google before exposing a multi-user deployment.
 
 ## Scale and concurrency
+
+Free shared-world edits are paced with a per-actor persistent token bucket,
+defaulting to 5,000 changed bricks refilled per day. Operator-managed paid
+entitlement bypasses pacing only. Account plans live separately from Google
+profiles; profile last-write-wins updates cannot grant paid authority. See
+[onboarding and pacing](access-and-onboarding.md).
 
 Per-user prefixes avoid reading every user's manifests to answer one user's
 catalog request. The current listing still reads all manifests for that owner.

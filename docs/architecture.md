@@ -36,10 +36,14 @@ The bridge has responsibility for:
 - Atomic local working-copy file replacement and revision checks.
 - On-demand part delivery from a persistent local cache, or an optional upstream
   `ERGO_API_URL` REST asset service.
+- Optional native `publish_construction` HTTP calls using an operator-configured
+  origin and short-lived user delegation; accepted revision/assembly read-back.
 
 The bridge has **no native rigid-body simulation or rendering implementation**.
 Neither the bridge nor its local working-copy endpoint grants global commit
-permission. A local draft may be unstable while an agent is building it.
+permission. Publication delegates identity to the deployed service, which checks
+current grants and validates the complete affected domain. The publication token
+never enters local WASM. A local draft may be unstable while an agent is building it.
 
 ### Local REST routes
 
@@ -61,6 +65,7 @@ The Axum server handles identity, ownership, model import/export, immutable obje
 delivery, lazy ground generation, and part-asset caching. Its main routes include:
 
 - `/api/auth/*` and `/auth/google/*`: identity and application sessions.
+  `/api/auth/mcp-token` issues purpose- and audience-bound publication delegations.
 - `/api/worlds`: list accessible snapshots or validate/publish a new private snapshot.
 - `/api/worlds/{id}` and `/api/worlds/{id}/objects/{hash}`: authorized metadata/data.
 - `/api/import`: parse into an uncommitted working copy.
@@ -150,8 +155,11 @@ closes snapshot pins between polls. Optional bounded group publication preserves
 individual audit records; owner retention remains disabled unless configured.
 See [storage operations](storage-operations.md) for APIs, migrations, and flags.
 
-Private snapshots/read-only examples remain supported. Shared-world UI/MCP tools,
-cross-shard atomicity, and region-boundary mechanical certificates are future work.
+Private snapshots/read-only examples remain supported. MCP publishing and bounded
+read-only shared-world browser navigation are implemented. Full shared-world CAD
+editing UI, cross-shard atomicity, and region-boundary mechanical certificates
+remain future work. Per-actor edit pacing uses separate conditional object-store
+records; operator-managed paid entitlement bypasses pacing, never the commit gate.
 Library actor/message fields alone are not authentication; the shared REST gate
 supplies the verified actor and certificate.
 
@@ -161,6 +169,11 @@ keeping simulation and rendering buffers on a common WebGPU backend is preferabl
 to repeated GPU→CPU→WebGL2 transfers. Server commit checks remain independent.
 
 ## Build orchestration
+
+The root landing/login page provides SSO, token download, and MCP/API setup;
+`/app` mounts the workbench after session detection. The Scaleway deployment
+serves both from one scale-to-zero container, with the existing `ergo` bucket.
+See [access/onboarding](access-and-onboarding.md) and [deployment](scaleway-deployment.md).
 
 `cargo xtask build-web` is an explicit Rust workspace task. It compiles the browser
 app and the minimal MCP client as separate WASM artifacts and runs `wasm-bindgen`

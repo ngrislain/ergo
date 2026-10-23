@@ -1,5 +1,5 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="1160" height="820" viewBox="0 0 1160 820" role="img" aria-labelledby="title desc">
-  <title id="title">Ergo browser, MCP, REST, and object-store architecture</title><desc id="desc">The browser app and a minimal local MCP WASM runtime perform rendering and dynamic physics on the user's device. The native MCP bridge handles stdio, loopback REST jobs, and local working-copy I/O. The deployed REST server performs identity, asset delivery, and bounded static commit checks, with local or Scaleway S3 storage. Shared-world publication uses versioned region grants, on-demand dependencies, and optimistic root CAS.</desc>
+  <title id="title">Ergo browser, MCP, REST, and object-store architecture</title><desc id="desc">The browser app and a minimal local MCP WASM runtime perform rendering and dynamic physics on the user's device. The native MCP bridge handles stdio, loopback REST jobs, local working-copy I/O, and authenticated publication through the deployed REST API using a user delegation token. The deployed REST server performs identity, asset delivery, and bounded static commit checks, with local or Scaleway S3 storage. Shared-world publication uses versioned region grants, on-demand dependencies, and optimistic root CAS.</desc>
   <defs><marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0L10 5L0 10Z" fill="#668397"/></marker></defs>
   <rect width="1160" height="820" rx="14" fill="#f5f9fc"/>
   <g font-family="Arial,sans-serif" fill="#263e50">
@@ -16,18 +16,20 @@
     <rect x="525" y="126" width="245" height="301" rx="8" fill="white" stroke="#b2c9d7"/>
     <text x="525" y="103" font-size="18" font-weight="bold">Lightweight server</text>
     <text x="546" y="157" font-size="17" font-weight="bold">Axum REST API</text>
-    <g font-size="13"><text x="546" y="190">Google identity + ownership</text><text x="546" y="219">Model and asset delivery</text><text x="546" y="248">Cache-first part fetching</text><text x="546" y="277">Lazy single-color ground</text><text x="546" y="306">Commit: non-overlap checks</text><text x="546" y="335">Commit: static equilibrium</text><text x="546" y="354">Capacity and FP tolerances</text></g>
+    <g font-size="13"><text x="546" y="190">SSO, ownership, edit pacing</text><text x="546" y="219">Model and asset delivery</text><text x="546" y="248">Cache-first part fetching</text><text x="546" y="277">Lazy single-color ground</text><text x="546" y="306">Commit: non-overlap checks</text><text x="546" y="335">Commit: static equilibrium</text><text x="546" y="354">Capacity and FP tolerances</text></g>
     <text x="546" y="389" font-size="12" fill="#607e92">No rendering / time stepping</text>
     <text x="835" y="103" font-size="18" font-weight="bold">Persistence</text>
     <rect x="835" y="126" width="295" height="301" rx="8" fill="white" stroke="#b2c9d7"/>
     <text x="855" y="157" font-size="16" font-weight="bold">Scaleway S3 or local files</text>
     <g font-size="13"><text x="855" y="192">User profiles / manifests: JSON</text><text x="855" y="222">Construction / geometry: CBOR</text><text x="855" y="252">Immutable content-hashed objects</text><text x="855" y="282">LDraw source, meshes, and credits</text><text x="855" y="312">Generated ground cells / raster cache</text><text x="855" y="354" font-weight="bold">No application database</text><text x="855" y="392" font-size="12" fill="#607e92">Server credentials remain server-side.</text></g>
     <rect x="525" y="475" width="605" height="122" rx="8" fill="white" stroke="#b2c9d7"/>
-    <text x="546" y="506" font-size="16" font-weight="bold">Upstream public / licensed data</text><text x="546" y="535" font-size="13">LDraw part files and dependencies</text><text x="842" y="535" font-size="13">OSM / configured raster tiles</text><text x="546" y="568" font-size="12" fill="#607e92">Cache misses only; preserve credits, attribution, and provider caching rules.</text>
+    <text x="546" y="506" font-size="16" font-weight="bold">Upstream public / licensed data</text><text x="546" y="535" font-size="13">LDraw part files and dependencies</text><text x="842" y="535" font-size="13">Satellite / configured raster</text><text x="546" y="568" font-size="12" fill="#607e92">Cache misses only; preserve credits, attribution, and provider caching rules.</text>
     <rect x="835" y="650" width="295" height="76" rx="8" fill="#dcece5" stroke="#a0bfb1"/>
     <text x="854" y="678" font-size="14" font-weight="bold">Shared-world commits</text><text x="854" y="701" font-size="12">Region grants · dependencies · root CAS</text>
     <g fill="none" stroke="#668397" stroke-width="2" marker-end="url(#arrow)"><path d="M455 194H516"/><path d="M176 367H206"/><path d="M335 433V465" marker-start="url(#arrow)"/><path d="M455 367H495V247H516"/><path d="M775 194H826"/><path d="M648 433V466" marker-start="url(#arrow)"/><path d="M235 427H190V623"/></g>
     <g font-size="11" fill="#607e92"><text x="485" y="182">REST</text><text x="180" y="353">stdio</text><text x="347" y="453">REST jobs / results</text><text x="486" y="291">assets</text><text x="780" y="179">object I/O</text><text x="661" y="454">HTTPS data</text><text x="74" y="527">Working-copy I/O</text></g>
+    <path d="M455 400H516" fill="none" stroke="#668397" stroke-width="2" marker-end="url(#arrow)"/>
+    <text x="460" y="445" font-size="11" fill="#607e92">Delegated publication + read-back</text>
     <path d="M775 397H803V688H826" fill="none" stroke="#668397" stroke-width="1.5" marker-end="url(#arrow)"/>
     <text x="526" y="685" font-size="12" fill="#607e92">Paged data · bounded validation · history</text>
     <text x="29" y="775" font-size="14" fill="#58788e">Public world: X east · Y north · Z up. Client test results never bypass the server's commit gate.</text>

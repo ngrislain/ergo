@@ -33,6 +33,7 @@ async fn seeded(service: &SharedWorlds, initial: WorldExport) -> (Head, Imported
         .create(
             "alice",
             NewWorld {
+                authenticated_editing: false,
                 name: "Huge world".into(),
                 geo: Default::default(),
             },
@@ -61,6 +62,135 @@ async fn seeded(service: &SharedWorlds, initial: WorldExport) -> (Head, Imported
         .await
         .unwrap();
     (head, imported)
+}
+
+#[tokio::test]
+async fn browser_views_are_authenticated_bounded_and_preserve_mesh_variants() {
+    let mut service = service();
+    let (head, _) = seeded(&service, scene(100.)).await;
+    let mut alternate = scene(200.);
+    alternate.bricks.truncate(1);
+    alternate.bricks[0].translated(glam::DVec3::new(10., 0., 10.));
+    for mesh in alternate.meshes.values_mut() {
+        for vertex in mesh.vertices.chunks_exact_mut(9) {
+            vertex[6] = 0.2;
+            vertex[7] = 0.7;
+            vertex[8] = 0.1;
+        }
+    }
+    service
+        .import(
+            &head.id,
+            "alice",
+            ImportRequest {
+                base: head.revision,
+                scene: alternate,
+            },
+        )
+        .await
+        .unwrap();
+    let (app, alice) = http(&service);
+    let (_, bob) = crate::auth::Auth::test_session("bob");
+    let url = format!("/api/shared-worlds/{}/view", head.id);
+    let (status, view) = json(&app, "GET", &url, &alice, None).await;
+    assert_eq!(status, StatusCode::OK, "{view}");
+    assert_eq!(view["view_kind"], "bounded_read_only_region");
+    // The distant original piece is outside the requested 3x3x3 block region.
+    assert_eq!(view["scene"]["bricks"].as_array().unwrap().len(), 2);
+    assert_eq!(view["scene"]["meshes"].as_object().unwrap().len(), 2);
+    assert!(view["scene"]["joints"].as_array().unwrap().is_empty());
+    assert_eq!(
+        json(&app, "GET", &url, &bob, None).await.0,
+        StatusCode::FORBIDDEN
+    );
+    service.limits.pieces = 1;
+    let (limited, alice) = http(&service);
+    assert_eq!(
+        json(&limited, "GET", &url, &alice, None).await.0,
+        StatusCode::PAYLOAD_TOO_LARGE
+    );
+}
+
+#[tokio::test]
+async fn signed_in_shared_editing_is_paced_and_paid_plans_do_not_bypass_permissions() {
+    let mut service = service();
+    service.pacing = pacing::Pacing::test_budget(service.store.clone(), 2, 86400);
+    let (head, imported) = seeded(&service, scene(100.)).await;
+    service.pacing.set_unlimited("bob", true).await.unwrap();
+    assert!(
+        service
+            .prepare(
+                &head.id,
+                "bob",
+                edit(&service, &head, &imported.pieces[&1], glam::DVec3::X).await
+            )
+            .await
+            .is_err()
+    );
+    service.pacing.set_unlimited("bob", false).await.unwrap();
+    service
+        .grants(
+            &head.id,
+            "alice",
+            GrantRequest {
+                base: head.revision,
+                grants: Vec::new(),
+                authenticated_editing: Some(true),
+            },
+        )
+        .await
+        .unwrap();
+    for _ in 0..2 {
+        let head = service
+            .head(
+                &head.id,
+                &Principal {
+                    id: Some("bob".into()),
+                },
+                None,
+            )
+            .await
+            .unwrap();
+        service
+            .prepare(
+                &head.id,
+                "bob",
+                edit(&service, &head, &imported.pieces[&1], glam::DVec3::X).await,
+            )
+            .await
+            .unwrap()
+            .publish_with(&service)
+            .await
+            .unwrap();
+    }
+    let head = service
+        .head(
+            &head.id,
+            &Principal {
+                id: Some("bob".into()),
+            },
+            None,
+        )
+        .await
+        .unwrap();
+    let request = edit(&service, &head, &imported.pieces[&1], glam::DVec3::X).await;
+    let error = service
+        .prepare(&head.id, "bob", request.clone())
+        .await
+        .unwrap()
+        .publish_with(&service)
+        .await
+        .err()
+        .unwrap();
+    assert_eq!(error.status, StatusCode::TOO_MANY_REQUESTS);
+    service.pacing.set_unlimited("bob", true).await.unwrap();
+    service
+        .prepare(&head.id, "bob", request)
+        .await
+        .unwrap()
+        .publish_with(&service)
+        .await
+        .unwrap();
 }
 async fn piece(service: &SharedWorlds, world: &str, id: &ContentId) -> Piece {
     service
@@ -391,6 +521,7 @@ async fn region_grants_and_revocation_are_checked_at_atomic_publication() {
             &head.id,
             "alice",
             GrantRequest {
+                authenticated_editing: None,
                 base: head.revision,
                 grants: vec![Grant {
                     user: "bob".into(),
@@ -427,6 +558,7 @@ async fn region_grants_and_revocation_are_checked_at_atomic_publication() {
             &head.id,
             "alice",
             GrantRequest {
+                authenticated_editing: None,
                 base: revision,
                 grants: Vec::new(),
             },
@@ -443,6 +575,7 @@ async fn region_grants_and_revocation_are_checked_at_atomic_publication() {
 async fn support_removal_checks_old_and_new_domains_across_spatial_blocks() {
     let mut service = service();
     service.store.measurements = Arc::new(ergo_world::physical::ConnectionMeasurements {
+        parts: Vec::new(),
         entries: vec![ergo_world::physical::ConnectionMeasurement {
             part_a: "3003.dat".into(),
             part_b: "3003.dat".into(),
@@ -647,6 +780,115 @@ async fn rest_is_authenticated_paged_and_never_exports_whole_world_geometry() {
     assert_eq!(app.oneshot(request).await.unwrap().status(), StatusCode::OK);
 }
 
+#[tokio::test]
+async fn mcp_delegations_publish_and_read_but_cannot_change_grants_or_other_users_worlds() {
+    let service = service();
+    let (head, _) = seeded(&service, scene(100.)).await;
+    let store = service.store.clone();
+    let (auth, alice) = crate::auth::Auth::test_session("alice");
+    let (_, bob) = crate::auth::Auth::test_session("bob");
+    let app = routes()
+        .route("/api/auth/mcp-token", post(crate::auth::mcp_token))
+        .with_state(AppState {
+            shared: service,
+            parts: store.part_cache().unwrap(),
+            ground: store.ground_cache().unwrap(),
+            store,
+            auth,
+            geo: Default::default(),
+            library: None,
+        });
+    let mut delegated = Vec::new();
+    for session in [&alice, &bob] {
+        let (status, grant) = json(
+            &app,
+            "POST",
+            "/api/auth/mcp-token",
+            session,
+            Some(serde_json::json!({"expires_in_seconds":60})),
+        )
+        .await;
+        assert_eq!(status, StatusCode::OK);
+        let mut headers = axum::http::HeaderMap::new();
+        headers.insert(
+            "authorization",
+            format!("Bearer {}", grant["token"].as_str().unwrap())
+                .parse()
+                .unwrap(),
+        );
+        headers.insert("X-Ergo-Request", "1".parse().unwrap());
+        delegated.push(headers);
+    }
+    let uri = format!("/api/shared-worlds/{}", head.id);
+    assert_eq!(
+        json(&app, "GET", &uri, &delegated[0], None).await.0,
+        StatusCode::OK
+    );
+    assert_eq!(
+        json(&app, "GET", &uri, &delegated[1], None).await.0,
+        StatusCode::FORBIDDEN
+    );
+    let (status, imported) = json(
+        &app,
+        "POST",
+        &format!("{uri}/assemblies"),
+        &delegated[0],
+        Some(serde_json::json!({"base":head.revision,"scene":scene(100_000.)})),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "{imported}");
+    assert!(imported["accepted"]["audit"]["validation"].is_object());
+    let revision = &imported["accepted"]["revision"];
+    assert_eq!(
+        json(
+            &app,
+            "PUT",
+            &format!("{uri}/grants"),
+            &delegated[0],
+            Some(serde_json::json!({"base":revision,"grants":[]}))
+        )
+        .await
+        .0,
+        StatusCode::FORBIDDEN
+    );
+    assert_eq!(
+        json(
+            &app,
+            "POST",
+            &format!("{uri}/commits"),
+            &delegated[0],
+            Some(serde_json::json!({"base":revision,"pieces":[]}))
+        )
+        .await
+        .0,
+        StatusCode::UNPROCESSABLE_ENTITY
+    );
+    assert_eq!(
+        json(
+            &app,
+            "PUT",
+            &format!("{uri}/retention"),
+            &delegated[0],
+            Some(serde_json::json!({"base":revision,"keep_last":1}))
+        )
+        .await
+        .0,
+        StatusCode::FORBIDDEN
+    );
+    assert_eq!(
+        json(
+            &app,
+            "POST",
+            &format!("{uri}/assemblies"),
+            &delegated[1],
+            Some(serde_json::json!({"base":revision,"scene":scene(200_000.)}))
+        )
+        .await
+        .0,
+        StatusCode::FORBIDDEN
+    );
+}
+
 fn http(service: &SharedWorlds) -> (Router, HeaderMap) {
     let store = service.store.clone();
     let (auth, headers) = crate::auth::Auth::test_session("alice");
@@ -771,6 +1013,7 @@ async fn dense_block_edits_load_only_selected_piece_and_rule_pages() {
 async fn cross_assembly_joints_track_both_ends_and_prevent_dangling_deletions() {
     let mut service = service();
     service.store.measurements = Arc::new(ergo_world::physical::ConnectionMeasurements {
+        parts: Vec::new(),
         entries: vec![ergo_world::physical::ConnectionMeasurement {
             part_a: "3003.dat".into(),
             part_b: "3003.dat".into(),
@@ -993,6 +1236,7 @@ async fn catalogs_are_paged_and_stale_grants_never_leak_worlds() {
             &head.id,
             "alice",
             GrantRequest {
+                authenticated_editing: None,
                 base: head.revision,
                 grants: vec![Grant {
                     user: "bob".into(),
@@ -1011,6 +1255,7 @@ async fn catalogs_are_paged_and_stale_grants_never_leak_worlds() {
             &head.id,
             "alice",
             GrantRequest {
+                authenticated_editing: None,
                 base: revision,
                 grants: Vec::new(),
             },
@@ -1064,6 +1309,7 @@ async fn live_event_stream_rechecks_grants_and_holds_no_persistent_snapshot_pin(
             &head.id,
             "alice",
             GrantRequest {
+                authenticated_editing: None,
                 base: head.revision,
                 grants: vec![Grant {
                     user: "bob".into(),
@@ -1095,6 +1341,7 @@ async fn live_event_stream_rechecks_grants_and_holds_no_persistent_snapshot_pin(
             &head.id,
             "alice",
             GrantRequest {
+                authenticated_editing: None,
                 base: revision,
                 grants: Vec::new(),
             },

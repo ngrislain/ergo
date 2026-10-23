@@ -540,7 +540,7 @@ impl Working {
             let pairs: BTreeSet<_> = scene.joints.iter().map(|j| (j.a.min(j.b), j.a.max(j.b))).collect();
             scene.joints.extend(ergo_world::constraints::inferred_joints(&scene.bricks).into_iter().filter(|j| !pairs.contains(&(j.a.min(j.b), j.a.max(j.b)))));
             model.measurements.apply(&scene.bricks, &mut scene.joints)?;
-            let mut report = ergo_world::validation::validate_static_with_tolerances(&mut scene, model.tolerances)?;
+            let mut report = ergo_world::validation::validate_static_with_measurements(&mut scene, model.tolerances,&model.measurements)?;
             report.physical_calibration = "Frozen server-owned measurement/model version; complete affected dependency domain; no simulation".into();
             Ok(report)
         }).await.map_err(anyhow::Error::from)??))

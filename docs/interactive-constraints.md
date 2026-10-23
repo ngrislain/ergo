@@ -64,9 +64,10 @@ Anchor coincidence supplies three independent conditions; aligned axes supply
 two. Optional limits impose $\theta_{min}\le\theta\le\theta_{max}$. A motor
 can request angular velocity or position, subject to torque limits.
 
-The initial catalog contains basic bricks, plates, and tiles, not wheel or axle
-meshes. Revolute constraints are supported and tested now; adding real wheel
-parts later does not require changing the joint model. Their collision boxes may
+The recommendations contain basic bricks, plates, and tiles; wheel/axle and other
+Studio/LDraw meshes resolve on demand when their source is available. Revolute
+constraints are supported, but geometry alone does not provide a connector model
+or sourced physical data. Their collision boxes may
 be a poor approximation to the wheel bore or tire, so explicitly connected pairs
 can disable mutual collision while still colliding with other objects.
 

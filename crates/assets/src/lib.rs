@@ -93,8 +93,8 @@ impl PartCache {
     pub async fn resolve(&self, name: &str) -> Result<PartAsset> {
         let part = ergo_world::catalog::canonical_part(&ldraw::normalize_name(name)?);
         ensure!(
-            ergo_world::catalog::PARTS.iter().any(|(p, _)| *p == part),
-            "Unsupported part {part}"
+            ergo_world::catalog::valid_part(&part),
+            "Invalid part {part}"
         );
         let _guard = self.gate.lock().await;
         let key = format!("assets/v{}/parts/{part}.json", ergo_world::SCHEMA_VERSION);
@@ -154,6 +154,10 @@ impl PartCache {
                 })
             }
             Err(e) => {
+                ensure!(
+                    ergo_world::geometry::part_spec(&part).is_some(),
+                    "No geometry for {part}: {e:#}. Supply the Studio/LDraw part library with LDRAW_DIR; non-standard parts never use placeholder geometry"
+                );
                 let message =
                     format!("{e:#}; using parametric geometry (upstream fetch will be retried)");
                 self.failures
@@ -209,12 +213,16 @@ impl PartCache {
             files.insert(name, text);
         }
         let mut mesh = ldraw::bake_mesh(part, &|name| files.get(name).cloned(), &BTreeMap::new())?;
-        let nominal = fallback_mesh(part);
-        ensure!(
-            nominal.bounds.expanded(0.05).contains(mesh.bounds),
-            "Downloaded geometry does not match nominal catalog dimensions"
-        );
-        mesh.body_bounds = nominal.body_bounds;
+        if ergo_world::geometry::part_spec(part).is_some() {
+            let nominal = fallback_mesh(part);
+            ensure!(
+                nominal.bounds.expanded(0.05).contains(mesh.bounds),
+                "Downloaded geometry does not match nominal catalog dimensions"
+            );
+            mesh.body_bounds = nominal.body_bounds;
+        } else {
+            mesh.body_bounds = mesh.bounds;
+        }
         mesh.credits = credits.clone();
         Ok((mesh, credits))
     }

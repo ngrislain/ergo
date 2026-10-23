@@ -5,8 +5,10 @@
 Each brick has a nominal body bounding box. Decorative studs are rendered but are
 excluded from catalog body boxes: interlocking studs would otherwise look like
 illegal penetration. A box is not a faithful collision shape for cavities,
-Technic holes, clips, or bevels. The restricted basic-brick catalog keeps that
-approximation manageable.
+Technic holes, clips, or bevels. The preferred basic-brick catalog keeps that
+approximation manageable. Other Studio/LDraw geometry can be imported, but
+publication requires operator-owned mass/nominal-bound records and applicable
+connector measurements; a more detailed visual mesh does not make its box exact.
 
 Initial world-axis body AABBs become analytic cuboid colliders. During simulation they
 rotate with their bodies. Thus imported rotations may have conservative initial

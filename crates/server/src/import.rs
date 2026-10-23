@@ -79,6 +79,11 @@ pub fn import_ldraw(
     let mut refs = doc.instances()?;
     for r in &mut refs {
         r.name = ergo_world::catalog::canonical_part(&r.name);
+        ensure!(
+            ergo_world::catalog::known_color(r.color) || doc.colors.contains_key(&r.color),
+            "Unknown color {}; include its !COLOUR definition in the Studio/LDraw export",
+            r.color
+        );
     }
     let mut meshes = BTreeMap::new();
     let mut notes = Vec::new();
@@ -176,15 +181,18 @@ pub fn validate_export(scene: &mut WorldExport) -> Result<()> {
     for (name, mesh) in &mut scene.meshes {
         ldraw::normalize_name(name)?;
         ensure!(
-            ergo_world::catalog::PARTS
-                .iter()
-                .any(|(part, _)| *part == name),
-            "Geometry {name} is outside the starter catalog"
+            ergo_world::catalog::valid_part(name),
+            "Invalid geometry part ID {name}"
         );
         ensure!(
             mesh.schema == ergo_world::SCHEMA_VERSION && mesh.part == *name,
             "Invalid geometry schema or part ID"
         );
+        ensure!(
+            ergo_world::geometry::part_spec(name).is_some() || mesh.quality == "ldraw",
+            "Non-standard parts require actual LDraw/Studio geometry, not placeholders"
+        );
+        mesh.physical = None;
         ensure!(
             mesh.vertices.len() % 27 == 0 && !mesh.vertices.is_empty(),
             "Geometry must contain complete triangles"
@@ -204,7 +212,11 @@ pub fn validate_export(scene: &mut WorldExport) -> Result<()> {
             .reduce(ergo_world::Aabb::union)
             .unwrap();
         mesh.bounds = bounds;
-        mesh.body_bounds = fallback_mesh(name).body_bounds;
+        mesh.body_bounds = if ergo_world::geometry::part_spec(name).is_some() {
+            fallback_mesh(name).body_bounds
+        } else {
+            bounds
+        };
     }
     for brick in &mut scene.bricks {
         ergo_world::physical::validate_pose(brick)?;
@@ -218,7 +230,7 @@ pub fn validate_export(scene: &mut WorldExport) -> Result<()> {
                 && brick.transform.determinant().abs() > 1e-10,
             "Invalid brick transform"
         );
-        let body_bounds = ergo_world::geometry::fallback_mesh(&brick.part).body_bounds;
+        let body_bounds = mesh.body_bounds;
         brick.bounds = body_bounds.transformed(brick.transform, brick.position);
         brick.render_bounds = mesh.bounds.transformed(brick.transform, brick.position);
     }
@@ -230,6 +242,50 @@ pub fn validate_export(scene: &mut WorldExport) -> Result<()> {
 mod tests {
     use super::*;
     use std::io::Write;
+
+    #[test]
+    fn nonstandard_geometry_and_custom_studio_colors_import_without_fabricated_physics() {
+        let model = "0 FILE model.ldr\n0 !COLOUR Studio_Custom CODE 100000 VALUE #123456 EDGE #333333\n1 100000 0 -24 0 1 0 0 0 1 0 0 0 1 custom.dat\n0 FILE custom.dat\n4 16 -20 0 -20 20 0 -20 20 0 20 -20 0 20\n4 16 -20 24 -20 -20 24 20 20 24 20 20 24 -20\n";
+        let imported = import_ldraw(model.as_bytes(), "custom.mpd", None).unwrap();
+        assert_eq!(imported.bricks[0].part, "custom.dat");
+        assert_eq!(imported.bricks[0].rgb, 0x123456);
+        assert_eq!(imported.meshes["custom.dat"].quality, "ldraw");
+        let mut scene = WorldExport {
+            schema: ergo_world::SCHEMA_VERSION,
+            name: "Measured custom part".into(),
+            geo: Default::default(),
+            bricks: imported.bricks,
+            meshes: imported.meshes,
+            joints: Vec::new(),
+            fixed_bricks: Vec::new(),
+            groups: Vec::new(),
+            ground: Vec::new(),
+        };
+        validate_export(&mut scene).unwrap();
+        assert!(
+            ergo_world::validation::validate_static(&mut scene)
+                .unwrap_err()
+                .to_string()
+                .contains("sourced")
+        );
+        let record = ergo_world::physical::PartMeasurement {
+            part: "custom.dat".into(),
+            mass_kg: 0.003,
+            body_bounds: scene.meshes["custom.dat"].body_bounds,
+            source: "synthetic test-only mass and dimension fixture".into(),
+            samples: 1,
+        };
+        let measurements = ergo_world::physical::ConnectionMeasurements {
+            entries: Vec::new(),
+            parts: vec![record],
+        };
+        ergo_world::validation::validate_static_with_measurements(
+            &mut scene,
+            Default::default(),
+            &measurements,
+        )
+        .unwrap();
+    }
 
     #[test]
     fn studio_archive_imports_model_and_preserves_supported_parts_colors() {
@@ -249,9 +305,9 @@ mod tests {
     }
 
     #[test]
-    fn unsupported_catalog_entries_and_scaled_real_bricks_are_rejected() {
+    fn invalid_part_paths_undefined_colors_and_scaled_real_bricks_are_rejected() {
         for text in [
-            "1 4 0 0 0 1 0 0 0 1 0 0 0 1 unknown.dat",
+            "1 4 0 0 0 1 0 0 0 1 0 0 0 1 ../unknown.dat",
             "1 9999 0 0 0 1 0 0 0 1 0 0 0 1 3003.dat",
             "1 4 0 0 0 2 0 0 0 2 0 0 0 2 3003.dat",
         ] {

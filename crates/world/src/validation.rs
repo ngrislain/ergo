@@ -86,6 +86,18 @@ pub fn validate_static_with_tolerances(
     scene: &mut WorldExport,
     tolerances: StaticTolerances,
 ) -> Result<ValidationReport> {
+    validate_static_with_measurements(
+        scene,
+        tolerances,
+        &crate::physical::ConnectionMeasurements::default(),
+    )
+}
+pub fn validate_static_with_measurements(
+    scene: &mut WorldExport,
+    tolerances: StaticTolerances,
+    measurements: &crate::physical::ConnectionMeasurements,
+) -> Result<ValidationReport> {
+    measurements.normalize_scene(scene)?;
     tolerances.validate()?;
     ensure!(
         !scene.bricks.is_empty(),
@@ -147,6 +159,7 @@ pub fn validate_static_with_tolerances(
         &scene.joints,
         &scene.fixed_bricks,
         tolerances,
+        measurements,
     )?;
     Ok(report)
 }
@@ -166,8 +179,9 @@ fn support_certificate(
     joints: &[crate::JointSpec],
     fixed: &[u32],
     tol: StaticTolerances,
+    measurements: &crate::physical::ConnectionMeasurements,
 ) -> Result<()> {
-    use crate::physical::{GRAVITY_M_S2, mass_kg, to_meters};
+    use crate::physical::{GRAVITY_M_S2, to_meters};
     let n = bricks.len();
     let index: HashMap<_, _> = bricks.iter().enumerate().map(|(i, b)| (b.id, i)).collect();
     let mut edges = Vec::new();
@@ -261,7 +275,7 @@ fn support_certificate(
         let mut center = DVec3::ZERO;
         let mut supports = Vec::new();
         for &i in &group {
-            let m = mass_kg(&bricks[i].part)?;
+            let m = measurements.mass_kg(&bricks[i].part)?;
             let p = to_meters(bricks[i].bounds.center()) - origin;
             mass += m;
             center += p * m;
@@ -514,7 +528,14 @@ mod tests {
     fn pavilion_has_a_scalable_ground_support_certificate() {
         let d = crate::demo::pavilion();
         let joints = crate::demo::authored_bonds(&d.bricks);
-        support_certificate(&d.bricks, &joints, &[], StaticTolerances::default()).unwrap();
+        support_certificate(
+            &d.bricks,
+            &joints,
+            &[],
+            StaticTolerances::default(),
+            &Default::default(),
+        )
+        .unwrap();
         let mut s = scene(d);
         s.joints = joints;
         validate_static(&mut s).unwrap();

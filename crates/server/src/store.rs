@@ -101,6 +101,7 @@ impl Store {
     }
 
     pub fn calibrate(&self, scene: &mut WorldExport) -> Result<()> {
+        self.measurements.normalize_scene(scene)?;
         self.measurements.apply(&scene.bricks, &mut scene.joints)
     }
 
@@ -220,10 +221,11 @@ impl Store {
         let example = owner == "examples";
         let tolerances = self.static_tolerances;
         let (scene, validation) = tokio::task::spawn_blocking(move || -> Result<_> {
+            measurements.normalize_scene(&mut scene)?;
             let pairs:std::collections::HashSet<_>=scene.joints.iter().map(|j|(j.a.min(j.b),j.a.max(j.b))).collect();
             scene.joints.extend(ergo_world::constraints::inferred_joints(&scene.bricks).into_iter().filter(|j|!pairs.contains(&(j.a.min(j.b),j.a.max(j.b)))));
             if !example {measurements.apply(&scene.bricks,&mut scene.joints)?;}
-            let mut validation = ergo_world::validation::validate_static_with_tolerances(&mut scene,tolerances)?;
+            let mut validation = ergo_world::validation::validate_static_with_measurements(&mut scene,tolerances,&measurements)?;
             validation.physical_calibration=if example {"Read-only fixture example: nominal metric dimensions and catalog masses; idealized unbreakable joints"}else{"Nominal metric dimensions; sourced catalog masses; server-supplied measured connector capacities; box inertia and assumed friction"}.into();
             Ok((scene, validation))
         }).await??;

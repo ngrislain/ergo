@@ -200,7 +200,13 @@ impl Simulation {
             let offset = to_meters(brick.bounds.center() - brick.position);
             let collider = ColliderBuilder::cuboid(half.x, half.y, half.z)
                 .translation(vector(offset))
-                .mass(crate::physical::mass_kg(&brick.part)?)
+                .mass(
+                    _mesh
+                        .physical
+                        .as_ref()
+                        .map(|p| Ok(p.mass_kg))
+                        .unwrap_or_else(|| crate::physical::mass_kg(&brick.part))?,
+                )
                 .friction(0.65)
                 .restitution(0.0);
             s.colliders

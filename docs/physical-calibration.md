@@ -96,6 +96,18 @@ block calibrated publication; do not populate a plausible-looking example with
 fabricated newton values. The MCP binary accepts the same book through
 `--measurements`.
 
+The same file can include an optional `parts` array for non-standard catalog
+items. Each record provides canonical `part`, positive `mass_kg`, nominal
+`body_bounds` (`min` and `max` in public X/Y/Z construction coordinates relative
+to the part reference), traceable `source`, and positive `samples`. Bounds must
+be finite and have positive extents. These are operator-owned measurements,
+not guesses from mesh volume. Duplicate/noncanonical part IDs are rejected.
+Server normalization overrides client mass/bounds metadata before validation;
+shared worlds freeze these records with their physical model. Missing records
+allow local geometry inspection but block physical tests/publication. Standard
+parts retain their built-in sourced records unless the operator supplies an
+explicit measured override. See [Studio catalog support](studio-catalog.md).
+
 The server ignores capacities claimed in an uploaded working copy and overwrites
 them from its own book before publication. Stored constraints retain the selected
 force/torque thresholds and source. Different overlap footprints need separate

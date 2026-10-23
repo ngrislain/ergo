@@ -1,5 +1,6 @@
 //! Thin stdio/REST bridge. Rendering and all time-integrated simulations execute
 //! in the dedicated local browser WASM client, never in this process.
+mod publish;
 use anyhow::{Context, Result, ensure};
 use axum::{
     Json, Router,
@@ -87,7 +88,8 @@ async fn update(
     Json(mut update): Json<Update>,
 ) -> std::result::Result<Json<Value>, HttpError> {
     authorized(&s, &headers)?;
-    normalize(&mut update.scene).map_err(http_error)?;
+    let measurements = s.hub.lock().unwrap().workspace.measurements.clone();
+    normalize(&mut update.scene, &measurements).map_err(http_error)?;
     let mut h = s.hub.lock().unwrap();
     if !h.pending.contains_key(&update.job_id) || h.workspace.revision != update.expected_revision {
         return Err((
@@ -140,10 +142,7 @@ async fn part(
         } else {
             format!("{name}.dat")
         });
-        if !ergo_world::catalog::PARTS
-            .iter()
-            .any(|(p, _)| *p == canonical)
-        {
+        if !ergo_world::catalog::valid_part(&canonical) {
             return Err(http_error("Unsupported part"));
         }
         let response = s
@@ -181,7 +180,7 @@ fn persist(path: &FsPath, scene: &WorldExport) -> Result<()> {
     temp.persist(path)?;
     Ok(())
 }
-fn normalize(scene: &mut WorldExport) -> Result<()> {
+fn normalize(scene: &mut WorldExport, measurements: &ConnectionMeasurements) -> Result<()> {
     ensure!(
         scene.schema == ergo_world::SCHEMA_VERSION,
         "Expected schema 2: X east, Y north, Z height; reimport or explicitly migrate older files"
@@ -210,7 +209,6 @@ fn normalize(scene: &mut WorldExport) -> Result<()> {
         );
         vertices += mesh.vertices.len() / 9;
         ensure!(vertices <= 4_000_000, "Too much geometry");
-        mesh.body_bounds = ergo_world::geometry::fallback_mesh(part).body_bounds;
         mesh.bounds = mesh
             .vertices
             .chunks_exact(9)
@@ -220,6 +218,19 @@ fn normalize(scene: &mut WorldExport) -> Result<()> {
             })
             .reduce(ergo_world::Aabb::union)
             .unwrap();
+        mesh.body_bounds = if ergo_world::geometry::part_spec(part).is_some() {
+            ergo_world::geometry::fallback_mesh(part).body_bounds
+        } else {
+            mesh.bounds
+        };
+        mesh.physical = measurements
+            .parts
+            .iter()
+            .find(|record| record.part == *part)
+            .cloned();
+        if let Some(record) = &mesh.physical {
+            mesh.body_bounds = record.body_bounds;
+        }
     }
     for b in &mut scene.bricks {
         ergo_world::physical::validate_pose(b)?;
@@ -290,6 +301,9 @@ fn main() -> Result<()> {
     let mut measurements = ConnectionMeasurements::default();
     let mut headless = false;
     let mut attach = false;
+    let mut publish_url = None;
+    let mut publish_token_file = None;
+    let mut login = false;
     let mut web = std::env::var_os("ERGO_WEB_DIR")
         .map(PathBuf::from)
         .unwrap_or_else(|| PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../web"));
@@ -303,17 +317,31 @@ fn main() -> Result<()> {
             }
             "--headless" => headless = true,
             "--attach" => attach = true,
+            "--publish-url" => publish_url = Some(args.next().context("Missing publication URL")?),
+            "--login" => login = true,
+            "--publish-token-file" => {
+                publish_token_file = Some(PathBuf::from(
+                    args.next().context("Missing publication token file")?,
+                ))
+            }
             "--web-dir" => web = args.next().context("Missing web directory")?.into(),
             "--help" => {
                 eprintln!(
-                    "ergo-mcp --workspace path.json [--measurements file.json] [--attach | --headless] [--web-dir web]\nThe default opens a minimal WASM client in the existing browser. Heavy work runs there, over the local REST bridge. Build it with cargo xtask build-web."
+                    "ergo-mcp --workspace path.json [--measurements file.json] [--attach | --headless] [--web-dir web] [--publish-url HTTPS_ORIGIN] [--publish-token-file FILE]\nergo-mcp --login --publish-url HTTPS_ORIGIN\n--login opens browser SSO/token setup and exits. The normal command opens the minimal WASM client. Heavy work runs locally; publication uses the authenticated REST API. Build the client with cargo xtask build-web."
                 );
                 return Ok(());
             }
             _ => anyhow::bail!("Unknown argument {arg}"),
         }
     }
+    if login {
+        return publish::open_login(publish_url);
+    }
     measurements.validate()?;
+    let publisher = publish::Publisher::from_env(publish_url, publish_token_file)?;
+    let publish_runtime = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()?;
     ensure!(
         web.join("mcp-pkg/ergo_client.js").exists(),
         "Build the minimal WASM client first: cargo xtask build-web"
@@ -331,7 +359,7 @@ fn main() -> Result<()> {
             "Working copy exceeds 128 MiB"
         );
         let mut scene = serde_json::from_slice(&fs::read(&path)?)?;
-        normalize(&mut scene)?;
+        normalize(&mut scene, &measurements)?;
         scene
     } else {
         WorldExport {
@@ -462,7 +490,7 @@ fn main() -> Result<()> {
                     .filter(|v| ["2025-11-25", "2025-06-18", "2024-11-05"].contains(v))
                     .unwrap_or("2025-06-18");
                 Ok(
-                    json!({"protocolVersion":version,"capabilities":{"tools":{"listChanged":false}},"serverInfo":{"name":"ergo-local-wasm-bridge","version":env!("CARGO_PKG_VERSION")},"instructions":"Tools execute in the attached minimal local WASM client via REST. Coordinates are X east, Y north, Z height. Source magnitude is not local PGA. The bridge only stores local working copies; no global commit tool exists."}),
+                    json!({"protocolVersion":version,"capabilities":{"tools":{"listChanged":false}},"serverInfo":{"name":"ergo-local-wasm-bridge","version":env!("CARGO_PKG_VERSION")},"instructions":"Editing, simulation, and rendering execute in the local WASM client. publish_construction uses the operator-configured authenticated shared-world REST API; only a confirmed result establishes remote publication. Coordinates are X east, Y north, Z height. Source magnitude is not local PGA."}),
                 )
             }
             "ping" => Ok(json!({})),
@@ -487,6 +515,18 @@ fn main() -> Result<()> {
                             &tool["inputSchema"],
                             "arguments",
                         )?;
+                        if name == "publish_construction" || name == "get_edit_allowance" {
+                            let publisher = publisher.as_ref().context("Publishing is not configured. Set ERGO_PUBLISH_URL and ERGO_PUBLISH_TOKEN_FILE (or ERGO_PUBLISH_TOKEN); loopback development can omit the token")?;
+                            if name == "get_edit_allowance" {
+                                return Ok(publish_runtime.block_on(publisher.allowance()));
+                            }
+                            let (scene, revision) = {
+                                let hub = bridge.hub.lock().unwrap();
+                                (hub.workspace.scene.clone(), hub.workspace.revision)
+                            };
+                            return Ok(publish_runtime
+                                .block_on(publisher.publish(scene, revision, arguments)));
+                        }
                         let job = Job {
                             id: uuid::Uuid::new_v4().to_string(),
                             name: name.into(),
@@ -513,6 +553,30 @@ fn main() -> Result<()> {
                             {
                                 text["text"] =
                                     json!(format!("Local working copy: {}", path.display()));
+                            }
+                        }
+                        if let Some(content) = value.get_mut("structuredContent") {
+                            let feedback = if name == "export_construction" {
+                                &mut content["feedback"]
+                            } else {
+                                content
+                            };
+                            if feedback.get("global_commit_available").is_some() {
+                                feedback["global_commit_available"] = json!(publisher.is_some());
+                            }
+                        }
+                        // Keep the text fallback consistent for MCP hosts that
+                        // do not consume structuredContent.
+                        if let Some(items) = value["content"].as_array_mut() {
+                            for item in items {
+                                if let Some(text) = item["text"].as_str()
+                                    && let Ok(mut feedback) = serde_json::from_str::<Value>(text)
+                                    && feedback.get("global_commit_available").is_some()
+                                {
+                                    feedback["global_commit_available"] =
+                                        json!(publisher.is_some());
+                                    item["text"] = json!(feedback.to_string());
+                                }
                             }
                         }
                         Ok(value)

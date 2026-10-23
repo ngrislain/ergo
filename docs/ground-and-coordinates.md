@@ -45,9 +45,16 @@ Z units are 9.6 mm. See [persistence indexing](persistence-indexing.md).
 
 Each horizontal cell has a **1024×1024 virtual baseplate with one standard
 material color**. It is not a regular imported catalog piece and is not counted
-as a movable brick. Its visible top is at Z=$-0.01$ brick-height units
+as a movable brick. Its plate-body top is at Z=$-0.01$ brick-height units
 (-0.096 mm), and its thickness is one plate (3.2 mm). The physics support plane
 is Z=0, so placed piece bases have height zero without z-fighting the display.
+
+The surface has one stud per horizontal construction unit, so a full plate has
+1024×1024 stud positions. Nearby visible studs use an instanced 12-sided cylinder
+(4.8 mm diameter, 1.6 mm high). The renderer considers at most a 97×97 local
+grid, then frustum/distance culls it. Farther studs use derivative-filtered shader
+relief that fades when subpixel; a million separate meshes are never allocated.
+Studs are decorative and do not change the flat navigation/physics support plane.
 
 A part's LDraw reference origin can be above its base. For example, a brick placed
 with minimum-corner Z=0 can have reference-origin Z=1. `bounds.min.z` is its base
@@ -71,6 +78,11 @@ There is no world-wide pre-generation or offline-region download job. Revisited
 cells reuse saved results. A snapshot can retain the viewed baseplate metadata,
 allowing MCP image tools to use it without requesting new map tiles in headless
 automation.
+
+The browser only preloads retained ground metadata matching the current
+`ground_provider` advertised by `/api/config`; changing from OSM to satellite
+imagery therefore refreshes the live view instead of reusing an old cartographic
+snapshot color. MCP captures continue to use explicitly retained metadata offline.
 
 ## Average first, then project to the palette
 
@@ -98,11 +110,13 @@ defined in `catalog.rs` / `color_rgb`; RGB swatches are not spectral measurement
 
 ## Map sources and projection
 
-The default source is OpenStreetMap Carto raster imagery. **OSM is cartography,
-not satellite photography.** Its average therefore reflects map styling.
-`ERGO_MAP_TILE_URL` supports a configured, licensed XYZ PNG provider; Google
-satellite is not automatically scraped or enabled without its proper service
-configuration. Provider attribution must be set appropriately when changing source.
+The default `ERGO_GROUND_SOURCE=satellite` uses **Esri World Imagery**, a
+satellite/aerial photograph service, with provider attribution. The sampled
+photograph footprint determines the one standard baseplate color; it is not a
+printed image. `ERGO_MAP_TILE_URL` supports alternative XYZ **PNG or JPEG**
+imagery with `{z}`, `{x}`, and `{y}` placeholders and 256×256 tiles. Set matching
+provider attribution when changing the source. `ERGO_GROUND_SOURCE=osm` explicitly
+selects OpenStreetMap cartography; `disabled` uses the labeled palette fallback.
 
 Web Mercator addresses source pixels with:
 
@@ -119,11 +133,12 @@ Web Mercator's latitude coverage.
 
 ## Caching, failure, and attribution
 
-Raw PNG tiles and derived ground cells are persisted separately. Source tiles
+Raw PNG/JPEG tiles and derived ground cells are persisted separately. Source tiles
 are cached for at least seven days; expired requests use ETag/Last-Modified
 conditions where available. Requests use a stable application User-Agent and
-configured public Referer. Only active viewing triggers generation. Follow the
-[OSM tile policy](https://operations.osmfoundation.org/policies/tiles/).
+configured public Referer. Only active viewing triggers generation. Use the
+configured imagery provider's service terms and attribution; when OSM is selected,
+follow the [OSM tile policy](https://operations.osmfoundation.org/policies/tiles/).
 
 The viewport shows visible source attribution. Configured provider URLs/keys are
 kept server-side; exported provenance uses provider/tile identifiers rather than

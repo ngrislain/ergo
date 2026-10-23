@@ -32,6 +32,30 @@ fn random() -> String {
     )
 }
 
+fn http_origin(value: &str) -> Result<url::Url> {
+    let url = url::Url::parse(value)?;
+    ensure!(
+        ["https", "http"].contains(&url.scheme())
+            && url.host().is_some()
+            && url.username().is_empty()
+            && url.password().is_none()
+            && url.path() == "/"
+            && url.query().is_none()
+            && url.fragment().is_none(),
+        "Expected an HTTP(S) origin"
+    );
+    Ok(url)
+}
+
+fn is_loopback(url: &url::Url) -> bool {
+    match url.host() {
+        Some(url::Host::Domain(host)) => host == "localhost",
+        Some(url::Host::Ipv4(ip)) => ip.is_loopback(),
+        Some(url::Host::Ipv6(ip)) => ip.is_loopback(),
+        None => false,
+    }
+}
+
 #[derive(Clone)]
 pub struct Auth {
     pub google: bool,
@@ -59,11 +83,33 @@ struct Session {
     expires: u64,
 }
 #[derive(Serialize, Deserialize)]
+struct McpDelegation {
+    purpose: String,
+    actor: String,
+    audience: String,
+    expires: u64,
+}
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct DelegationRequest {
+    #[serde(default = "delegation_lifetime")]
+    expires_in_seconds: u64,
+}
+fn delegation_lifetime() -> u64 {
+    3600
+}
+#[derive(Serialize, Deserialize)]
 struct Login {
     state: String,
     nonce: String,
     verifier: String,
     expires: u64,
+    #[serde(default)]
+    return_to: Option<String>,
+}
+#[derive(Deserialize)]
+pub struct LoginQuery {
+    return_to: Option<String>,
 }
 #[derive(Clone, Deserialize)]
 struct Claims {
@@ -100,6 +146,24 @@ impl Principal {
 }
 
 impl Auth {
+    fn login_target(&self, target: Option<&str>) -> Result<String> {
+        let target = target.unwrap_or("/");
+        ensure!(
+            target.len() <= 1024 && target.starts_with('/') && !target.starts_with("//"),
+            "Invalid login return path"
+        );
+        let parsed = url::Url::parse(&self.public_url)?.join(target)?;
+        ensure!(
+            parsed.origin().ascii_serialization() == self.public_url
+                && ["/", "/app", "/login"].contains(&parsed.path()),
+            "Login must return to this application's landing page or world viewer"
+        );
+        Ok(parsed
+            .as_str()
+            .strip_prefix(&self.public_url)
+            .context("Invalid login return origin")?
+            .to_owned())
+    }
     #[cfg(test)]
     pub(crate) fn test_session(user: &str) -> (Self, HeaderMap) {
         let auth = Self {
@@ -149,13 +213,8 @@ impl Auth {
             .unwrap_or_else(|_| "http://127.0.0.1:3000".into())
             .trim_end_matches('/')
             .to_owned();
-        let parsed = url::Url::parse(&public_url)?;
-        ensure!(
-            ["https", "http"].contains(&parsed.scheme())
-                && parsed.path() == "/"
-                && parsed.query().is_none(),
-            "ERGO_PUBLIC_URL must be an HTTP(S) origin"
-        );
+        let parsed =
+            http_origin(&public_url).context("ERGO_PUBLIC_URL must be an HTTP(S) origin")?;
         if google {
             ensure!(
                 parsed.scheme() == "https"
@@ -168,7 +227,7 @@ impl Auth {
             client_id,
             secret,
             signing,
-            public_url,
+            public_url: parsed.origin().ascii_serialization(),
             http: reqwest::Client::builder()
                 .timeout(Duration::from_secs(15))
                 .redirect(reqwest::redirect::Policy::none())
@@ -207,17 +266,112 @@ impl Auth {
         }
     }
     pub fn check_write(&self, headers: &HeaderMap) -> Result<String> {
+        self.check_request(headers)?;
+        self.principal(headers).required()
+    }
+    fn check_request(&self, headers: &HeaderMap) -> Result<()> {
         ensure!(
             headers.get("X-Ergo-Request").and_then(|h| h.to_str().ok()) == Some("1"),
             "Missing same-origin request header"
         );
         if let Some(origin) = headers.get(header::ORIGIN) {
             ensure!(
-                origin.to_str()? == self.public_url,
-                "Unexpected request origin"
+                self.allows_origin(origin.to_str()?, headers),
+                "Unexpected request origin. Open {} or set ERGO_PUBLIC_URL to match the browser's origin",
+                self.public_url
             );
         }
-        self.principal(headers).required()
+        Ok(())
+    }
+    pub fn shared_principal(&self, headers: &HeaderMap) -> Result<Principal> {
+        if let Some(value) = headers.get(header::AUTHORIZATION) {
+            let token = value
+                .to_str()?
+                .strip_prefix("Bearer ")
+                .context("Expected MCP bearer token")?;
+            let grant: McpDelegation = self.verify(token).context("Invalid MCP delegation")?;
+            ensure!(
+                ["ergo-mcp-publish-v1", "ergo-mcp-edit-v1"].contains(&grant.purpose.as_str())
+                    && grant.audience == self.public_url
+                    && grant.expires > now()
+                    && !grant.actor.is_empty(),
+                "Invalid or expired MCP delegation"
+            );
+            return Ok(Principal {
+                id: Some(grant.actor),
+            });
+        }
+        Ok(self.principal(headers))
+    }
+    pub fn check_publish(&self, headers: &HeaderMap) -> Result<String> {
+        self.check_request(headers)?;
+        self.shared_principal(headers)?.required()
+    }
+    pub fn check_shared_edit(&self, headers: &HeaderMap) -> Result<String> {
+        self.check_request(headers)?;
+        let principal = self.shared_principal(headers)?;
+        if let Some(value) = headers.get(header::AUTHORIZATION) {
+            let token = value
+                .to_str()?
+                .strip_prefix("Bearer ")
+                .context("Expected MCP bearer token")?;
+            let grant: McpDelegation = self.verify(token)?;
+            ensure!(
+                grant.purpose == "ergo-mcp-edit-v1",
+                "This older token authorizes publication only; issue a new shared-world edit token"
+            );
+        }
+        principal.required()
+    }
+    fn delegate(&self, headers: &HeaderMap, lifetime: u64) -> Result<(String, u64)> {
+        ensure!(
+            !headers.contains_key(header::AUTHORIZATION),
+            "Use a browser session to issue an MCP delegation"
+        );
+        let actor = self.check_write(headers)?;
+        ensure!(
+            (1..=86400).contains(&lifetime),
+            "MCP delegation lifetime must be 1..86400 seconds"
+        );
+        let mut expires = now() + lifetime;
+        if self.google {
+            let session: Session =
+                self.verify(cookie(headers, "ergo_session").context("Missing session")?)?;
+            expires = expires.min(session.expires);
+        }
+        let token = self.sign(&McpDelegation {
+            purpose: "ergo-mcp-edit-v1".into(),
+            actor,
+            audience: self.public_url.clone(),
+            expires,
+        })?;
+        Ok((token, expires))
+    }
+    fn allows_origin(&self, value: &str, headers: &HeaderMap) -> bool {
+        let Ok(origin) = http_origin(value) else {
+            return false;
+        };
+        if origin.origin().ascii_serialization() == self.public_url {
+            return true;
+        }
+        let Ok(public_url) = http_origin(&self.public_url) else {
+            return false;
+        };
+        if self.google
+            || origin.scheme() != public_url.scheme()
+            || !is_loopback(&public_url)
+            || !is_loopback(&origin)
+        {
+            return false;
+        }
+        // Local development may use another loopback name or port, but the
+        // browser must still be posting to its own origin. Never trust forwarded
+        // host headers or use the request Host to authorize a deployed origin.
+        let Some(host) = headers.get(header::HOST).and_then(|h| h.to_str().ok()) else {
+            return false;
+        };
+        http_origin(&format!("{}://{host}", origin.scheme()))
+            .is_ok_and(|request| request.origin() == origin.origin())
     }
     fn cookie(&self, name: &str, value: &str, age: u64) -> String {
         format!(
@@ -291,13 +445,17 @@ fn cookie<'a>(headers: &'a HeaderMap, name: &str) -> Option<&'a str> {
         })
 }
 
-pub async fn login(State(s): State<AppState>) -> Result<Response, ApiError> {
+pub async fn login(
+    State(s): State<AppState>,
+    Query(query): Query<LoginQuery>,
+) -> Result<Response, ApiError> {
     ensure_auth(s.auth.google)?;
     let login = Login {
         state: random(),
         nonce: random(),
         verifier: random(),
         expires: now() + 600,
+        return_to: Some(s.auth.login_target(query.return_to.as_deref())?),
     };
     let mut url = url::Url::parse("https://accounts.google.com/o/oauth2/v2/auth")?;
     url.query_pairs_mut().extend_pairs([
@@ -381,7 +539,8 @@ pub async fn callback(
         last_login: now(),
     };
     s.store.put_user(&user).await?;
-    let mut response = Redirect::to("/").into_response();
+    let destination = s.auth.login_target(login.return_to.as_deref())?;
+    let mut response = Redirect::to(&destination).into_response();
     response.headers_mut().append(
         header::SET_COOKIE,
         HeaderValue::from_str(&s.auth.cookie(
@@ -410,8 +569,13 @@ pub async fn me(
     } else {
         None
     };
+    let edit_allowance = if let Some(id) = &principal.id {
+        Some(s.shared.pacing.status(id).await?)
+    } else {
+        None
+    };
     Ok(Json(
-        serde_json::json!({"id":principal.id,"name":user.as_ref().map(|u|u.name.as_str()).unwrap_or("Guest"),"google_enabled":s.auth.google,"signed_in":user.is_some(),"development":!s.auth.google}),
+        serde_json::json!({"id":principal.id,"name":user.as_ref().map(|u|u.name.as_str()).unwrap_or("Guest"),"google_enabled":s.auth.google,"signed_in":user.is_some(),"development":!s.auth.google,"edit_allowance":edit_allowance}),
     ))
 }
 
@@ -427,6 +591,22 @@ pub async fn logout(State(s): State<AppState>, headers: HeaderMap) -> Result<Res
         HeaderValue::from_static("\"cache\", \"storage\""),
     );
     Ok(response)
+}
+
+pub async fn mcp_token(
+    State(s): State<AppState>,
+    headers: HeaderMap,
+    Json(request): Json<DelegationRequest>,
+) -> Result<Response, ApiError> {
+    let (token, expires) = s.auth.delegate(&headers, request.expires_in_seconds)?;
+    Ok((
+        [(header::CACHE_CONTROL, "no-store")],
+        Json(
+            serde_json::json!({"token":token,"expires_at":expires,"audience":s.auth.public_url,
+            "scope":"shared-worlds:read shared-worlds:create assemblies:import geometry:commit"}),
+        ),
+    )
+        .into_response())
 }
 
 pub async fn seed_development_user(store: &crate::store::Store) -> Result<()> {
@@ -448,6 +628,195 @@ pub async fn seed_development_user(store: &crate::store::Store) -> Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn sso_return_paths_preserve_world_links_without_open_redirects() {
+        let (auth, _) = Auth::test_session("alice");
+        assert_eq!(
+            auth.login_target(Some("/app?shared_world=example&x=1"))
+                .unwrap(),
+            "/app?shared_world=example&x=1"
+        );
+        assert_eq!(
+            auth.login_target(Some("/login#connect")).unwrap(),
+            "/login#connect"
+        );
+        for target in [
+            "//attacker.example/app",
+            "https://attacker.example/app",
+            "/api/auth/mcp-token",
+        ] {
+            assert!(auth.login_target(Some(target)).is_err());
+        }
+    }
+
+    #[test]
+    fn mcp_delegations_expire_are_audience_bound_and_cannot_become_sessions() {
+        let (mut auth, session) = Auth::test_session("alice");
+        let (token, expires) = auth.delegate(&session, 3600).unwrap();
+        let session_value: Session = auth
+            .verify(cookie(&session, "ergo_session").unwrap())
+            .unwrap();
+        assert_eq!(expires, session_value.expires);
+        let mut headers = HeaderMap::new();
+        headers.insert(
+            header::AUTHORIZATION,
+            format!("Bearer {token}").parse().unwrap(),
+        );
+        assert_eq!(
+            auth.shared_principal(&headers).unwrap().id.as_deref(),
+            Some("alice")
+        );
+        assert!(auth.check_publish(&headers).is_err());
+        headers.insert("X-Ergo-Request", HeaderValue::from_static("1"));
+        assert_eq!(auth.check_publish(&headers).unwrap(), "alice");
+        assert!(auth.delegate(&headers, 60).is_err());
+        assert!(auth.delegate(&session, 86401).is_err());
+
+        let mut cookie_headers = HeaderMap::new();
+        cookie_headers.insert(
+            header::COOKIE,
+            format!("ergo_session={token}").parse().unwrap(),
+        );
+        assert!(auth.principal(&cookie_headers).id.is_none());
+        let original = auth.public_url.clone();
+        auth.public_url = "https://other.example".into();
+        assert!(auth.shared_principal(&headers).is_err());
+        auth.public_url = original;
+        for (purpose, expires) in [("ergo-mcp-publish-v1", 0), ("other-purpose", now() + 60)] {
+            let token = auth
+                .sign(&McpDelegation {
+                    purpose: purpose.into(),
+                    actor: "alice".into(),
+                    audience: auth.public_url.clone(),
+                    expires,
+                })
+                .unwrap();
+            headers.insert(
+                header::AUTHORIZATION,
+                format!("Bearer {token}").parse().unwrap(),
+            );
+            assert!(auth.shared_principal(&headers).is_err());
+        }
+        headers.insert(
+            header::AUTHORIZATION,
+            format!("Bearer x{token}").parse().unwrap(),
+        );
+        assert!(auth.shared_principal(&headers).is_err());
+        headers.insert(
+            header::AUTHORIZATION,
+            format!("Bearer {}", cookie(&session, "ergo_session").unwrap())
+                .parse()
+                .unwrap(),
+        );
+        assert!(auth.shared_principal(&headers).is_err());
+    }
+
+    #[test]
+    fn development_writes_accept_same_origin_loopback_names_and_ports() {
+        let (mut auth, mut headers) = Auth::test_session("u");
+        auth.google = false;
+        auth.public_url = "http://127.0.0.1:3000".into();
+        for (origin, host) in [
+            ("http://127.0.0.1:3000", "127.0.0.1:3000"),
+            ("http://localhost:3000", "localhost:3000"),
+            ("http://127.0.0.1:3100", "127.0.0.1:3100"),
+            ("http://[::1]:3100", "[::1]:3100"),
+        ] {
+            headers.insert(header::ORIGIN, origin.parse().unwrap());
+            headers.insert(header::HOST, host.parse().unwrap());
+            assert_eq!(
+                auth.check_write(&headers).unwrap(),
+                "development",
+                "{origin}"
+            );
+        }
+    }
+
+    #[test]
+    fn development_writes_reject_cross_origin_and_malformed_requests() {
+        let (mut auth, mut headers) = Auth::test_session("u");
+        auth.google = false;
+        auth.public_url = "http://127.0.0.1:3000".into();
+        for (origin, host) in [
+            ("http://localhost:3000", "127.0.0.1:3000"),
+            ("http://localhost:3100", "localhost:3000"),
+            ("https://localhost:3000", "localhost:3000"),
+            ("http://attacker.example:3000", "attacker.example:3000"),
+            ("http://localhost.attacker.example:3000", "localhost:3000"),
+            ("http://192.168.1.10:3000", "192.168.1.10:3000"),
+            ("http://localhost:3000/path", "localhost:3000"),
+            ("http://localhost:3000", "localhost:3000/path"),
+            ("null", "localhost:3000"),
+        ] {
+            headers.insert(header::ORIGIN, origin.parse().unwrap());
+            headers.insert(header::HOST, host.parse().unwrap());
+            let error = auth.check_write(&headers).unwrap_err().to_string();
+            assert!(error.contains("ERGO_PUBLIC_URL"), "{origin}: {error}");
+        }
+        headers.insert(header::ORIGIN, "http://localhost:3000".parse().unwrap());
+        headers.remove(header::HOST);
+        headers.insert("X-Forwarded-Host", "localhost:3000".parse().unwrap());
+        assert!(auth.check_write(&headers).is_err());
+    }
+
+    #[test]
+    fn deployed_writes_require_the_configured_origin() {
+        let (mut auth, mut headers) = Auth::test_session("u");
+        headers.insert(header::HOST, "127.0.0.1:3000".parse().unwrap());
+        headers.insert(header::ORIGIN, "http://127.0.0.1:3000".parse().unwrap());
+        // Google is enabled, so even loopback aliases must match the public URL.
+        assert!(auth.check_write(&headers).is_err());
+        headers.insert(header::ORIGIN, "http://localhost:3000".parse().unwrap());
+        assert_eq!(auth.check_write(&headers).unwrap(), "u");
+
+        auth.google = false;
+        auth.public_url = "https://ergo.example".into();
+        for (origin, host) in [
+            ("http://localhost:3000", "localhost:3000"),
+            ("https://attacker.example", "attacker.example"),
+            ("https://ergo.example:444", "ergo.example:444"),
+        ] {
+            headers.insert(header::ORIGIN, origin.parse().unwrap());
+            headers.insert(header::HOST, host.parse().unwrap());
+            assert!(auth.check_write(&headers).is_err(), "{origin}");
+        }
+        headers.insert(header::ORIGIN, "https://ERGO.example:443".parse().unwrap());
+        assert_eq!(auth.check_write(&headers).unwrap(), "development");
+    }
+
+    #[test]
+    fn writes_still_require_custom_header_and_identity() {
+        let (auth, mut headers) = Auth::test_session("u");
+        // Native clients do not need to send Origin.
+        assert_eq!(auth.check_write(&headers).unwrap(), "u");
+        headers.remove("X-Ergo-Request");
+        assert!(auth.check_write(&headers).is_err());
+        headers.insert("X-Ergo-Request", HeaderValue::from_static("1"));
+        headers.remove(header::COOKIE);
+        assert!(auth.check_write(&headers).is_err());
+    }
+
+    #[test]
+    fn http_origins_are_normalized_and_reject_non_origin_components() {
+        assert_eq!(
+            http_origin("https://ERGO.example:443/")
+                .unwrap()
+                .origin()
+                .ascii_serialization(),
+            "https://ergo.example"
+        );
+        for value in [
+            "null",
+            "file:///tmp/model.ldr",
+            "https://user:secret@ergo.example",
+            "https://ergo.example/path",
+            "https://ergo.example?query",
+            "https://ergo.example#fragment",
+        ] {
+            assert!(http_origin(value).is_err(), "{value}");
+        }
+    }
+
     #[test]
     fn signed_session_rejects_tampering_and_bad_expiry() {
         let auth = Auth {

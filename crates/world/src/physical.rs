@@ -126,6 +126,16 @@ pub fn mass_source(part: &str) -> String {
 #[derive(Clone, Default, Serialize, Deserialize)]
 pub struct ConnectionMeasurements {
     pub entries: Vec<ConnectionMeasurement>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub parts: Vec<PartMeasurement>,
+}
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct PartMeasurement {
+    pub part: String,
+    pub mass_kg: f64,
+    pub body_bounds: crate::Aabb,
+    pub source: String,
+    pub samples: u32,
 }
 #[derive(Clone, Serialize, Deserialize)]
 pub struct ConnectionMeasurement {
@@ -143,6 +153,28 @@ pub struct ConnectionMeasurement {
 
 impl ConnectionMeasurements {
     pub fn validate(&self) -> Result<()> {
+        let mut names = std::collections::BTreeSet::new();
+        for part in &self.parts {
+            ensure!(
+                crate::catalog::valid_part(&part.part)
+                    && crate::catalog::canonical_part(&part.part) == part.part
+                    && names.insert(&part.part),
+                "Invalid or duplicate physical part ID"
+            );
+            ensure!(
+                part.mass_kg.is_finite()
+                    && part.mass_kg > 0.
+                    && part.samples > 0
+                    && !part.source.trim().is_empty(),
+                "Part measurements require positive mass, source, and sample count"
+            );
+            ensure!(
+                part.body_bounds.min.is_finite()
+                    && part.body_bounds.max.is_finite()
+                    && part.body_bounds.size().min_element() > 0.,
+                "Invalid measured nominal part bounds"
+            );
+        }
         for e in &self.entries {
             ensure!(
                 e.conservative_force_limit_n.is_finite()
@@ -155,6 +187,38 @@ impl ConnectionMeasurements {
                 e.samples > 0 && !e.source.trim().is_empty(),
                 "Connection measurements require a source and sample count"
             );
+        }
+        Ok(())
+    }
+    pub fn mass_kg(&self, part: &str) -> Result<f64> {
+        self.parts
+            .iter()
+            .find(|p| p.part == part)
+            .map(|p| Ok(p.mass_kg))
+            .unwrap_or_else(|| mass_kg(part))
+    }
+    /// Override client mass/bounds claims with this operator-owned catalog.
+    pub fn normalize_scene(&self, scene: &mut crate::WorldExport) -> Result<()> {
+        self.validate()?;
+        for mesh in scene.meshes.values_mut() {
+            mesh.physical = self.parts.iter().find(|p| p.part == mesh.part).cloned();
+            if let Some(record) = &mesh.physical {
+                mesh.body_bounds = record.body_bounds;
+            }
+        }
+        for brick in &mut scene.bricks {
+            let bounds = if let Some(record) = self.parts.iter().find(|p| p.part == brick.part) {
+                record.body_bounds
+            } else if crate::geometry::part_spec(&brick.part).is_some() {
+                crate::geometry::fallback_mesh(&brick.part).body_bounds
+            } else {
+                anyhow::bail!(
+                    "No sourced mass and nominal body bounds for {}. Add a sourced parts record to ERGO_CONNECTION_MEASUREMENTS",
+                    brick.part
+                );
+            };
+            brick.bounds = bounds.transformed(brick.transform, brick.position);
+            brick.render_bounds = brick.render_bounds.union(brick.bounds);
         }
         Ok(())
     }

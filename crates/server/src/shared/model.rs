@@ -22,13 +22,18 @@ pub struct Policy {
     pub grants: Vec<Grant>,
     #[serde(default)]
     pub keep_last: Option<u64>,
+    #[serde(default)]
+    pub authenticated_editing: bool,
 }
 impl Policy {
     pub fn can_read(&self, actor: &str) -> bool {
-        self.owner == actor || self.grants.iter().any(|g| g.user == actor)
+        self.authenticated_editing
+            || self.owner == actor
+            || self.grants.iter().any(|g| g.user == actor)
     }
     pub fn can_write(&self, actor: &str, coord: BlockCoord) -> bool {
-        self.owner == actor
+        self.authenticated_editing
+            || self.owner == actor
             || self.grants.iter().filter(|g| g.user == actor).any(|g| {
                 g.regions
                     .iter()
@@ -81,6 +86,8 @@ pub struct PhysicalModel {
 pub struct Geometry {
     pub part: String,
     pub color: u32,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub rgb: Option<u32>,
     #[serde(with = "ergo_world::coordinates::vec3")]
     pub position: DVec3,
     #[serde(with = "ergo_world::coordinates::mat3")]
@@ -93,6 +100,7 @@ impl Geometry {
         Self {
             part: brick.part.clone(),
             color: brick.color,
+            rgb: Some(brick.rgb),
             position: brick.position,
             transform: brick.transform,
             step: brick.step,
@@ -113,7 +121,9 @@ impl Geometry {
             id,
             part: self.part.clone(),
             color: self.color,
-            rgb: ergo_world::color_rgb(self.color),
+            rgb: self
+                .rgb
+                .unwrap_or_else(|| ergo_world::color_rgb(self.color)),
             position: self.position,
             transform: self.transform,
             bounds: body,
@@ -230,6 +240,8 @@ impl Default for Limits {
 pub struct NewWorld {
     pub name: String,
     pub geo: GeoReference,
+    #[serde(default)]
+    pub authenticated_editing: bool,
 }
 #[derive(Serialize, Deserialize)]
 pub struct Head {
@@ -287,4 +299,6 @@ pub struct Accepted {
 pub struct GrantRequest {
     pub base: ContentId,
     pub grants: Vec<Grant>,
+    #[serde(default)]
+    pub authenticated_editing: Option<bool>,
 }

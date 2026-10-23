@@ -22,6 +22,8 @@ pub struct Mesh {
     pub body_bounds: Aabb,
     #[serde(default)]
     pub credits: Vec<GeometryCredit>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub physical: Option<crate::physical::PartMeasurement>,
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -98,6 +100,7 @@ pub fn fallback_mesh(part: &str) -> Mesh {
         bounds: body,
         body_bounds: body,
         credits: Vec::new(),
+        physical: None,
     };
     let gap = 0.012;
     add_box(
@@ -139,6 +142,24 @@ pub fn ground_mesh() -> Mesh {
         bounds: body,
         body_bounds: body,
         credits: Vec::new(),
+        physical: None,
+    }
+}
+/// One reusable decorative stud; the renderer instances only nearby visible
+/// studs rather than allocating all 1,048,576 studs of a storage baseplate.
+pub fn ground_stud_mesh() -> Mesh {
+    let mut vertices = Vec::new();
+    add_stud(&mut vertices, Vec3::ZERO);
+    let bounds = Aabb::new(DVec3::new(-0.3, 0., -0.3), DVec3::new(0.3, 1. / 6., 0.3));
+    Mesh {
+        schema: crate::SCHEMA_VERSION,
+        part: "__ground_stud__".into(),
+        quality: "decorative_ground_stud".into(),
+        vertices,
+        bounds,
+        body_bounds: bounds,
+        credits: Vec::new(),
+        physical: None,
     }
 }
 pub fn body_mesh(part: &str, bounds: Aabb) -> Mesh {
@@ -152,6 +173,7 @@ pub fn body_mesh(part: &str, bounds: Aabb) -> Mesh {
         bounds,
         body_bounds: bounds,
         credits: Vec::new(),
+        physical: None,
     }
 }
 
