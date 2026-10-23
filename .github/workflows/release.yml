@@ -1,0 +1,201 @@
+name: Release distributions
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: distributions-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  version:
+    runs-on: ubuntu-24.04
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
+      - id: version
+        name: Validate matching source/package/tag versions
+        env:
+          RELEASE_TAG: ${{ github.ref_name }}
+          EVENT_NAME: ${{ github.event_name }}
+        run: |
+          if [ "$EVENT_NAME" = push ]; then
+            python3 scripts/package-mcp.py version --tag "$RELEASE_TAG"
+          fi
+          version=$(python3 scripts/package-mcp.py version)
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+      - run: python3 scripts/test-distribution.py
+
+  web:
+    needs: version
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
+      - name: Install the pinned WASM toolchain
+        run: |
+          rustup toolchain install 1.97.1 --profile minimal --target wasm32-unknown-unknown
+          rustup default 1.97.1
+          cargo install wasm-bindgen-cli --version 0.2.129 --locked
+      - run: cargo xtask build-web
+      - run: python3 scripts/package-mcp.py web --output target/distribution/web-runtime
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
+        with:
+          name: web-runtime
+          path: target/distribution/web-runtime/
+          if-no-files-found: error
+          retention-days: 14
+
+  native:
+    needs: version
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: linux-x64
+            runner: ubuntu-24.04
+            target: x86_64-unknown-linux-gnu
+          - platform: linux-arm64
+            runner: ubuntu-24.04-arm
+            target: aarch64-unknown-linux-gnu
+          - platform: darwin-x64
+            runner: macos-15-intel
+            target: x86_64-apple-darwin
+          - platform: darwin-arm64
+            runner: macos-15
+            target: aarch64-apple-darwin
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
+      - name: Build Linux binaries against Debian Bookworm glibc
+        if: runner.os == 'Linux'
+        env:
+          RUST_TARGET: ${{ matrix.target }}
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y podman
+          podman run --rm --volume "$PWD:/src" --workdir /src \
+            docker.io/library/rust:1.97.1-bookworm \
+            cargo build --release --locked --target "$RUST_TARGET" -p ergo-mcp
+      - name: Build macOS binaries
+        if: runner.os == 'macOS'
+        env:
+          RUST_TARGET: ${{ matrix.target }}
+          MACOSX_DEPLOYMENT_TARGET: "13.0"
+        run: |
+          rustup toolchain install 1.97.1 --profile minimal --target "$RUST_TARGET"
+          cargo +1.97.1 build --release --locked --target "$RUST_TARGET" -p ergo-mcp
+      - name: Verify and stage native artifact
+        env:
+          PLATFORM: ${{ matrix.platform }}
+          RUST_TARGET: ${{ matrix.target }}
+        run: |
+          "target/$RUST_TARGET/release/ergo-mcp" --help
+          python3 scripts/package-mcp.py native --platform "$PLATFORM" \
+            --binary "target/$RUST_TARGET/release/ergo-mcp" \
+            --output "target/distribution/native-$PLATFORM"
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
+        with:
+          name: native-${{ matrix.platform }}
+          path: target/distribution/native-${{ matrix.platform }}/
+          if-no-files-found: error
+          retention-days: 14
+
+  npm-package:
+    needs: [version, web, native]
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: "24"
+          package-manager-cache: false
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8
+        with:
+          path: target/distribution/artifacts
+      - run: node --test packages/mcp/test/*.test.cjs
+      - run: python3 scripts/package-mcp.py npm --artifacts target/distribution/artifacts --output target/distribution/npm
+      - run: python3 scripts/test-npm-package.py --package-dir target/distribution/npm --browser
+      - name: Pack the complete npm release
+        run: |
+          mkdir -p target/distribution/tarballs
+          npm pack ./target/distribution/npm --pack-destination target/distribution/tarballs
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
+        with:
+          name: npm-package
+          path: target/distribution/tarballs/*.tgz
+          if-no-files-found: error
+          retention-days: 14
+
+  publish-npm:
+    needs: [version, npm-package]
+    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: "24"
+          registry-url: https://registry.npmjs.org
+          package-manager-cache: false
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8
+        with:
+          name: npm-package
+          path: npm-release
+      - name: Publish with npm trusted publishing (or bootstrap token)
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: npm publish npm-release/*.tgz --access public --provenance
+
+  container:
+    needs: version
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
+      - name: Install Podman
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y podman
+      - name: Build and verify the API/web image
+        env:
+          VERSION: ${{ needs.version.outputs.version }}
+        run: |
+          podman build --platform linux/amd64 --format docker --build-arg BUILDARCH=amd64 \
+            --label "org.opencontainers.image.source=https://github.com/$GITHUB_REPOSITORY" \
+            --label "org.opencontainers.image.revision=$GITHUB_SHA" \
+            --label "org.opencontainers.image.version=$VERSION" \
+            --tag "localhost/ergo:$VERSION" .
+          python3 scripts/test-container.py --image "localhost/ergo:$VERSION"
+      - name: Publish versioned image to GitHub Container Registry
+        if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
+        env:
+          VERSION: ${{ needs.version.outputs.version }}
+          GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          image="ghcr.io/${GITHUB_REPOSITORY,,}"
+          printf '%s' "$GHCR_TOKEN" | podman login ghcr.io --username "$GITHUB_ACTOR" --password-stdin
+          podman tag "localhost/ergo:$VERSION" "$image:$VERSION"
+          podman tag "localhost/ergo:$VERSION" "$image:latest"
+          podman push "$image:$VERSION"
+          podman push "$image:latest"
+          echo "Published $image:$VERSION and $image:latest" >> "$GITHUB_STEP_SUMMARY"

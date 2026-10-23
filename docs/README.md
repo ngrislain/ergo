@@ -47,6 +47,8 @@ or Scaleway's S3-compatible object store. User profiles also live in object stor
   SSE, group publication, benchmarks, and legacy upgrades.
 - [Scaleway deployment](scaleway-deployment.md): OpenTofu, container packaging,
   the existing `ergo` bucket, scale-to-zero, Google SSO, and `ergosandbox.com` DNS/TLS.
+- [Prebuilt distributions](distribution.md): versioned GHCR server images,
+  the npm MCP bundle, platform/runtime requirements, and maintainer publication setup.
 - [Snapshots, deltas, and history](commit-history.md): immutable accepted changes,
   materialized current roots, checkpoints, replay, retention, and garbage collection.
 - [Construction MCP tools](local-construction-mcp.md): agent editing,

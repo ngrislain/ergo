@@ -131,6 +131,13 @@ operator-managed; checkout/payment-webhook integration is future work.
 
 ## Local MCP editor
 
+Release automation targets the API image `ghcr.io/ngrislain/ergo` and the prebuilt
+`@ngrislain/ergo-mcp` npm package. Check the corresponding release workflow and
+[distribution/setup status](docs/distribution.md) before using registry URLs;
+tagging the source does not by itself confirm either registry publication.
+After publication, `npx -y @ngrislain/ergo-mcp@0.3.1 --workspace /path/construction.ergo.json`
+will use bundled native/WASM assets without a Rust toolchain. Source builds remain:
+
 ```sh
 cargo build --release -p ergo-mcp
 ./target/release/ergo-mcp --workspace /absolute/path/construction.ergo.json

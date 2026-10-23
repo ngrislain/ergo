@@ -1,5 +1,15 @@
 # Changelog
 
+## v0.3.1
+
+- Add tag-driven GHCR server-image publishing, retaining Podman build/smoke tests.
+- Add an npm MCP launcher/bundle with native macOS/Linux binaries and the minimal
+  browser/WASM runtime; consumer installs do not need Rust or install hooks.
+- Add version/checksum/platform release guards, offline tarball-install/MCP tests,
+  and GitHub Actions artifact assembly and npm trusted-publishing/provenance support.
+- Document one-time registry authorization/public visibility and distinguish
+  prepared automation from actually published packages/images.
+
 ## v0.3.0
 
 - Add authenticated MCP publication, accepted-revision read-back, browser view

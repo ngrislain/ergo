@@ -16,6 +16,12 @@ local edits, exports, and simulation feedback.
 
 ## Start and configure
 
+The [prebuilt npm distribution](distribution.md) bundles native macOS/Linux
+binaries and the minimal WASM runtime. Once a release is published, use
+`npx -y @ngrislain/ergo-mcp@0.3.1 --workspace /absolute/path/construction.ergo.json`.
+No Rust build is needed for consumers. Confirm npm publication in the release
+workflow before using that version; the source workflow below remains available.
+
 Build the native binary from the repository root:
 
 ```sh

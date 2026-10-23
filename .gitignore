@@ -15,3 +15,7 @@ __pycache__/
 **/*.tfplan
 **/*.tfvars
 crash.log
+**/node_modules/
+/packages/mcp/native/
+/packages/mcp/web/
+*.tgz

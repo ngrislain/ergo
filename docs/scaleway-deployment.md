@@ -15,6 +15,13 @@ can still incur charges when compute is at zero.
 
 ## 1. Build and publish the image with Podman
 
+The new [distribution workflow](distribution.md) prepares prebuilt images at
+`ghcr.io/ngrislain/ergo:VERSION`. Once a version is published and public, set
+OpenTofu's `image` directly to that tag/digest without rebuilding Rust. Scaleway
+supports public GHCR images; private external registry images are not supported.
+Confirm that the version's GHCR job succeeded and the package is public before
+applying the image reference. Local builds remain supported as described below.
+
 The root [`Dockerfile`](../Dockerfile) builds the AMD64 API server and both WASM
 clients using Rust 1.97.1 and `wasm-bindgen-cli` 0.2.129. Only the server, web
 assets, and CA certificates enter the non-root Debian runtime image. Build from

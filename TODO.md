@@ -195,3 +195,7 @@ the limits and paging work below concern individual operations and indexes.
   non-root startup, the full browser flow, import/save/read-back, and SIGTERM.
 - [ ] Publish the image to the deployment registry and exercise the actual
   Scaleway resources, custom-domain certificate, Google SSO, and production S3.
+- [x] Add versioned GHCR/npm release automation and native/WASM npm packaging,
+  with architecture/version/checksum guards and an offline host install/MCP test.
+- [ ] Configure the npm scope/trusted publisher and GHCR public visibility, then
+  run the complete native release matrix and actually publish v0.3.1 distributions.
