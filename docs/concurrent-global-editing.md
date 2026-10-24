@@ -99,6 +99,10 @@ The server does not load a whole world to discover an edit's dependencies:
    Disjoint dependencies can rebase automatically; changed dependencies produce
    HTTP 409 and require recomputation against a fresh accepted base.
 
+The [validation source map](validation-gates.md) links each pre-commit check to
+its implementation and distinguishes nominal body overlap, simplified
+fixed/revolute connections, and the static gravity certificate.
+
 The neighbor halo is the larger of the static position tolerance and the
 `INFERRED_JOINT_HALO` used by connector inference. Stored render bounds include
 nominal body bounds, so an intersecting body cannot hide outside its indexed

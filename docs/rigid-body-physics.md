@@ -154,6 +154,12 @@ An import may therefore exist as an unstable **working copy**, but cannot become
 a published static snapshot until it passes this gate. A save stores poses and
 constraints, not dynamic velocities.
 
+See the [server validation source map](validation-gates.md) for the exact
+pre-commit call chain and source locations of the overlap, connector, and gravity
+checks. In particular, inferred stud joints are currently fixed even for a
+one-stud footprint; automatic single-stud rotation and connector-specific mating
+validation are not implemented. Generic authored revolute constraints are supported.
+
 ### Lightweight static certificate
 
 The graph includes explicit/inferred joints and vertical face-contact candidates.

@@ -10,6 +10,8 @@ connect an agent, and start building. It includes a Three.js brick scene,
 [privacy notice](https://www.ergosandbox.com/privacy/), and
 [terms](https://www.ergosandbox.com/terms/). See [website deployment](docs/static-site.md)
 for its GitHub Pages source and publishing workflow.
+The [operations runbook](docs/operations.md) lists the shell commands for tests,
+publication, DNS/TLS, server deployment, and configuration recovery.
 
 ## Run locally
 

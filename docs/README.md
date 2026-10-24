@@ -27,6 +27,8 @@ or Scaleway's S3-compatible object store. User profiles also live in object stor
 - [Collision, static stability, and rigid-body simulation](rigid-body-physics.md):
   bounding-box collision semantics, gravity, sparse constraint equations,
   persistence validation, simulation islands, and future destruction.
+- [Server pre-commit validation source map](validation-gates.md): overlap,
+  stud/joint modeling, gravity balance, and explicit connection-model gaps.
 - [Constraint solving for interactive positioning](interactive-constraints.md):
   moving connected parts, fixed/revolute joints, constrained dragging,
   collision-aware edits, and saving the result.
@@ -49,6 +51,8 @@ or Scaleway's S3-compatible object store. User profiles also live in object stor
   the existing `ergo` bucket, scale-to-zero, Google SSO, and `ergosandbox.com` DNS/TLS.
 - [Public project website](static-site.md): the Three.js agent guide, privacy/terms,
   GitHub Pages publication, and `www.ergosandbox.com` DNS/HTTPS.
+- [Operations runbook](operations.md): shell commands for checks, releases,
+  GitHub Pages, DNS/TLS, Scaleway deployment, and private backup/restore.
 - [Prebuilt distributions](distribution.md): versioned GHCR server images,
   image-only CI publication, the npm MCP bundle, platform/runtime requirements,
   and maintainer publication setup.
