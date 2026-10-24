@@ -104,6 +104,13 @@ returned world/revision information before trying again.
 
 ## Accepted revision and author attribution
 
+The demonstration was executed against production on 2026-10-24: Pixel rocket
+(29 bricks), Compass plaza (29), and Garden courtyard (30). All three returned
+confirmed world/assembly read-backs and the authenticated author name. The local
+run's PNGs, workspace files and acceptance receipts are in
+`target/prod-mcp-demo-20261024/` (generated, not versioned). These are private
+owner-scoped worlds, not public examples.
+
 Success requires `published: true` after the MCP tool reads back both the
 accepted world revision and assembly. The result includes `view_url`,
 `accepted_revision`, `assembly_id`, and `audit`.

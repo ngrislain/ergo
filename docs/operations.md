@@ -223,9 +223,17 @@ credentials.
 For the already published image (replace with a new CI digest when upgrading):
 
 ```sh
-export IMAGE=ghcr.io/ngrislain/ergo@sha256:4f4ac52bcd3b52b52728d3d29768d7c9d5938c42c761ef99124cf5a48f3e7882
+export IMAGE=ghcr.io/ngrislain/ergo@sha256:161975ab7558479f0e4ae4091b4c23ce7a74f9c3087de69b2a7fdd0133259899
 tofu -chdir=infra/scaleway init -input=false
 ```
+
+That known-good image is the 2026-10-24 LDraw/session/UI deployment from
+[run 40109607858](https://github.com/ngrislain/ergo/actions/runs/40109607858),
+source `203e30e1d69d04139a1d01ae15adaef8f68e2b5b`. Set the ignored variable file's
+`image` to the same digest before applying a saved plan: OpenTofu checks that
+current input values match the saved plan. The apply changed only the container
+image; live `.ldr` and nested `.mpd` affine previews returned HTTP 200, and the
+three production MCP demonstrations returned confirmed author-attributed receipts.
 
 For a **first** deployment, bootstrap DNS before binding the custom domain:
 

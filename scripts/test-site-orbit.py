@@ -28,7 +28,7 @@ with sync_playwright() as p:
           const vector=proto.uniform3f;
           proto.uniform3f=function(l,x,y,z){if(names.get(l)==='eye')window.__gpu.eye=[x,y,z];return vector.call(this,l,x,y,z);};
           const matrix=proto.uniformMatrix4fv;
-          proto.uniformMatrix4fv=function(l,t,m){if(names.get(l)==='display_scale')window.__gpu.scale=Array.from(m);return matrix.call(this,l,t,m);};
+          proto.uniformMatrix4fv=function(l,t,m){if(names.get(l)==='display_scale')window.__gpu.scale=Array.from(m);if(names.get(l)==='shadow_matrix')window.__gpu.shadowMatrix=Array.from(m);return matrix.call(this,l,t,m);};
           const draw=proto.drawArraysInstanced;
           proto.drawArraysInstanced=function(...args){window.__gpu[this.getParameter(this.DRAW_FRAMEBUFFER_BINDING)?'shadow':'main']++;draw.apply(this,args);const e=this.getError();if(e)window.__gpu.errors.push(e);};
         """.replace("HOUR",str(hour)))
@@ -57,6 +57,7 @@ with sync_playwright() as p:
             page.wait_for_function("Number(document.querySelector('[data-brick-scene]').dataset.viewPitch)>1")
             assert page.evaluate("window.__gpu.eye") != before_eye, "Orbit must move the actual eye uniform"
             assert canvas.get_attribute("data-light-position") == light
+            assert page.evaluate("window.__gpu.shadowMatrix") == gpu["shadowMatrix"], "Studio shadow projection must stay scene-fixed while orbiting"
             assert canvas.screenshot() != initial
             canvas.focus()
             canvas.press("Home")

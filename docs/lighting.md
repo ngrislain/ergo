@@ -35,7 +35,11 @@ longitude, equinox day/night, and polar day/night.
 ## Automatic night flashlight
 
 At or below zero geometric solar elevation, direct sunlight is replaced by a
-camera-mounted flashlight aimed toward the view target. It follows orbit/fly/walk
+camera-mounted flashlight aimed toward the view target.
+The lamp origin coincides with the rendered camera eye (after metric scale and
+floating-origin conversion), and its axis is the actual camera-to-target ray.
+There is no sideways/upward offset that would shift nearby walking illumination.
+It follows orbit/fly/walk
 movement and uses a soft spotlight cone (16° inner / 32° outer half-angle),
 distance attenuation, and a perspective shadow projection. Ambient sky light
 varies through twilight. This is a visual navigation aid, not a measured
@@ -61,6 +65,9 @@ Focused arrow keys orbit, plus/minus zoom, and Home or **Reset view** restores
 the initial view. Pointer capture permits drags outside the canvas; cancel/lost
 capture end the gesture. Reduced motion disables incidental animation but retains
 direct controls. Page scrolling remains available outside the interactive canvas.
+The studio shadow projection is scene-fixed too. A cast shadow changes screen
+position/perspective during camera orbit, but its light-space projection does not
+rotate with the camera; this is separate from a moving view-dependent highlight.
 
 ## Ambient, diffuse, and specular light
 
@@ -112,6 +119,9 @@ cargo check --locked --target wasm32-unknown-unknown -p ergo-client \
 cargo xtask build-web
 npm run build --prefix site
 npm test --prefix site
+# With Playwright/Chrome installed:
+python3 scripts/test-web-isolated.py --script scripts/test-headlamp.py
+python3 scripts/test-site-orbit.py --url http://127.0.0.1:4173
 ```
 
 Browser checks use fixed UTC daytime/nighttime clocks, actual WebGL main/depth

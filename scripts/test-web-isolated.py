@@ -15,6 +15,7 @@ ROOT = pathlib.Path(__file__).resolve().parents[1]
 parser = argparse.ArgumentParser()
 parser.add_argument("--server-binary", default=str(ROOT / "target/debug/ergo-server"))
 parser.add_argument("--artifacts", default=str(ROOT / ".playwright-mcp"))
+parser.add_argument("--script", default=str(ROOT / "scripts/test-web.py"))
 args = parser.parse_args()
 with socket.socket() as sock:
     sock.bind(("127.0.0.1", 0))
@@ -39,7 +40,7 @@ with tempfile.TemporaryDirectory(prefix="ergo-isolated-web-") as temporary:
                     time.sleep(0.1)
             else:
                 raise RuntimeError("Isolated web server did not start")
-            subprocess.run([sys.executable,str(ROOT / "scripts/test-web.py"),"--url",f"http://127.0.0.1:{port}","--artifacts",args.artifacts], cwd=ROOT, check=True)
+            subprocess.run([sys.executable,str(pathlib.Path(args.script).resolve()),"--url",f"http://127.0.0.1:{port}","--artifacts",args.artifacts], cwd=ROOT, check=True)
         finally:
             server.send_signal(signal.SIGTERM)
             server.wait(timeout=10)

@@ -141,9 +141,10 @@ impl LightPass {
             )
         } else {
             let direction = (target - eye).normalize();
-            let right = direction.cross(Vec3::Y).normalize_or_zero();
-            let position = eye + right * 1.6 + Vec3::Y * 1.2;
-            let forward = (target - position).normalize();
+            // A navigation headlamp is coaxial with the *rendered* camera ray.
+            // A lateral/up offset causes parallax on nearby walking surfaces.
+            let position = eye;
+            let forward = direction;
             let up = if forward.y.abs() > 0.98 {
                 Vec3::Z
             } else {
