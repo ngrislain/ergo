@@ -233,17 +233,17 @@ credentials.
 For the already published image (replace with a new CI digest when upgrading):
 
 ```sh
-export IMAGE=ghcr.io/ngrislain/ergo@sha256:161975ab7558479f0e4ae4091b4c23ce7a74f9c3087de69b2a7fdd0133259899
+export IMAGE=ghcr.io/ngrislain/ergo@sha256:8b961801afb57bbcb0297a84e2280326e53da9e2d753b06d54b71f09cdf88701
 tofu -chdir=infra/scaleway init -input=false
 ```
 
-That known-good image is the 2026-10-24 LDraw/session/UI deployment from
-[run 40109607858](https://github.com/ngrislain/ergo/actions/runs/40109607858),
-source `203e30e1d69d04139a1d01ae15adaef8f68e2b5b`. Set the ignored variable file's
+That known-good v0.4.0 image was built and smoke-tested by
+[run 40122040592](https://github.com/ngrislain/ergo/actions/runs/40122040592),
+source `e570d7b35f2cf0623f0e50e3a7c5c6b5f3b0ac76`. Set the ignored variable file's
 `image` to the same digest before applying a saved plan: OpenTofu checks that
-current input values match the saved plan. The apply changed only the container
-image; live `.ldr` and nested `.mpd` affine previews returned HTTP 200, and the
-three production MCP demonstrations returned confirmed author-attributed receipts.
+current input values match the saved plan. The v0.4.0 apply changed the image and
+added the common-world/prefix environment fields. Migration, cleanup and public
+read-backs are recorded in [the store-layout report](object-store-layout.md).
 
 For a **first** deployment, bootstrap DNS before binding the custom domain:
 

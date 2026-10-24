@@ -9,6 +9,10 @@ asset with npm while registry publication is disabled:
 The historical v0.3.x examples below describe older distribution baselines, not
 alternative hosted worlds. See [shared editing](agent-shared-editing.md).
 
+The complete GitHub tarball was published and installed through its public URL;
+consumer `--version` and real MCP browser tests passed. SHA-256:
+`1fb769d167ab2d2d5c9f0dcfaccadd372f64890202c73a1efb5977fd7f7a284f`.
+
 Tag builds still assemble and verify all four native platforms. npm publication
 also requires repository variable `ERGO_NPM_PUBLISH=true`; it is currently false
 while the account is unavailable. The GitHub tarball/image release does not need

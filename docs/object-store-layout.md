@@ -66,7 +66,31 @@ The report is generated at `target/object-store-inventory-20261024.json`.
 S3 “folders” are key prefixes, not actual directories. Listing/counting an object
 or comparing an ETag is not proof that a transaction object is unreachable.
 
-## Migration and cleanup
+## Verified rollout and cleanup
+
+The 2026-10-24 rollout is complete. `shared-migrate` retained/copied **1,799
+hash-verified objects / 619,069 bytes** and one branch. Its GC removed **19
+unreachable objects / 3,203 bytes**. After the new root was serving v0.4.0,
+`shared-cleanup-legacy` removed **3,496 legacy/test objects / 1,225,825 bytes**.
+The old `shared/`, transaction-test/benchmark prefixes, old demo worlds and
+development profile are no longer present. No active cache was deleted.
+
+A post-cleanup metadata snapshot contained **2,608 objects / 2,775,482 bytes**;
+terrain caches had grown during normal viewing between snapshots. Counts are
+snapshots, not fixed limits. The latest inventory refreshes
+`target/object-store-inventory-20261024.json`; the before-summary above records
+the initial scan. The released npm client subsequently committed and read back
+two reversible metadata edits as **Nicolas Grislain**, restoring the original
+group metadata. Anonymous API/browser checks confirmed one available world,
+named **Ergo Sandbox**, with all **88 demo bricks** preserved.
+
+Runtime source: `e570d7b35f2cf0623f0e50e3a7c5c6b5f3b0ac76`,
+[release CI 40122040592](https://github.com/ngrislain/ergo/actions/runs/40122040592).
+Image: `ghcr.io/ngrislain/ergo@sha256:8b961801afb57bbcb0297a84e2280326e53da9e2d753b06d54b71f09cdf88701`.
+The private environment backup was refreshed and verified by checksum, private
+ACL and denied anonymous access.
+
+## Migration and cleanup procedure
 
 Use the library/operator path rather than manually moving a mutable head:
 
