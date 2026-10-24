@@ -315,6 +315,12 @@ dd code {
   height: 100%;
   position: relative;
   z-index: 1;
+  outline: none;
+  border: 0;
+}
+.brick-stage:has(canvas:focus-visible) .scene-help {
+  text-decoration: underline;
+  text-underline-offset: 4px;
 }
 .scene-fallback {
   position: absolute;
@@ -341,25 +347,6 @@ dd code {
   width: 180px;
   height: auto;
   object-fit: contain;
-}
-.stage-sticker {
-  position: absolute;
-  right: 3%;
-  top: 65px;
-  z-index: 2;
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  transform: rotate(9deg);
-  font-size: 15px;
-  font-weight: 500;
-  line-height: 1.3;
-  pointer-events: none;
-}
-.stage-sticker svg {
-  width: 34px;
-  height: 34px;
-  fill: var(--red);
 }
 .scene-toolbar {
   position: absolute;
@@ -1144,14 +1131,6 @@ dd code {
     top: 20px;
     bottom: 65px;
   }
-  .stage-sticker {
-    right: 4%;
-    top: 35px;
-    font-size: 12px;
-  }
-  .stage-sticker svg {
-    width: 26px;
-  }
   .scene-toolbar {
     left: 10%;
     right: 0;
@@ -1302,11 +1281,6 @@ dd code {
   }
   .scene-mount {
     inset: 0 0 55px;
-  }
-  .stage-sticker {
-    top: 20px;
-    right: 9%;
-    font-size: 13px;
   }
   .scene-toolbar {
     left: 7%;
@@ -1582,15 +1556,6 @@ dd code {
     height: 420px;
     margin-top: 0;
     margin-inline: -22px;
-  }
-  .stage-sticker {
-    top: 10px;
-    right: 8%;
-    font-size: 11px;
-    gap: 5px;
-  }
-  .stage-sticker svg {
-    width: 25px;
   }
   .scene-toolbar {
     left: 6%;

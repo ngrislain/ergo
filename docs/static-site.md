@@ -69,6 +69,8 @@ shadow pass, with fixed studio key/fill/rim lighting so it remains readable at
 any time and from rear/side views. See [lighting](lighting.md). Dragging orbits
 the actual camera horizontally and vertically; wheel/pinch changes its distance.
 Arrow keys orbit, plus/minus zoom, and Home or **Reset view** restores the view.
+The preview has no viewport frame or slogan sticker. Keyboard focus is indicated
+on the control-help caption rather than by a blue rectangle around the canvas.
 Mouse hover/page scroll provide small incidental view changes, and page scrolling
 continues outside the canvas. Rendering stops when assembly/interaction settles.
 Offscreen/hidden scenes pause, reduced-motion preferences are respected, and
