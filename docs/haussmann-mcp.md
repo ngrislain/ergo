@@ -88,16 +88,21 @@ publication requires resolving the measurements and diagnostics using the
 sandbox's frozen model; setting a client-supplied guessed force cannot bypass
 that requirement. See [physical calibration](physical-calibration.md).
 
-### Actual MCP renders and model
+### Generate MCP renders locally
 
-![Street perspective of the 868-part Haussmann-style proposal](examples/haussmann-street.png)
+[Download the LDraw/MPD proposal](examples/haussmann.mpd). Its front and street
+renderings are reproducible MCP WebGL captures and are not committed to Git.
+Generate them with a fresh output directory:
 
-![Front view showing repeated tall windows, balconies and dormers](examples/haussmann-front.png)
+```sh
+python3 scripts/build-haussmann.py --binary target/debug/ergo-mcp \
+  --output target/haussmann-preview --documentation-assets docs/examples
+```
 
-[Download the generated LDraw/MPD proposal](examples/haussmann.mpd). Regenerate
-the checked-in documentation assets with `--documentation-assets docs/examples`
-when changing the builder/rendering. These are actual MCP WebGL captures, not
-concept illustrations or a claim that the model passed calibrated admission.
+The command writes `docs/examples/haussmann-front.png` and
+`docs/examples/haussmann-street.png`, both ignored by Git, and refreshes the
+versioned MPD source. The captures show the actual model; they do not establish
+that it passed calibrated admission.
 
 For an agent-driven modification of an accepted construction, use the
 [current/specified-position workflow](agent-shared-editing.md). Ask the agent to

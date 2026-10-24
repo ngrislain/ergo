@@ -7,6 +7,9 @@
 __pycache__/
 *.pyc
 /.playwright-mcp/
+# Reproducible MCP renderings; keep the model source, not generated screenshots.
+/docs/examples/haussmann-front.png
+/docs/examples/haussmann-street.png
 *.mcp.lock
 **/ergo-mcp-token
 **/.terraform/
