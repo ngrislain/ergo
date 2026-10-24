@@ -1,5 +1,5 @@
 //! Read-only landing illustration using the navigator's renderer and catalog.
-use crate::renderer::Renderer;
+use crate::renderer::{DISPLAY_SCALE, Renderer};
 use ergo_world::{Brick, demo::Demo};
 use wasm_bindgen::prelude::*;
 use web_sys::HtmlCanvasElement;
@@ -26,17 +26,41 @@ impl LandingPreview {
         renderer.grid = false;
         renderer.ground_visible = false;
         let distance = renderer.distance;
-        Ok(Self {
+        let mut preview = Self {
             renderer,
             scene,
             added: 0,
             distance,
             previous_assembly: -1.0,
-        })
+        };
+        preview.set_light_pointer(-0.45, 0.5)?;
+        Ok(preview)
     }
 
     pub fn piece_count(&self) -> usize {
         self.scene.bricks.len()
+    }
+
+    /// Cursor position in [-1,1], with positive Y toward the top of the canvas.
+    /// Mapping happens only on free pointer motion: camera drags leave the light
+    /// at its last world position rather than carrying it around the model.
+    pub fn set_light_pointer(&mut self, x: f64, y: f64) -> Result<(), JsValue> {
+        if !x.is_finite() || !y.is_finite() {
+            return Err("Invalid light pointer".into());
+        }
+        let target = self.renderer.target * DISPLAY_SCALE;
+        let view = ((self.renderer.eye() - self.renderer.target) * DISPLAY_SCALE).normalize();
+        let right = glam::DVec3::Y.cross(view).normalize();
+        let up = view.cross(right);
+        self.renderer.point_light = Some(
+            (target
+                + view * 32.
+                + right * (x.clamp(-1., 1.) * 24.)
+                + up * (y.clamp(-1., 1.) * 22.)
+                + glam::DVec3::Y * 8.)
+                / DISPLAY_SCALE,
+        );
+        Ok(())
     }
 
     pub fn add_brick(&mut self) -> usize {
@@ -159,8 +183,8 @@ fn doorway() -> Demo {
     for layer in 0..3 {
         scene.add("3005", 70, 1.0, base + layer as f64, 1.0);
     }
-    scene.add("3001", 28, 0.0, base + 3.0, 0.0);
-    scene.add("3003", 28, 1.0, base + 4.0, 0.0);
+    scene.add("3001", 2, 0.0, base + 3.0, 0.0);
+    scene.add("3003", 2, 1.0, base + 4.0, 0.0);
     scene.add("3004", 1, 12.0, base, 8.0);
     scene.add("3004", 1, 12.0, base, 9.0);
     scene.add("3003", 14, 12.0, base + 1.0, 8.0);

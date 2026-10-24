@@ -1,7 +1,8 @@
 # Public project website on GitHub Pages
 
 `site/` is the standalone public guide at **https://www.ergosandbox.com**.
-The authenticated sandbox and REST API use **https://ergosandbox.com**.
+The public sandbox and REST API use **https://ergosandbox.com**; editing requires
+authentication.
 The site links humans to the sandbox's `/login#connect` flow; it does not issue
 tokens, receive credentials, proxy the API, or provide a remote MCP endpoint.
 
@@ -65,14 +66,16 @@ Their font license notices are emitted with the site under `/licenses/`.
 
 The white/slate/amber tokens, typography, logo, and buttons follow the apex UI.
 The brick model uses the navigator's catalog geometry, instancing, shaders and
-shadow pass, with fixed studio key/fill/rim lighting so it remains readable at
-any time and from rear/side views. See [lighting](lighting.md). Dragging orbits
-the actual camera horizontally and vertically; wheel/pinch changes its distance.
+shadow pass, with a cursor-positioned point light and studio fill so it remains
+readable at any time and from rear/side views. See [lighting](lighting.md).
+Free mouse movement positions the light; click-drag orbits the actual camera
+horizontally and vertically while keeping the light fixed in world space.
+Pinch changes the camera distance; wheel scrolling moves the page.
 Arrow keys orbit, plus/minus zoom, and Home or **Reset view** restores the view.
 The preview has no viewport frame or slogan sticker. Keyboard focus is indicated
 on the control-help caption rather than by a blue rectangle around the canvas.
-Mouse hover/page scroll provide small incidental view changes, and page scrolling
-continues outside the canvas. Rendering stops when assembly/interaction settles.
+Hover and page scrolling never move the camera. The tree foliage is green.
+Rendering stops when assembly/interaction settles.
 Offscreen/hidden scenes pause, reduced-motion preferences are respected, and
 WebGL failure leaves the onboarding text usable. The illustration does not use
 or claim to replace the construction validator.
@@ -80,7 +83,7 @@ or claim to replace the construction validator.
 Build tests check the static routes, legal navigation, MCP origin/token-file
 configuration, distribution boundaries, and current documentation semantics.
 Browser checks cover real WebGL mouse/scroll controls, tabs, clipboard, 320/390-pixel layouts,
-time-independent studio lighting, shadow draw passes, reduced motion, WebGL-unavailable fallback,
+time-independent point lighting, shadow draw passes, reduced motion, WebGL-unavailable fallback,
 and readable no-JavaScript content.
 
 ## Public package-source environment setting
@@ -90,7 +93,7 @@ generated `/llms.txt`. It is a **public build setting**, not a credential. The
 default and current repository variable point to:
 
 ```text
-https://github.com/ngrislain/ergo/releases/download/v0.3.1/ngrislain-ergo-mcp-0.3.1.tgz
+https://github.com/ngrislain/ergo/releases/download/v0.4.0/ngrislain-ergo-mcp-0.4.0.tgz
 ```
 
 For a local override, copy `site/.env.example` to ignored `site/.env`, edit that
@@ -99,7 +102,7 @@ variable with the same name. To switch after npm publication:
 
 ```sh
 gh variable set ERGO_MCP_PACKAGE --repo ngrislain/ergo \
-  --body '@ngrislain/ergo-mcp@0.3.1'
+  --body '@ngrislain/ergo-mcp@0.4.0'
 gh workflow run pages.yml --repo ngrislain/ergo --ref main
 ```
 

@@ -60,6 +60,7 @@ uniform vec3 sun_direction;
 uniform vec3 light_position;
 uniform vec3 light_forward;
 uniform int flashlight;
+uniform int point_light;
 uniform int studio;
 uniform float sky_amount;
 uniform highp sampler2DShadow shadow_map;
@@ -114,12 +115,12 @@ void main() {
     vec3 light = sun_direction;
     float power = 3.0*(0.35+0.65*max(sun_direction.y,0.0));
     vec3 light_color = mix(vec3(1.0,0.52,0.25),vec3(1.0,0.97,0.9),clamp(sun_direction.y/0.35,0.0,1.0));
-    if (flashlight == 1) {
+    if (flashlight == 1 || point_light == 1) {
         vec3 delta = light_position-v_position;
         float d2 = dot(delta,delta);
         light = delta*inversesqrt(max(d2,0.0001));
         float cone = smoothstep(cos(radians(32.0)),cos(radians(16.0)),dot(-light,light_forward));
-        power = cone*min(8.0,8000.0/(d2+100.0));
+        power = point_light == 1 ? min(6.0,4000.0/(d2+200.0)) : cone*min(8.0,8000.0/(d2+100.0));
         light_color = vec3(1.0,0.96,0.87);
     }
     float nl = max(dot(n,light),0.0);

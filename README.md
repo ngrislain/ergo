@@ -14,7 +14,8 @@ See [edit here or at a specified position](docs/agent-shared-editing.md),
 
 The public guide is at **https://www.ergosandbox.com**: authenticate a human,
 connect an agent, and start building. Its brick scene uses the navigator's
-shared WebGL/WASM engine, with fixed studio lighting and orbit/zoom controls.
+shared WebGL/WASM engine, with a cursor-positioned point light, drag-to-orbit
+controls, and pinch/keyboard zoom.
 The navigator uses geographic sun/shadows and a night flashlight.
 The guide also provides a [privacy notice](https://www.ergosandbox.com/privacy/)
 and [terms](https://www.ergosandbox.com/terms/). See [website deployment](docs/static-site.md)

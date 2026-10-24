@@ -30,7 +30,7 @@ struct GpuMesh {
     instances: i32,
 }
 
-const DISPLAY_SCALE: DVec3 = DVec3::new(
+pub(crate) const DISPLAY_SCALE: DVec3 = DVec3::new(
     1.0,
     ergo_world::physical::BRICK_HEIGHT_M / ergo_world::physical::STUD_PITCH_M,
     1.0,
@@ -43,8 +43,10 @@ pub struct Renderer {
     lighting: LightPass,
     pub geo: ergo_world::GeoReference,
     pub ground_visible: bool,
-    /// Fixed key/fill lighting for illustrations, independent of time and camera.
+    /// Studio fill/environment with a fixed key unless point_light overrides it.
     pub studio_lighting: bool,
+    /// Optional world-space point key; the homepage positions it with the cursor.
+    pub point_light: Option<DVec3>,
     gpu: HashMap<String, GpuMesh>,
     pub meshes: BTreeMap<String, Mesh>,
     lod_meshes: BTreeMap<String, Mesh>,
@@ -118,6 +120,7 @@ impl Renderer {
             geo: Default::default(),
             ground_visible: true,
             studio_lighting: transparent_background,
+            point_light: None,
             gpu: HashMap::new(),
             meshes: BTreeMap::new(),
             lod_meshes: BTreeMap::new(),
@@ -583,6 +586,7 @@ impl Renderer {
                 distance: self.distance,
                 projection_pixels: self.projection_pixels(),
                 studio: self.studio_lighting,
+                point_light: self.point_light,
             },
             &self.gpu,
             changed,
@@ -590,7 +594,9 @@ impl Renderer {
         if light.updated {
             let _ = self.canvas.set_attribute(
                 "data-lighting",
-                if self.studio_lighting {
+                if self.point_light.is_some() {
+                    "point"
+                } else if self.studio_lighting {
                     "studio"
                 } else if light.sun.daylight() {
                     "sunlight"

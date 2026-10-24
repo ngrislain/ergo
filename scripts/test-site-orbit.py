@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Real WebGL checks for studio lighting, camera orbit, zoom and catalog art."""
+"""Real WebGL checks for cursor lighting, drag orbit, zoom and catalog art."""
 import argparse
 import io
 import pathlib
@@ -19,7 +19,7 @@ with sync_playwright() as p:
     errors = []
     pictures = []
     for hour in [0, 12]:
-        context = browser.new_context(viewport={"width":1440,"height":1000}, reduced_motion="reduce")
+        context = browser.new_context(viewport={"width":1440,"height":1000}, reduced_motion="no-preference")
         context.add_init_script("""Date.now=()=>Date.UTC(2026,9,24,HOUR);
           window.__gpu={shadow:0,main:0,errors:[],eye:[],scale:[]};
           const names=new WeakMap(), buffers=new WeakMap(), proto=WebGL2RenderingContext.prototype;
@@ -48,18 +48,29 @@ with sync_playwright() as p:
         page.wait_for_function("document.querySelector('[data-brick-scene]').dataset.motion==='still'")
         mount = page.locator("[data-brick-scene]")
         canvas = mount.locator("canvas")
-        expect(canvas).to_have_attribute("data-lighting","studio")
+        expect(canvas).to_have_attribute("data-lighting","point")
         gpu = page.evaluate("window.__gpu")
         assert gpu["shadow"] and gpu["main"] and not gpu["errors"], gpu
         assert abs(gpu["scale"][5]-1.2) < 1e-6, "Physical height must not use flattened construction proportions"
         initial = canvas.screenshot()
+        initial_pixels = Image.open(io.BytesIO(initial)).convert("RGB").getdata()
+        assert sum(1 for rgb in initial_pixels if isinstance(rgb,tuple) and rgb[1]>rgb[0]*1.25 and rgb[1]>rgb[2]*1.25 and rgb[1]>50)>100, "Tree foliage must render green"
         pictures.append(initial)
         if hour == 0:
             before_eye = gpu["eye"]
             light = canvas.get_attribute("data-light-position")
             box = canvas.bounding_box()
             x, y = box["x"]+box["width"]*.5, box["y"]+box["height"]*.5
+            pose = [mount.get_attribute("data-view-"+key) for key in ["yaw","pitch","zoom"]]
+            page.mouse.move(box["x"]+box["width"]*.85,box["y"]+box["height"]*.2)
+            page.wait_for_function("old=>document.querySelector('[data-brick-scene] canvas').dataset.lightPosition!==old",arg=light)
+            assert page.evaluate("window.__gpu.eye")==before_eye, "Hover must position the light, not orbit the camera"
+            assert [mount.get_attribute("data-view-"+key) for key in ["yaw","pitch","zoom"]]==pose
+            assert canvas.screenshot()!=initial, "Pointer-controlled light must change the actual rendered illumination"
             page.mouse.move(x,y)
+            page.evaluate("() => new Promise(requestAnimationFrame)")
+            light = canvas.get_attribute("data-light-position")
+            gpu = page.evaluate("window.__gpu")
             page.mouse.down()
             page.mouse.move(x+160,y+60,steps=12)
             page.mouse.up()
@@ -74,9 +85,12 @@ with sync_playwright() as p:
             canvas.press("-")
             page.wait_for_function("Number(document.querySelector('[data-brick-scene]').dataset.viewZoom)>1.1")
             canvas.press("Home")
+            page.wait_for_function("document.querySelector('[data-brick-scene]').dataset.motion==='still'")
             page.mouse.move(x,y)
             page.mouse.wheel(0,200)
-            page.wait_for_function("Number(document.querySelector('[data-brick-scene]').dataset.viewZoom)>1.1")
+            page.wait_for_function("window.scrollY>0")
+            assert [mount.get_attribute("data-view-"+key) for key in ["yaw","pitch","zoom"]]==["0.73000","0.65000","1.00000"], "Scrolling must not orbit or zoom the camera"
+            page.evaluate("window.scrollTo({top:0,behavior:'instant'})")
             for _ in range(4):
                 page.get_by_role("button", name="Orbit around the brick model").click()
             page.wait_for_function("document.querySelector('[data-brick-scene]').dataset.motion==='still'")
@@ -91,7 +105,7 @@ with sync_playwright() as p:
             expect(image).to_be_visible()
             page.screenshot(path=str(output/"site-studio-desktop.png"))
         context.close()
-    assert pictures[0] == pictures[1], "Studio rendering should be independent of UTC"
+    assert pictures[0] == pictures[1], "Point/studio rendering should be independent of UTC"
     mobile = browser.new_context(viewport={"width":390,"height":844}, is_mobile=True, has_touch=True, reduced_motion="reduce")
     page = mobile.new_page()
     page.goto(args.url)
@@ -102,4 +116,4 @@ with sync_playwright() as p:
     page.screenshot(path=str(output/"site-studio-mobile.png"))
     assert not errors, errors
     browser.close()
-print("Site browser checks passed: real camera orbit, zoom, fixed studio key, day/night equality, lit rear views, physical proportions, GL passes and mobile layout.")
+print("Site browser checks passed: green foliage, hover-driven point light, drag-only orbit, normal page scroll, keyboard zoom, unchanged light/casters during drag, GL passes and mobile layout.")

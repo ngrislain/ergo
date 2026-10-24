@@ -21,7 +21,7 @@ Browser time-zone offsets are not used.
 The resulting unit vector uses the renderer's internal east/up/south axes,
 consistent with the public east/north/up adapter. The navigator passes the
 loaded world's reference and MCP captures pass the scene's reference. The public
-landing illustration instead uses the fixed studio setup below, and never requests
+landing illustration instead uses the cursor light and studio fill below, and never requests
 a visitor's device location.
 
 Above the geometric horizon, the sun direction drives direct light, highlights,
@@ -48,26 +48,26 @@ lumen/exposure model or a physics force.
 The navigator and ordinary MCP captures render the time-dependent sky and use
 a camera-mounted night headlamp.
 
-## Homepage studio lighting and orbit
+## Homepage cursor light and drag orbit
 
-The public preview uses a transparent background and fixed studio lighting,
-independent of UTC. Its world-fixed key points along normalized `(-0.6,1,0.8)`
-in renderer axes and uses the shared shadow pass. Broad cool fill/rim directions
-and a diffuse ambient lift keep rear/side faces readable while orbiting; they
-do not have separate shadow maps. The key, fill and rim stay fixed as the camera
-moves, while specular highlights change with the view. This is a presentation
-setup, not a claim about the construction's geographic sun.
+The public preview uses a transparent background and a cursor-positioned point
+key, independent of UTC. Free pointer movement maps to a bounded plane in front
+of the current camera. The point source uses per-fragment direction/distance
+attenuation (no spotlight cone), with a perspective shadow map aimed at the model.
+Broad studio fill/rim and ambient light keep rear faces readable. The tree crown
+uses standard green color 2; its trunk uses brown 70. Ordinary MCP studio captures
+retain their fixed directional key; world sun/headlamp behavior is unchanged.
 
 Dragging moves the actual perspective camera around the fixed model target in
 azimuth and elevation, from -1.4 to +1.4 radians; brick transforms do not rotate.
-Wheel/pinch zoom changes camera distance between 0.55× and 2.5× the fitted view.
+Pinch or focused plus/minus keys change distance between 0.55× and 2.5× the fitted view.
 Focused arrow keys orbit, plus/minus zoom, and Home or **Reset view** restores
 the initial view. Pointer capture permits drags outside the canvas; cancel/lost
-capture end the gesture. Reduced motion disables incidental animation but retains
-direct controls. Page scrolling remains available outside the interactive canvas.
-The studio shadow projection is scene-fixed too. A cast shadow changes screen
-position/perspective during camera orbit, but its light-space projection does not
-rotate with the camera; this is separate from a moving view-dependent highlight.
+capture end the gesture. Hover changes only the light; page/wheel scroll changes
+only the page. Neither orbits or zooms the camera. Reduced motion retains explicit
+pointer, drag and keyboard controls. While dragging, the point light remains at
+its last world position; orbit does not carry it or alter its shadow projection.
+Free pointer movement intentionally updates both the light and its shadow map.
 The homepage uploads its entire small illustration at fixed geometric detail to
 both passes, including off-camera casters. Its stud geometry does not morph with
 view distance. This avoids camera-dependent caster/LOD changes during orbit;

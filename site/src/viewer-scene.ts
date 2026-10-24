@@ -4,6 +4,7 @@ interface Preview {
   render(yaw: number, pitch: number, explosion: number, assembly: number, zoom: number): void;
   piece_count(): number;
   add_brick(): number;
+  set_light_pointer(x: number, y: number): void;
   free(): void;
 }
 interface PreviewModule {
@@ -19,7 +20,7 @@ export async function mountBrickScene(mount: HTMLElement): Promise<() => void> {
   canvas.setAttribute("role", "img");
   canvas.setAttribute(
     "aria-label",
-    "Interactive catalog bricks. Drag horizontally or vertically to orbit the camera; scroll or pinch to zoom. Arrow keys orbit, plus and minus zoom, Home resets. Use the buttons to add bricks or take the model apart.",
+    "Interactive catalog bricks. Move the pointer to position the point light. Click and drag to orbit the camera. Pinch or use plus and minus to zoom; arrow keys orbit and Home resets. Scroll moves the page. Use the buttons to add bricks or take the model apart.",
   );
   canvas.style.touchAction = "none";
   canvas.tabIndex = 0;
@@ -48,9 +49,6 @@ export async function mountBrickScene(mount: HTMLElement): Promise<() => void> {
   let targetPitch = pitch;
   let zoom = 1;
   let targetZoom = 1;
-  let hoverYaw = 0;
-  let hoverPitch = 0;
-  let scrollProgress = 0;
   let explosion = 0;
   let targetExplosion = 0;
   let added = 0;
@@ -62,7 +60,7 @@ export async function mountBrickScene(mount: HTMLElement): Promise<() => void> {
   }
   function caption() {
     const count = engine.piece_count();
-    const label = `${count} catalog bricks. Studio lighting. Drag to orbit.`;
+    const label = `${count} catalog bricks. Move to light; drag to orbit.`;
     if (status && status.textContent !== label) status.textContent = label;
     mount.dataset.pieceCount = String(count);
     mount.dataset.exploded = String(targetExplosion > 0);
@@ -74,8 +72,8 @@ export async function mountBrickScene(mount: HTMLElement): Promise<() => void> {
     const assembly = reduceMotion.matches
       ? 1
       : Math.min(1, (now - start) / 1500);
-    const goalYaw = targetYaw + hoverYaw + scrollProgress * 0.65;
-    const goalPitch = Math.max(-1.4, Math.min(1.4, targetPitch + hoverPitch + scrollProgress * 0.04));
+    const goalYaw = targetYaw;
+    const goalPitch = targetPitch;
     const smoothing = reduceMotion.matches ? 1 : 0.13;
     yaw += (goalYaw - yaw) * smoothing;
     pitch += (goalPitch - pitch) * smoothing;
@@ -100,30 +98,12 @@ export async function mountBrickScene(mount: HTMLElement): Promise<() => void> {
     caption();
     if (moving) requestRender();
   }
-  function scroll() {
-    const hero = mount.closest<HTMLElement>(".hero");
-    scrollProgress = reduceMotion.matches
-      ? 0
-      : Math.min(
-          1,
-          Math.max(0, window.scrollY / (hero?.offsetHeight || innerHeight)),
-        );
-    mount.dataset.scrollProgress = scrollProgress.toFixed(3);
-    requestRender();
-  }
-  window.addEventListener("scroll", scroll, {
-    passive: true,
-    signal: abort.signal,
-  });
   document.addEventListener("visibilitychange", requestRender, {
     signal: abort.signal,
   });
   reduceMotion.addEventListener(
     "change",
-    () => {
-      hoverYaw = hoverPitch = 0;
-      scroll();
-    },
+    requestRender,
     { signal: abort.signal },
   );
   const resize = new ResizeObserver(requestRender);
@@ -145,12 +125,11 @@ export async function mountBrickScene(mount: HTMLElement): Promise<() => void> {
     return a && b ? Math.hypot(a.x - b.x, a.y - b.y) : 0;
   };
   const clampZoom = (value: number) => Math.max(0.55, Math.min(2.5, value));
-  function resetView() { targetYaw = 0.73; targetPitch = 0.65; targetZoom = 1; hoverYaw = hoverPitch = 0; }
+  function resetView() { targetYaw = 0.73; targetPitch = 0.65; targetZoom = 1; }
   canvas.addEventListener(
     "pointerdown",
     (event) => {
       if (event.button !== 0) return;
-      hoverYaw = hoverPitch = 0;
       canvas.focus({ preventScroll: true });
       pointers.set(event.pointerId, { x: event.clientX, y: event.clientY });
       drag = { x: event.clientX, y: event.clientY, yaw: targetYaw, pitch: targetPitch, id: event.pointerId };
@@ -169,19 +148,13 @@ export async function mountBrickScene(mount: HTMLElement): Promise<() => void> {
         targetYaw = drag.yaw + (event.clientX - drag.x) * 0.009;
         targetPitch = Math.max(-1.4, Math.min(1.4, drag.pitch + (event.clientY - drag.y) * 0.009));
       }
-      else if (event.pointerType === "mouse" && !reduceMotion.matches) {
+      else if (event.pointerType === "mouse") {
         const rect = canvas.getBoundingClientRect();
-        hoverYaw = ((event.clientX - rect.left) / rect.width - 0.5) * 0.32;
-        hoverPitch = ((event.clientY - rect.top) / rect.height - 0.5) * 0.07;
+        engine.set_light_pointer(
+          (event.clientX - rect.left) / rect.width * 2 - 1,
+          1 - (event.clientY - rect.top) / rect.height * 2,
+        );
       } else return;
-      requestRender();
-    },
-    { signal: abort.signal },
-  );
-  canvas.addEventListener(
-    "pointerleave",
-    () => {
-      hoverYaw = hoverPitch = 0;
       requestRender();
     },
     { signal: abort.signal },
@@ -195,12 +168,6 @@ export async function mountBrickScene(mount: HTMLElement): Promise<() => void> {
   }
   for (const event of ["pointerup", "pointercancel", "lostpointercapture"] as const)
     canvas.addEventListener(event, releasePointer, { signal: abort.signal });
-  canvas.addEventListener("wheel", (event) => {
-    event.preventDefault();
-    const delta = event.deltaY * (event.deltaMode === 1 ? 16 : event.deltaMode === 2 ? canvas.clientHeight : 1);
-    targetZoom = clampZoom(targetZoom * Math.exp(Math.max(-1, Math.min(1, delta * 0.001))));
-    requestRender();
-  }, { passive: false, signal: abort.signal });
   canvas.addEventListener("keydown", (event) => {
     if (event.key === "ArrowLeft") targetYaw -= 0.15;
     else if (event.key === "ArrowRight") targetYaw += 0.15;
@@ -211,7 +178,6 @@ export async function mountBrickScene(mount: HTMLElement): Promise<() => void> {
     else if (event.key === "Home") resetView();
     else return;
     event.preventDefault();
-    hoverYaw = hoverPitch = 0;
     requestRender();
   }, { signal: abort.signal });
   for (const button of buttons) {
@@ -264,6 +230,6 @@ export async function mountBrickScene(mount: HTMLElement): Promise<() => void> {
     },
     { signal: abort.signal },
   );
-  scroll();
+  requestRender();
   return dispose;
 }

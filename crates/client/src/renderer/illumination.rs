@@ -26,10 +26,12 @@ pub(super) struct Observer {
     pub display_scale: DVec3,
     pub distance: f64,
     pub studio: bool,
+    pub point_light: Option<DVec3>,
 }
 
 pub(super) struct LightFrame {
     studio: bool,
+    point: bool,
     pub sun: SolarPosition,
     pub updated: bool,
     matrix: Mat4,
@@ -121,7 +123,21 @@ impl LightPass {
         };
         let eye = ((observer.eye - observer.origin) * observer.display_scale).as_vec3();
         let target = ((observer.target - observer.origin) * observer.display_scale).as_vec3();
-        let (matrix, position, forward) = if sun.daylight() {
+        let (matrix, position, forward) = if let Some(position) = observer.point_light {
+            let position = ((position - observer.origin) * observer.display_scale).as_vec3();
+            let forward = (target - position).normalize();
+            let up = if forward.y.abs() > 0.98 {
+                Vec3::Z
+            } else {
+                Vec3::Y
+            };
+            (
+                Mat4::perspective_rh_gl(100_f32.to_radians(), 1., 2., 256.)
+                    * Mat4::look_at_rh(position, target, up),
+                position,
+                forward,
+            )
+        } else if sun.daylight() {
             let span = if observer.studio {
                 32.
             } else {
@@ -200,6 +216,7 @@ impl LightPass {
         }
         LightFrame {
             studio: observer.studio,
+            point: observer.point_light.is_some(),
             sun,
             updated,
             matrix,
@@ -241,6 +258,10 @@ impl LightPass {
         gl.uniform1i(
             gl.get_uniform_location(program, "studio").as_ref(),
             frame.studio as i32,
+        );
+        gl.uniform1i(
+            gl.get_uniform_location(program, "point_light").as_ref(),
+            frame.point as i32,
         );
         gl.active_texture(Gl::TEXTURE0);
         gl.bind_texture(Gl::TEXTURE_2D, Some(&self.depth));
