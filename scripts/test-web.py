@@ -31,7 +31,7 @@ def main():
                 if response.from_service_worker and "x-ergo-bytes" in response.headers else None)
         # The root is a login/setup landing page, not an anonymous workbench.
         page.goto(args.url)
-        expect(page.get_by_role("heading", name="A shared world. Built brick by brick.", exact=True)).to_be_visible(timeout=30000)
+        expect(page.get_by_role("heading", name="Sign in to your sandbox.", exact=True)).to_be_visible(timeout=30000)
         expect(page.get_by_role("button", name="Generate access token", exact=True)).to_be_enabled()
         page.screenshot(path=str(artifacts / "landing-desktop.png"), full_page=True)
         page.set_viewport_size({"width":390,"height":844})

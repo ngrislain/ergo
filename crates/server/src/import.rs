@@ -16,6 +16,7 @@ pub struct ImportedLdraw {
     pub bricks: Vec<ergo_world::Brick>,
     pub meshes: BTreeMap<String, Mesh>,
     pub notes: Vec<String>,
+    pub model: ergo_world::assembly::Model,
 }
 
 pub fn import_ldraw(
@@ -150,12 +151,20 @@ pub fn import_ldraw(
         .collect();
     ergo_world::catalog::validate(&bricks)?;
     for brick in &bricks {
-        ergo_world::physical::validate_pose(brick)?;
+        ergo_world::physical::validate_affine_pose(brick)?;
+    }
+    let non_rigid = bricks
+        .iter()
+        .filter(|brick| ergo_world::physical::validate_pose(brick).is_err())
+        .collect::<Vec<_>>();
+    if let Some(first) = non_rigid.first() {
+        notes.push(format!("Imported {} scaled/sheared LDraw occurrences without changing their transforms (first: brick {} / {}). Viewing and export are available; rigid-body simulation and publication require nominal rigid dimensions.", non_rigid.len(), first.id, first.part));
     }
     Ok(ImportedLdraw {
         bricks,
         meshes,
         notes,
+        model: ergo_world::assembly::Model::from_document(&doc)?,
     })
 }
 
@@ -165,6 +174,9 @@ pub fn validate_export(scene: &mut WorldExport) -> Result<()> {
         "Unsupported scene schema"
     );
     scene.geo.validate()?;
+    if let Some(model) = &scene.model {
+        model.references()?;
+    }
     ergo_world::groups::validate(&scene.bricks, &scene.groups)?;
     ensure!(
         scene.ground.len() <= 128,
@@ -219,7 +231,7 @@ pub fn validate_export(scene: &mut WorldExport) -> Result<()> {
         };
     }
     for brick in &mut scene.bricks {
-        ergo_world::physical::validate_pose(brick)?;
+        ergo_world::physical::validate_affine_pose(brick)?;
         let mesh = scene
             .meshes
             .get(&brick.part)
@@ -259,6 +271,7 @@ mod tests {
             joints: Vec::new(),
             fixed_bricks: Vec::new(),
             groups: Vec::new(),
+            model: Some(imported.model),
             ground: Vec::new(),
         };
         validate_export(&mut scene).unwrap();
@@ -305,13 +318,42 @@ mod tests {
     }
 
     #[test]
-    fn invalid_part_paths_undefined_colors_and_scaled_real_bricks_are_rejected() {
+    fn invalid_part_paths_and_undefined_colors_are_rejected() {
         for text in [
             "1 4 0 0 0 1 0 0 0 1 0 0 0 1 ../unknown.dat",
             "1 9999 0 0 0 1 0 0 0 1 0 0 0 1 3003.dat",
-            "1 4 0 0 0 2 0 0 0 2 0 0 0 2 3003.dat",
         ] {
             assert!(import_ldraw(text.as_bytes(), "test.ldr", None).is_err());
+        }
+    }
+
+    #[test]
+    fn affine_ldraw_import_preserves_scale_shear_and_remains_nonphysical() {
+        for matrix in ["2 0 0 0 2 0 0 0 2", "1 0.25 0 0 1 0 0 0 1"] {
+            let text = format!("1 4 0 -48 0 {matrix} 3003.dat");
+            let imported = import_ldraw(text.as_bytes(), "affine.ldr", None).unwrap();
+            assert_eq!(imported.bricks.len(), 1);
+            assert!(imported.notes.iter().any(|n| n.contains("scaled/sheared")));
+            assert!(ergo_world::physical::validate_pose(&imported.bricks[0]).is_err());
+            let mut scene = WorldExport {
+                schema: ergo_world::SCHEMA_VERSION,
+                name: "Visual affine draft".into(),
+                geo: Default::default(),
+                bricks: imported.bricks,
+                meshes: imported.meshes,
+                model: Some(imported.model),
+                joints: vec![],
+                fixed_bricks: vec![],
+                groups: vec![],
+                ground: vec![],
+            };
+            validate_export(&mut scene).unwrap();
+            let stored = ergo_world::storage::Construction::from(&scene);
+            assert_eq!(
+                stored.model.subparts["model.ldr"][0].matrix,
+                scene.model.as_ref().unwrap().subparts["model.ldr"][0].matrix
+            );
+            assert!(ergo_world::validation::validate_static(&mut scene).is_err());
         }
     }
 }

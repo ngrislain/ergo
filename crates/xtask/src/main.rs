@@ -73,6 +73,12 @@ fn build_site() -> Result<(), String> {
         root.join("site/public/favicon.svg"),
     )
     .map_err(|e| format!("Cannot copy the shared logo: {e}"))?;
+    std::fs::write(
+        root.join("site/public/brick-outline.svg"),
+        ergo_world::illustration::brick_outline("3003.dat")
+            .ok_or("Missing catalog illustration")?,
+    )
+    .map_err(|e| format!("Cannot write catalog illustration: {e}"))?;
     Ok(())
 }
 

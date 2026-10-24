@@ -36,6 +36,8 @@ pub struct RulesHeader {
     pub name: String,
     pub meshes: BTreeMap<String, ContentId>,
     pub paged: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub source_model: Option<ContentId>,
 }
 impl RulesHeader {
     pub fn of(r: &Rules) -> Self {
@@ -44,6 +46,7 @@ impl RulesHeader {
             name: r.name.clone(),
             meshes: r.meshes.clone(),
             paged: true,
+            source_model: r.source_model.clone(),
         }
     }
 }
@@ -198,5 +201,6 @@ pub(super) async fn reconstruct(
         joints,
         fixed_bricks,
         groups,
+        source_model: header.source_model.clone(),
     })
 }

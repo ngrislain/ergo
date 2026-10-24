@@ -24,10 +24,11 @@ pub(super) struct Observer {
     pub origin: DVec3,
     pub display_scale: DVec3,
     pub distance: f64,
-    pub flashlight_anchor: Option<(DVec3, DVec3)>,
+    pub studio: bool,
 }
 
 pub(super) struct LightFrame {
+    studio: bool,
     pub sun: SolarPosition,
     pub updated: bool,
     matrix: Mat4,
@@ -103,7 +104,14 @@ impl LightPass {
             (seconds / 60.0) as i64,
         ];
         let updated = self.solar.is_none_or(|(previous, _)| previous != key);
-        let sun = if updated {
+        let sun = if observer.studio {
+            let direction = DVec3::new(-0.6, 1., 0.8).normalize();
+            SolarPosition {
+                direction,
+                elevation: direction.y.asin(),
+                azimuth: direction.x.atan2(-direction.z),
+            }
+        } else if updated {
             let position = solar_position(gps[0], gps[1], seconds);
             self.solar = Some((key, position));
             position
@@ -113,7 +121,11 @@ impl LightPass {
         let eye = ((observer.eye - observer.origin) * observer.display_scale).as_vec3();
         let target = ((observer.target - observer.origin) * observer.display_scale).as_vec3();
         let (matrix, position, forward) = if sun.daylight() {
-            let span = (observer.distance * 0.7).clamp(18.0, 180.0) as f32;
+            let span = if observer.studio {
+                32.
+            } else {
+                (observer.distance * 0.7).clamp(18.0, 180.0) as f32
+            };
             let direction = sun.direction.as_vec3();
             let position = target + direction * span * 2.0;
             let up = if direction.y.abs() > 0.98 {
@@ -128,15 +140,6 @@ impl LightPass {
                 -direction,
             )
         } else {
-            let (eye, target) = observer
-                .flashlight_anchor
-                .map(|(position, target)| {
-                    (
-                        ((position - observer.origin) * observer.display_scale).as_vec3(),
-                        ((target - observer.origin) * observer.display_scale).as_vec3(),
-                    )
-                })
-                .unwrap_or((eye, target));
             let direction = (target - eye).normalize();
             let right = direction.cross(Vec3::Y).normalize_or_zero();
             let position = eye + right * 1.6 + Vec3::Y * 1.2;
@@ -183,6 +186,7 @@ impl LightPass {
             self.previous_matrix = Some(matrix);
         }
         LightFrame {
+            studio: observer.studio,
             sun,
             updated,
             matrix,
@@ -221,6 +225,10 @@ impl LightPass {
 
     pub fn uniforms(&self, program: &WebGlProgram, frame: &LightFrame) {
         let gl = &self.gl;
+        gl.uniform1i(
+            gl.get_uniform_location(program, "studio").as_ref(),
+            frame.studio as i32,
+        );
         gl.active_texture(Gl::TEXTURE0);
         gl.bind_texture(Gl::TEXTURE_2D, Some(&self.depth));
         gl.uniform1i(gl.get_uniform_location(program, "shadow_map").as_ref(), 0);

@@ -4,6 +4,10 @@ The navigator, MCP visual captures, and public landing illustration use
 `crates/client/src/renderer.rs`. The public site calls the small WASM wrapper in
 `crates/client/src/preview.rs`; there is no separate Three.js renderer. Catalog
 meshes, metric proportions, material shading, and shadow implementation are shared.
+Static brick outlines use `crates/world/src/illustration.rs`: orthographic
+projection and hidden-line removal of the same catalog mesh, scaled by the
+physical X/Z 8 mm and Y 9.6 mm units. The empty inspector and website icons share
+this projection; they are not hand-drawn differently proportioned bricks.
 
 ## Geographic sun and UTC
 
@@ -16,9 +20,9 @@ Browser time-zone offsets are not used.
 
 The resulting unit vector uses the renderer's internal east/up/south axes,
 consistent with the public east/north/up adapter. The navigator passes the
-loaded world's reference and MCP captures pass the scene's reference. The
-landing example uses the default Paris reference (48.8566° N, 2.3522° E) and
-never requests a visitor's device location.
+loaded world's reference and MCP captures pass the scene's reference. The public
+landing illustration instead uses the fixed studio setup below, and never requests
+a visitor's device location.
 
 Above the geometric horizon, the sun direction drives direct light, highlights,
 shadows, and the visible sky disk. These are approximate astronomical visual
@@ -37,12 +41,26 @@ distance attenuation, and a perspective shadow projection. Ambient sky light
 varies through twilight. This is a visual navigation aid, not a measured
 lumen/exposure model or a physics force.
 
-The public preview uses a transparent background to keep its guide readable.
-Its night light is anchored to a fixed scene eye/target, so orbiting the model
-does not move illumination or cast shadows. Daytime sun direction is world-fixed;
-view-dependent specular highlights still change naturally. The navigator and MCP
-capture headlamp remain camera-mounted.
-The navigator and ordinary MCP captures render the time-dependent sky.
+The navigator and ordinary MCP captures render the time-dependent sky and use
+a camera-mounted night headlamp.
+
+## Homepage studio lighting and orbit
+
+The public preview uses a transparent background and fixed studio lighting,
+independent of UTC. Its world-fixed key points along normalized `(-0.6,1,0.8)`
+in renderer axes and uses the shared shadow pass. Broad cool fill/rim directions
+and a diffuse ambient lift keep rear/side faces readable while orbiting; they
+do not have separate shadow maps. The key, fill and rim stay fixed as the camera
+moves, while specular highlights change with the view. This is a presentation
+setup, not a claim about the construction's geographic sun.
+
+Dragging moves the actual perspective camera around the fixed model target in
+azimuth and elevation, from -1.4 to +1.4 radians; brick transforms do not rotate.
+Wheel/pinch zoom changes camera distance between 0.55× and 2.5× the fitted view.
+Focused arrow keys orbit, plus/minus zoom, and Home or **Reset view** restores
+the initial view. Pointer capture permits drags outside the canvas; cancel/lost
+capture end the gesture. Reduced motion disables incidental animation but retains
+direct controls. Page scrolling remains available outside the interactive canvas.
 
 ## Ambient, diffuse, and specular light
 
@@ -97,7 +115,7 @@ npm test --prefix site
 ```
 
 Browser checks use fixed UTC daytime/nighttime clocks, actual WebGL main/depth
-draw passes, GL-error inspection, and the automatic flashlight. They also cover
-hover/drag/scroll, reduced motion, fallback, the navigator's sky path, and root
+draw passes, GL-error inspection, studio-lit front/rear views and navigator flashlight.
+They also cover orbit/zoom/keyboard controls, reduced motion, fallback, the navigator's sky path, and root
 login/viewer routing. Canvas diagnostics include `data-renderer`, `data-lighting`,
 `data-sun-elevation`, `data-sun-azimuth`, and `data-shadow-map`.

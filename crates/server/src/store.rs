@@ -267,6 +267,7 @@ impl Store {
             owner,
             ground: scene.ground,
             groups: scene.groups,
+            model: scene.model,
         };
         // Publish only after every immutable object exists. Each import is a new world.
         crate::catalog::register(self, &manifest).await?;
@@ -304,6 +305,7 @@ impl Store {
             fixed_bricks: manifest.fixed_bricks.clone(),
             ground: manifest.ground.clone(),
             groups: manifest.groups.clone(),
+            model: manifest.model.clone(),
         })
     }
 }
@@ -346,6 +348,7 @@ mod tests {
             fixed_bricks: Vec::new(),
             ground: Vec::new(),
             groups: Vec::new(),
+            model: None,
         }
     }
     #[tokio::test]

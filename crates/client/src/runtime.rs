@@ -377,6 +377,68 @@ impl LocalClientRuntime {
                 })?;
                 Ok(text(feedback))
             }
+            "place_submodel" => {
+                let source = args["ldraw"].as_str().context("Missing LDraw document")?;
+                ensure!(
+                    source.len() <= 128 * 1024,
+                    "Inline submodel exceeds 128 KiB"
+                );
+                let document = ergo_world::ldraw::Document::parse(source, "model.ldr")?;
+                let model = ergo_world::assembly::Model::from_document(&document)?;
+                let matrix = args
+                    .get("matrix")
+                    .map(|v| serde_json::from_value(v.clone()))
+                    .transpose()?
+                    .unwrap_or_default();
+                let color = args
+                    .get("color")
+                    .map(|v| serde_json::from_value::<u32>(v.clone()))
+                    .transpose()?
+                    .unwrap_or(16);
+                Ok(text(self.update(|scene| {
+                    let mut combined = ergo_world::assembly::Model::for_scene(scene);
+                    combined.append(&model, matrix, color)?;
+                    let references = combined.references()?;
+                    ensure!(
+                        references.len() <= ergo_world::MAX_SIMULATION_BRICKS,
+                        "Local simulation workspace is limited to 5,000 bricks"
+                    );
+                    let mut next_id = scene.bricks.iter().map(|b| b.id).max().unwrap_or(0);
+                    for r in references.iter().skip(scene.bricks.len()) {
+                        if !scene.meshes.contains_key(&r.name) {
+                            let mut mesh = ergo_world::ldraw::bake_mesh(
+                                &r.name,
+                                &|name| document.files.get(name).cloned(),
+                                &document.colors,
+                            )
+                            .or_else(|error| {
+                                ensure!(
+                                    ergo_world::geometry::part_spec(&r.name).is_some(),
+                                    "Resolve geometry for {} first: {error}",
+                                    r.name
+                                );
+                                Ok(ergo_world::geometry::fallback_mesh(&r.name))
+                            })?;
+                            if ergo_world::geometry::part_spec(&r.name).is_some() {
+                                mesh.body_bounds =
+                                    ergo_world::geometry::fallback_mesh(&r.name).body_bounds;
+                            }
+                            scene.meshes.insert(r.name.clone(), mesh);
+                        }
+                        next_id = next_id.checked_add(1).context("ID overflow")?;
+                        let brick = ergo_world::ldraw::brick_from_reference(
+                            next_id,
+                            r,
+                            &scene.meshes[&r.name],
+                            &document.colors,
+                        );
+                        ergo_world::physical::validate_pose(&brick)?;
+                        scene.bricks.push(brick);
+                    }
+                    scene.model = Some(combined);
+                    Ok(())
+                })?))
+            }
             "move_brick" => {
                 let selected = id(&args, "id")?;
                 let delta = vector(&args, "delta")?;

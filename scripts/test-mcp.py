@@ -107,8 +107,28 @@ def main():
             custom = call("place_brick", part="custom-part", color=47, min_corner=[16, 2, 0])
             assert custom["isError"] is False and custom["structuredContent"]["publication_ready"] is False, custom
             assert "sourced" in custom["structuredContent"]["failure"]
+            submodel = ("0 FILE pair.ldr\n"
+                        "1 16 0 0 0 1 0 0 0 1 0 0 0 1 pillar.ldr\n"
+                        "1 16 100 0 0 1 0 0 0 1 0 0 0 1 pillar.ldr\n"
+                        "0 FILE pillar.ldr\n"
+                        "1 16 0 -24 0 1 0 0 0 1 0 0 0 1 3003.dat\n")
+            matrix = [[1, 0, 0, 500], [0, 1, 0, 0], [0, 0, 1, -100], [0, 0, 0, 1]]
+            result = call("place_submodel", ldraw=submodel, matrix=matrix, color=14)
+            assert result["isError"] is False, result
+            stored = json.loads(workspace.read_text())
+            assert stored["format"] == "ergo-ldraw-1" and "bricks" not in stored
+            assert len(stored["pieces"]) == 5
+            assert any(name.endswith("pillar.ldr") for name in stored["model"]["subparts"])
+            added = call("list_bricks")["structuredContent"]["bricks"][-2:]
+            assert [brick["color"] for brick in added] == [14, 14]
+            assert [brick["position"][0] for brick in added] == [25, 30]
+            before = workspace.read_bytes()
+            assert call("place_submodel", ldraw=submodel, matrix=matrix, color=14)["isError"] is True
+            assert workspace.read_bytes() == before, "Failed submodel placement must roll back"
+            matrix[3][0] = 1
+            assert call("place_submodel", ldraw=submodel, matrix=matrix)["isError"] is True
             assert workspace.exists()
-            print("MCP smoke passed: tool discovery, collision rollback, gravity, camera PNGs, parameterized/two-axis earthquakes, and non-destructive tests.")
+            print("MCP smoke passed: tool discovery, collision rollback, gravity, camera PNGs, earthquakes, reusable LDraw subparts, matrix placement, and canonical storage.")
         finally:
             process.stdin.close()
             process.wait(timeout=10)

@@ -203,7 +203,7 @@ async fn export(
                 "attachment; filename=construction.ergo.json",
             ),
         ],
-        serde_json::to_vec(&scene)?,
+        serde_json::to_vec(&ergo_world::storage::Construction::from(&scene))?,
     )
         .into_response())
 }
@@ -249,8 +249,8 @@ async fn upload(
     let library = s.library.clone();
     let (mut scene, mut notes) = tokio::task::spawn_blocking(move || -> Result<_> {
         if is_json {
-            let mut scene: WorldExport =
-                serde_json::from_slice(&bytes).context("Invalid Ergo scene JSON")?;
+            let mut scene =
+                ergo_world::storage::decode(&bytes).context("Invalid Ergo scene JSON")?;
             import::validate_export(&mut scene)?;
             Ok((scene, Vec::new()))
         } else {
@@ -258,6 +258,7 @@ async fn upload(
                 bricks,
                 meshes,
                 notes,
+                model,
             } = import::import_ldraw(&bytes, &filename, library)?;
             Ok((
                 WorldExport {
@@ -270,6 +271,7 @@ async fn upload(
                     fixed_bricks: Vec::new(),
                     ground: Vec::new(),
                     groups: Vec::new(),
+                    model: Some(model),
                 },
                 notes,
             ))
@@ -305,6 +307,12 @@ async fn upload(
         let mut delta = s.geo.to_world(latitude, longitude)?;
         let bounds = ergo_world::bounds(&scene.bricks).context("Empty model")?;
         delta -= glam::DVec3::new(bounds.min.x, bounds.min.y, bounds.max.z);
+        if let Some(model) = &mut scene.model {
+            model.apply_transform(ergo_world::assembly::Transform::from_pose(
+                glam::DMat3::IDENTITY,
+                ergo_world::ldraw::conversion().inverse() * delta,
+            ))?;
+        }
         for brick in &mut scene.bricks {
             brick.translated(delta);
         }
@@ -517,6 +525,7 @@ async fn main() -> Result<()> {
                 fixed_bricks: Vec::new(),
                 ground: Vec::new(),
                 groups: Vec::new(),
+                model: None,
             };
             store.save(scene, "Built-in example".into(), vec!["Catalog parts use simplified solid-body geometry; studs are visual. The pavilion has authored fixed bonds on touching faces.".into()],"examples".into()).await?;
         }

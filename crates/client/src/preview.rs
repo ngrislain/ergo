@@ -23,7 +23,6 @@ impl LandingPreview {
         renderer.meshes = scene.meshes.clone();
         renderer.set_bricks(scene.bricks.clone());
         renderer.fit(ergo_world::bounds(&scene.bricks).ok_or("Empty landing illustration")?);
-        renderer.flashlight_anchor = Some((renderer.eye(), renderer.target));
         renderer.grid = false;
         renderer.ground_visible = false;
         let distance = renderer.distance;
@@ -64,8 +63,9 @@ impl LandingPreview {
         pitch: f64,
         explosion: f64,
         assembly: f64,
+        zoom: f64,
     ) -> Result<(), JsValue> {
-        if ![yaw, pitch, explosion, assembly]
+        if ![yaw, pitch, explosion, assembly, zoom]
             .iter()
             .all(|x| x.is_finite())
         {
@@ -105,15 +105,19 @@ impl LandingPreview {
         let aspect = self.renderer.canvas.client_width().max(1) as f64
             / self.renderer.canvas.client_height().max(1) as f64;
         let explosion = explosion.clamp(0.0, 1.0);
-        let distance = self.distance * (1.15 / aspect).max(1.0) * (1.0 + explosion * 0.25);
+        let distance = self.distance
+            * (1.15 / aspect).max(1.0)
+            * (1.0 + explosion * 0.25)
+            * zoom.clamp(0.55, 2.5);
         let explosion = explosion * 0.55;
+        let pitch = pitch.clamp(-1.4, 1.4);
         if self.renderer.yaw != yaw
             || self.renderer.pitch != pitch
             || self.renderer.distance != distance
             || self.renderer.explode != explosion
         {
             self.renderer.yaw = yaw;
-            self.renderer.pitch = pitch.clamp(0.15, 1.4);
+            self.renderer.pitch = pitch;
             self.renderer.distance = distance;
             self.renderer.explode = explosion;
             self.renderer.changed();

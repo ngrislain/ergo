@@ -51,6 +51,11 @@ The build injects the shared header/footer from `site/src/layout.ts`.
 small `site-entry` wrapper and copies the canonical `web/favicon.svg` logo.
 Generated bindings/logo in `site/public/engine` and `site/public/favicon.svg` are
 ignored. The build uses those generated outputs, not checked-in binaries.
+`site/public/brick-outline.svg` is also generated: the inspector, fallback and
+decorative brick illustrations project the same `3003.dat` catalog mesh in metric
+proportions, with hidden-line removal. CSS preserves its aspect ratio rather than
+stretching its height or inventing stud spacing. The logo is a top view with
+20-LDU pitch / 12-LDU stud diameter on the 40×40-LDU 2×2 footprint.
 The WASM renderer loads dynamically only on the home page; legal pages load no
 3D engine. There is no Three.js dependency. Manrope headings/wordmark and DM Sans
 body text match the apex interface and are self-hosted.
@@ -59,13 +64,13 @@ external model downloads, token-entry fields, or persistent demo preferences.
 Their font license notices are emitted with the site under `/licenses/`.
 
 The white/slate/amber tokens, typography, logo, and buttons follow the apex UI.
-The brick model uses the navigator's catalog geometry, instancing, shaders,
-sun/shadows, and night flashlight. See [lighting](lighting.md) for geographic UTC
-solar positioning, ambient/specular light, and visual limits. Mouse hover
-tilts the view, dragging rotates the model, and page scroll changes the viewing
-angle without intercepting normal scrolling. Rendering runs during the initial
-assembly or a visitor's interaction, then stops at rest. A visible preview also
-refreshes once a minute to follow the sun.
+The brick model uses the navigator's catalog geometry, instancing, shaders and
+shadow pass, with fixed studio key/fill/rim lighting so it remains readable at
+any time and from rear/side views. See [lighting](lighting.md). Dragging orbits
+the actual camera horizontally and vertically; wheel/pinch changes its distance.
+Arrow keys orbit, plus/minus zoom, and Home or **Reset view** restores the view.
+Mouse hover/page scroll provide small incidental view changes, and page scrolling
+continues outside the canvas. Rendering stops when assembly/interaction settles.
 Offscreen/hidden scenes pause, reduced-motion preferences are respected, and
 WebGL failure leaves the onboarding text usable. The illustration does not use
 or claim to replace the construction validator.
@@ -73,7 +78,7 @@ or claim to replace the construction validator.
 Build tests check the static routes, legal navigation, MCP origin/token-file
 configuration, distribution boundaries, and current documentation semantics.
 Browser checks cover real WebGL mouse/scroll controls, tabs, clipboard, 320/390-pixel layouts,
-day/night lighting, shadow draw passes, reduced motion, WebGL-unavailable fallback,
+time-independent studio lighting, shadow draw passes, reduced motion, WebGL-unavailable fallback,
 and readable no-JavaScript content.
 
 ## Public package-source environment setting

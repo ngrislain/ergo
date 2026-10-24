@@ -140,6 +140,8 @@ impl Geometry {
 pub struct Birth {
     pub nonce: String,
     pub created_by: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub created_by_name: Option<String>,
     pub assembly: ContentId,
     pub initial: Geometry,
     pub mesh: ContentId,
@@ -171,6 +173,9 @@ pub struct Rules {
     pub joints: Vec<JointSpec>,
     pub fixed_bricks: Vec<u32>,
     pub groups: Vec<Group>,
+    /// Immutable import-time LDraw hierarchy, not a live geometry authority.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub source_model: Option<ContentId>,
 }
 impl Rules {
     pub fn validate(&self) -> Result<()> {
@@ -212,6 +217,9 @@ impl Rules {
 #[derive(Clone, Serialize, Deserialize)]
 pub struct Audit {
     pub actor: String,
+    /// Server-resolved profile name at acceptance; permissions use the stable ID.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub actor_name: Option<String>,
     pub base: ContentId,
     pub policy_hash: ContentId,
     pub model: ContentId,

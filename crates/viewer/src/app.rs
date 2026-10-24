@@ -210,6 +210,7 @@ impl Client {
             fixed_bricks: self.fixed.clone(),
             ground: renderer.ground.values().cloned().collect(),
             groups: self.groups.clone(),
+            model: world.model.clone(),
         })
     }
     fn complete(&self) -> bool {
@@ -381,32 +382,7 @@ async fn json<T: serde::de::DeserializeOwned>(url: &str) -> anyhow::Result<T> {
 
 fn logout(ui: Ui) {
     spawn_local(async move {
-        let result: anyhow::Result<()> = async {
-            let response = Request::post("/api/auth/logout")
-                .header("X-Ergo-Request", "1")
-                .send()
-                .await?;
-            anyhow::ensure!(response.ok(), "Could not sign out");
-            let window = web_sys::window().unwrap();
-            if let Ok(caches) = window.caches()
-                && let Ok(keys) = wasm_bindgen_futures::JsFuture::from(caches.keys()).await
-            {
-                for key in js_sys::Array::from(&keys)
-                    .iter()
-                    .filter_map(|k| k.as_string())
-                    .filter(|k| k.starts_with("ergo-"))
-                {
-                    let _ = wasm_bindgen_futures::JsFuture::from(caches.delete(&key)).await;
-                }
-            }
-            window
-                .location()
-                .reload()
-                .map_err(|_| anyhow::anyhow!("Signed out; reload the page to continue"))?;
-            Ok(())
-        }
-        .await;
-        if let Err(error) = result {
+        if let Err(error) = crate::session::sign_out().await {
             ui.fail(error);
         }
     });
@@ -467,6 +443,7 @@ fn shared_manifest(
         owner: "shared".into(),
         ground: Vec::new(),
         groups: Vec::new(),
+        model: None,
     }
 }
 
@@ -502,6 +479,7 @@ fn open_shared(handle: Handle, location: SharedLocation) {
             fixed_bricks: Vec::new(),
             groups: Vec::new(),
             ground: Vec::new(),
+            model: None,
         };
         let manifest = shared_manifest(&location.world, &scene, coord, &c.blocks);
         c.world = Some(manifest.clone());
@@ -823,6 +801,7 @@ fn open_draft(handle: Handle, scene: WorldExport) -> anyhow::Result<()> {
             owner: "workspace".into(),
             ground: scene.ground.clone(),
             groups: scene.groups.clone(),
+            model: scene.model.clone(),
         };
         c.blocks = blocks;
         c.world = Some(world.clone());
@@ -1309,7 +1288,7 @@ pub fn App() -> impl IntoView {
     view! {
         <header class="app-header">
             <a class="brand" href="https://www.ergosandbox.com/" aria-label="Ergo home"><img src="/favicon.svg" alt="" width="38" height="38"/>"ergo"<span class="brand-description">"A world, brick by brick."</span></a>
-            <div class="header-actions"><span class="account-name">{move ||ui.user.get()}</span><Show when=move ||ui.google.get()&&!ui.signed_in.get()><a class="button quiet" href="/auth/google">"Sign in with Google"</a></Show><Show when=move ||ui.google.get()&&ui.signed_in.get()><button class="button quiet" on:click=move |_|logout(ui)>"Sign out"</button></Show><button class="button primary" on:click=move |_|show_dialog("import-dialog")>"＋ Import construction"</button></div>
+            <div class="header-actions"><span class="account-name">{move ||ui.user.get()}</span><Show when=move ||ui.google.get()&&!ui.signed_in.get()><a class="button quiet" href="/auth/google">"Sign in with Google"</a></Show><Show when=move ||ui.google.get()&&ui.signed_in.get()><button class="button quiet sign-out" on:click=move |_|logout(ui)>"Sign out"</button></Show><button class="button primary" on:click=move |_|show_dialog("import-dialog")>"＋ Import construction"</button></div>
         </header>
         <main class="workbench">
             <aside class="left-dock"><ConstructionBrowser/><div class="dock-bottom"><span class="storage-dot"></span>{move ||ui.storage.get()}<p>"Standard parts first · Studio / LDraw"</p></div></aside>
@@ -1689,7 +1668,7 @@ fn BrickInspector() -> impl IntoView {
     let pull = RwSignal::new(false);
     view! {
         <div class="dock-section inspector"><div class="section-heading"><h2>"Brick inspector"</h2><span class="selection-dot" class:has-selection=move ||ui.selected.get().is_some()></span></div>
-            <Show when=move ||ui.selected.get().is_some() fallback=move ||view!{<div class="empty-inspector"><svg viewBox="0 0 80 70" aria-hidden="true"><path d="M12 29L40 13L68 29V49L40 65L12 49Z M12 29L40 46L68 29 M40 46V65" fill="none" stroke="currentColor" stroke-width="1.5"/><ellipse cx="40" cy="16" rx="11" ry="6" fill="#f7fafc" stroke="currentColor"/><path d="M29 16V23C29 31 51 31 51 23V16" fill="none" stroke="currentColor"/></svg><strong>"Every brick has a story."</strong><p>"Select one in the scene to inspect its geometry and connections."</p></div>}>
+            <Show when=move ||ui.selected.get().is_some() fallback=move ||view!{<div class="empty-inspector"><span class="catalog-brick-outline" inner_html=ergo_world::illustration::brick_outline("3003.dat").unwrap_or_default()></span><strong>"Every brick has a story."</strong><p>"Select one in the scene to inspect its geometry and connections."</p></div>}>
                 <div class="selected-part"><span class="part-color" style:background=move ||ui.selected.get().map(|b|format!("#{:06x}",b.rgb)).unwrap_or_default()></span><div><h3>{move ||ui.selected.get().map(|b|catalog::part_name(&b.part).to_owned()).unwrap_or_default()}</h3><p>{move ||ui.selected.get().map(|b|format!("{} · #{}",b.part.trim_end_matches(".dat"),b.id)).unwrap_or_default()}</p></div></div>
                 <dl class="part-properties"><dt>"Color"</dt><dd>{move ||ui.selected.get().map(|b|catalog::color_name(b.color)).unwrap_or_default()}</dd><dt>"Origin (X,Y,Z)"</dt><dd>{move ||ui.selected.get().map(|b|format!("{:.1}, {:.1}, {:.1}",b.position.x,-b.position.z,b.position.y)).unwrap_or_default()}</dd><dt>"Base height Z"</dt><dd>{move ||ui.selected.get().map(|b|format!("{:.3}",b.bounds.min.y)).unwrap_or_default()}</dd><dt>"Connections"</dt><dd>{move ||ui.relations.get().iter().filter(|r|r.certainty=="inferred").count()}</dd></dl>
                 <div class="swatches" aria-label="Available brick colors">{catalog::COLORS.iter().map(|&(code,name)|view!{<button class="swatch" title=name aria-label=name style:background=format!("#{:06x}",ergo_world::color_rgb(code)) on:click=move |_|act(handle,|c|{c.remember()?;c.freeze_simulation();let r=c.renderer.as_mut().unwrap();if let Some(id)=r.selected{for b in &mut r.bricks{if b.id==id{b.color=code;b.rgb=ergo_world::color_rgb(code);}}r.changed();}c.refresh_selection();Ok(())})></button>}).collect_view()}</div>
@@ -1817,7 +1796,7 @@ fn export_scene(handle: Handle) {
     act(handle, |c| {
         c.freeze_simulation();
         let scene = c.scene()?;
-        let text = serde_json::to_string_pretty(&scene)?;
+        let text = serde_json::to_string_pretty(&ergo_world::storage::Construction::from(&scene))?;
         let parts = js_sys::Array::new();
         parts.push(&JsValue::from_str(&text));
         let blob = web_sys::Blob::new_with_str_sequence(&parts)

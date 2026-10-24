@@ -80,6 +80,16 @@ See [MCP publication setup](local-construction-mcp.md#remote-publication-setup).
 
 ## Ownership and cached objects
 
+Shared-world accepted audit records include the authenticated stable `actor` ID
+and optional `actor_name`, resolved by the server from the account profile at
+acceptance. Piece birth records likewise retain `created_by` and
+`created_by_name`. The MCP client cannot choose these names. This is authenticated
+author attribution in immutable content-addressed records, not a personal
+cryptographic signature by a username. Permissions always use stable IDs; later
+profile renames do not rewrite historical attribution. Legacy records may omit
+the name. Display names are not unique usernames, and no Google email is copied
+into the public-to-authorized-readers audit.
+
 Each private manifest lives under its owner's prefix. Listing worlds reads the
 shared example prefix and the current user's prefix. Reading a world or exporting
 it checks ownership. Immutable blobs are globally content-addressed in storage,
@@ -87,7 +97,11 @@ but browser object URLs are scoped through an authorized world route.
 
 The browser can retain downloaded private model bytes on that device. Persistent
 caching is a local performance feature, not an access-grant mechanism. Logout
-clears model caches and browser cache/storage state. The service worker never
+expires both session/login-state cookies and clears browser cache/storage state.
+Both the viewer and signed-in setup page expose sign-out, which returns to `/login`
+without waiting on CacheStorage calls. Missing/expired sessions can sign out too;
+same-origin checks remain required. Session-status responses use `no-store`.
+The service worker never
 caches authentication responses or profile/world-list responses.
 
 ## Configuration

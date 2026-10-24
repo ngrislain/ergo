@@ -59,20 +59,28 @@ pub fn world_transform(m: DMat3) -> DMat3 {
     DMat3::from_diagonal(SCALE.recip()) * m * DMat3::from_diagonal(SCALE)
 }
 
-pub fn validate_pose(brick: &Brick) -> Result<()> {
+/// Safe visual/model pose, including the affine transforms permitted by LDraw.
+pub fn validate_affine_pose(brick: &Brick) -> Result<()> {
     ensure!(
         brick.position.is_finite()
             && brick.position.abs().max_element() <= crate::MAX_WORLD_COORD
-            && brick.transform.is_finite(),
-        "Non-finite or out-of-range brick pose"
+            && brick.transform.is_finite()
+            && brick.transform.determinant().abs() > 1e-10,
+        "Non-finite, singular or out-of-range brick pose"
     );
+    Ok(())
+}
+
+pub fn validate_pose(brick: &Brick) -> Result<()> {
+    validate_affine_pose(brick)?;
     let rotation = metric_transform(brick.transform);
     let error = rotation.transpose() * rotation - DMat3::IDENTITY;
     ensure!(
         error.to_cols_array().iter().all(|n| n.abs() < 1e-5)
             && (rotation.determinant().abs() - 1.0).abs() < 1e-5,
-        "Brick {} is scaled or sheared in metric space; real catalog parts must preserve their nominal dimensions",
-        brick.id
+        "Brick {} ({}) is scaled or sheared in metric space; it can be viewed/exported, but simulation and publication require nominal rigid part dimensions",
+        brick.id,
+        brick.part
     );
     Ok(())
 }
@@ -257,6 +265,18 @@ impl ConnectionMeasurements {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[cfg(feature = "simulation")]
+    #[test]
+    fn visual_affine_pose_cannot_be_used_as_a_rigid_simulation_body() {
+        let mut demo = crate::demo::Demo::new();
+        demo.add("3003", 4, 2., 0., 2.);
+        demo.bricks[0].transform *= 2.;
+        validate_affine_pose(&demo.bricks[0]).unwrap();
+        assert!(validate_pose(&demo.bricks[0]).is_err());
+        assert!(
+            crate::physics::Simulation::new(&demo.bricks, &demo.meshes, &[], &[], false).is_err()
+        );
+    }
     #[test]
     fn brick_dimensions_and_mass_are_metric_and_sourced() {
         assert_eq!(

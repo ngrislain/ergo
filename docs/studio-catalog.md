@@ -19,7 +19,10 @@ the full proprietary Studio library.
 Standard recommended parts can use labeled parametric geometry when their
 source is unavailable. **Non-standard parts require actual geometry** and are
 never silently substituted with a generic proxy. Embedded Studio/MPD geometry
-and explicit custom RGB colors are retained during import. JSON publication
+and explicit custom RGB colors are retained during import. Scaled/sheared affine
+occurrences are preserved in visual drafts with an explanatory note; simulation
+and publication reject them rather than silently treating them as rigid bricks.
+JSON publication
 requires valid complete triangles, finite rigid poses, and the existing geometry
 budgets. Non-standard body-box approximations are not exact wheel/clip/hole
 collision shapes.
@@ -61,6 +64,11 @@ to return the full embedded color catalog. Set `part: "3039"`, for example, to
 resolve/inspect a non-standard part's geometry and available mass before placing
 it. `place_brick` accepts any resolvable part ID and supported color code; use
 standard parts/colors when they express the same design.
+
+`place_submodel` instantiates nested inline LDraw/MPD references with a 4×4 LDU
+transform and inherited color. [Construction storage](ldraw-storage.md) retains
+these definitions instead of saving only flattened poses; indexed/physical leaf
+bricks still undergo the same validation.
 
 The `parts` array is the recommendation list, not an exhaustive list of all
 Studio molds. The response's `part_resolution` explains on-demand resolution.

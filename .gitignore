@@ -21,6 +21,7 @@ crash.log
 /site/dist/
 /site/public/engine/
 /site/public/favicon.svg
+/site/public/brick-outline.svg
 /site/.env
 /site/.env.local
 .DS_Store

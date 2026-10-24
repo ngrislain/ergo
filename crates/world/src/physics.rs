@@ -142,6 +142,9 @@ impl Simulation {
             "Simulation supports 1–{MAX_SIMULATION_BRICKS} fully loaded bricks"
         );
         validate_joints(bricks, explicit, fixed)?;
+        for brick in bricks {
+            crate::physical::validate_pose(brick)?;
+        }
         let mut s = Self {
             pipeline: PhysicsPipeline::new(),
             islands: IslandManager::new(),

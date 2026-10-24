@@ -78,7 +78,8 @@ def main():
         with request("/api/worlds", json.dumps(scene).encode()) as response:
             saved = json.load(response)
         with request("/api/worlds/" + saved["id"] + "/export") as response:
-            assert len(json.load(response)["bricks"]) == 1
+            exported = json.load(response)
+            assert exported["format"] == "ergo-ldraw-1" and len(exported["pieces"]) == 1
 
         if args.browser:
             root = pathlib.Path(__file__).resolve().parents[1]

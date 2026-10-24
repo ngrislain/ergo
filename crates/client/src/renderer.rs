@@ -41,8 +41,8 @@ pub struct Renderer {
     lighting: LightPass,
     pub geo: ergo_world::GeoReference,
     pub ground_visible: bool,
-    /// Fixed world-space night-light eye/target for illustrations; None is a headlamp.
-    pub flashlight_anchor: Option<(DVec3, DVec3)>,
+    /// Fixed key/fill lighting for illustrations, independent of time and camera.
+    pub studio_lighting: bool,
     gpu: HashMap<String, GpuMesh>,
     pub meshes: BTreeMap<String, Mesh>,
     lod_meshes: BTreeMap<String, Mesh>,
@@ -115,7 +115,7 @@ impl Renderer {
             lighting,
             geo: Default::default(),
             ground_visible: true,
-            flashlight_anchor: None,
+            studio_lighting: transparent_background,
             gpu: HashMap::new(),
             meshes: BTreeMap::new(),
             lod_meshes: BTreeMap::new(),
@@ -578,7 +578,7 @@ impl Renderer {
                 origin: self.origin,
                 display_scale: DISPLAY_SCALE,
                 distance: self.distance,
-                flashlight_anchor: self.flashlight_anchor,
+                studio: self.studio_lighting,
             },
             &self.gpu,
             changed,
@@ -586,7 +586,9 @@ impl Renderer {
         if light.updated {
             let _ = self.canvas.set_attribute(
                 "data-lighting",
-                if light.sun.daylight() {
+                if self.studio_lighting {
+                    "studio"
+                } else if light.sun.daylight() {
                     "sunlight"
                 } else {
                     "flashlight"

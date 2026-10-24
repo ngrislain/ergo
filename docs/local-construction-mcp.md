@@ -44,6 +44,14 @@ Ergo JSON exports can be opened directly. A local advisory lock prevents two MCP
 processes from concurrently opening the same file. This is not a distributed
 S3 lease.
 
+Current-source working files use [LDraw-aligned storage](ldraw-storage.md):
+reusable subpart definitions and row-major 4×4 transforms in LDU, plus per-occurrence
+IDs/RGB/steps and Ergo metadata. Older leaf-based JSON remains readable.
+`place_submodel` accepts inline LDR/MPD text, optional `matrix` and inherited `color`,
+retains nested references, and applies the ordinary atomic physical edit checks.
+It does not create physical joints. The released v0.3.1 bundle predates this tool
+and format; use a current-source build until a new bundle is published.
+
 The default opens the minimal runtime in the existing browser. Use `--attach`
 for manual attachment, `--headless` for isolated Chrome automation, and
 `ERGO_CHROME_BIN` if Chrome is not in the default location. The runtime does not

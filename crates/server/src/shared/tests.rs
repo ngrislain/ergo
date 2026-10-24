@@ -25,8 +25,46 @@ fn scene(x: f64) -> WorldExport {
         joints: Vec::new(),
         fixed_bricks: Vec::new(),
         groups: Vec::new(),
+        model: None,
         ground: Vec::new(),
     }
+}
+
+#[tokio::test]
+async fn accepted_changes_use_server_profile_name_and_retain_the_source_model() {
+    let service = service();
+    service
+        .store
+        .put_user(&crate::auth::User {
+            id: "alice".into(),
+            name: "Alice Builder".into(),
+            email: "alice@example.test".into(),
+            picture: None,
+            created_at: 1,
+            last_login: 1,
+        })
+        .await
+        .unwrap();
+    let (head, imported) = seeded(&service, scene(10.)).await;
+    assert_eq!(imported.accepted.audit.actor, "alice");
+    assert_eq!(
+        imported.accepted.audit.actor_name.as_deref(),
+        Some("Alice Builder")
+    );
+    let repo = service.repo(&head.id).unwrap();
+    let birth: Birth = repo.blob(&imported.pieces[&1]).await.unwrap();
+    assert_eq!(birth.created_by, "alice");
+    assert_eq!(birth.created_by_name.as_deref(), Some("Alice Builder"));
+    let snapshot = repo.checkout("main").await.unwrap();
+    let header: super::paged::RulesHeader = snapshot
+        .get(&super::paged::rule_path(&imported.assembly, 0))
+        .await
+        .unwrap()
+        .unwrap();
+    let source: ergo_world::assembly::Model =
+        repo.blob(&header.source_model.unwrap()).await.unwrap();
+    assert_eq!(source.references().unwrap().len(), 2);
+    snapshot.close().await.unwrap();
 }
 async fn seeded(service: &SharedWorlds, initial: WorldExport) -> (Head, Imported) {
     let head = service

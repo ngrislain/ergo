@@ -466,6 +466,7 @@ mod tests {
             fixed_bricks: Vec::new(),
             ground: Vec::new(),
             groups: Vec::new(),
+            model: None,
         }
     }
     async fn exercise(mode: &'static str, args: Value) -> (Value, Vec<(String, Value)>) {

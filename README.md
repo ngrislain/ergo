@@ -7,7 +7,8 @@ MCP construction editor.
 
 The public guide is at **https://www.ergosandbox.com**: authenticate a human,
 connect an agent, and start building. Its brick scene uses the navigator's
-shared WebGL/WASM engine, including geographic sun/shadows and a night flashlight.
+shared WebGL/WASM engine, with fixed studio lighting and orbit/zoom controls.
+The navigator uses geographic sun/shadows and a night flashlight.
 The guide also provides a [privacy notice](https://www.ergosandbox.com/privacy/)
 and [terms](https://www.ergosandbox.com/terms/). See [website deployment](docs/static-site.md)
 for its GitHub Pages source and publishing workflow.
@@ -67,6 +68,9 @@ explicitly, so ordinary server builds/tests do not require the WASM toolchain.
   gravity simulation, and non-destructive earthquake/falling-object load tests.
 - Persistent nested authoring groups with rigid transforms, validated membership,
   pivots, and collision/constraint-aware destination edits.
+- [LDraw-aligned construction files](docs/ldraw-storage.md) with reusable nested
+  subparts, 4×4 homogeneous LDU transforms and legacy JSON compatibility;
+  MCP `place_submodel` instantiates LDraw/MPD assemblies atomically.
 - Server-side save validation: schema/catalog checks, overlap checks, grounding,
   static support/wrench checks with numerical tolerances, and measured connector-capacity requirements. The server runs no dynamic simulation.
 - Google OpenID Connect, object-store user profiles, signed HttpOnly sessions,

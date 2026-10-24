@@ -19,6 +19,8 @@ or Scaleway's S3-compatible object store. User profiles also live in object stor
   setup, shared-world navigation, edit pacing, and operator-managed paid entitlement.
 - [Studio/LDraw catalog](studio-catalog.md): open-ended parts, sourced colors,
   standard-first MCP discovery, and measured-physics publication requirements.
+- [LDraw-aligned construction storage](ldraw-storage.md): reusable subparts,
+  row-major 4×4 LDU transforms, occurrence identities, MPD interchange and legacy files.
 - [Nested groups](groups.md): piece/group membership, rigid transforms, pivots, and physics separation.
 
 - [3D indexing for efficient display](3d-display-indexing.md): resident sets,

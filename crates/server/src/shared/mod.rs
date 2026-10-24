@@ -135,6 +135,13 @@ pub struct SharedWorlds {
     pub(crate) pacing: pacing::Pacing,
 }
 impl SharedWorlds {
+    async fn actor_name(&self, actor: &str) -> Result<Option<String>> {
+        Ok(self
+            .store
+            .user(actor)
+            .await?
+            .map(|user| user.name.chars().take(120).collect()))
+    }
     pub fn new(store: Store) -> Result<Self> {
         let prefix = if store.prefix.is_empty() {
             "shared".into()
@@ -264,6 +271,7 @@ impl SharedWorlds {
         tx.put(&root(2), &metadata).await?;
         tx.set_metadata(&Audit {
             actor: actor.into(),
+            actor_name: self.actor_name(actor).await?,
             base: tx.base_id().clone(),
             policy_hash: ContentId::of(&canonical_cbor(&policy)?),
             model: metadata.model.clone(),
@@ -360,6 +368,7 @@ impl SharedWorlds {
         }
         let mut pieces = BTreeMap::new();
         let mut spawned = Vec::new();
+        let actor_name = self.actor_name(actor).await?;
         for brick in &request.scene.bricks {
             let mesh = meshes
                 .get(&brick.part)
@@ -368,6 +377,7 @@ impl SharedWorlds {
             let birth = Birth {
                 nonce: uuid::Uuid::new_v4().to_string(),
                 created_by: actor.into(),
+                created_by_name: actor_name.clone(),
                 assembly: assembly.clone(),
                 initial: Geometry::of(brick),
                 mesh: mesh.clone(),
@@ -383,6 +393,9 @@ impl SharedWorlds {
                 replicas: BTreeSet::new(),
             });
         }
+        let source_model = ws
+            .tx
+            .stage_blob(&ergo_world::assembly::Model::for_scene(&request.scene))?;
         let rules = Rules {
             id: assembly.clone(),
             name: request.scene.name,
@@ -391,6 +404,7 @@ impl SharedWorlds {
             joints: request.scene.joints,
             fixed_bricks: request.scene.fixed_bricks,
             groups: request.scene.groups,
+            source_model: Some(source_model),
         };
         ws.stage_rules(rules)?;
         let changed: BTreeSet<_> = pieces.values().cloned().collect();
@@ -410,16 +424,18 @@ impl SharedWorlds {
         let report = ws.validate(&affected).await?;
         self.advertise_blocks(id, ws.metadata.geo, &ws.new_blocks)
             .await?;
-        let prepared = self.prepared(
-            id,
-            actor,
-            request.base,
-            "Import bounded assembly".into(),
-            changed,
-            affected,
-            report,
-            ws,
-        )?;
+        let prepared = self
+            .prepared(
+                id,
+                actor,
+                request.base,
+                "Import bounded assembly".into(),
+                changed,
+                affected,
+                report,
+                ws,
+            )
+            .await?;
         let accepted = prepared.publish_with(self).await?;
         Ok(Imported {
             accepted,
@@ -553,21 +569,23 @@ impl SharedWorlds {
         self.advertise_blocks(id, ws.metadata.geo, &ws.new_blocks)
             .await?;
         let changed = request.pieces.iter().map(|p| p.id.clone()).collect();
-        let mut prepared = self.prepared(
-            id,
-            actor,
-            request.base,
-            request.message,
-            changed,
-            affected,
-            report,
-            ws,
-        )?;
+        let mut prepared = self
+            .prepared(
+                id,
+                actor,
+                request.base,
+                request.message,
+                changed,
+                affected,
+                report,
+                ws,
+            )
+            .await?;
         prepared.joint_ids = joint_ids;
         Ok(prepared)
     }
     #[allow(clippy::too_many_arguments)]
-    fn prepared(
+    async fn prepared(
         &self,
         id: &str,
         actor: &str,
@@ -580,6 +598,7 @@ impl SharedWorlds {
     ) -> SharedResult<Prepared> {
         let audit = Audit {
             actor: actor.into(),
+            actor_name: self.actor_name(actor).await?,
             base,
             policy_hash: ws.policy_cid.clone(),
             model: ws.metadata.model.clone(),
@@ -632,7 +651,8 @@ impl SharedWorlds {
                 BTreeSet::new(),
                 None,
                 ws,
-            )?
+            )
+            .await?
             .publish_with(self)
             .await?;
         Ok(result.revision)

@@ -174,7 +174,7 @@ fn persist(path: &FsPath, scene: &WorldExport) -> Result<()> {
         .filter(|p| !p.as_os_str().is_empty())
         .unwrap_or(FsPath::new("."));
     let mut temp = tempfile::NamedTempFile::new_in(parent)?;
-    serde_json::to_writer_pretty(&mut temp, scene)?;
+    serde_json::to_writer_pretty(&mut temp, &ergo_world::storage::Construction::from(scene))?;
     temp.flush()?;
     temp.as_file().sync_all()?;
     temp.persist(path)?;
@@ -233,7 +233,7 @@ fn normalize(scene: &mut WorldExport, measurements: &ConnectionMeasurements) -> 
         }
     }
     for b in &mut scene.bricks {
-        ergo_world::physical::validate_pose(b)?;
+        ergo_world::physical::validate_affine_pose(b)?;
         let mesh = scene.meshes.get(&b.part).context("Missing part geometry")?;
         b.bounds = mesh.body_bounds.transformed(b.transform, b.position);
         b.render_bounds = mesh.bounds.transformed(b.transform, b.position);
@@ -358,7 +358,7 @@ fn main() -> Result<()> {
             path.metadata()?.len() <= 128 * 1024 * 1024,
             "Working copy exceeds 128 MiB"
         );
-        let mut scene = serde_json::from_slice(&fs::read(&path)?)?;
+        let mut scene = ergo_world::storage::decode(&fs::read(&path)?)?;
         normalize(&mut scene, &measurements)?;
         scene
     } else {
@@ -372,6 +372,7 @@ fn main() -> Result<()> {
             fixed_bricks: Vec::new(),
             ground: Vec::new(),
             groups: Vec::new(),
+            model: None,
         }
     };
     let parent = path

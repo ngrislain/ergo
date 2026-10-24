@@ -18,6 +18,7 @@ pub fn normalize_name(name: &str) -> Result<String> {
         !name.is_empty()
             && name.len() <= 240
             && !name.starts_with('/')
+            && !name.chars().any(char::is_control)
             && !name.contains(':')
             && !name
                 .split('/')
@@ -88,6 +89,7 @@ impl Document {
         let fallback = normalize_name(filename)?;
         let mut current = fallback.clone();
         let mut saw_file = false;
+        let mut defined = HashSet::new();
         doc.files.insert(current.clone(), String::new());
         for line in text.lines() {
             let tokens: Vec<_> = line.split_whitespace().collect();
@@ -98,7 +100,7 @@ impl Document {
                     saw_file = true;
                 }
                 ensure!(
-                    !doc.files.contains_key(&current) || current == fallback,
+                    defined.insert(current.clone()),
                     "Duplicate MPD subfile: {current}"
                 );
                 doc.files.entry(current.clone()).or_default();
@@ -172,7 +174,11 @@ impl Document {
             let transform = matrix * r.transform;
             let p = matrix * r.position + position;
             let code = if r.color == 16 { inherited } else { r.color };
-            if self.files.contains_key(&r.name) && !r.name.ends_with(".dat") {
+            if self.files.get(&r.name).is_some_and(|text| {
+                !text
+                    .lines()
+                    .any(|line| matches!(line.split_whitespace().next(), Some("3" | "4")))
+            }) {
                 self.flatten(&r.name, transform, p, code, stack, out)?;
             } else {
                 ensure!(

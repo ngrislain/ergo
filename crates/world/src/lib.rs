@@ -1,9 +1,11 @@
+pub mod assembly;
 pub mod catalog;
 pub mod constraints;
 pub mod coordinates;
 pub mod demo;
 pub mod geometry;
 pub mod groups;
+pub mod illustration;
 pub mod ldraw;
 pub mod mcp;
 pub mod physical;
@@ -12,6 +14,7 @@ pub mod physics;
 #[cfg(feature = "simulation")]
 pub mod solidity;
 pub mod spatial;
+pub mod storage;
 pub mod terrain;
 pub mod validation;
 
@@ -257,6 +260,8 @@ pub struct WorldManifest {
     pub ground: Vec<terrain::GroundBlock>,
     #[serde(default)]
     pub groups: Vec<groups::Group>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub model: Option<assembly::Model>,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -289,6 +294,7 @@ pub enum JointKind {
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(try_from = "storage::SceneWire")]
 pub struct WorldExport {
     pub schema: u32,
     pub name: String,
@@ -303,6 +309,9 @@ pub struct WorldExport {
     pub ground: Vec<terrain::GroundBlock>,
     #[serde(default)]
     pub groups: Vec<groups::Group>,
+    /// Retained authoring hierarchy; canonical file storage checks it against leaves.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub model: Option<assembly::Model>,
 }
 
 /// Replicate boundary-crossing bricks into all intersected cells. IDs deduplicate them

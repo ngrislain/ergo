@@ -38,7 +38,7 @@ pub fn Entry() -> impl IntoView {
     let workspace = pathname == "/app";
     let home = pathname == "/";
     view! {
-        <Show when=move ||account.get().is_some_and(|a|(workspace&&(a.signed_in||a.development))||(home&&a.signed_in))
+        <Show when=move ||account.get().is_some_and(|a|(workspace&&(a.signed_in||a.development))||(home&&a.signed_in&&!a.development))
             fallback=move ||view!{<Landing account error/>}>
             <crate::app::App/>
         </Show>
@@ -47,6 +47,16 @@ pub fn Entry() -> impl IntoView {
 
 #[component]
 fn Landing(account: RwSignal<Option<Account>>, error: RwSignal<Option<String>>) -> impl IntoView {
+    let signing_out = RwSignal::new(false);
+    let logout = move |_| {
+        signing_out.set(true);
+        spawn_local(async move {
+            if let Err(e) = crate::session::sign_out().await {
+                error.set(Some(e.to_string()));
+                signing_out.set(false);
+            }
+        });
+    };
     let origin = web_sys::window()
         .and_then(|w| w.location().origin().ok())
         .unwrap_or_default();
@@ -66,10 +76,11 @@ fn Landing(account: RwSignal<Option<Account>>, error: RwSignal<Option<String>>) 
             .as_string()
             .unwrap_or_default()
     ));
-    let mcp=serde_json::to_string_pretty(&serde_json::json!({"mcpServers":{"ergo":{
-        "command":"/absolute/path/ergo-mcp","args":["--workspace","/absolute/path/construction.ergo.json"],
+    let mcp = serde_json::to_string_pretty(&serde_json::json!({"mcpServers":{"ergo":{
+        "command":"ergo-mcp","args":["--workspace","/absolute/path/construction.ergo.json"],
         "env":{"ERGO_PUBLISH_URL":origin,"ERGO_PUBLISH_TOKEN_FILE":"/absolute/path/ergo-mcp-token"}
-    }}})).unwrap();
+    }}}))
+    .unwrap();
     let api = format!(
         r#"curl --fail '{origin}/api/shared-worlds/allowance' \
   -H "Authorization: Bearer $ERGO_TOKEN"
@@ -84,7 +95,7 @@ curl --fail '{origin}/api/shared-worlds?quad=&limit=32' \
     view! {
         <header class="app-header landing-header">
             <a class="brand" href="https://www.ergosandbox.com/" aria-label="Ergo home"><img src="/favicon.svg" alt="" width="38" height="38"/>"ergo"</a>
-            <nav aria-label="Main navigation"><a href="https://www.ergosandbox.com/">"Project guide"</a><a href="#connect">"Agent access"</a><Show when=move ||account.get().is_some_and(|a|a.signed_in||a.development)><a class="button primary" href="/app">"Open the world"</a></Show></nav>
+            <nav aria-label="Main navigation"><a href="https://www.ergosandbox.com/">"Project guide"</a><a href="#connect">"Agent access"</a><Show when=move ||account.get().is_some_and(|a|a.signed_in||a.development)><a class="button primary" href="/app">"Open the world"</a></Show><Show when=move ||account.get().is_some_and(|a|a.signed_in)><button class="button quiet" disabled=move ||signing_out.get() on:click=logout>{move ||if signing_out.get(){"Signing out…"}else{"Sign out"}}</button></Show></nav>
         </header>
         <main class="landing-page">
             <section class="landing-hero login-hero" aria-labelledby="landing-title">
@@ -104,8 +115,9 @@ curl --fail '{origin}/api/shared-worlds?quad=&limit=32' \
             </section>
             <section id="connect" class="connection-section" aria-labelledby="connect-title">
                 <div class="connection-copy"><h2 id="connect-title">"Connect your agent."</h2><p>"Run the local MCP bridge beside your agent. Edits and rendering run on your device; publishing uses this server and your signed-in identity."</p>
-                    <ol><li>"Build ergo-mcp and the web assets from the Ergo repository."</li><li>"Generate a token below and download it as ergo-mcp-token."</li><li>"Add this MCP configuration to your agent, using your actual local file paths."</li></ol>
-                    <pre class="build-commands"><code>"rustup target add wasm32-unknown-unknown\ncargo install wasm-bindgen-cli --version 0.2.129 --locked\ncargo build --release -p ergo-mcp\ncargo xtask build-web"</code></pre>
+                    <ol><li>"Install the prebuilt npm package using the project guide."</li><li>"Generate a token below and download it as ergo-mcp-token."</li><li>"Add this MCP configuration to your agent, using your actual local file paths."</li></ol>
+                    <a class="text-button" href="https://www.ergosandbox.com/#connect">"Install the MCP server with npm"</a>
+                    <p class="landing-note">"The package includes the native bridge and WASM assets. Your MCP client starts ergo-mcp automatically; no Rust build is needed."</p>
                     <p class="landing-note">"Start with standard bricks and colors; non-standard Studio/LDraw parts are resolved by ID. Publishing requires sourced physical measurements."</p>
                 </div><pre class="connection-code"><code>{mcp}</code></pre>
             </section>

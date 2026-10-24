@@ -559,10 +559,7 @@ pub async fn callback(
     Ok(response)
 }
 
-pub async fn me(
-    State(s): State<AppState>,
-    headers: HeaderMap,
-) -> Result<Json<serde_json::Value>, ApiError> {
+pub async fn me(State(s): State<AppState>, headers: HeaderMap) -> Result<Response, ApiError> {
     let principal = s.auth.principal(&headers);
     let user = if let Some(id) = &principal.id {
         s.store.user(id).await?
@@ -574,18 +571,31 @@ pub async fn me(
     } else {
         None
     };
-    Ok(Json(
+    Ok(([(header::CACHE_CONTROL, "no-store")], Json(
         serde_json::json!({"id":principal.id,"name":user.as_ref().map(|u|u.name.as_str()).unwrap_or("Guest"),"google_enabled":s.auth.google,"signed_in":user.is_some(),"development":!s.auth.google,"edit_allowance":edit_allowance}),
-    ))
+    )).into_response())
 }
 
 pub async fn logout(State(s): State<AppState>, headers: HeaderMap) -> Result<Response, ApiError> {
-    s.auth.check_write(&headers)?;
+    Ok(logout_response(&s.auth, &headers)?)
+}
+
+fn logout_response(auth: &Auth, headers: &HeaderMap) -> Result<Response> {
+    // Clearing an expired/missing session must succeed too. Same-origin checks
+    // still apply, but sign-out does not require a valid signed-in identity.
+    auth.check_request(headers)?;
     let mut response = StatusCode::NO_CONTENT.into_response();
     response.headers_mut().insert(
         header::SET_COOKIE,
-        HeaderValue::from_str(&s.auth.cookie("ergo_session", "", 0))?,
+        HeaderValue::from_str(&auth.cookie("ergo_session", "", 0))?,
     );
+    response.headers_mut().append(
+        header::SET_COOKIE,
+        HeaderValue::from_str(&auth.cookie("ergo_login", "", 0))?,
+    );
+    response
+        .headers_mut()
+        .insert(header::CACHE_CONTROL, HeaderValue::from_static("no-store"));
     response.headers_mut().insert(
         "Clear-Site-Data",
         HeaderValue::from_static("\"cache\", \"storage\""),
@@ -794,6 +804,42 @@ mod tests {
         headers.insert("X-Ergo-Request", HeaderValue::from_static("1"));
         headers.remove(header::COOKIE);
         assert!(auth.check_write(&headers).is_err());
+    }
+
+    #[test]
+    fn logout_clears_both_cookies_and_is_idempotent_without_a_session() {
+        let (mut auth, mut headers) = Auth::test_session("u");
+        auth.public_url = "https://ergo.example".into();
+        headers.insert(header::ORIGIN, "https://ergo.example".parse().unwrap());
+        for cookie in [Some("ergo_session=expired"), None] {
+            if let Some(cookie) = cookie {
+                headers.insert(header::COOKIE, cookie.parse().unwrap());
+            } else {
+                headers.remove(header::COOKIE);
+            }
+            let response = logout_response(&auth, &headers).unwrap();
+            assert_eq!(response.status(), StatusCode::NO_CONTENT);
+            let cookies = response
+                .headers()
+                .get_all(header::SET_COOKIE)
+                .iter()
+                .map(|value| value.to_str().unwrap())
+                .collect::<Vec<_>>();
+            assert_eq!(cookies.len(), 2);
+            for name in ["ergo_session=", "ergo_login="] {
+                assert!(cookies.iter().any(|cookie| cookie.starts_with(name)
+                    && cookie.contains("Max-Age=0")
+                    && cookie.contains("Path=/")
+                    && cookie.contains("HttpOnly")
+                    && cookie.contains("Secure")));
+            }
+            assert_eq!(response.headers()[header::CACHE_CONTROL], "no-store");
+        }
+        headers.insert(header::ORIGIN, "https://attacker.example".parse().unwrap());
+        assert!(logout_response(&auth, &headers).is_err());
+        headers.remove(header::ORIGIN);
+        headers.remove("X-Ergo-Request");
+        assert!(logout_response(&auth, &headers).is_err());
     }
 
     #[test]

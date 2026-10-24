@@ -39,6 +39,7 @@ uniform vec3 sun_direction;
 uniform vec3 light_position;
 uniform vec3 light_forward;
 uniform int flashlight;
+uniform int studio;
 uniform float sky_amount;
 uniform highp sampler2DShadow shadow_map;
 uniform float shadow_texel;
@@ -108,6 +109,14 @@ void main() {
     vec3 ambient_fresnel = vec3(0.04)+(1.0-vec3(0.04))*pow(1.0-nv,5.0);
     ambient += environment*ambient_fresnel*(1.0-roughness)*0.3;
     vec3 radiance = ambient+((1.0-fresnel)*albedo/PI+specular)*light_color*power*nl*visibility(n,light);
+    if (studio == 1) {
+        // Broad world-fixed fill and rim keep rear/side faces readable while
+        // orbiting. The key retains real shadowing and plastic highlights.
+        vec3 fill = normalize(vec3(0.8,0.45,-0.6));
+        vec3 rim = normalize(vec3(-0.3,0.6,-1.0));
+        radiance += albedo*(vec3(0.16)+vec3(0.62,0.70,0.82)*max(dot(n,fill),0.0)
+            +vec3(0.28,0.31,0.36)*max(dot(n,rim),0.0));
+    }
     vec3 shaded = pow(radiance/(radiance+vec3(1.0)),vec3(1.0/2.2));
     if (v_selected > 0.5) shaded = mix(shaded,vec3(1.0,0.65,0.13),0.52);
     float fog = smoothstep(fog_limits.x,fog_limits.y,distance(eye,v_position));

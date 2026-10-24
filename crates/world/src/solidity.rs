@@ -275,6 +275,7 @@ mod tests {
                 fixed_bricks: Vec::new(),
                 ground: Vec::new(),
                 groups: Vec::new(),
+                model: None,
             };
             let settings = crate::physical::GravityProbeSettings::default();
             assert_eq!(settings.steps, 1);
@@ -323,6 +324,7 @@ mod tests {
             fixed_bricks: Vec::new(),
             ground: Vec::new(),
             groups: Vec::new(),
+            model: None,
         };
         let case = FallingObject {
             mass_kg: 0.05,

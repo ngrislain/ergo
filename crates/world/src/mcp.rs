@@ -13,6 +13,7 @@ fn tool(
 pub fn tools() -> Value {
     let int = json!({"type":"integer","minimum":1,"maximum":4294967295_u64});
     let vec = json!({"type":"array","items":{"type":"number"},"minItems":3,"maxItems":3});
+    let matrix = json!({"type":"array","minItems":4,"maxItems":4,"items":{"type":"array","minItems":4,"maxItems":4,"items":{"type":"number"}}});
     let views = json!({"type":"array","items":{"type":"string","enum":["isometric","north","south","east","west","top"]},"minItems":1,"maxItems":4});
     let width = json!({"type":"integer","minimum":160,"maximum":1024});
     let height = json!({"type":"integer","minimum":120,"maximum":768});
@@ -37,6 +38,7 @@ pub fn tools() -> Value {
         tool("list_bricks","List IDs, poses, bounds, and sourced masses.",json!({"offset":{"type":"integer","minimum":0},"limit":{"type":"integer","minimum":1,"maximum":200}}),&[],true),
         tool("inspect_brick","Inspect a brick, metric dimensions, mass provenance, contacts, and constraints.",json!({"id":int}),&["id"],true),
         tool("place_brick","Place a supported part by minimum corner [east,north,height]. Reject overlap atomically; return client stability feedback.",json!({"part":{"type":"string"},"color":{"type":"integer"},"min_corner":vec,"quarter_turns":{"type":"integer"}}),&["part","color","min_corner"],false),
+        tool("place_submodel","Instantiate inline LDraw/MPD subparts using an optional row-major 4x4 affine matrix in LDraw units (-Y up, 20 LDU/stud). Nested type-1 references and color 16 inheritance are preserved in construction files. Existing/resolved, catalog, or embedded geometry is required. Physical poses, floor and overlaps are checked atomically; scaling/shearing real bricks is rejected.",json!({"ldraw":{"type":"string"},"matrix":matrix,"color":{"type":"integer","minimum":0}}),&["ldraw"],false),
         tool("move_brick","Move the selected fixed-connected group with collision checks.",json!({"id":int,"delta":vec}),&["id","delta"],false),
         tool("remove_bricks","Remove parts/incident joints and report lost support.",json!({"ids":{"type":"array","items":int,"minItems":1,"maxItems":5000}}),&["ids"],false),
         tool("connect_bricks","Add/replace a fixed or revolute constraint. Coordinates/axis use X east, Y north, Z up; limits are radians.",json!({"a":int,"b":int,"anchor":vec,"kind":{"type":"string","enum":["fixed","revolute"]},"axis":vec,"limits":{"type":"array","items":{"type":"number"},"minItems":2,"maxItems":2}}),&["a","b","anchor"],false),

@@ -5,6 +5,9 @@
 ## Public world and internal kernel
 
 Schema 2 files and REST/MCP interfaces use **X east, Y north, Z height**.
+The explicitly named `model` field in [LDraw-aligned construction files](ldraw-storage.md)
+is the exception: its homogeneous reference matrices use native LDraw LDU/-Y-up
+coordinates. Bounds, joints, groups, meshes and geography retain the public convention.
 The renderer/physics kernel uses X east, Y up, Z south. The conversion is the
 proper rotation:
 

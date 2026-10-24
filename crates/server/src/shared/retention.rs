@@ -57,6 +57,7 @@ pub(super) fn blob_links(bytes: &[u8]) -> ergo_transactions::Result<Vec<ContentI
         add(get("mesh"))?;
     } else if get("meshes").is_some() && get("id").is_some() {
         add(get("id"))?;
+        add(get("source_model"))?;
         if let Some(meshes) = get("meshes").and_then(Value::as_map) {
             for (_, v) in meshes {
                 add(Some(v))?;
@@ -108,7 +109,8 @@ pub(super) async fn set(
                 BTreeSet::new(),
                 None,
                 ws,
-            )?
+            )
+            .await?
             .publish_with(&s.shared)
             .await?
             .revision,

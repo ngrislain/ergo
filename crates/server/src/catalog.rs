@@ -186,6 +186,7 @@ mod tests {
                 joints: Vec::new(),
                 fixed_bricks: Vec::new(),
                 groups: Vec::new(),
+                model: None,
                 ground: Vec::new(),
             };
             store

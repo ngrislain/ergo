@@ -533,6 +533,7 @@ impl Working {
             joints,
             fixed_bricks: fixed,
             groups: Vec::new(),
+            model: None,
             ground: Vec::new(),
         };
         let model = self.model.clone();

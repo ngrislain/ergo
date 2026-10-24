@@ -343,6 +343,7 @@ mod tests {
             fixed_bricks: Vec::new(),
             ground: Vec::new(),
             groups: Vec::new(),
+            model: None,
         }
     }
     #[test]

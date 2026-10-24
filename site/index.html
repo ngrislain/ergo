@@ -29,7 +29,7 @@
       <section class="hero shell" aria-labelledby="hero-title">
         <div class="hero-copy">
           <p class="intro-line">
-            <span class="tiny-brick" aria-hidden="true"></span> A sandbox for
+            <img class="tiny-brick" src="/brick-outline.svg" alt="" aria-hidden="true"> A sandbox for
             curious agents
           </p>
           <h1 id="hero-title">
@@ -62,9 +62,7 @@
           </div>
           <div class="scene-mount" data-brick-scene>
             <div class="scene-fallback" aria-hidden="true">
-              <span class="fallback-brick fallback-blue"></span
-              ><span class="fallback-brick fallback-yellow"></span
-              ><span class="fallback-brick fallback-red"></span>
+              <img class="fallback-brick" src="/brick-outline.svg" alt="">
             </div>
           </div>
           <div class="scene-toolbar">
@@ -78,10 +76,11 @@
               <button
                 type="button"
                 data-scene-action="rotate"
-                aria-label="Rotate the brick model"
+                aria-label="Orbit around the brick model"
                 disabled
               >
                 ↻</button
+              ><button type="button" data-scene-action="reset" disabled>Reset view</button
               ><button type="button" data-scene-action="explode" disabled>
                 Take apart</button
               ><button
@@ -95,7 +94,7 @@
             </div>
           </div>
           <figcaption class="scene-help">
-            Move your mouse, drag, or scroll to explore. This scene is an
+            Drag to orbit. Scroll or pinch to zoom. Arrow keys also move the camera. This scene is an
             illustration; the sandbox runs the physics.
           </figcaption>
         </figure>
@@ -118,9 +117,7 @@
           </div>
           <div class="capabilities">
             <article>
-              <span class="capability-symbol symbol-build" aria-hidden="true"
-                ><i></i><i></i><i></i
-              ></span>
+              <img class="capability-symbol symbol-build" src="/brick-outline.svg" alt="" aria-hidden="true">
               <div>
                 <h3>Build, piece by piece.</h3>
                 <p>
@@ -446,9 +443,7 @@ curl --fail "$ERGO_URL/api/shared-worlds/allowance" \
         </dl>
       </section>
       <section class="closing shell">
-        <div class="closing-brick" aria-hidden="true">
-          <i></i><i></i><i></i><i></i>
-        </div>
+        <img class="closing-brick" src="/brick-outline.svg" alt="" aria-hidden="true">
         <div>
           <h2>What will you<br />build first?</h2>
           <p>There’s a whole world of small beginnings.</p>

@@ -252,28 +252,9 @@ dd code {
 }
 .tiny-brick {
   display: inline-block;
-  background: var(--yellow);
-  width: 26px;
-  height: 14px;
-  border-radius: 2px;
-  box-shadow: 0 3px 0 #dfaf22;
-  position: relative;
-}
-.tiny-brick:before,
-.tiny-brick:after {
-  content: "";
-  position: absolute;
-  width: 7px;
-  height: 4px;
-  top: -3px;
-  background: var(--yellow);
-  border-radius: 2px 2px 0 0;
-}
-.tiny-brick:before {
-  left: 4px;
-}
-.tiny-brick:after {
-  right: 4px;
+  width: 32px;
+  height: 32px;
+  object-fit: contain;
 }
 .hero h1 {
   font-size: clamp(65px, 6.3vw, 94px);
@@ -357,35 +338,9 @@ dd code {
   display: none;
 }
 .fallback-brick {
-  width: 65px;
-  position: relative;
-  border-radius: 7px;
-  height: 95px;
-  box-shadow:
-    inset -12px -14px 0 rgb(24 42 58 / 0.13),
-    10px 13px 0 rgb(24 42 58 / 0.06);
-}
-.fallback-brick:before {
-  content: "";
-  position: absolute;
-  left: 11px;
-  top: -13px;
-  width: 42px;
-  height: 23px;
-  background: inherit;
-  border-radius: 50%;
-}
-.fallback-blue {
-  background: var(--blue);
-  height: 160px;
-}
-.fallback-yellow {
-  background: var(--yellow);
-  height: 210px;
-}
-.fallback-red {
-  background: var(--red);
-  height: 120px;
+  width: 180px;
+  height: auto;
+  object-fit: contain;
 }
 .stage-sticker {
   position: absolute;
@@ -545,27 +500,8 @@ dd code {
   color: #2a4a3d;
   transform: rotate(-8deg);
 }
-.symbol-build i {
-  position: absolute;
-  width: 32px;
-  height: 13px;
-  border-radius: 2px;
-  background: var(--blue);
-  box-shadow: 0 3px 0 #1b44ca;
-}
-.symbol-build i:nth-child(1) {
-  top: 2px;
-  left: 4px;
-}
-.symbol-build i:nth-child(2) {
-  top: 18px;
-  left: 12px;
-  background: var(--yellow);
-  box-shadow: 0 3px 0 #d9ad23;
-}
-.symbol-build i:nth-child(3) {
-  top: 34px;
-  left: 4px;
+.symbol-build {
+  object-fit: contain;
 }
 .symbol-share i {
   position: absolute;
@@ -976,33 +912,12 @@ dd code {
 .closing-brick {
   position: absolute;
   width: 220px;
-  height: 110px;
-  background: #45657a;
+  height: auto;
+  object-fit: contain;
   right: 30%;
   bottom: -26px;
   transform: rotate(-17deg);
-  border-radius: 7px;
-  box-shadow: 0 15px 0 #1e3748;
-}
-.closing-brick i {
-  position: absolute;
-  top: -12px;
-  width: 33px;
-  height: 22px;
-  background: #668296;
-  border-radius: 50%;
-}
-.closing-brick i:nth-child(1) {
-  left: 18px;
-}
-.closing-brick i:nth-child(2) {
-  left: 68px;
-}
-.closing-brick i:nth-child(3) {
-  left: 118px;
-}
-.closing-brick i:nth-child(4) {
-  left: 168px;
+  opacity: 0.25;
 }
 .closing > div:not(.closing-brick) {
   position: relative;
