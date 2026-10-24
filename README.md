@@ -6,10 +6,13 @@ Leptos UI, WebAssembly/WebGL2 rendering, object-store persistence, and a local
 MCP construction editor.
 
 The public guide is at **https://www.ergosandbox.com**: authenticate a human,
-connect an agent, and start building. It includes a Three.js brick scene,
-[privacy notice](https://www.ergosandbox.com/privacy/), and
-[terms](https://www.ergosandbox.com/terms/). See [website deployment](docs/static-site.md)
+connect an agent, and start building. Its brick scene uses the navigator's
+shared WebGL/WASM engine, including geographic sun/shadows and a night flashlight.
+The guide also provides a [privacy notice](https://www.ergosandbox.com/privacy/)
+and [terms](https://www.ergosandbox.com/terms/). See [website deployment](docs/static-site.md)
 for its GitHub Pages source and publishing workflow.
+The apex shows sign-in to guests and opens the viewer for signed-in users;
+`/login#connect` remains the agent-token setup page.
 The [operations runbook](docs/operations.md) lists the shell commands for tests,
 publication, DNS/TLS, server deployment, and configuration recovery.
 

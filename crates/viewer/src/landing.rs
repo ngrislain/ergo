@@ -32,12 +32,13 @@ pub fn Entry() -> impl IntoView {
             }
         })
     });
-    let workspace = web_sys::window()
+    let pathname = web_sys::window()
         .and_then(|w| w.location().pathname().ok())
-        .as_deref()
-        == Some("/app");
+        .unwrap_or_default();
+    let workspace = pathname == "/app";
+    let home = pathname == "/";
     view! {
-        <Show when=move ||workspace && account.get().is_some_and(|a|a.signed_in||a.development)
+        <Show when=move ||account.get().is_some_and(|a|(workspace&&(a.signed_in||a.development))||(home&&a.signed_in))
             fallback=move ||view!{<Landing account error/>}>
             <crate::app::App/>
         </Show>
@@ -82,13 +83,13 @@ curl --fail '{origin}/api/shared-worlds?quad=&limit=32' \
     );
     view! {
         <header class="app-header landing-header">
-            <a class="brand" href="/" aria-label="Ergo home"><span class="brand-mark"><i></i><i></i><i></i><i></i></span>"ergo"</a>
-            <nav aria-label="Main navigation"><a href="#connect">"Connect an agent"</a><a href="#api-access">"API access"</a><Show when=move ||account.get().is_some_and(|a|a.signed_in||a.development)><a class="button primary" href="/app">"Open the world"</a></Show></nav>
+            <a class="brand" href="https://www.ergosandbox.com/" aria-label="Ergo home"><img src="/favicon.svg" alt="" width="38" height="38"/>"ergo"</a>
+            <nav aria-label="Main navigation"><a href="https://www.ergosandbox.com/">"Project guide"</a><a href="#connect">"Agent access"</a><Show when=move ||account.get().is_some_and(|a|a.signed_in||a.development)><a class="button primary" href="/app">"Open the world"</a></Show></nav>
         </header>
         <main class="landing-page">
-            <section class="landing-hero" aria-labelledby="landing-title">
-                <div class="landing-intro"><h1 id="landing-title">"A shared world. Built brick by brick."</h1>
-                    <p>"Explore geographically placed constructions, build with your agent, and publish through a measured, permission-checked API."</p>
+            <section class="landing-hero login-hero" aria-labelledby="landing-title">
+                <div class="landing-intro"><h1 id="landing-title">"Sign in to your sandbox."</h1>
+                    <p>"Open the construction viewer or give an agent permission to build. The project guide and quickstart are on www.ergosandbox.com."</p>
                     <Show when=move ||account.get().is_some_and(|a|a.signed_in||a.development) fallback=move ||view!{
                         <Show when=move ||account.get().is_some_and(|a|a.google_enabled) fallback=move ||view!{<p class="subtle">{move ||if account.get().is_none(){"Checking your session…"}else{"Google sign-in is not configured on this server."}}</p>}>
                             <a class="button primary sso-button" href=login_url.get_value()>"Continue with Google"</a><p class="landing-note">"Sign in to edit shared constructions and create an MCP or API token."</p>
@@ -100,7 +101,6 @@ curl --fail '{origin}/api/shared-worlds?quad=&limit=32' \
                     </Show>
                     <Show when=move ||error.get().is_some()><p class="onboarding-error" role="alert">{move ||error.get().unwrap_or_default()}</p></Show>
                 </div>
-                <div class="landing-world" aria-hidden="true"><div class="landing-plate"><div class="landing-brick brick-a"></div><div class="landing-brick brick-b"></div><div class="landing-brick brick-c"></div><div class="landing-brick brick-d"></div><span class="landing-world-label">"Your place in a world of bricks"</span></div></div>
             </section>
             <section id="connect" class="connection-section" aria-labelledby="connect-title">
                 <div class="connection-copy"><h2 id="connect-title">"Connect your agent."</h2><p>"Run the local MCP bridge beside your agent. Edits and rendering run on your device; publishing uses this server and your signed-in identity."</p>
@@ -112,7 +112,7 @@ curl --fail '{origin}/api/shared-worlds?quad=&limit=32' \
             <TokenPanel account/>
             <section id="api-access" class="connection-section" aria-labelledby="api-title"><div class="connection-copy"><h2 id="api-title">"Use the API directly."</h2><p>"Use the same token as a Bearer credential. Shared-world reads, creation, imports, and geometry commits use your current permissions and edit allowance."</p><p>"The token cannot change grants, retention, or account plans. The server validates each publication; a local export is not a remote commit."</p><a class="text-button" href="/api/config" target="_blank" rel="noopener">"View this server’s configuration"</a></div><pre class="connection-code"><code>{api}</code></pre></section>
         </main>
-        <footer class="landing-footer"><span>"ergo — a world, brick by brick"</span><a href="/app">"Explore the world"</a></footer>
+        <footer class="landing-footer"><span>"ergo — a world, brick by brick"</span><a href="https://www.ergosandbox.com/privacy/">"Privacy"</a><a href="https://www.ergosandbox.com/terms/">"Terms"</a><a href="/app">"Explore the world"</a></footer>
     }
 }
 

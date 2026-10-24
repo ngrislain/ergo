@@ -46,10 +46,12 @@
             </p>
             <p>
               The information site is static and hosted on GitHub Pages. Its
-              fonts, scripts, and Three.js scene are served with the site. It
-              does not run advertising or analytics scripts, set application
-              cookies, or store your token. Interactions with the brick
-              illustration stay in browser memory.
+              fonts, scripts, and shared Rust/WASM brick renderer are served
+              with the site. It does not run advertising or analytics scripts,
+              set application cookies, or store your token. Interactions with
+              the brick illustration stay in browser memory. The lighting uses
+              the illustration's world coordinates and current UTC time; it does
+              not request your device's location.
             </p>
             <p>
               Authentication and construction tools run on the separate sandbox
@@ -149,8 +151,9 @@
             <p>
               The sandbox may request satellite imagery from Esri, part assets
               from the LDraw library, and profile images from the URL provided
-              by Google. Those services receive the requests made to them. These
-              are sandbox features; the static brick illustration does not
+              by Google. The sandbox interface also loads its typography from
+              Google Fonts. Those services receive the requests made to them.
+              These are sandbox features; the static brick illustration does not
               request map tiles, part-library assets, or account information.
             </p>
           </section>

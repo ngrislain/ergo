@@ -15,68 +15,10 @@ use web_sys::{
     WebGlVertexArrayObject,
 };
 
-const VERTEX: &str = r#"#version 300 es
-precision highp float;
-layout(location=0) in vec3 position;
-layout(location=1) in vec3 normal;
-layout(location=2) in vec3 face_color;
-layout(location=3) in mat4 model;
-layout(location=7) in vec4 color;
-uniform mat4 view_projection;
-uniform mat4 display_scale;
-out vec3 v_normal;
-out vec3 v_color;
-out vec3 v_position;
-out float v_selected;
-void main() {
-    mat4 physical_model = display_scale * model;
-    vec4 world = physical_model * vec4(position, 1.0);
-    v_position = world.xyz;
-    v_normal = normalize(transpose(inverse(mat3(physical_model))) * normal);
-    v_color = face_color.x < 0.0 ? color.rgb : face_color;
-    v_selected = color.a;
-    gl_Position = view_projection * world;
-}"#;
-
-const FRAGMENT: &str = r#"#version 300 es
-precision highp float;
-in vec3 v_normal;
-in vec3 v_color;
-in vec3 v_position;
-in float v_selected;
-uniform vec3 eye;
-uniform int floor_mode;
-uniform int grid;
-uniform vec2 fog_limits;
-out vec4 out_color;
-void main() {
-    vec3 n = normalize(v_normal);
-    if (!gl_FrontFacing) n = -n;
-    vec3 light = normalize(vec3(-0.5, 1.0, 0.65));
-    float diffuse = max(dot(n, light), 0.0);
-    float hemi = n.y * 0.5 + 0.5;
-    vec3 base = v_color;
-    float specular = pow(max(dot(reflect(-light, n), normalize(eye-v_position)), 0.0), 45.0) * 0.12;
-    vec3 shaded = base * (0.44 + 0.25 * hemi + 0.32 * diffuse) + specular;
-    if (floor_mode == 1 && n.y > 0.5) {
-        vec2 cell = abs(fract(v_position.xz / 4.0 - 0.5) - 0.5) / fwidth(v_position.xz / 4.0);
-        float line = 1.0 - min(min(cell.x,cell.y),1.0);
-        shaded = base * 0.96 - float(grid) * line * 0.035;
-        // Distant studs are a derivative-filtered surface detail. Nearby studs
-        // have real shared cylinder geometry, including their visible sides.
-        vec2 p = fract(v_position.xz) - 0.5;
-        float radius = length(p);
-        float footprint = max(length(dFdx(v_position.xz)), length(dFdy(v_position.xz)));
-        float detail = 1.0 - smoothstep(0.15,0.6,footprint);
-        float rim = smoothstep(0.23,0.29,radius) * (1.0-smoothstep(0.29,0.34,radius));
-        vec3 stud_normal = normalize(vec3(p.x*rim*6.0,1.0,p.y*rim*6.0));
-        float relief = (max(dot(stud_normal,light),0.0)-max(dot(vec3(0,1,0),light),0.0))*0.26-rim*0.1;
-        shaded += base * relief * detail;
-    }
-    if (v_selected > 0.5) shaded = mix(shaded, vec3(1.0,0.65,0.13),0.52);
-    float fog = smoothstep(fog_limits.x,fog_limits.y,distance(eye,v_position));
-    out_color = vec4(mix(shaded,vec3(0.87,0.92,0.95),fog),1.0);
-}"#;
+mod illumination;
+mod shaders;
+use illumination::{LightPass, Observer};
+use shaders::{FRAGMENT, VERTEX};
 
 struct GpuMesh {
     vao: WebGlVertexArrayObject,
@@ -96,6 +38,9 @@ pub struct Renderer {
     pub canvas: HtmlCanvasElement,
     gl: Gl,
     program: WebGlProgram,
+    lighting: LightPass,
+    pub geo: ergo_world::GeoReference,
+    pub ground_visible: bool,
     gpu: HashMap<String, GpuMesh>,
     pub meshes: BTreeMap<String, Mesh>,
     lod_meshes: BTreeMap<String, Mesh>,
@@ -116,6 +61,7 @@ pub struct Renderer {
     pub navigation: Navigation,
     walker: Walker,
     capture_mode: bool,
+    transparent_background: bool,
     origin: DVec3,
     dirty: bool,
     pub draw_calls: usize,
@@ -126,15 +72,22 @@ pub struct Renderer {
 
 impl Renderer {
     pub fn new(canvas: HtmlCanvasElement) -> Result<Self, JsValue> {
-        Self::new_mode(canvas, false)
+        Self::new_mode(canvas, false, false)
     }
     pub fn new_capture(canvas: HtmlCanvasElement) -> Result<Self, JsValue> {
-        Self::new_mode(canvas, true)
+        Self::new_mode(canvas, true, false)
     }
-    fn new_mode(canvas: HtmlCanvasElement, capture_mode: bool) -> Result<Self, JsValue> {
+    pub fn new_preview(canvas: HtmlCanvasElement) -> Result<Self, JsValue> {
+        Self::new_mode(canvas, false, true)
+    }
+    fn new_mode(
+        canvas: HtmlCanvasElement,
+        capture_mode: bool,
+        transparent_background: bool,
+    ) -> Result<Self, JsValue> {
         let options = js_sys::Object::new();
         js_sys::Reflect::set(&options, &"antialias".into(), &true.into())?;
-        js_sys::Reflect::set(&options, &"alpha".into(), &false.into())?;
+        js_sys::Reflect::set(&options, &"alpha".into(), &transparent_background.into())?;
         js_sys::Reflect::set(
             &options,
             &"preserveDrawingBuffer".into(),
@@ -142,6 +95,14 @@ impl Renderer {
         )?;
         let gl: Gl = canvas.get_context_with_context_options("webgl2", &options)?.ok_or_else(|| JsValue::from_str("WebGL2 is unavailable. Enable hardware acceleration or use a WebGL2-capable browser."))?.dyn_into()?;
         let program = link(&gl, VERTEX, FRAGMENT)?;
+        let lighting = LightPass::new(
+            &gl,
+            if canvas.client_width() <= 600 {
+                1024
+            } else {
+                2048
+            },
+        )?;
         gl.enable(Gl::DEPTH_TEST);
         gl.depth_func(Gl::LEQUAL);
         gl.use_program(Some(&program));
@@ -149,6 +110,9 @@ impl Renderer {
             canvas,
             gl,
             program,
+            lighting,
+            geo: Default::default(),
+            ground_visible: true,
             gpu: HashMap::new(),
             meshes: BTreeMap::new(),
             lod_meshes: BTreeMap::new(),
@@ -165,6 +129,7 @@ impl Renderer {
             explode: 0.0,
             fov_degrees: 45.0,
             capture_mode,
+            transparent_background,
             fog_distance: 2200.0,
             lod_counts: [0; 4],
             navigation: Navigation::default(),
@@ -597,13 +562,57 @@ impl Renderer {
             self.origin = origin;
             self.dirty = true;
         }
+        let changed = self.dirty;
         if self.dirty {
             self.upload();
             self.dirty = false;
         }
+        let light = self.lighting.prepare(
+            Observer {
+                geo: self.geo,
+                eye: self.eye(),
+                target: self.target,
+                origin: self.origin,
+                display_scale: DISPLAY_SCALE,
+                distance: self.distance,
+            },
+            &self.gpu,
+            changed,
+        );
+        if light.updated {
+            let _ = self.canvas.set_attribute(
+                "data-lighting",
+                if light.sun.daylight() {
+                    "sunlight"
+                } else {
+                    "flashlight"
+                },
+            );
+            let _ = self.canvas.set_attribute(
+                "data-sun-elevation",
+                &format!("{:.3}", light.sun.elevation.to_degrees()),
+            );
+            let _ = self.canvas.set_attribute(
+                "data-sun-azimuth",
+                &format!("{:.3}", light.sun.azimuth.to_degrees()),
+            );
+            let _ = self
+                .canvas
+                .set_attribute("data-shadow-map", &self.lighting.size.to_string());
+            let _ = self.canvas.set_attribute("data-renderer", "ergo-webgl2");
+        }
         let gl = &self.gl;
         gl.viewport(0, 0, width as i32, height as i32);
-        gl.clear_color(0.87, 0.92, 0.95, 1.0);
+        gl.clear_color(
+            0.0,
+            0.0,
+            0.0,
+            if self.transparent_background {
+                0.0
+            } else {
+                1.0
+            },
+        );
         gl.clear(Gl::COLOR_BUFFER_BIT | Gl::DEPTH_BUFFER_BIT);
         gl.use_program(Some(&self.program));
         let display = DISPLAY_SCALE.as_vec3();
@@ -619,6 +628,11 @@ impl Renderer {
             0.1,
             self.fog_distance as f32,
         );
+        if !self.transparent_background {
+            self.lighting.sky(&light, projection * view, eye);
+        }
+        gl.use_program(Some(&self.program));
+        self.lighting.uniforms(&self.program, &light);
         gl.uniform_matrix4fv_with_f32_array(
             gl.get_uniform_location(&self.program, "view_projection")
                 .as_ref(),
@@ -758,7 +772,11 @@ impl Renderer {
             );
         }
         let ground = ergo_world::geometry::ground_mesh();
-        let visible_ground = self.visible_ground_cells();
+        let visible_ground = if self.ground_visible {
+            self.visible_ground_cells()
+        } else {
+            Vec::new()
+        };
         for &(x, y) in &visible_ground {
             let color = self
                 .ground
@@ -782,7 +800,9 @@ impl Renderer {
         self.ground_stud_instances = 0;
         let eye = self.eye();
         let maximum_distance = (pixels * 0.6 / 4.).min(100.);
-        if (eye.y - ergo_world::terrain::GROUND_TOP).abs() * DISPLAY_SCALE.y < maximum_distance {
+        if !visible_ground.is_empty()
+            && (eye.y - ergo_world::terrain::GROUND_TOP).abs() * DISPLAY_SCALE.y < maximum_distance
+        {
             let cells: HashSet<_> = visible_ground.into_iter().collect();
             let center_x = eye.x.floor() as i64;
             let center_z = eye.z.floor() as i64;
@@ -852,6 +872,13 @@ impl Renderer {
             self.gpu_bytes += cpu.vertices.len() * 4 + data.len() * 4;
         }
         self.gl.bind_vertex_array(None);
+    }
+}
+
+impl Drop for Renderer {
+    fn drop(&mut self) {
+        self.clear();
+        self.gl.delete_program(Some(&self.program));
     }
 }
 

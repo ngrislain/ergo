@@ -130,22 +130,20 @@ dd code {
   z-index: 10;
 }
 .wordmark {
+  font-family: "Manrope Variable", Manrope, sans-serif;
   display: inline-flex;
   gap: 9px;
   align-items: center;
   text-decoration: none;
-  font-size: 44px;
-  font-weight: 650;
-  letter-spacing: -0.075em;
+  font-size: 32px;
+  font-weight: 800;
+  letter-spacing: -1.7px;
+  color: #263e50;
   line-height: 1;
 }
-.wordmark svg {
-  width: 32px;
-  height: 35px;
-  color: var(--blue);
-}
-.wordmark-dot {
-  color: var(--blue);
+.wordmark img {
+  width: 38px;
+  height: 38px;
 }
 .site-nav {
   display: flex;
@@ -1023,7 +1021,7 @@ dd code {
   font-size: 36px;
   gap: 6px;
 }
-.site-footer .wordmark svg {
+.site-footer .wordmark img {
   width: 26px;
   height: 29px;
 }
@@ -1332,7 +1330,7 @@ dd code {
   .wordmark {
     font-size: 39px;
   }
-  .wordmark svg {
+  .wordmark img {
     width: 28px;
     height: 31px;
   }
@@ -1591,7 +1589,7 @@ dd code {
     font-size: 36px;
     gap: 7px;
   }
-  .wordmark svg {
+  .wordmark img {
     width: 27px;
   }
   .menu-toggle {

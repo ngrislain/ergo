@@ -1,4 +1,5 @@
 import "@fontsource-variable/outfit";
+import "@fontsource-variable/manrope";
 import "./style.css";
 
 document.documentElement.classList.add("js-enabled");
@@ -86,9 +87,9 @@ tabs.forEach((tab, index) => {
 
 const mount = document.querySelector<HTMLElement>("[data-brick-scene]");
 if (mount) {
-  import("./scene")
-    .then(({ mountBrickScene }) => {
-      const dispose = mountBrickScene(mount);
+  import("./viewer-scene")
+    .then(async ({ mountBrickScene }) => {
+      const dispose = await mountBrickScene(mount);
       window.addEventListener("pagehide", (event) => {
         if (!event.persisted) dispose();
       });

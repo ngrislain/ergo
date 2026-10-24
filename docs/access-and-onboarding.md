@@ -8,8 +8,10 @@ and terms pages describe the hosted service. Sign-in, tokens, and the API use
 the separate canonical sandbox origin **https://ergosandbox.com**; the public
 guide never receives credentials. See [website deployment](static-site.md).
 
-`/` and `/login` show the landing page with Google SSO, local MCP setup, and
-direct API examples. Signed-in users can open `/app`, inspect their current edit
+On the authenticated apex, anonymous `/` visitors see Google sign-in, while
+signed-in users see the viewer. `/app` is also an explicit viewer route.
+`/login` always shows sign-in, MCP setup, token issuance, and direct API examples,
+including the `/login#connect` agent handoff. Signed-in users can inspect their current edit
 allowance, and explicitly generate an access token. The token can be copied or
 downloaded as `ergo-mcp-token`; it is held in page memory, not local/session
 storage. Downloaded token files are operator-managed credentials.
@@ -17,6 +19,7 @@ storage. Downloaded token files are operator-managed credentials.
 The production OpenTofu deployment requires Google credentials. With Google
 unset, the explicitly labeled development account can use the local workbench
 and exercise token issuance without a real Google login.
+The local development root retains the setup page; `/app` opens its viewer.
 
 Shared-world URLs use `/app?shared_world=WORLD_UUID&x=X&y=Y&z=Z`, where X/Y/Z
 are public storage-block coordinates. Google sign-in preserves these links via

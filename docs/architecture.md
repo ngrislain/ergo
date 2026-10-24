@@ -170,8 +170,10 @@ to repeated GPU→CPU→WebGL2 transfers. Server commit checks remain independen
 
 ## Build orchestration
 
-The root landing/login page provides SSO, token download, and MCP/API setup;
-`/app` mounts the workbench after session detection. The Scaleway deployment
+The public landing page is on `www.ergosandbox.com`. The authenticated apex
+shows sign-in at `/` to guests and the viewer to signed-in users; `/app` is the
+explicit viewer route and `/login#connect` retains token download and MCP/API
+setup. The Scaleway deployment
 serves both from one scale-to-zero container, with the existing `ergo` bucket.
 See [access/onboarding](access-and-onboarding.md) and [deployment](scaleway-deployment.md).
 
@@ -181,6 +183,13 @@ for each. Cargo metadata supplies the artifact directory, including configured
 `target-dir` / `CARGO_TARGET_DIR` overrides. Outputs remain `web/pkg` and
 `web/mcp-pkg`, matching the REST/static-file entry points.
 
+`cargo xtask build-site` compiles the same `ergo-client` renderer with a small
+`site-entry` wrapper into ignored `site/public/engine` assets and copies the
+canonical `web/favicon.svg` logo. The static site supplies only an interaction
+adapter; catalog meshes, material shaders, sun/flashlight lighting, and shadow
+passes are shared with the navigator. See [lighting](lighting.md) and the
+[website guide](static-site.md).
+
 This orchestration runs outside a package `build.rs`: ordinary native server
 builds/tests stay independent of the WASM target and binding generator. The
 legacy shell entry point forwards to the same Rust task.
@@ -189,6 +198,9 @@ legacy shell entry point forwards to the same Rust task.
 
 - `crates/viewer/src/app.rs`: browser UI, REST data loading, and streaming orchestration.
 - `crates/client/src/renderer.rs`: shared WebGL2 drawing, picking, fog, and LOD.
+- `crates/client/src/renderer/`: shared material/sky shaders and shadow-map pass.
+- `crates/client/src/lighting.rs`: geographic UTC solar-position calculation.
+- `crates/client/src/preview.rs`: landing-illustration WASM wrapper.
 - `crates/client/src/navigation.rs`: shared typed controls, input conversion,
   mode/speed/eye-height settings, and read-only UI status.
 - `crates/client/src/walking.rs`: local 3-unit stepping, 12-unit ballistic jumps,

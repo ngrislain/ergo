@@ -7,7 +7,7 @@ use std::{
 };
 
 const TARGET: &str = "wasm32-unknown-unknown";
-const USAGE: &str = "Usage: cargo xtask build-web\n\nBuild the browser app and minimal MCP WASM client in release mode, then generate their web bindings.\nRequires the wasm32-unknown-unknown target and the wasm-bindgen CLI described in README.md.";
+const USAGE: &str = "Usage: cargo xtask build-web | build-site\n\nBuild-web generates the browser app and minimal MCP WASM client.\nBuild-site generates the public site's shared-renderer preview and logo.\nRequires the wasm32-unknown-unknown target and matching wasm-bindgen CLI from README.md.";
 
 fn main() -> ExitCode {
     let mut arguments = env::args().skip(1);
@@ -19,6 +19,7 @@ fn main() -> ExitCode {
             Ok(())
         }
         (Some("build-web"), None) => build_web(),
+        (Some("build-site"), None) => build_site(),
         _ => Err(format!("Unknown command or arguments.\n{USAGE}")),
     };
     match result {
@@ -31,6 +32,39 @@ fn main() -> ExitCode {
 }
 
 fn build_web() -> Result<(), String> {
+    build_targets(&[
+        ("ergo-viewer", None, "ergo_viewer.wasm", "web/pkg"),
+        (
+            "ergo-client",
+            Some("mcp-entry"),
+            "ergo_client.wasm",
+            "web/mcp-pkg",
+        ),
+    ])
+}
+
+fn build_site() -> Result<(), String> {
+    build_targets(&[(
+        "ergo-client",
+        Some("site-entry"),
+        "ergo_client.wasm",
+        "site/public/engine",
+    )])?;
+    let root = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .parent()
+        .unwrap()
+        .parent()
+        .unwrap()
+        .to_path_buf();
+    std::fs::copy(
+        root.join("web/favicon.svg"),
+        root.join("site/public/favicon.svg"),
+    )
+    .map_err(|e| format!("Cannot copy the shared logo: {e}"))?;
+    Ok(())
+}
+
+fn build_targets(targets: &[(&str, Option<&str>, &str, &str)]) -> Result<(), String> {
     let root = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
         .parent()
         .and_then(|path| path.parent())
@@ -70,15 +104,7 @@ fn build_web() -> Result<(), String> {
         .ok_or("Cargo metadata did not report a target directory")?;
     let artifacts = PathBuf::from(target_directory).join(TARGET).join("release");
 
-    for (package, feature, artifact, output) in [
-        ("ergo-viewer", None, "ergo_viewer.wasm", "web/pkg"),
-        (
-            "ergo-client",
-            Some("mcp-entry"),
-            "ergo_client.wasm",
-            "web/mcp-pkg",
-        ),
-    ] {
+    for &(package, feature, artifact, output) in targets {
         eprintln!("Building {package} for {TARGET}…");
         let mut build = Command::new(&cargo);
         build.current_dir(&root).args([
@@ -110,7 +136,7 @@ fn build_web() -> Result<(), String> {
             "wasm-bindgen",
         )?;
     }
-    eprintln!("Web assets built in web/pkg and web/mcp-pkg.");
+    eprintln!("WASM bindings built successfully.");
     Ok(())
 }
 

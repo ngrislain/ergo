@@ -1150,7 +1150,13 @@ pub fn App() -> impl IntoView {
                         }
                     }
                 }
+                let geo = c
+                    .world
+                    .as_ref()
+                    .map(|world| world.geo)
+                    .unwrap_or(c.default_geo);
                 if let Some(r) = &mut c.renderer {
+                    r.geo = geo;
                     let input =
                         NavigationInput::from_controls(c.navigation_controls.iter().copied());
                     let known = &c.known_cells;
@@ -1302,7 +1308,7 @@ pub fn App() -> impl IntoView {
     });
     view! {
         <header class="app-header">
-            <a class="brand" href="/" aria-label="Ergo home"><span class="brand-mark"><i></i><i></i><i></i><i></i></span>"ergo"<span class="brand-description">"A world, brick by brick."</span></a>
+            <a class="brand" href="https://www.ergosandbox.com/" aria-label="Ergo home"><img src="/favicon.svg" alt="" width="38" height="38"/>"ergo"<span class="brand-description">"A world, brick by brick."</span></a>
             <div class="header-actions"><span class="account-name">{move ||ui.user.get()}</span><Show when=move ||ui.google.get()&&!ui.signed_in.get()><a class="button quiet" href="/auth/google">"Sign in with Google"</a></Show><Show when=move ||ui.google.get()&&ui.signed_in.get()><button class="button quiet" on:click=move |_|logout(ui)>"Sign out"</button></Show><button class="button primary" on:click=move |_|show_dialog("import-dialog")>"＋ Import construction"</button></div>
         </header>
         <main class="workbench">

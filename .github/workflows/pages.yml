@@ -3,9 +3,29 @@ name: Publish project website
 on:
   push:
     branches: [main]
-    paths: ["site/**", ".github/workflows/pages.yml"]
+    paths:
+      [
+        "site/**",
+        "crates/client/**",
+        "crates/world/**",
+        "crates/xtask/**",
+        "web/favicon.svg",
+        "Cargo.toml",
+        "Cargo.lock",
+        ".github/workflows/pages.yml",
+      ]
   pull_request:
-    paths: ["site/**", ".github/workflows/pages.yml"]
+    paths:
+      [
+        "site/**",
+        "crates/client/**",
+        "crates/world/**",
+        "crates/xtask/**",
+        "web/favicon.svg",
+        "Cargo.toml",
+        "Cargo.lock",
+        ".github/workflows/pages.yml",
+      ]
   workflow_dispatch:
 
 permissions:
@@ -27,6 +47,12 @@ jobs:
           node-version: "24"
           package-manager-cache: false
       - run: npm ci --prefix site --ignore-scripts
+      - name: Install the shared renderer toolchain
+        run: |
+          rustup toolchain install 1.97.1 --profile minimal --target wasm32-unknown-unknown
+          rustup default 1.97.1
+          cargo install wasm-bindgen-cli --version 0.2.129 --locked
+      - run: cargo test --locked -p ergo-client lighting::tests
       - run: npm run build --prefix site
       - run: npm test --prefix site
       - uses: actions/upload-pages-artifact@7b1f4a764d45c48632c6b24a0339c27f5614fb0b # v4

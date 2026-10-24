@@ -19,5 +19,7 @@ crash.log
 /packages/mcp/native/
 /packages/mcp/web/
 /site/dist/
+/site/public/engine/
+/site/public/favicon.svg
 .DS_Store
 *.tgz

@@ -220,6 +220,7 @@ impl LocalClientRuntime {
         }
         let renderer = self.renderer.as_mut().unwrap();
         renderer.clear();
+        renderer.geo = scene.geo;
         renderer.meshes = scene.meshes.clone();
         renderer.set_bricks(scene.bricks.clone());
         for block in &scene.ground {

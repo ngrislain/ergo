@@ -7,7 +7,7 @@ tokens, receive credentials, proxy the API, or provide a remote MCP endpoint.
 
 ## Pages and content
 
-- `/`: an interactive Three.js brick illustration, agent onboarding, visible
+- `/`: an interactive shared-engine WebGL brick illustration, agent onboarding, visible
   MCP build/start commands, client configuration, direct-API example, and a
   first construction prompt.
 - `/privacy/` and `/terms/`: static policy pages describing the hosted service,
@@ -29,9 +29,12 @@ behavior, not promises of future account deletion, billing, or token revocation.
 
 ## Build and preview
 
-Use Node.js 22.12+ (CI uses Node 24):
+Use Node.js 22.12+ (CI uses Node 24), Rust 1.97.1, the WASM target, and the
+matching wasm-bindgen CLI:
 
 ```sh
+rustup target add wasm32-unknown-unknown
+cargo install wasm-bindgen-cli --version 0.2.129 --locked
 npm ci --prefix site --ignore-scripts
 npm run build --prefix site
 npm test --prefix site
@@ -42,15 +45,23 @@ Open `http://127.0.0.1:4173`. `npm run dev --prefix site` starts Vite's developm
 server. The production output is `site/dist/`, which is ignored by Git.
 
 Vite builds separate HTML entries for the home, privacy, terms, and 404 pages.
-The build injects the shared header/footer from `site/src/layout.ts`. Three.js is
-loaded dynamically only on the home page; legal pages load no 3D renderer.
-Outfit fonts are bundled and self-hosted. There are no analytics scripts,
+The build injects the shared header/footer from `site/src/layout.ts`.
+`cargo xtask build-site` builds the navigator's `ergo-client` renderer with the
+small `site-entry` wrapper and copies the canonical `web/favicon.svg` logo.
+Generated bindings/logo in `site/public/engine` and `site/public/favicon.svg` are
+ignored. The build uses those generated outputs, not checked-in binaries.
+The WASM renderer loads dynamically only on the home page; legal pages load no
+3D engine. There is no Three.js dependency. Outfit and the shared Manrope
+wordmark fonts are bundled and self-hosted. There are no analytics scripts,
 external model downloads, token-entry fields, or persistent demo preferences.
 
-The brick model uses shared geometry/materials and instanced studs. Mouse hover
+The brick model uses the navigator's catalog geometry, instancing, shaders,
+sun/shadows, and night flashlight. See [lighting](lighting.md) for geographic UTC
+solar positioning, ambient/specular light, and visual limits. Mouse hover
 tilts the view, dragging rotates the model, and page scroll changes the viewing
 angle without intercepting normal scrolling. Rendering runs during the initial
-assembly or a visitor's interaction, then stops at rest.
+assembly or a visitor's interaction, then stops at rest. A visible preview also
+refreshes once a minute to follow the sun.
 Offscreen/hidden scenes pause, reduced-motion preferences are respected, and
 WebGL failure leaves the onboarding text usable. The illustration does not use
 or claim to replace the construction validator.
@@ -58,12 +69,15 @@ or claim to replace the construction validator.
 Build tests check the static routes, legal navigation, MCP origin/token-file
 configuration, distribution boundaries, and current documentation semantics.
 Browser checks cover real WebGL mouse/scroll controls, tabs, clipboard, 320/390-pixel layouts,
-reduced motion, WebGL-unavailable fallback, and readable no-JavaScript content.
+day/night lighting, shadow draw passes, reduced motion, WebGL-unavailable fallback,
+and readable no-JavaScript content.
 
 ## GitHub Pages publication
 
 [`.github/workflows/pages.yml`](../.github/workflows/pages.yml) builds and tests
-`site/` on relevant pull requests and pushes to `main`. Only `main` push/manual
+`site/` on relevant pull requests and pushes to `main`. Changes to the shared
+client/world/xtask, Cargo configuration, or canonical logo also trigger builds.
+CI installs the pinned WASM toolchain and runs solar tests. Only `main` push/manual
 runs deploy. The artifact contains **only `site/dist`**, not the repository,
 `.env`, OpenTofu files, state, or plans. Deployment uses the repository's built-in
 token with `pages: write` and `id-token: write`; no publishing secret is needed.

@@ -13,6 +13,8 @@ or Scaleway's S3-compatible object store. User profiles also live in object stor
   single-color baseplates, imagery averaging, palette projection, and source policy.
 - [Navigation](navigation.md): orbit/fly/walk controls, 3-unit steps, 12-unit ballistic
   jumps, eye height, full-screen exploration, nearest construction, and collisions.
+- [Sun, shadows, and night lighting](lighting.md): geographic UTC solar position,
+  camera flashlight, ambient/specular appearance, and shared-renderer limits.
 - [Sign-in and agent access](access-and-onboarding.md): landing/SSO pages, token
   setup, shared-world navigation, edit pacing, and operator-managed paid entitlement.
 - [Studio/LDraw catalog](studio-catalog.md): open-ended parts, sourced colors,
@@ -49,7 +51,7 @@ or Scaleway's S3-compatible object store. User profiles also live in object stor
   SSE, group publication, benchmarks, and legacy upgrades.
 - [Scaleway deployment](scaleway-deployment.md): OpenTofu, CI/local container packaging,
   the existing `ergo` bucket, scale-to-zero, Google SSO, and `ergosandbox.com` DNS/TLS.
-- [Public project website](static-site.md): the Three.js agent guide, privacy/terms,
+- [Public project website](static-site.md): the shared-engine agent guide, privacy/terms,
   GitHub Pages publication, and `www.ergosandbox.com` DNS/HTTPS.
 - [Operations runbook](operations.md): shell commands for checks, releases,
   GitHub Pages, DNS/TLS, Scaleway deployment, and private backup/restore.

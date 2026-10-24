@@ -5,7 +5,7 @@ public endpoints are:
 
 - Website: `https://www.ergosandbox.com` (GitHub Pages).
 - Sandbox/API: `https://ergosandbox.com` (Scaleway Serverless Containers).
-- Website release tag: `site-v0.1.0`; deployment workflow: `pages.yml`.
+- Website release tag: `site-v0.1.1`; deployment workflow: `pages.yml`.
 - Server image workflow: `release.yml` with `publish_container=true`.
 
 The [server validation source map](validation-gates.md) identifies the overlap,
@@ -33,6 +33,8 @@ project is `0045feca-c5a9-4e97-9347-57bf59d963aa`, region `fr-par`.
 ## 2. Build, test, and preview the static website
 
 ```sh
+rustup target add wasm32-unknown-unknown
+cargo install wasm-bindgen-cli --version 0.2.129 --locked
 npm ci --prefix site --ignore-scripts
 npm run build --prefix site
 npm test --prefix site
@@ -42,6 +44,8 @@ npm run preview --prefix site -- --port 4173
 Open `http://127.0.0.1:4173`; stop preview with Ctrl+C. Test mouse movement,
 dragging, scroll response, Add a brick, Take apart/Build it, mobile navigation,
 MCP command/config copying, `/privacy/`, `/terms/`, and `/llms.txt`.
+The build runs `cargo xtask build-site` for the shared renderer and canonical
+logo; Rust and wasm-bindgen are required alongside Node.
 
 ## 3. Check server validation and infrastructure
 
@@ -49,6 +53,7 @@ MCP command/config copying, `/privacy/`, `/terms/`, and `/llms.txt`.
 cargo test --locked -p ergo-world validation::tests
 cargo test --locked -p ergo-world physical::tests
 cargo test --locked -p ergo-server shared::tests
+cargo test --locked -p ergo-client
 
 tofu -chdir=infra/scaleway init -input=false
 tofu -chdir=infra/scaleway fmt -check -recursive

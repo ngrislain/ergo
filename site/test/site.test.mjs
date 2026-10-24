@@ -74,3 +74,20 @@ test("the Pages artifact contains no dotenv, state, or infrastructure files", as
   }
   await walk();
 });
+
+test("landing uses the navigator's engine and canonical logo", async () => {
+  const logo = await readFile(
+    resolve(import.meta.dirname, "../../web/favicon.svg"),
+    "utf8",
+  );
+  assert.equal(await text("favicon.svg"), logo);
+  const bindings = await text("engine/ergo_client.js");
+  assert.match(bindings, /class LandingPreview/);
+  const wasm = await readFile(resolve(dist, "engine/ergo_client_bg.wasm"));
+  assert.deepEqual([...wasm.subarray(0, 4)], [0, 97, 115, 109]);
+  const packageJson = JSON.parse(
+    await readFile(resolve(import.meta.dirname, "../package.json"), "utf8"),
+  );
+  assert.equal(packageJson.dependencies.three, undefined);
+  assert.match(await text("index.html"), /img src="\/favicon.svg"/);
+});
