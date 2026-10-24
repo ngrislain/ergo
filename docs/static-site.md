@@ -1,0 +1,112 @@
+# Public project website on GitHub Pages
+
+`site/` is the standalone public guide at **https://www.ergosandbox.com**.
+The authenticated sandbox and REST API use **https://ergosandbox.com**.
+The site links humans to the sandbox's `/login#connect` flow; it does not issue
+tokens, receive credentials, proxy the API, or provide a remote MCP endpoint.
+
+## Pages and content
+
+- `/`: an interactive Three.js brick illustration, agent onboarding, visible
+  MCP build/start commands, client configuration, direct-API example, and a
+  first construction prompt.
+- `/privacy/` and `/terms/`: static policy pages describing the hosted service,
+  current Google/profile storage, cookies, delegation limits, shared-world
+  visibility, third-party providers, and experimental physics limitations.
+- `/llms.txt`: a plain-text authentication and building guide for agents.
+- `/404.html`: a real Pages error document with a link back to the guide.
+
+Agent instructions follow [access and onboarding](access-and-onboarding.md) and
+the [MCP guide](local-construction-mcp.md). The setup example uses the supported
+source-built bridge; it does not assume the npm package has been published.
+Google login stays in the human's browser. The agent receives the path to a
+downloaded, short-lived token and the operator-selected API origin. The example
+prompt keeps its first construction local until the human requests publication.
+
+Keep the policy pages and agent guide synchronized with authentication,
+permissions, storage, provider, and retention changes. They describe current
+behavior, not promises of future account deletion, billing, or token revocation.
+
+## Build and preview
+
+Use Node.js 22.12+ (CI uses Node 24):
+
+```sh
+npm ci --prefix site --ignore-scripts
+npm run build --prefix site
+npm test --prefix site
+npm run preview --prefix site -- --port 4173
+```
+
+Open `http://127.0.0.1:4173`. `npm run dev --prefix site` starts Vite's development
+server. The production output is `site/dist/`, which is ignored by Git.
+
+Vite builds separate HTML entries for the home, privacy, terms, and 404 pages.
+The build injects the shared header/footer from `site/src/layout.ts`. Three.js is
+loaded dynamically only on the home page; legal pages load no 3D renderer.
+Outfit fonts are bundled and self-hosted. There are no analytics scripts,
+external model downloads, token-entry fields, or persistent demo preferences.
+
+The brick model uses shared geometry/materials and instanced studs. Mouse hover
+tilts the view, dragging rotates the model, and page scroll changes the viewing
+angle without intercepting normal scrolling. Rendering runs during the initial
+assembly or a visitor's interaction, then stops at rest.
+Offscreen/hidden scenes pause, reduced-motion preferences are respected, and
+WebGL failure leaves the onboarding text usable. The illustration does not use
+or claim to replace the construction validator.
+
+Build tests check the static routes, legal navigation, MCP origin/token-file
+configuration, distribution boundaries, and current documentation semantics.
+Browser checks cover real WebGL mouse/scroll controls, tabs, clipboard, 320/390-pixel layouts,
+reduced motion, WebGL-unavailable fallback, and readable no-JavaScript content.
+
+## GitHub Pages publication
+
+[`.github/workflows/pages.yml`](../.github/workflows/pages.yml) builds and tests
+`site/` on relevant pull requests and pushes to `main`. Only `main` push/manual
+runs deploy. The artifact contains **only `site/dist`**, not the repository,
+`.env`, OpenTofu files, state, or plans. Deployment uses the repository's built-in
+token with `pages: write` and `id-token: write`; no publishing secret is needed.
+
+The repository's Pages settings use build type `workflow` and the custom domain
+`www.ergosandbox.com`. The included `site/public/CNAME` documents that domain but
+does not replace the GitHub Pages API/settings configuration.
+
+To publish manually after the workflow is on `main`:
+
+```sh
+gh workflow run pages.yml --repo ngrislain/ergo --ref main
+gh run list --repo ngrislain/ergo --workflow pages.yml --limit 5
+```
+
+Open the new run's URL to inspect build and deployment results. Website release
+tags use `site-vVERSION`, matching `site/package.json`; a site tag does not use
+the `v*` trigger for Rust/npm distribution releases.
+
+## DNS and HTTPS
+
+[`infra/scaleway/pages.tf`](../infra/scaleway/pages.tf) manages the `www` CNAME:
+
+```text
+www.ergosandbox.com.  CNAME  ngrislain.github.io.
+```
+
+The target is the GitHub Pages account hostname, not a repository path.
+`github_pages_host` can override it; `manage_dns=false` also omits this record
+when DNS is managed elsewhere. The apex ALIAS, server public origin, and Google
+OAuth callback remain configured for `ergosandbox.com`.
+
+GitHub provisions the `www` certificate after its DNS check. Enforce HTTPS in the
+repository's Pages settings once the certificate is ready. The public URLs for
+Google OAuth app branding are:
+
+```text
+Homepage: https://www.ergosandbox.com/
+Privacy:  https://www.ergosandbox.com/privacy/
+Terms:    https://www.ergosandbox.com/terms/
+Callback: https://ergosandbox.com/auth/google/callback
+```
+
+The callback must be saved under **Authorized redirect URIs** of the actual Web
+application OAuth client, not under JavaScript origins. After changing it,
+restart login from the sandbox rather than reusing an old Google error URL.

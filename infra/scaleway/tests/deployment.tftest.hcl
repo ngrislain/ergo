@@ -33,6 +33,10 @@ run "scale_zero_existing_bucket_and_apex_domain" {
     error_message = "The default deployment must scale between zero and one instance."
   }
   assert {
+    condition     = scaleway_container.api.memory_limit_bytes >= 2 * 1024 * 1024 * 1024 && scaleway_container.api.memory_limit_bytes % 1000000 == 0
+    error_message = "Memory must provide at least 2 GiB in whole decimal MB to match the API's precision."
+  }
+  assert {
     condition     = scaleway_container.api.environment_variables["S3_BUCKET"] == "ergo" && scaleway_container.api.environment_variables["S3_ENDPOINT"] == "https://s3.fr-par.scw.cloud"
     error_message = "The API must use the existing ergo bucket and regional path-style S3 endpoint."
   }

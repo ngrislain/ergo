@@ -1,0 +1,87 @@
+# Ergo: a brick-construction sandbox for agents
+
+Project: https://github.com/ngrislain/ergo
+Human guide: https://www.ergosandbox.com/#connect
+Sandbox and REST origin: https://ergosandbox.com
+Human authentication: https://ergosandbox.com/login#connect
+Privacy: https://www.ergosandbox.com/privacy/
+Terms: https://www.ergosandbox.com/terms/
+
+## Authentication is a human-to-agent handoff
+
+A human signs in with Google on the sandbox, chooses Generate access token,
+and downloads ergo-mcp-token. Ask the human for the path to that private token
+file, not their Google credentials, browser cookies, or cloud/S3 credentials.
+There is no public remote MCP endpoint and no automatic device-code exchange.
+The static information site does not issue, receive, or store agent tokens.
+
+Tokens normally expire after one hour, never exceed 24 hours or the issuing
+session's expiry, and are bound to https://ergosandbox.com. They authorize
+permissioned shared-world reads, creation, assembly import and geometry commits.
+They cannot change grants, retention, private snapshots, account plans, or mint
+another delegation. Logging out does not individually revoke an issued token.
+
+## Connect an MCP-capable agent
+
+Build from source; a published npm release is not assumed:
+
+git clone https://github.com/ngrislain/ergo.git
+cd ergo
+rustup target add wasm32-unknown-unknown
+cargo install wasm-bindgen-cli --version 0.2.129 --locked
+cargo xtask build-web
+cargo build --release -p ergo-mcp
+
+Configure a local stdio MCP process:
+command: /absolute/path/ergo/target/release/ergo-mcp
+args: --workspace /absolute/path/first-build.ergo.json
+environment:
+  ERGO_PUBLISH_URL=https://ergosandbox.com
+  ERGO_PUBLISH_TOKEN_FILE=/absolute/path/ergo-mcp-token
+
+The workspace parent directory must exist. A missing JSON file starts empty.
+The bridge does not automatically load .env. A browser and the built WASM assets
+are required. Local editing can operate without a hosted token; publication
+requires one. Keep credentials out of tool arguments and URLs.
+
+Equivalent start command, run from the cloned repository:
+
+ERGO_PUBLISH_URL=https://ergosandbox.com \
+ERGO_PUBLISH_TOKEN_FILE="$HOME/Downloads/ergo-mcp-token" \
+./target/release/ergo-mcp --workspace "$HOME/first-build.ergo.json"
+
+Change the token path to the actual downloaded file. The process waits for MCP
+requests over stdio and opens the local browser runtime. Normally the MCP client
+launches this process itself using the configuration above, one process per workspace.
+
+## Start building
+
+Discover the current tools and their JSON schemas. Start with get_catalog and
+list_bricks. Use place_brick, move_brick, connect_bricks and grouping tools to
+make a small grounded draft. Coordinates are X east, Y north, Z up.
+Run validate_construction, test_stability_by_gravity, and
+test_visual_appearance. Physical connector capacities need sourced measurements;
+missing calibration must not be described as a successful calibrated validation.
+
+publish_construction creates a new world/assembly or imports a new assembly into
+an existing world. It does not update a previously published assembly in place.
+MCP-created worlds allow signed-in collaborators by default; set
+authenticated_editing=false for an owner/grant-only new world. Inspect confirmed
+returned revisions and view_url. Do not automatically retry unknown or
+accepted_unconfirmed publication outcomes: imports are not idempotent.
+
+get_edit_allowance reports the current allowance. Free accounts have capacity
+5,000 changed bricks, continuously refilling by 5,000 changes per 86400 seconds.
+Authorization, operation budgets and physical validation remain authoritative.
+
+## Direct REST access
+
+Read GET /api/shared-worlds/allowance using Authorization: Bearer TOKEN.
+Use that header for other shared-world endpoints. JSON writes also require
+X-Ergo-Request: 1 and Content-Type: application/json.
+POST /api/auth/mcp-token requires a human browser session, not a delegation.
+
+Authoritative docs:
+https://github.com/ngrislain/ergo/blob/main/docs/local-construction-mcp.md
+https://github.com/ngrislain/ergo/blob/main/docs/concurrent-global-editing.md#rest-workflow
+https://github.com/ngrislain/ergo/blob/main/docs/access-and-onboarding.md

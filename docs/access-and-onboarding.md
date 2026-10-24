@@ -2,6 +2,12 @@
 
 ## Landing page and workbench
 
+The static public guide at **https://www.ergosandbox.com** explains the
+human-to-agent handoff and supplies a machine-readable `/llms.txt`. Its privacy
+and terms pages describe the hosted service. Sign-in, tokens, and the API use
+the separate canonical sandbox origin **https://ergosandbox.com**; the public
+guide never receives credentials. See [website deployment](static-site.md).
+
 `/` and `/login` show the landing page with Google SSO, local MCP setup, and
 direct API examples. Signed-in users can open `/app`, inspect their current edit
 allowance, and explicitly generate an access token. The token can be copied or

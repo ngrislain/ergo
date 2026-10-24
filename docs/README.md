@@ -47,6 +47,8 @@ or Scaleway's S3-compatible object store. User profiles also live in object stor
   SSE, group publication, benchmarks, and legacy upgrades.
 - [Scaleway deployment](scaleway-deployment.md): OpenTofu, CI/local container packaging,
   the existing `ergo` bucket, scale-to-zero, Google SSO, and `ergosandbox.com` DNS/TLS.
+- [Public project website](static-site.md): the Three.js agent guide, privacy/terms,
+  GitHub Pages publication, and `www.ergosandbox.com` DNS/HTTPS.
 - [Prebuilt distributions](distribution.md): versioned GHCR server images,
   image-only CI publication, the npm MCP bundle, platform/runtime requirements,
   and maintainer publication setup.

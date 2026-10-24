@@ -6,12 +6,46 @@ the existing **`ergo`** Object Storage bucket as a data source. Bucket contents,
 configuration, and lifecycle remain outside this stack, including on destroy.
 
 The service uses `fr-par` by default, port 8080, HTTP/1 upstream, managed HTTPS,
-1000 mvCPU, 2 GiB memory, a 300-second request timeout, and concurrency-based
+1000 mvCPU, at least 2 GiB memory (2148 decimal MB to match the API's precision),
+a 300-second request timeout, and concurrency-based
 autoscaling with **`min_scale = 0`** and **`max_scale = 1`**. The maximum is
 configurable. Scaleway controls idle scale-down timing (currently documented as
 15 minutes); cold starts add latency, and active requests/SSE streams can keep an
 instance running. Object storage, an image registry, and other provider usage
 can still incur charges when compute is at zero.
+
+The public project/agent guide is hosted separately on GitHub Pages at
+**https://www.ergosandbox.com**. [`pages.tf`](../infra/scaleway/pages.tf) manages
+its `www` CNAME to `ngrislain.github.io`; the sandbox's apex ALIAS and OAuth
+origin remain on `ergosandbox.com`. See [the website guide](static-site.md).
+
+## Current deployment
+
+The server was deployed on **2026-10-24 UTC** in the dedicated Scaleway **Ergo**
+project, in `fr-par`:
+
+- Canonical origin: **https://ergosandbox.com**; workbench: **https://ergosandbox.com/app**.
+- Container: `ergo-api` in the `ergo` Serverless Containers namespace.
+- Diagnostic endpoint: `https://ergofd9bc093-ergo-api.functions.fnc.fr-par.scw.cloud`.
+- Public Linux/AMD64 image:
+  `ghcr.io/ngrislain/ergo@sha256:4f4ac52bcd3b52b52728d3d29768d7c9d5938c42c761ef99124cf5a48f3e7882`,
+  built from revision `1e206fdcfbf7cbf4c451dc017cbc3b06e822ef3e` by
+  [CI run 40054724995](https://github.com/ngrislain/ergo/actions/runs/40054724995).
+- The existing `ergo` bucket uses the `ergo` application prefix. The apex ALIAS
+  points to the container endpoint, and the custom-domain/TLS binding is ready.
+- Production inputs are in the ignored `infra/scaleway/terraform.tfvars`;
+  storage, Google OAuth, and persistent session-signing credentials were copied
+  from the ignored root `.env`. Update both copies when rotating credentials.
+
+HTTPS responses for the landing/workbench pages, JS/WASM assets, and `/api/config`
+were verified. The configuration reports Scaleway S3 storage. Google login
+redirects to the configured OAuth client and canonical callback with a secure
+HttpOnly state cookie; anonymous sessions have no development identity and
+cannot issue MCP tokens. After registering the exact callback in the Google
+client, the complete browser sign-in/code-exchange flow was verified: the sandbox
+reports a signed-in Google session with development identity disabled.
+OpenTofu reports no pending changes.
+Public DNS resolution was verified through both `1.1.1.1` and `8.8.8.8`.
 
 ## 1. Build and publish the image with Podman
 
@@ -146,6 +180,31 @@ Scaleway secret environment variables. They remain sensitive inputs/state:
 store OpenTofu state securely and retain it between deployments. State, plans,
 and `.tfvars` files are Git-ignored; the default backend is local.
 
+### Private configuration backup
+
+The configured `.env` is backed up as the private object
+`s3://ergo/_ops/ergo/production.env`, outside the application's `ergo/` data prefix.
+Its object ACL and bucket policy were checked, anonymous access was denied, and
+the downloaded bytes matched the local file's checksum. It contains credentials
+and the persistent signing key, so access requires authorized S3 credentials.
+
+With `AWS_ACCESS_KEY_ID` and `AWS_SECRET_ACCESS_KEY` set for that bucket, restore
+it on another machine with:
+
+```sh
+umask 077
+aws --endpoint-url https://s3.fr-par.scw.cloud --region fr-par \
+  s3 cp s3://ergo/_ops/ergo/production.env .env
+chmod 600 .env
+```
+
+Refresh that backup after editing or rotating `.env`. Production bind address
+and public origin are supplied by the OpenTofu module rather than the local
+development defaults in `.env`. The backup does not include OpenTofu state:
+retain/transfer `infra/scaleway/terraform.tfstate` separately before managing this
+existing stack from another machine. Keep local state and saved plans private;
+`umask 077` before running OpenTofu also protects newly created files.
+
 Register **https://ergosandbox.com/auth/google/callback** on the Google OAuth web
 client. The module requires Google credentials and a stable signing secret rather
 than deploying the shared development identity. The secret must survive cold
@@ -170,6 +229,7 @@ Scaleway's custom-domain certificate challenge needs working public DNS. On the
 first deployment, create the container and DNS first:
 
 ```sh
+umask 077
 tofu -chdir=infra/scaleway init
 tofu -chdir=infra/scaleway plan -var=bind_custom_domain=false
 tofu -chdir=infra/scaleway apply -var=bind_custom_domain=false
@@ -185,6 +245,16 @@ create the domain binding and let Scaleway issue its managed TLS certificate:
 tofu -chdir=infra/scaleway apply
 tofu -chdir=infra/scaleway output -raw app_url
 curl --fail https://ergosandbox.com/api/config
+```
+
+An upstream client resolver can retain an earlier negative DNS response even
+after the public resolvers return the correct address. Wait for that negative
+cache to expire or use a working resolver. For an HTTPS diagnostic through
+Cloudflare DNS-over-HTTPS, preserving normal certificate verification:
+
+```sh
+curl --fail --show-error --doh-url https://cloudflare-dns.com/dns-query \
+  https://ergosandbox.com/api/config
 ```
 
 For external DNS, set `manage_dns = false`, apply with
@@ -215,8 +285,9 @@ flow against the running container. Docker also works through `--engine docker`.
 
 The v0.3.0 Linux/AMD64 image has been built and exercised using Podman 6.1 on
 Apple Silicon: the native cross-build, non-root runtime, API round-trip,
-Playwright browser flow, and graceful shutdown pass. The cloud apply and registry
-publication remain separate operator steps.
+Playwright browser flow, and graceful shutdown pass. The current cloud deployment
+uses the v0.3.1 image produced and smoke-tested by the image-only CI run above;
+cloud apply, DNS propagation, and managed-TLS provisioning have completed.
 
 ```sh
 tofu -chdir=infra/scaleway fmt -check -recursive

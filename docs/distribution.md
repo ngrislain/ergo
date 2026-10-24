@@ -17,6 +17,13 @@ publication job separately. npm needs scope/publisher authorization, and GHCR
 must have suitable package visibility. Existing tags such as v0.3.0 are not
 moved; each release uses a new matching source/package tag.
 
+The API/web server is deployed at **https://ergosandbox.com** using the public
+digest-pinned image from
+[image-only CI run 40054724995](https://github.com/ngrislain/ergo/actions/runs/40054724995).
+See the [deployment record](scaleway-deployment.md#current-deployment) for its
+source revision, image digest, DNS/TLS status, and private configuration backup.
+Stable version tags and npm publication follow the separate release checks above.
+
 ## Use a published server image
 
 After successful publication and public package visibility:
@@ -199,8 +206,9 @@ That manual run did not publish registries. The npm hosted-server default was
 subsequently assembled from the same checksummed native/WASM artifacts and
 verified locally with the actual macOS ARM64 runtime, offline installation,
 browser login/URL overrides, and MCP/WASM editing/rendering outside the checkout.
-Registry publication still requires the separate maintainer setup above. The
-ordinary source-build workflow remains supported.
+Tagged npm publication still requires the separate maintainer setup above. The
+current server image was published by the later image-only CI run recorded above;
+the ordinary source-build workflow remains supported.
 
 References: [npm trusted publishing](https://docs.npmjs.com/trusted-publishers),
 [GitHub container publishing](https://docs.github.com/en/actions/tutorials/publish-packages/publish-docker-images),

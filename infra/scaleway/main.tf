@@ -26,10 +26,11 @@ resource "scaleway_container" "api" {
   protocol               = "http1"
   https_connections_only = true
   cpu_limit              = 1000
-  memory_limit_bytes     = 2 * 1024 * 1024 * 1024
-  min_scale              = 0
-  max_scale              = var.max_scale
-  timeout                = 300
+  # Scaleway stores whole decimal MB; round 2 GiB up to avoid perpetual drift.
+  memory_limit_bytes = 2148 * 1000 * 1000
+  min_scale          = 0
+  max_scale          = var.max_scale
+  timeout            = 300
 
   scaling_option {
     concurrent_requests_threshold = 10

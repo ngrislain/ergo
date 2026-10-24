@@ -1,0 +1,191 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="theme-color" content="#edf3ff" />
+    <meta
+      name="description"
+      content="How Ergo's static website and hosted sandbox handle account information, construction data, sessions, and agent tokens."
+    />
+    <link rel="canonical" href="https://www.ergosandbox.com/privacy/" />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <title>Privacy — Ergo</title>
+    <script type="module" src="/src/main.ts"></script>
+  </head>
+  <body>
+    <!-- site:header -->
+    <main class="legal-page shell" id="main">
+      <a class="back-link" href="/">Back to Ergo</a>
+      <p class="section-label">The details, in plain language</p>
+      <h1>Privacy.</h1>
+      <p class="legal-lead">
+        Building a world shouldn’t mean guessing what happens to your
+        information.
+      </p>
+      <p class="effective-date">
+        Effective <time datetime="2026-10-24">24 October 2026</time>
+      </p>
+      <div class="legal-layout">
+        <nav class="legal-toc" aria-label="On this page">
+          <a href="#scope">Two sites, two roles</a
+          ><a href="#account">Your account</a
+          ><a href="#builds">Your constructions</a
+          ><a href="#credentials">Cookies and agent tokens</a
+          ><a href="#providers">Service providers</a
+          ><a href="#retention">Retention and requests</a>
+        </nav>
+        <div class="legal-copy">
+          <section id="scope">
+            <h2>Two sites, two roles</h2>
+            <p>
+              This notice covers the Ergo project’s information site at
+              <strong>www.ergosandbox.com</strong> and the hosted sandbox at
+              <strong>ergosandbox.com</strong>. The project is maintained by
+              <a href="https://github.com/ngrislain">ngrislain on GitHub</a>.
+            </p>
+            <p>
+              The information site is static and hosted on GitHub Pages. Its
+              fonts, scripts, and Three.js scene are served with the site. It
+              does not run advertising or analytics scripts, set application
+              cookies, or store your token. Interactions with the brick
+              illustration stay in browser memory.
+            </p>
+            <p>
+              Authentication and construction tools run on the separate sandbox
+              origin. Links to Google, GitHub, or the sandbox take you to those
+              services.
+            </p>
+          </section>
+          <section id="account">
+            <h2>Your account</h2>
+            <p>
+              When you choose Google sign-in, the sandbox verifies your Google
+              identity and receives a stable account identifier, verified email
+              address, display name, and an optional profile-picture URL. It
+              stores an application identifier derived from the Google
+              identifier, those profile fields, creation time, and last sign-in
+              time.
+            </p>
+            <p>
+              These fields support sign-in, ownership, access decisions, and
+              your account display. Hashing the Google identifier does not make
+              the stored profile anonymous. The server does not persist Google
+              access or refresh tokens, and it does not receive your Google
+              password.
+            </p>
+          </section>
+          <section id="builds">
+            <h2>Your constructions and activity</h2>
+            <p>
+              The sandbox stores constructions you publish, accepted revisions,
+              ownership and sharing rules, user profiles, and edit-allowance
+              records in Scaleway Object Storage. Requests also expose ordinary
+              connection information, such as an IP address and user agent, to
+              the hosting providers; operational logs may contain request
+              metadata.
+            </p>
+            <p>
+              Local MCP drafts stay in the workspace you choose until you
+              publish them. Shared-world access follows the world’s current
+              policy. New MCP-created worlds allow other signed-in identities to
+              read and edit by default; an owner/grant-only world can be created
+              with <code>authenticated_editing: false</code>. Do not use shared
+              constructions to store secrets or information you are not entitled
+              to share.
+            </p>
+            <p>
+              Constructions, immutable revisions, and permission records are
+              separate from your sign-in profile. Removing a local file or
+              logging out does not remove previously published data.
+            </p>
+          </section>
+          <section id="credentials">
+            <h2>Cookies, caching, and agent tokens</h2>
+            <p>
+              The sandbox uses necessary, signed, HttpOnly cookies for the
+              Google sign-in flow and application sessions. On HTTPS these
+              cookies are Secure and SameSite=Lax. Current sessions expire after
+              seven days. The static information site does not need access to
+              these cookies.
+            </p>
+            <p>
+              The sandbox can cache downloaded model assets on your device for
+              performance. Its logout flow clears the application’s model caches
+              and browser cache/storage state. Authentication responses and
+              profile/world-list responses are not put in the service-worker
+              cache.
+            </p>
+            <p>
+              Agent delegations are created only after an explicit request from
+              a signed-in user. A delegation normally lasts one hour, cannot
+              exceed 24 hours or the issuing session’s expiry, and is bound to
+              the sandbox origin. The token is held in the setup page’s memory
+              until you copy or download it; it is not saved in local or session
+              storage by that page.
+            </p>
+            <p>
+              A downloaded token file is a credential you manage. Give it only
+              to an agent you trust. Logging out does not individually revoke an
+              existing delegation; expiry or a server signing-key rotation
+              invalidates it. Individual token revocation is not currently
+              implemented.
+            </p>
+          </section>
+          <section id="providers">
+            <h2>Service providers</h2>
+            <p>
+              <a
+                href="https://docs.github.com/en/site-policy/privacy-policies/github-general-privacy-statement"
+                >GitHub</a
+              >
+              serves this information site and processes connection data
+              according to its privacy statement.
+              <a href="https://www.scaleway.com/en/privacy-policy/">Scaleway</a>
+              hosts the sandbox and its object storage in the Paris region.
+              <a href="https://policies.google.com/privacy">Google</a> handles
+              the sign-in you initiate.
+            </p>
+            <p>
+              The sandbox may request satellite imagery from Esri, part assets
+              from the LDraw library, and profile images from the URL provided
+              by Google. Those services receive the requests made to them. These
+              are sandbox features; the static brick illustration does not
+              request map tiles, part-library assets, or account information.
+            </p>
+          </section>
+          <section id="retention">
+            <h2>Retention, requests, and updates</h2>
+            <p>
+              Profiles and published construction records are retained to
+              operate the sandbox and its versioned worlds. There is no
+              automatic account-deletion workflow or fixed deletion schedule
+              promised by this experimental service. Immutable history, shared
+              ownership, retention rules, and operational copies may affect what
+              can be removed.
+            </p>
+            <p>
+              To ask about your information, request a correction or removal, or
+              report a privacy concern,
+              <a href="https://github.com/ngrislain/ergo/issues/new"
+                >contact the project maintainer</a
+              >
+              and ask for a private channel. Do not put credentials, private
+              account details, or the data you want removed into a public issue.
+            </p>
+            <p>
+              This notice will be updated as the service changes. The effective
+              date above identifies the current version. See also the
+              <a href="/terms/">terms of use</a> and the
+              <a
+                href="https://github.com/ngrislain/ergo/blob/main/docs/identity-and-ownership.md"
+                >technical identity documentation</a
+              >.
+            </p>
+          </section>
+        </div>
+      </div>
+    </main>
+    <!-- site:footer -->
+  </body>
+</html>

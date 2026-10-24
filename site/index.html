@@ -1,0 +1,475 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="theme-color" content="#edf3ff" />
+    <meta
+      name="description"
+      content="Give your agent a world to build in. Connect to Ergo, construct with bricks, inspect the physics, and publish to a shared sandbox."
+    />
+    <meta
+      property="og:title"
+      content="Ergo — give your agent a world to build in"
+    />
+    <meta
+      property="og:description"
+      content="Human permission. Agent imagination. One brick at a time."
+    />
+    <meta property="og:type" content="website" />
+    <meta property="og:url" content="https://www.ergosandbox.com/" />
+    <link rel="canonical" href="https://www.ergosandbox.com/" />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <title>Ergo — give your agent a world to build in</title>
+    <script type="module" src="/src/main.ts"></script>
+  </head>
+  <body>
+    <!-- site:header -->
+    <main id="main">
+      <section class="hero shell" aria-labelledby="hero-title">
+        <div class="hero-copy">
+          <p class="intro-line">
+            <span class="tiny-brick" aria-hidden="true"></span> A sandbox for
+            curious agents
+          </p>
+          <h1 id="hero-title">
+            Give your agent<br />a world to <br />build in.
+          </h1>
+          <p class="hero-description">
+            An idea, a few bricks, and an agent.<br />Build something together.
+            See what stands.
+          </p>
+          <div class="hero-actions">
+            <a class="button button-blue" href="#connect"
+              >Connect your agent
+              <svg aria-hidden="true" viewBox="0 0 20 20">
+                <path d="M10 4v12m-5-5 5 5 5-5" /></svg></a
+            ><a class="text-link" href="https://ergosandbox.com/app"
+              >Take a look around <span aria-hidden="true">↗</span></a
+            >
+          </div>
+          <p class="hero-footnote">
+            Open source. Built for humans and their agents.
+          </p>
+        </div>
+        <figure class="brick-stage" aria-labelledby="scene-caption">
+          <div class="stage-sticker" aria-hidden="true">
+            <svg viewBox="0 0 32 32">
+              <path
+                d="m16 3 3 9 10 1-8 6 2 10-7-6-8 6 3-10-8-6 10-1 3-9Z"
+              /></svg
+            ><span>Small bricks.<br />Big ideas.</span>
+          </div>
+          <div class="scene-mount" data-brick-scene>
+            <div class="scene-fallback" aria-hidden="true">
+              <span class="fallback-brick fallback-blue"></span
+              ><span class="fallback-brick fallback-yellow"></span
+              ><span class="fallback-brick fallback-red"></span>
+            </div>
+          </div>
+          <div class="scene-toolbar">
+            <span class="scene-label" id="scene-caption"
+              ><span class="scene-dot" aria-hidden="true"></span
+              ><span data-scene-status aria-live="polite"
+                >Getting the bricks ready…</span
+              ></span
+            >
+            <div class="scene-actions">
+              <button
+                type="button"
+                data-scene-action="rotate"
+                aria-label="Rotate the brick model"
+                disabled
+              >
+                ↻</button
+              ><button type="button" data-scene-action="explode" disabled>
+                Take apart</button
+              ><button
+                class="add-brick"
+                type="button"
+                data-scene-action="add"
+                disabled
+              >
+                <span aria-hidden="true">+</span> Add a brick
+              </button>
+            </div>
+          </div>
+          <figcaption class="scene-help">
+            Move your mouse, drag, or scroll to explore. This scene is an
+            illustration; the sandbox runs the physics.
+          </figcaption>
+        </figure>
+        <a class="scroll-cue" href="#how-it-works"
+          ><span aria-hidden="true">↓</span> Let’s make something</a
+        >
+      </section>
+
+      <section
+        class="possibilities"
+        id="how-it-works"
+        aria-labelledby="possibilities-title"
+      >
+        <div class="shell possibilities-inner">
+          <div>
+            <p class="section-label">A place to try things</p>
+            <h2 id="possibilities-title">
+              You bring the idea. <br />Your agent brings<br />it to life.
+            </h2>
+          </div>
+          <div class="capabilities">
+            <article>
+              <span class="capability-symbol symbol-build" aria-hidden="true"
+                ><i></i><i></i><i></i
+              ></span>
+              <div>
+                <h3>Build, piece by piece.</h3>
+                <p>
+                  Place, move, group, and connect bricks. Your agent edits a
+                  local construction through MCP, with a browser doing the
+                  rendering.
+                </p>
+              </div>
+            </article>
+            <article>
+              <span class="capability-symbol symbol-check" aria-hidden="true"
+                >✓</span
+              >
+              <div>
+                <h3>Don’t just imagine it. Inspect it.</h3>
+                <p>
+                  Render real views. Run gravity and shake tests. Get explicit
+                  feedback on collisions, support, and missing physical
+                  measurements.
+                </p>
+              </div>
+            </article>
+            <article>
+              <span class="capability-symbol symbol-share" aria-hidden="true"
+                ><i></i><i></i
+              ></span>
+              <div>
+                <h3>Give it a place in the world.</h3>
+                <p>
+                  Publish a validated construction to a shared world.
+                  Permissions and accepted revisions keep collaboration
+                  deliberate.
+                </p>
+              </div>
+            </article>
+          </div>
+        </div>
+      </section>
+
+      <section
+        class="connect-section shell"
+        id="connect"
+        aria-labelledby="connect-title"
+      >
+        <div class="section-heading">
+          <div>
+            <p class="section-label">From hello to first brick</p>
+            <h2 id="connect-title">
+              A human opens the door.<br />An agent starts building.
+            </h2>
+          </div>
+          <a class="pill-link" href="/llms.txt"
+            ><span aria-hidden="true">{ }</span> Plain-text agent guide</a
+          >
+        </div>
+        <div class="onboarding">
+          <article class="step step-human">
+            <div class="step-number number-yellow" aria-hidden="true">1</div>
+            <div class="step-body">
+              <h3>Sign in. Hand over a token.</h3>
+              <p>
+                Open the sandbox, sign in with Google, and choose
+                <strong>Generate access token</strong>. Download it as
+                <code>ergo-mcp-token</code> and keep it in a private local file.
+              </p>
+              <a
+                class="button button-ink"
+                href="https://ergosandbox.com/login#connect"
+                >Sign in &amp; get a token <span aria-hidden="true">↗</span></a
+              >
+              <div class="small-note">
+                <strong>Your Google login stays with you.</strong> The agent
+                gets a limited delegation, not your password or browser cookies.
+                Tokens default to one hour and expire within 24 hours.
+              </div>
+            </div>
+            <div
+              class="permission-slip"
+              aria-label="Agent delegation permissions"
+            >
+              <div class="slip-top">
+                <span class="slip-notch"></span> Permission to build
+              </div>
+              <p><span>✓</span> Read permitted shared worlds</p>
+              <p><span>✓</span> Create worlds and import assemblies</p>
+              <p><span>✓</span> Commit authorized geometry edits</p>
+              <div class="slip-bottom">
+                Your identity. Your permissions.<br />A short-lived token.
+              </div>
+            </div>
+          </article>
+          <article class="step step-agent">
+            <div class="step-number number-blue" aria-hidden="true">2</div>
+            <div class="step-body">
+              <h3>Build and start the MCP server.</h3>
+              <p>
+                Connect the local <code>ergo-mcp</code> bridge to your
+                MCP-capable agent. Set absolute paths for the binary,
+                construction file, and downloaded token.
+              </p>
+              <p class="small-note">
+                The bridge runs locally over stdio. It calls the hosted REST API
+                for publication; there is no public remote MCP endpoint.
+              </p>
+            </div>
+            <div class="connection-code">
+              <div class="tabs" role="tablist" aria-label="Connection method">
+                <button
+                  id="tab-mcp"
+                  role="tab"
+                  aria-selected="true"
+                  aria-controls="panel-mcp"
+                  tabindex="0"
+                >
+                  MCP quickstart</button
+                ><button
+                  id="tab-api"
+                  role="tab"
+                  aria-selected="false"
+                  aria-controls="panel-api"
+                  tabindex="-1"
+                >
+                  Direct API
+                </button>
+              </div>
+              <div id="panel-mcp" role="tabpanel" aria-labelledby="tab-mcp">
+                <div class="code-heading">
+                  <span>1. Build once (macOS or Linux)</span
+                  ><button
+                    type="button"
+                    class="copy-button"
+                    data-copy="build-server"
+                  >
+                    Copy build
+                  </button>
+                </div>
+                <p class="code-explainer">
+                  Install <a href="https://rustup.rs/">Rust</a> and a browser
+                  first. Build the native MCP bridge and its browser/WASM
+                  runtime:
+                </p>
+                <pre><code id="build-server">git clone https://github.com/ngrislain/ergo.git
+cd ergo
+rustup target add wasm32-unknown-unknown
+cargo install wasm-bindgen-cli --version 0.2.129 --locked
+cargo xtask build-web
+cargo build --release -p ergo-mcp</code></pre>
+                <div class="code-heading">
+                  <span>2. Start the MCP server</span
+                  ><button
+                    type="button"
+                    class="copy-button"
+                    data-copy="start-server"
+                  >
+                    Copy command
+                  </button>
+                </div>
+                <pre><code id="start-server">ERGO_PUBLISH_URL=https://ergosandbox.com \
+ERGO_PUBLISH_TOKEN_FILE="$HOME/Downloads/ergo-mcp-token" \
+./target/release/ergo-mcp \
+  --workspace "$HOME/first-build.ergo.json"</code></pre>
+                <p class="code-explainer">
+                  Run from the cloned <code>ergo</code> directory. Change the
+                  token path if you saved the download elsewhere. The bridge
+                  opens its browser runtime and waits for MCP requests on stdio.
+                  For your agent to use it, let your MCP client launch the
+                  process with the configuration below.
+                </p>
+                <details class="build-details">
+                  <summary>MCP client configuration</summary>
+                  <p>
+                    Paste this into your agent’s MCP settings and replace the
+                    absolute paths. Your client starts the server automatically;
+                    use one process per workspace.
+                  </p>
+                  <div class="code-heading">
+                    <span>Agent settings</span
+                    ><button
+                      type="button"
+                      class="copy-button"
+                      data-copy="mcp-config"
+                    >
+                      Copy JSON
+                    </button>
+                  </div>
+                  <pre><code id="mcp-config">{
+  "mcpServers": {
+    "ergo": {
+      "command": "/absolute/path/ergo/target/release/ergo-mcp",
+      "args": [
+        "--workspace", "/absolute/path/first-build.ergo.json"
+      ],
+      "env": {
+        "ERGO_PUBLISH_URL": "https://ergosandbox.com",
+        "ERGO_PUBLISH_TOKEN_FILE": "/absolute/path/ergo-mcp-token"
+      }
+    }
+  }
+}</code></pre>
+                  <p>
+                    The workspace’s parent directory must exist. A missing
+                    construction file starts an empty build. See the
+                    <a
+                      href="https://github.com/ngrislain/ergo/blob/main/docs/local-construction-mcp.md"
+                      >full MCP guide</a
+                    >
+                    for platform and runtime details.
+                  </p>
+                </details>
+              </div>
+              <div
+                id="panel-api"
+                role="tabpanel"
+                aria-labelledby="tab-api"
+                hidden
+              >
+                <div class="code-heading">
+                  <span>Check your delegated edit allowance</span
+                  ><button
+                    type="button"
+                    class="copy-button"
+                    data-copy="api-example"
+                  >
+                    Copy shell
+                  </button>
+                </div>
+                <pre><code id="api-example">export ERGO_URL="https://ergosandbox.com"
+export ERGO_TOKEN="$(cat /absolute/path/ergo-mcp-token)"
+
+curl --fail "$ERGO_URL/api/shared-worlds/allowance" \
+  -H "Authorization: Bearer $ERGO_TOKEN"</code></pre>
+                <p class="code-explainer">
+                  Use <code>Authorization: Bearer</code> for shared-world
+                  requests. Writes also require
+                  <code>X-Ergo-Request: 1</code> and, for JSON bodies,
+                  <code>Content-Type: application/json</code>. Never put the
+                  token in a URL.
+                </p>
+                <a
+                  class="code-doc-link"
+                  href="https://github.com/ngrislain/ergo/blob/main/docs/concurrent-global-editing.md#rest-workflow"
+                  >Read the world creation and commit formats
+                  <span aria-hidden="true">↗</span></a
+                >
+              </div>
+            </div>
+          </article>
+          <article class="step step-build" id="first-build">
+            <div class="step-number number-red" aria-hidden="true">3</div>
+            <div class="step-body">
+              <h3>Start small. See what stands.</h3>
+              <p>
+                Ask your agent to inspect its tools and catalog, make a grounded
+                construction, and show you what it built. Local drafts don’t
+                need a token; publishing does.
+              </p>
+              <p class="small-note">
+                The renderer’s appearance is not a structural certificate.
+                Publication still checks permissions and physical validity;
+                missing connector measurements can prevent calibrated
+                publication.
+              </p>
+            </div>
+            <div class="agent-prompt">
+              <div class="prompt-heading">
+                <span
+                  ><span class="prompt-spark" aria-hidden="true">✳</span> A
+                  first prompt for your agent</span
+                ><button
+                  type="button"
+                  class="copy-button"
+                  data-copy="first-prompt"
+                >
+                  Copy prompt
+                </button>
+              </div>
+              <p id="first-prompt">
+                Use the Ergo MCP tools to build a small, grounded brick arch.
+                Start with get_catalog and list_bricks. Place and connect the
+                bricks, run validate_construction and test_stability_by_gravity,
+                then show me a view with test_visual_appearance. Explain any
+                unsupported parts or missing calibration. Keep the build local
+                until I ask you to publish it.
+              </p>
+              <div class="tool-chain" aria-label="Build workflow">
+                <code>get_catalog</code><span aria-hidden="true">→</span
+                ><code>place_brick</code><span aria-hidden="true">→</span
+                ><code>validate_construction</code
+                ><span aria-hidden="true">→</span
+                ><code>test_visual_appearance</code>
+              </div>
+            </div>
+          </article>
+        </div>
+      </section>
+
+      <section class="good-to-know shell" aria-labelledby="details-title">
+        <div>
+          <p class="section-label">A few useful ground rules</p>
+          <h2 id="details-title">Room to explore.<br />Clear boundaries.</h2>
+        </div>
+        <dl>
+          <div>
+            <dt>One hour to play</dt>
+            <dd>
+              That’s the default token lifetime. Generate a fresh delegation
+              when it expires. Logging out doesn’t individually revoke an
+              existing token.
+            </dd>
+          </div>
+          <div>
+            <dt>5,000 changes, refilling daily</dt>
+            <dd>
+              The free edit allowance refills continuously by 5,000 brick
+              changes per day. It’s an edit budget, not a limit on the whole
+              world.
+            </dd>
+          </div>
+          <div>
+            <dt>Shared means shared</dt>
+            <dd>
+              MCP-created worlds allow signed-in collaborators by default. Use
+              <code>authenticated_editing: false</code> when creating an
+              owner/grant-only world.
+            </dd>
+          </div>
+        </dl>
+      </section>
+      <section class="closing shell">
+        <div class="closing-brick" aria-hidden="true">
+          <i></i><i></i><i></i><i></i>
+        </div>
+        <div>
+          <h2>What will you<br />build first?</h2>
+          <p>There’s a whole world of small beginnings.</p>
+        </div>
+        <a
+          class="button button-paper"
+          href="https://ergosandbox.com/login#connect"
+          >Open the sandbox <span aria-hidden="true">↗</span></a
+        >
+      </section>
+    </main>
+    <!-- site:footer -->
+    <div
+      class="sr-only"
+      role="status"
+      aria-live="polite"
+      id="copy-status"
+    ></div>
+  </body>
+</html>

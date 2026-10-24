@@ -18,4 +18,6 @@ crash.log
 **/node_modules/
 /packages/mcp/native/
 /packages/mcp/web/
+/site/dist/
+.DS_Store
 *.tgz

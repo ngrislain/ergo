@@ -5,6 +5,12 @@ A Rust web workbench for geographically addressed brick constructions, with a
 Leptos UI, WebAssembly/WebGL2 rendering, object-store persistence, and a local
 MCP construction editor.
 
+The public guide is at **https://www.ergosandbox.com**: authenticate a human,
+connect an agent, and start building. It includes a Three.js brick scene,
+[privacy notice](https://www.ergosandbox.com/privacy/), and
+[terms](https://www.ergosandbox.com/terms/). See [website deployment](docs/static-site.md)
+for its GitHub Pages source and publishing workflow.
+
 ## Run locally
 
 Install Rust, the WebAssembly target, and the `wasm-bindgen` CLI matching
@@ -95,7 +101,8 @@ numeric tolerances; the server uses a zero-step static certificate.
 
 ## Scaleway S3 and Google sign-in
 
-For a complete scale-to-zero deployment at **https://ergosandbox.com**, use
+The hosted server is at **https://ergosandbox.com**; open
+**https://ergosandbox.com/app** for the workbench. Its deployment uses
 the [OpenTofu configuration](infra/scaleway/) and
 [Scaleway deployment guide](docs/scaleway-deployment.md). It uses the existing
 `ergo` bucket, a single API/web container, apex DNS, and managed HTTPS.
