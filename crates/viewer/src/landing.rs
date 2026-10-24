@@ -49,6 +49,9 @@ pub fn Entry() -> impl IntoView {
 fn Landing(account: RwSignal<Option<Account>>, error: RwSignal<Option<String>>) -> impl IntoView {
     let signing_out = RwSignal::new(false);
     let logout = move |_| {
+        if signing_out.get_untracked() {
+            return;
+        }
         signing_out.set(true);
         spawn_local(async move {
             if let Err(e) = crate::session::sign_out().await {
@@ -95,7 +98,7 @@ curl --fail '{origin}/api/shared-worlds?quad=&limit=32' \
     view! {
         <header class="app-header landing-header">
             <a class="brand" href="https://www.ergosandbox.com/" aria-label="Ergo home"><img src="/favicon.svg" alt="" width="38" height="38"/>"ergo"</a>
-            <nav aria-label="Main navigation"><a href="https://www.ergosandbox.com/">"Project guide"</a><a href="#connect">"Agent access"</a><Show when=move ||account.get().is_some_and(|a|a.signed_in||a.development)><a class="button primary" href="/app">"Open the world"</a></Show><Show when=move ||account.get().is_some_and(|a|a.signed_in)><button class="button quiet" disabled=move ||signing_out.get() on:click=logout>{move ||if signing_out.get(){"Signing out…"}else{"Sign out"}}</button></Show></nav>
+            <nav aria-label="Main navigation"><a href="https://www.ergosandbox.com/">"Project guide"</a><a href="#connect">"Agent access"</a><Show when=move ||account.get().is_some_and(|a|a.signed_in||a.development)><a class="button primary" href="/app">"Open the world"</a></Show><Show when=move ||account.get().is_some_and(|a|a.signed_in)><button class="button quiet" disabled=move ||signing_out.get() aria-busy=move ||signing_out.get().to_string() on:click=logout>{move ||if signing_out.get(){"Signing out…"}else{"Sign out"}}</button></Show></nav>
         </header>
         <main class="landing-page">
             <section class="landing-hero login-hero" aria-labelledby="landing-title">

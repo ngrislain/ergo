@@ -16,12 +16,19 @@ allowance, and explicitly generate an access token. The token can be copied or
 downloaded as `ergo-mcp-token`; it is held in page memory, not local/session
 storage. Downloaded token files are operator-managed credentials.
 
-Both the viewer and signed-in `/login` setup page provide **Sign out**. It clears
-the session and login-state cookies, requests origin cache/storage clearing and
+Both the viewer and signed-in `/login` setup page provide **Sign out**.
+The click immediately changes the button to **Signing out…**, marks it busy and
+disables repeat clicks before awaiting the server. Failures restore the control
+and display the error; pending feedback does not falsely claim completion.
+It clears the session and login-state cookies, requests origin cache/storage clearing and
 replaces the current page with `/login`. Logout is idempotent for missing/expired
 sessions, while retaining the same-origin request checks. Session-status responses
 are `no-store`. This signs out of Ergo, not the visitor's Google account; existing
 downloaded MCP delegations keep their documented expiry/key-rotation semantics.
+
+The viewer has one **Import construction** button in the header. It opens the
+shared dialog for Studio `.io`, LDraw `.ldr`/`.mpd`, and Ergo JSON; there is no
+duplicate Studio-only button in the construction sidebar.
 
 The production OpenTofu deployment requires Google credentials. With Google
 unset, the explicitly labeled development account can use the local workbench

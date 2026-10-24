@@ -77,6 +77,7 @@ struct Ui {
     user: RwSignal<String>,
     google: RwSignal<bool>,
     signed_in: RwSignal<bool>,
+    signing_out: RwSignal<bool>,
     storage: RwSignal<String>,
     ground_status: RwSignal<String>,
     ground_attribution: RwSignal<Option<(String, String)>>,
@@ -113,6 +114,7 @@ impl Ui {
             user: RwSignal::new("Connecting…".into()),
             google: RwSignal::new(false),
             signed_in: RwSignal::new(false),
+            signing_out: RwSignal::new(false),
             storage: RwSignal::new("Connecting".into()),
             ground_status: RwSignal::new("Ground: loading map colors".into()),
             ground_attribution: RwSignal::new(None),
@@ -381,8 +383,15 @@ async fn json<T: serde::de::DeserializeOwned>(url: &str) -> anyhow::Result<T> {
 }
 
 fn logout(ui: Ui) {
+    if ui.signing_out.get_untracked() {
+        return;
+    }
+    ui.signing_out.set(true);
+    ui.error.set(None);
+    ui.message.set("Signing out…".into());
     spawn_local(async move {
         if let Err(error) = crate::session::sign_out().await {
+            ui.signing_out.set(false);
             ui.fail(error);
         }
     });
@@ -1288,7 +1297,7 @@ pub fn App() -> impl IntoView {
     view! {
         <header class="app-header">
             <a class="brand" href="https://www.ergosandbox.com/" aria-label="Ergo home"><img src="/favicon.svg" alt="" width="38" height="38"/>"ergo"<span class="brand-description">"A world, brick by brick."</span></a>
-            <div class="header-actions"><span class="account-name">{move ||ui.user.get()}</span><Show when=move ||ui.google.get()&&!ui.signed_in.get()><a class="button quiet" href="/auth/google">"Sign in with Google"</a></Show><Show when=move ||ui.google.get()&&ui.signed_in.get()><button class="button quiet sign-out" on:click=move |_|logout(ui)>"Sign out"</button></Show><button class="button primary" on:click=move |_|show_dialog("import-dialog")>"＋ Import construction"</button></div>
+            <div class="header-actions"><span class="account-name">{move ||ui.user.get()}</span><Show when=move ||ui.google.get()&&!ui.signed_in.get()><a class="button quiet" href="/auth/google">"Sign in with Google"</a></Show><Show when=move ||ui.google.get()&&ui.signed_in.get()><button class="button quiet sign-out" disabled=move ||ui.signing_out.get() aria-busy=move ||ui.signing_out.get().to_string() on:click=move |_|logout(ui)>{move ||if ui.signing_out.get(){"Signing out…"}else{"Sign out"}}</button></Show><button class="button primary" disabled=move ||ui.signing_out.get() on:click=move |_|show_dialog("import-dialog")>"＋ Import construction"</button></div>
         </header>
         <main class="workbench">
             <aside class="left-dock"><ConstructionBrowser/><div class="dock-bottom"><span class="storage-dot"></span>{move ||ui.storage.get()}<p>"Standard parts first · Studio / LDraw"</p></div></aside>
@@ -1637,7 +1646,6 @@ fn ConstructionBrowser() -> impl IntoView {
                 view!{<button class="world-item" on:click=move |_|open_shared(handle,item.clone())><span class="world-thumbnail">"◎"</span><span><strong>{name}</strong><small>"Navigate shared regions"</small></span><span class="world-more">"›"</span></button>}
             }).collect_view()}</div></Show>
             <Show when=move ||ui.shared_cursor.get().is_some()><button class="text-button" on:click=move |_|more_shared_regions(handle)>"More shared regions"</button></Show>
-            <button class="button full quiet import-secondary" on:click=move |_|show_dialog("import-dialog")>"＋ Import from Studio"</button>
         </div>
         <div class="dock-section"><div class="section-heading"><h2>"World coordinates"</h2><button class="icon-button" title="Go to GPS position" on:click=move |_|show_dialog("location-dialog")>"◎"</button></div>
             <div class="origin-diagram"><span class="origin-point"></span><span>"World origin"<small>"X east · Y north · Z up"</small></span><svg viewBox="0 0 72 45" aria-hidden="true"><path d="M5 34L33 18L66 34L38 49ZM33 18V0M5 34V17L33 0L66 17V34M5 17L38 34L66 17M38 34V49" fill="none" stroke="currentColor"/></svg></div>

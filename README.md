@@ -16,6 +16,7 @@ The apex shows sign-in to guests and opens the viewer for signed-in users;
 `/login#connect` remains the agent-token setup page.
 The [operations runbook](docs/operations.md) lists the shell commands for tests,
 publication, DNS/TLS, server deployment, and configuration recovery.
+For a complete npm-to-production demonstration, see [MCP building examples](docs/mcp-production-examples.md).
 
 ## Run locally
 

@@ -49,7 +49,13 @@ with tempfile.TemporaryDirectory(prefix="ergo-logout-") as directory:
                     page.wait_for_load_state("networkidle")
                     expect(page.get_by_role("button",name="Sign out",exact=True)).to_be_visible(timeout=30000)
                     assert context.request.get(url+"/api/auth/me").json()["signed_in"]
+                    held = []
+                    page.route("**/api/auth/logout",lambda route: held.append(route))
                     page.get_by_role("button",name="Sign out",exact=True).click()
+                    expect(page.get_by_role("button",name="Signing out…",exact=True)).to_be_disabled(timeout=1000)
+                    expect(page.get_by_role("button",name="Signing out…",exact=True)).to_have_attribute("aria-busy","true")
+                    assert held and page.url == url+path, "Feedback must precede the server response"
+                    held.pop().continue_()
                     page.wait_for_url(url+"/login")
                     expect(page.get_by_role("link",name="Continue with Google")).to_be_visible()
                     assert not context.request.get(url+"/api/auth/me").json()["signed_in"]
@@ -61,4 +67,4 @@ with tempfile.TemporaryDirectory(prefix="ergo-logout-") as directory:
         finally:
             server.terminate()
             server.wait(timeout=10)
-print("Logout browser checks passed: setup/viewer/mobile sign-out, expired/missing-session retry, cookie clearing and guest redirect.")
+print("Logout browser checks passed: immediate pending feedback while response is held, setup/viewer/mobile sign-out, idempotence, cookie clearing and guest redirect.")

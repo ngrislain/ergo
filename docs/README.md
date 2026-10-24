@@ -64,6 +64,8 @@ or Scaleway's S3-compatible object store. User profiles also live in object stor
   materialized current roots, checkpoints, replay, retention, and garbage collection.
 - [Construction MCP tools](local-construction-mcp.md): agent editing,
   structured physics feedback, rendered images, and authenticated remote publication.
+- [Production MCP examples](mcp-production-examples.md): npm setup, three repeatable
+  constructions, visual review, confirmed publication and authenticated author attribution.
 - [Annotated references and related systems](references.md): academic background,
   comparable systems, relevance to Ergo, and explicit implementation distinctions.
 
