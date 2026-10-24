@@ -41,6 +41,8 @@ pub struct Renderer {
     lighting: LightPass,
     pub geo: ergo_world::GeoReference,
     pub ground_visible: bool,
+    /// Fixed world-space night-light eye/target for illustrations; None is a headlamp.
+    pub flashlight_anchor: Option<(DVec3, DVec3)>,
     gpu: HashMap<String, GpuMesh>,
     pub meshes: BTreeMap<String, Mesh>,
     lod_meshes: BTreeMap<String, Mesh>,
@@ -113,6 +115,7 @@ impl Renderer {
             lighting,
             geo: Default::default(),
             ground_visible: true,
+            flashlight_anchor: None,
             gpu: HashMap::new(),
             meshes: BTreeMap::new(),
             lod_meshes: BTreeMap::new(),
@@ -575,6 +578,7 @@ impl Renderer {
                 origin: self.origin,
                 display_scale: DISPLAY_SCALE,
                 distance: self.distance,
+                flashlight_anchor: self.flashlight_anchor,
             },
             &self.gpu,
             changed,
@@ -600,6 +604,17 @@ impl Renderer {
                 .canvas
                 .set_attribute("data-shadow-map", &self.lighting.size.to_string());
             let _ = self.canvas.set_attribute("data-renderer", "ergo-webgl2");
+        }
+        let light_position = format!(
+            "{:.5},{:.5},{:.5}",
+            light.position.x, light.position.y, light.position.z
+        );
+        if self.canvas.get_attribute("data-light-position").as_deref()
+            != Some(light_position.as_str())
+        {
+            let _ = self
+                .canvas
+                .set_attribute("data-light-position", &light_position);
         }
         let gl = &self.gl;
         gl.viewport(0, 0, width as i32, height as i32);
@@ -654,6 +669,11 @@ impl Renderer {
         gl.uniform1i(
             gl.get_uniform_location(&self.program, "grid").as_ref(),
             self.grid as i32,
+        );
+        gl.uniform1f(
+            gl.get_uniform_location(&self.program, "ground_stud_range")
+                .as_ref(),
+            self.ground_stud_range() as f32,
         );
         gl.uniform2f(
             gl.get_uniform_location(&self.program, "fog_limits")
@@ -799,7 +819,7 @@ impl Renderer {
         }
         self.ground_stud_instances = 0;
         let eye = self.eye();
-        let maximum_distance = (pixels * 0.6 / 4.).min(100.);
+        let maximum_distance = self.ground_stud_range();
         if !visible_ground.is_empty()
             && (eye.y - ergo_world::terrain::GROUND_TOP).abs() * DISPLAY_SCALE.y < maximum_distance
         {
@@ -872,6 +892,15 @@ impl Renderer {
             self.gpu_bytes += cpu.vertices.len() * 4 + data.len() * 4;
         }
         self.gl.bind_vertex_array(None);
+    }
+
+    fn ground_stud_range(&self) -> f64 {
+        if !self.ground_visible {
+            return 0.0;
+        }
+        let pixels = self.canvas.client_height().max(1) as f64
+            / (2.0 * (self.fov_degrees.to_radians() * 0.5).tan());
+        (pixels * 0.6 / 4.0).min(100.0)
     }
 }
 

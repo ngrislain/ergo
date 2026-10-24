@@ -12,7 +12,7 @@ interface PreviewModule {
 }
 
 export async function mountBrickScene(mount: HTMLElement): Promise<() => void> {
-  const url = `${import.meta.env.BASE_URL}engine/ergo_client.js`;
+  const url = `${import.meta.env.BASE_URL}engine/v${import.meta.env.VITE_ENGINE_VERSION}/ergo_client.js`;
   const wasm = (await import(/* @vite-ignore */ url)) as PreviewModule;
   await wasm.default();
   const canvas = document.createElement("canvas");
@@ -59,7 +59,7 @@ export async function mountBrickScene(mount: HTMLElement): Promise<() => void> {
   function caption() {
     const count = engine.piece_count();
     const flashlight = canvas.dataset.lighting === "flashlight";
-    const label = `${count} catalog bricks. ${flashlight ? "Night flashlight" : "Real-time sun"}.`;
+    const label = `${count} catalog bricks. ${flashlight ? "Fixed night light" : "Real-time sun"}.`;
     if (status && status.textContent !== label) status.textContent = label;
     mount.dataset.pieceCount = String(count);
     mount.dataset.exploded = String(targetExplosion > 0);

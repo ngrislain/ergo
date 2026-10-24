@@ -24,13 +24,14 @@ pub(super) struct Observer {
     pub origin: DVec3,
     pub display_scale: DVec3,
     pub distance: f64,
+    pub flashlight_anchor: Option<(DVec3, DVec3)>,
 }
 
 pub(super) struct LightFrame {
     pub sun: SolarPosition,
     pub updated: bool,
     matrix: Mat4,
-    position: Vec3,
+    pub position: Vec3,
     forward: Vec3,
 }
 
@@ -127,6 +128,15 @@ impl LightPass {
                 -direction,
             )
         } else {
+            let (eye, target) = observer
+                .flashlight_anchor
+                .map(|(position, target)| {
+                    (
+                        ((position - observer.origin) * observer.display_scale).as_vec3(),
+                        ((target - observer.origin) * observer.display_scale).as_vec3(),
+                    )
+                })
+                .unwrap_or((eye, target));
             let direction = (target - eye).normalize();
             let right = direction.cross(Vec3::Y).normalize_or_zero();
             let position = eye + right * 1.6 + Vec3::Y * 1.2;
@@ -142,7 +152,7 @@ impl LightPass {
                     64_f32.to_radians(),
                     1.0,
                     0.1,
-                    (observer.distance * 3.0).clamp(100.0, 1600.0) as f32,
+                    ((target - eye).length() * 3.0).clamp(100.0, 1600.0),
                 ) * view,
                 position,
                 forward,

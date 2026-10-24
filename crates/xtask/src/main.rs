@@ -44,18 +44,30 @@ fn build_web() -> Result<(), String> {
 }
 
 fn build_site() -> Result<(), String> {
-    build_targets(&[(
-        "ergo-client",
-        Some("site-entry"),
-        "ergo_client.wasm",
-        "site/public/engine",
-    )])?;
     let root = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
         .parent()
         .unwrap()
         .parent()
         .unwrap()
         .to_path_buf();
+    let package: serde_json::Value = serde_json::from_slice(
+        &std::fs::read(root.join("site/package.json")).map_err(|e| e.to_string())?,
+    )
+    .map_err(|e| e.to_string())?;
+    let version = package["version"].as_str().ok_or("Missing site version")?;
+    if !version
+        .chars()
+        .all(|c| c.is_ascii_alphanumeric() || matches!(c, '.' | '-' | '+'))
+    {
+        return Err("Invalid site version".into());
+    }
+    let output = format!("site/public/engine/v{version}");
+    build_targets(&[(
+        "ergo-client",
+        Some("site-entry"),
+        "ergo_client.wasm",
+        &output,
+    )])?;
     std::fs::copy(
         root.join("web/favicon.svg"),
         root.join("site/public/favicon.svg"),

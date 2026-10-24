@@ -2,6 +2,11 @@ import assert from "node:assert/strict";
 import { readFile, readdir } from "node:fs/promises";
 import { resolve } from "node:path";
 import test from "node:test";
+import {
+  packageSource,
+  packageTokens,
+  DEFAULT_MCP_PACKAGE,
+} from "../src/package-source.mjs";
 
 const dist = resolve(import.meta.dirname, "../dist");
 const text = (path) => readFile(resolve(dist, path), "utf8");
@@ -23,7 +28,7 @@ test("all public pages have legal navigation and deployable static content", asy
   }
   assert.equal((await text("CNAME")).trim(), "www.ergosandbox.com");
   await text(".nojekyll");
-  assert.match(await text("licenses/outfit.txt"), /SIL OPEN FONT LICENSE/);
+  assert.match(await text("licenses/dm-sans.txt"), /SIL OPEN FONT LICENSE/);
   assert.match(await text("licenses/manrope.txt"), /SIL OPEN FONT LICENSE/);
 });
 
@@ -38,17 +43,40 @@ test("agent setup uses a human-issued token and the canonical API origin", async
     server.env.ERGO_PUBLISH_TOKEN_FILE,
     "/absolute/path/ergo-mcp-token",
   );
-  assert.ok(server.command.endsWith("/target/release/ergo-mcp"));
-  assert.match(html, /id="build-server"/);
+  assert.equal(server.command, "ergo-mcp");
+  assert.match(html, /id="install-server"/);
+  assert.match(html, /npm install --global/);
+  const guide = await text("llms.txt");
+  const displayed = guide.match(/^export ERGO_MCP_PACKAGE='([^']+)'/m)?.[1];
+  assert.ok(displayed);
+  assert.ok(html.includes(packageSource(displayed)));
+  if (process.env.ERGO_MCP_PACKAGE)
+    assert.equal(displayed, process.env.ERGO_MCP_PACKAGE);
+  assert.doesNotMatch(html, /cargo build|rustup target|%ERGO_MCP_PACKAGE/);
   assert.match(html, /id="start-server"/);
   assert.match(html, /Copy command/);
   assert.match(html, /https:\/\/ergosandbox\.com\/login#connect/);
   assert.doesNotMatch(html, /npx -y @ngrislain/);
-  const guide = await text("llms.txt");
   assert.match(guide, /no public remote MCP endpoint/);
   assert.match(guide, /not automatically retry/);
   assert.match(guide, /authenticated_editing=false/);
   assert.match(guide, /X-Ergo-Request: 1/);
+});
+
+test("one package-source setting switches GitHub downloads to npm", () => {
+  assert.equal(packageSource(), DEFAULT_MCP_PACKAGE);
+  const npm = "@ngrislain/ergo-mcp@0.3.1";
+  assert.equal(packageSource(npm), npm);
+  assert.match(
+    packageTokens("export ERGO_MCP_PACKAGE=%ERGO_MCP_PACKAGE_SHELL%", npm),
+    /'@ngrislain\/ergo-mcp@0.3.1'/,
+  );
+  assert.throws(() => packageSource("github:ngrislain/ergo"));
+  assert.throws(() =>
+    packageSource(
+      "https://token@github.com/ngrislain/ergo/releases/download/v1/pkg.tgz",
+    ),
+  );
 });
 
 test("privacy and terms describe current credential and sharing semantics", async () => {
@@ -78,18 +106,19 @@ test("the Pages artifact contains no dotenv, state, or infrastructure files", as
 });
 
 test("landing uses the navigator's engine and canonical logo", async () => {
+  const packageJson = JSON.parse(
+    await readFile(resolve(import.meta.dirname, "../package.json"), "utf8"),
+  );
+  const engine = `engine/v${packageJson.version}`;
   const logo = await readFile(
     resolve(import.meta.dirname, "../../web/favicon.svg"),
     "utf8",
   );
   assert.equal(await text("favicon.svg"), logo);
-  const bindings = await text("engine/ergo_client.js");
+  const bindings = await text(`${engine}/ergo_client.js`);
   assert.match(bindings, /class LandingPreview/);
-  const wasm = await readFile(resolve(dist, "engine/ergo_client_bg.wasm"));
+  const wasm = await readFile(resolve(dist, `${engine}/ergo_client_bg.wasm`));
   assert.deepEqual([...wasm.subarray(0, 4)], [0, 97, 115, 109]);
-  const packageJson = JSON.parse(
-    await readFile(resolve(import.meta.dirname, "../package.json"), "utf8"),
-  );
   assert.equal(packageJson.dependencies.three, undefined);
   assert.match(await text("index.html"), /img src="\/favicon.svg"/);
 });

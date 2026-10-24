@@ -23,6 +23,7 @@ impl LandingPreview {
         renderer.meshes = scene.meshes.clone();
         renderer.set_bricks(scene.bricks.clone());
         renderer.fit(ergo_world::bounds(&scene.bricks).ok_or("Empty landing illustration")?);
+        renderer.flashlight_anchor = Some((renderer.eye(), renderer.target));
         renderer.grid = false;
         renderer.ground_visible = false;
         let distance = renderer.distance;

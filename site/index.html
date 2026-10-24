@@ -3,7 +3,7 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <meta name="theme-color" content="#edf3ff" />
+    <meta name="theme-color" content="#ffffff" />
     <meta
       name="description"
       content="Give your agent a world to build in. Connect to Ergo, construct with bricks, inspect the physics, and publish to a shared sandbox."
@@ -215,11 +215,11 @@
           <article class="step step-agent">
             <div class="step-number number-blue" aria-hidden="true">2</div>
             <div class="step-body">
-              <h3>Build and start the MCP server.</h3>
+              <h3>Install and start the MCP server.</h3>
               <p>
                 Connect the local <code>ergo-mcp</code> bridge to your
-                MCP-capable agent. Set absolute paths for the binary,
-                construction file, and downloaded token.
+                MCP-capable agent. Set absolute paths for the construction file,
+                and downloaded token.
               </p>
               <p class="small-note">
                 The bridge runs locally over stdio. It calls the hosted REST API
@@ -248,26 +248,23 @@
               </div>
               <div id="panel-mcp" role="tabpanel" aria-labelledby="tab-mcp">
                 <div class="code-heading">
-                  <span>1. Build once (macOS or Linux)</span
+                  <span>1. Install the prebuilt npm package</span
                   ><button
                     type="button"
                     class="copy-button"
-                    data-copy="build-server"
+                    data-copy="install-server"
                   >
-                    Copy build
+                    Copy install
                   </button>
                 </div>
                 <p class="code-explainer">
-                  Install <a href="https://rustup.rs/">Rust</a> and a browser
-                  first. Build the native MCP bridge and its browser/WASM
-                  runtime:
+                  Requires Node.js 20+ and a browser on macOS 13+ or Linux
+                  (glibc 2.36+). The native bridge and browser/WASM runtime are
+                  bundled. This package is available from
+                  %ERGO_MCP_PACKAGE_PROVIDER%.
                 </p>
-                <pre><code id="build-server">git clone https://github.com/ngrislain/ergo.git
-cd ergo
-rustup target add wasm32-unknown-unknown
-cargo install wasm-bindgen-cli --version 0.2.129 --locked
-cargo xtask build-web
-cargo build --release -p ergo-mcp</code></pre>
+                <pre><code id="install-server">export ERGO_MCP_PACKAGE=%ERGO_MCP_PACKAGE_SHELL%
+npm install --global "$ERGO_MCP_PACKAGE"</code></pre>
                 <div class="code-heading">
                   <span>2. Start the MCP server</span
                   ><button
@@ -280,14 +277,13 @@ cargo build --release -p ergo-mcp</code></pre>
                 </div>
                 <pre><code id="start-server">ERGO_PUBLISH_URL=https://ergosandbox.com \
 ERGO_PUBLISH_TOKEN_FILE="$HOME/Downloads/ergo-mcp-token" \
-./target/release/ergo-mcp \
+ergo-mcp \
   --workspace "$HOME/first-build.ergo.json"</code></pre>
                 <p class="code-explainer">
-                  Run from the cloned <code>ergo</code> directory. Change the
-                  token path if you saved the download elsewhere. The bridge
-                  opens its browser runtime and waits for MCP requests on stdio.
-                  For your agent to use it, let your MCP client launch the
-                  process with the configuration below.
+                  Change the token path if you saved the download elsewhere. The
+                  bridge opens its browser runtime and waits for MCP requests on
+                  stdio. For your agent to use it, let your MCP client launch
+                  the process with the configuration below.
                 </p>
                 <details class="build-details">
                   <summary>MCP client configuration</summary>
@@ -309,7 +305,7 @@ ERGO_PUBLISH_TOKEN_FILE="$HOME/Downloads/ergo-mcp-token" \
                   <pre><code id="mcp-config">{
   "mcpServers": {
     "ergo": {
-      "command": "/absolute/path/ergo/target/release/ergo-mcp",
+      "command": "ergo-mcp",
       "args": [
         "--workspace", "/absolute/path/first-build.ergo.json"
       ],

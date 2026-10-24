@@ -23,32 +23,31 @@ another delegation. Logging out does not individually revoke an issued token.
 
 ## Connect an MCP-capable agent
 
-Build from source; a published npm release is not assumed:
+Install the prebuilt npm package (Node.js 20+, browser, macOS/Linux):
 
-git clone https://github.com/ngrislain/ergo.git
-cd ergo
-rustup target add wasm32-unknown-unknown
-cargo install wasm-bindgen-cli --version 0.2.129 --locked
-cargo xtask build-web
-cargo build --release -p ergo-mcp
+export ERGO_MCP_PACKAGE=%ERGO_MCP_PACKAGE_SHELL%
+npm install --global "$ERGO_MCP_PACKAGE"
+
+The native bridge and WASM runtime are bundled. Rust/Cargo are not needed.
+The package source is selected by the public ERGO_MCP_PACKAGE build setting.
 
 Configure a local stdio MCP process:
-command: /absolute/path/ergo/target/release/ergo-mcp
+command: ergo-mcp
 args: --workspace /absolute/path/first-build.ergo.json
 environment:
   ERGO_PUBLISH_URL=https://ergosandbox.com
   ERGO_PUBLISH_TOKEN_FILE=/absolute/path/ergo-mcp-token
 
 The workspace parent directory must exist. A missing JSON file starts empty.
-The bridge does not automatically load .env. A browser and the built WASM assets
-are required. Local editing can operate without a hosted token; publication
+The bridge does not automatically load .env. A browser is required; the package
+includes its WASM assets. Local editing can operate without a hosted token; publication
 requires one. Keep credentials out of tool arguments and URLs.
 
-Equivalent start command, run from the cloned repository:
+Equivalent start command after installation:
 
 ERGO_PUBLISH_URL=https://ergosandbox.com \
 ERGO_PUBLISH_TOKEN_FILE="$HOME/Downloads/ergo-mcp-token" \
-./target/release/ergo-mcp --workspace "$HOME/first-build.ergo.json"
+ergo-mcp --workspace "$HOME/first-build.ergo.json"
 
 Change the token path to the actual downloaded file. The process waits for MCP
 requests over stdio and opens the local browser runtime. Normally the MCP client

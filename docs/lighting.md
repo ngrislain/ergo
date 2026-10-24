@@ -38,6 +38,10 @@ varies through twilight. This is a visual navigation aid, not a measured
 lumen/exposure model or a physics force.
 
 The public preview uses a transparent background to keep its guide readable.
+Its night light is anchored to a fixed scene eye/target, so orbiting the model
+does not move illumination or cast shadows. Daytime sun direction is world-fixed;
+view-dependent specular highlights still change naturally. The navigator and MCP
+capture headlamp remain camera-mounted.
 The navigator and ordinary MCP captures render the time-dependent sky.
 
 ## Ambient, diffuse, and specular light
@@ -51,8 +55,15 @@ The shared `renderer/shaders.rs` material combines:
   calculations, and display conversion.
 - Existing selection tint, distance fog, and near/distant ground-stud detail.
 
+Near geometric stud tops and the distant plate/procedural surface use the same
+base color and material response. Procedural rim shading is suppressed under
+nearby real stud geometry to avoid double-darkening at the detail transition.
+Stud sides and cast shadows can still naturally be darker than their tops.
+
 These plastic-appearance parameters do not supply physical masses or connector
 capacities and do not imply a construction validation certificate.
+The prebuilt v0.3.1 MCP package predates these visual upgrades; its captures use
+that bundled runtime. Current-source MCP builds share the updated renderer.
 
 ## Cast shadows and limits
 

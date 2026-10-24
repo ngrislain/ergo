@@ -150,8 +150,17 @@ tagging the source does not by itself confirm either registry publication.
 For server deployments, the workflow also supports an explicit
 [image-only CI publication](docs/scaleway-deployment.md#build-and-publish-in-github-actions)
 using GitHub's built-in registry credentials.
-After publication, `npx -y @ngrislain/ergo-mcp@0.3.1 --workspace /path/construction.ergo.json`
-will use bundled native/WASM assets without a Rust toolchain. The npm launcher's
+Install the prebuilt npm package from its GitHub Release:
+
+```sh
+export ERGO_MCP_PACKAGE='https://github.com/ngrislain/ergo/releases/download/v0.3.1/ngrislain-ergo-mcp-0.3.1.tgz'
+npm install --global "$ERGO_MCP_PACKAGE"
+ergo-mcp --workspace /path/construction.ergo.json
+```
+
+It includes native/WASM assets; consumers do not need Rust. After registry
+publication, `ERGO_MCP_PACKAGE` can select `@ngrislain/ergo-mcp@VERSION`.
+The current-source npm launcher's
 `--login` and authenticated publishing default to `https://ergosandbox.com`;
 override with `ERGO_PUBLISH_URL` or `--publish-url`. Local editing needs no token.
 Source builds remain:

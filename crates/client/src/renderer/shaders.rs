@@ -42,6 +42,7 @@ uniform int flashlight;
 uniform float sky_amount;
 uniform highp sampler2DShadow shadow_map;
 uniform float shadow_texel;
+uniform float ground_stud_range;
 out vec4 out_color;
 const float PI = 3.14159265359;
 vec3 sky_horizon() { return mix(vec3(0.004,0.007,0.016),vec3(0.735,0.829,0.894),sky_amount); }
@@ -62,12 +63,16 @@ void main() {
     if (floor_mode == 1 && n.y > 0.5) {
         vec2 cell = abs(fract(v_position.xz/4.0-0.5)-0.5)/fwidth(v_position.xz/4.0);
         float line = 1.0-min(min(cell.x,cell.y),1.0);
-        base *= 0.96-float(grid)*line*0.035;
+        base *= 1.0-float(grid)*line*0.035;
         vec2 p = fract(v_position.xz)-0.5;
         float radius = length(p);
         float footprint = max(length(dFdx(v_position.xz)),length(dFdy(v_position.xz)));
         float rim = smoothstep(0.23,0.29,radius)*(1.0-smoothstep(0.29,0.34,radius));
-        n = normalize(vec3(p.x*rim*6.0*(1.0-smoothstep(0.15,0.6,footprint)),1.0,p.y*rim*6.0*(1.0-smoothstep(0.15,0.6,footprint))));
+        // Near studs already have real sides and cast shadows: don't shade a
+        // second procedural rim beneath them. Tops keep the same albedo as the plate.
+        float real_studs = ground_stud_range > 0.0 ? 1.0-smoothstep(ground_stud_range-0.75,ground_stud_range+0.25,distance(eye,v_position)) : 0.0;
+        float detail = (1.0-smoothstep(0.15,0.6,footprint))*(1.0-real_studs);
+        n = normalize(vec3(p.x*rim*6.0*detail,1.0,p.y*rim*6.0*detail));
     }
     vec3 albedo = pow(base,vec3(2.2));
     vec3 view = normalize(eye-v_position);

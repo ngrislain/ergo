@@ -5,7 +5,7 @@ public endpoints are:
 
 - Website: `https://www.ergosandbox.com` (GitHub Pages).
 - Sandbox/API: `https://ergosandbox.com` (Scaleway Serverless Containers).
-- Website release tag: `site-v0.1.1`; deployment workflow: `pages.yml`.
+- Website release tag: `site-v0.1.2`; deployment workflow: `pages.yml`.
 - Server image workflow: `release.yml` with `publish_container=true`.
 
 The [server validation source map](validation-gates.md) identifies the overlap,
@@ -32,6 +32,8 @@ project is `0045feca-c5a9-4e97-9347-57bf59d963aa`, region `fr-par`.
 
 ## 2. Build, test, and preview the static website
 
+Consumers install the prebuilt MCP package; Rust below is for building the site.
+
 ```sh
 rustup target add wasm32-unknown-unknown
 cargo install wasm-bindgen-cli --version 0.2.129 --locked
@@ -46,6 +48,22 @@ dragging, scroll response, Add a brick, Take apart/Build it, mobile navigation,
 MCP command/config copying, `/privacy/`, `/terms/`, and `/llms.txt`.
 The build runs `cargo xtask build-site` for the shared renderer and canonical
 logo; Rust and wasm-bindgen are required alongside Node.
+
+The public homepage package source is a repository variable. Switch it after
+the actual npm version has been published, then rebuild the Pages site:
+
+```sh
+gh variable set ERGO_MCP_PACKAGE --repo ngrislain/ergo \
+  --body '@ngrislain/ergo-mcp@0.3.1'
+gh workflow run pages.yml --repo ngrislain/ergo --ref main
+```
+
+To keep using the current GitHub-hosted package instead:
+
+```sh
+gh variable set ERGO_MCP_PACKAGE --repo ngrislain/ergo \
+  --body 'https://github.com/ngrislain/ergo/releases/download/v0.3.1/ngrislain-ergo-mcp-0.3.1.tgz'
+```
 
 ## 3. Check server validation and infrastructure
 

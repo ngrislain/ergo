@@ -1,4 +1,4 @@
-import "@fontsource-variable/outfit";
+import "@fontsource-variable/dm-sans";
 import "@fontsource-variable/manrope";
 import "./style.css";
 

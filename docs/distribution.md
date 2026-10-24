@@ -52,7 +52,24 @@ a public image. The workflow uses only its repository `GITHUB_TOKEN` with
 
 ## Use the published npm package
 
-Once published:
+The v0.3.1 prebuilt package is published as a public
+[GitHub Release asset](https://github.com/ngrislain/ergo/releases/tag/v0.3.1).
+It can be installed with npm immediately:
+
+```sh
+export ERGO_MCP_PACKAGE='https://github.com/ngrislain/ergo/releases/download/v0.3.1/ngrislain-ergo-mcp-0.3.1.tgz'
+npm install --global "$ERGO_MCP_PACKAGE"
+ERGO_PUBLISH_URL=https://ergosandbox.com \
+ERGO_PUBLISH_TOKEN_FILE=/absolute/path/ergo-mcp-token \
+ergo-mcp --workspace /absolute/path/construction.ergo.json
+```
+
+Node.js 20+ and an installed browser are required; consumers do not need Rust,
+Cargo, or wasm-bindgen. `ERGO_MCP_PACKAGE` can later select the published npm
+registry spec instead of the GitHub download. The public guide uses the same
+name as its repository/build environment variable; see [website setup](static-site.md).
+
+After npm-registry publication, the short registry command is also available:
 
 ```sh
 npx -y @ngrislain/ergo-mcp@0.3.1 --workspace /absolute/path/construction.ergo.json

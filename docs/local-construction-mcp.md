@@ -17,10 +17,18 @@ local edits, exports, and simulation feedback.
 ## Start and configure
 
 The [prebuilt npm distribution](distribution.md) bundles native macOS/Linux
-binaries and the minimal WASM runtime. Once a release is published, use
-`npx -y @ngrislain/ergo-mcp@0.3.1 --workspace /absolute/path/construction.ergo.json`.
-No Rust build is needed for consumers. Confirm npm publication in the release
-workflow before using that version; the source workflow below remains available.
+binaries and the minimal WASM runtime. Install the published GitHub Release
+package with npm; no Rust build is needed for consumers:
+
+```sh
+export ERGO_MCP_PACKAGE='https://github.com/ngrislain/ergo/releases/download/v0.3.1/ngrislain-ergo-mcp-0.3.1.tgz'
+npm install --global "$ERGO_MCP_PACKAGE"
+ergo-mcp --workspace /absolute/path/construction.ergo.json
+```
+
+Once the registry version is published, the package spec can be switched to
+`@ngrislain/ergo-mcp@VERSION`. Website instructions use the public build setting
+`ERGO_MCP_PACKAGE`; see [the website guide](static-site.md). For developers:
 
 Build the native binary from the repository root:
 
@@ -93,12 +101,14 @@ HTTPS origin without credentials, a path, query, or fragment. HTTP and an omitte
 token are allowed only on loopback; a Google-enabled loopback server still
 requires authentication. `ERGO_API_URL` remains a separate part-asset setting.
 
-The npm launcher defaults browser login and authenticated publication to
+The current-source npm launcher defaults browser login and authenticated publication to
 `https://ergosandbox.com`, so npm users only need to configure their token unless
 targeting a different server. `npx -y @ngrislain/ergo-mcp@0.3.1 --login` opens the
 hosted setup page. The source-built native command still requires an explicit
 publication URL. Token-free local editing does not contact the hosted server at
 startup; supplying a token or token-file option enables the npm hosted default.
+For the released v0.3.1 bundle, set `ERGO_PUBLISH_URL` or `--publish-url` explicitly;
+registry `npx` examples apply only after registry publication.
 
 Obtain a delegation from the target server while signed in: the landing page
 provides **Generate access token**, **Copy token**, and **Download MCP token**.

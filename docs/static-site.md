@@ -17,8 +17,9 @@ tokens, receive credentials, proxy the API, or provide a remote MCP endpoint.
 - `/404.html`: a real Pages error document with a link back to the guide.
 
 Agent instructions follow [access and onboarding](access-and-onboarding.md) and
-the [MCP guide](local-construction-mcp.md). The setup example uses the supported
-source-built bridge; it does not assume the npm package has been published.
+the [MCP guide](local-construction-mcp.md). The setup installs the prebuilt npm
+package with Node, not Rust. The current package is a public GitHub Release
+tarball; the npm-registry source can be selected after registry publication.
 Google login stays in the human's browser. The agent receives the path to a
 downloaded, short-lived token and the operator-selected API origin. The example
 prompt keeps its first construction local until the human requests publication.
@@ -51,11 +52,13 @@ small `site-entry` wrapper and copies the canonical `web/favicon.svg` logo.
 Generated bindings/logo in `site/public/engine` and `site/public/favicon.svg` are
 ignored. The build uses those generated outputs, not checked-in binaries.
 The WASM renderer loads dynamically only on the home page; legal pages load no
-3D engine. There is no Three.js dependency. Outfit and the shared Manrope
-wordmark fonts are bundled and self-hosted. There are no analytics scripts,
+3D engine. There is no Three.js dependency. Manrope headings/wordmark and DM Sans
+body text match the apex interface and are self-hosted.
+There are no analytics scripts,
 external model downloads, token-entry fields, or persistent demo preferences.
 Their font license notices are emitted with the site under `/licenses/`.
 
+The white/slate/amber tokens, typography, logo, and buttons follow the apex UI.
 The brick model uses the navigator's catalog geometry, instancing, shaders,
 sun/shadows, and night flashlight. See [lighting](lighting.md) for geographic UTC
 solar positioning, ambient/specular light, and visual limits. Mouse hover
@@ -72,6 +75,32 @@ configuration, distribution boundaries, and current documentation semantics.
 Browser checks cover real WebGL mouse/scroll controls, tabs, clipboard, 320/390-pixel layouts,
 day/night lighting, shadow draw passes, reduced motion, WebGL-unavailable fallback,
 and readable no-JavaScript content.
+
+## Public package-source environment setting
+
+`ERGO_MCP_PACKAGE` selects the npm package spec displayed in the homepage and
+generated `/llms.txt`. It is a **public build setting**, not a credential. The
+default and current repository variable point to:
+
+```text
+https://github.com/ngrislain/ergo/releases/download/v0.3.1/ngrislain-ergo-mcp-0.3.1.tgz
+```
+
+For a local override, copy `site/.env.example` to ignored `site/.env`, edit that
+one variable, and rebuild. The production build reads the GitHub repository
+variable with the same name. To switch after npm publication:
+
+```sh
+gh variable set ERGO_MCP_PACKAGE --repo ngrislain/ergo \
+  --body '@ngrislain/ergo-mcp@0.3.1'
+gh workflow run pages.yml --repo ngrislain/ergo --ref main
+```
+
+Use the actual published version. The build accepts the project registry spec
+or a public GitHub Release `.tgz` URL; a raw monorepo Git URL is not an installable
+distribution. Source values with embedded credentials are rejected. The MCP
+client launches the installed `ergo-mcp` command, so its configuration does not
+need changing when the installation transport changes.
 
 ## GitHub Pages publication
 

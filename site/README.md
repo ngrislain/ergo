@@ -4,6 +4,10 @@ The public shared-renderer WebGL landing page and static agent guide for
 **https://www.ergosandbox.com**. The authenticated sandbox is at
 **https://ergosandbox.com**.
 
+Consumer setup is an npm installation, selected by public `ERGO_MCP_PACKAGE`.
+It currently installs the prebuilt GitHub Release tarball; the same setting can
+later point at the npm registry. The commands below are for **site maintainers**.
+
 ```sh
 rustup target add wasm32-unknown-unknown
 cargo install wasm-bindgen-cli --version 0.2.129 --locked
@@ -21,10 +25,9 @@ The illustration uses the navigator's Rust/WASM engine and catalog geometry;
 appearance, and the automatic night flashlight are common to both sites.
 Fonts and geometry are self-hosted; the site collects no credentials or analytics.
 
-The visual system uses cool building-mat blue (`#edf3ff`), dark ink (`#182a3a`),
-plastic blue (`#315fed`), yellow (`#ffd23f`), red (`#ee6748`), and mint (`#a3c6ac`).
-Self-hosted Outfit provides the body typography; the canonical four-stud logo and
-Manrope wordmark match the authenticated sandbox. The main visual is
+The visual system follows the application's white/slate/amber tokens, DM Sans
+body typography, canonical four-stud logo, and Manrope headings/wordmark.
+The scene's night light stays fixed when the camera orbits. The main visual is
 a brick-built doorway, with a numbered build-manual layout for the actual
 human-to-agent handoff.
 
