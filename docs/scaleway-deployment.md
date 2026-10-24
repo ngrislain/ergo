@@ -22,6 +22,36 @@ supports public GHCR images; private external registry images are not supported.
 Confirm that the version's GHCR job succeeded and the package is public before
 applying the image reference. Local builds remain supported as described below.
 
+### Build and publish in GitHub Actions
+
+For an image-only deployment, use the release workflow's explicit manual
+publication option after that workflow is present on `main`:
+
+```sh
+gh workflow run release.yml --repo ngrislain/ergo --ref main -f publish_container=true
+gh run list --repo ngrislain/ergo --workflow release.yml --limit 5
+gh run watch RUN_ID --repo ngrislain/ergo --exit-status
+```
+
+Replace `RUN_ID` with the new run's ID. CI builds the Linux/AMD64 API/web image
+with Podman, smoke-tests it, and pushes it to GHCR using the automatically
+supplied `GITHUB_TOKEN`. No local Podman build, registry personal access token,
+or npm publication is required. This mode skips the native/npm build matrix;
+ordinary manual runs without `publish_container=true` remain build/test only.
+
+The workflow summary includes a `sha-SHORTSHA-RUN_ID-ATTEMPT` tag and a
+digest-pinned image reference. Copy the **digest** into `image` in
+`infra/scaleway/terraform.tfvars`. Manual publication does not update release
+version tags or `latest`.
+
+Set the GitHub package's visibility to **public** in its
+[package settings](https://github.com/users/ngrislain/packages/container/ergo/settings)
+before applying OpenTofu: Scaleway cannot pull private external images. Continue
+with credentials/Google SSO below, then create DNS before enabling the domain's
+managed TLS binding. Image publication does not deploy the Scaleway service.
+
+### Local image build
+
 The root [`Dockerfile`](../Dockerfile) builds the AMD64 API server and both WASM
 clients using Rust 1.97.1 and `wasm-bindgen-cli` 0.2.129. Only the server, web
 assets, and CA certificates enter the non-root Debian runtime image. Build from

@@ -135,8 +135,14 @@ Release automation targets the API image `ghcr.io/ngrislain/ergo` and the prebui
 `@ngrislain/ergo-mcp` npm package. Check the corresponding release workflow and
 [distribution/setup status](docs/distribution.md) before using registry URLs;
 tagging the source does not by itself confirm either registry publication.
+For server deployments, the workflow also supports an explicit
+[image-only CI publication](docs/scaleway-deployment.md#build-and-publish-in-github-actions)
+using GitHub's built-in registry credentials.
 After publication, `npx -y @ngrislain/ergo-mcp@0.3.1 --workspace /path/construction.ergo.json`
-will use bundled native/WASM assets without a Rust toolchain. Source builds remain:
+will use bundled native/WASM assets without a Rust toolchain. The npm launcher's
+`--login` and authenticated publishing default to `https://ergosandbox.com`;
+override with `ERGO_PUBLISH_URL` or `--publish-url`. Local editing needs no token.
+Source builds remain:
 
 ```sh
 cargo build --release -p ergo-mcp

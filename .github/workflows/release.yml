@@ -4,6 +4,11 @@ on:
   push:
     tags: ["v*"]
   workflow_dispatch:
+    inputs:
+      publish_container:
+        description: Build, test, and publish only the server image to GHCR
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -36,6 +41,7 @@ jobs:
 
   web:
     needs: version
+    if: github.event_name != 'workflow_dispatch' || !inputs.publish_container
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
@@ -57,6 +63,7 @@ jobs:
 
   native:
     needs: version
+    if: github.event_name != 'workflow_dispatch' || !inputs.publish_container
     strategy:
       fail-fast: false
       matrix:
@@ -186,16 +193,31 @@ jobs:
             --label "org.opencontainers.image.version=$VERSION" \
             --tag "localhost/ergo:$VERSION" .
           python3 scripts/test-container.py --image "localhost/ergo:$VERSION"
-      - name: Publish versioned image to GitHub Container Registry
-        if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
+      - name: Publish image to GitHub Container Registry
+        if: (github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')) || (github.event_name == 'workflow_dispatch' && inputs.publish_container)
         env:
           VERSION: ${{ needs.version.outputs.version }}
           GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           image="ghcr.io/${GITHUB_REPOSITORY,,}"
+          if [ "$GITHUB_EVENT_NAME" = push ]; then
+            tag="$VERSION"
+          else
+            tag="sha-${GITHUB_SHA:0:12}-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+          fi
           printf '%s' "$GHCR_TOKEN" | podman login ghcr.io --username "$GITHUB_ACTOR" --password-stdin
-          podman tag "localhost/ergo:$VERSION" "$image:$VERSION"
-          podman tag "localhost/ergo:$VERSION" "$image:latest"
-          podman push "$image:$VERSION"
-          podman push "$image:latest"
-          echo "Published $image:$VERSION and $image:latest" >> "$GITHUB_STEP_SUMMARY"
+          podman tag "localhost/ergo:$VERSION" "$image:$tag"
+          podman push --digestfile "$RUNNER_TEMP/ergo-image-digest" "$image:$tag"
+          if [ "$GITHUB_EVENT_NAME" = push ]; then
+            podman tag "localhost/ergo:$VERSION" "$image:latest"
+            podman push "$image:latest"
+            echo "Published $image:latest" >> "$GITHUB_STEP_SUMMARY"
+          fi
+          digest=$(< "$RUNNER_TEMP/ergo-image-digest")
+          {
+            echo "Published $image:$tag"
+            echo
+            echo "Scaleway/OpenTofu image: \`$image@$digest\`"
+            echo
+            echo "Set the GitHub container package visibility to public before deploying on Scaleway."
+          } >> "$GITHUB_STEP_SUMMARY"

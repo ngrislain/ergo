@@ -6,7 +6,8 @@ The repository now contains versioned distribution assembly and GitHub Actions
 automation for:
 
 - **API/web image:** `ghcr.io/ngrislain/ergo:VERSION` (Linux/AMD64), also tagged
-  `latest` after a stable tagged release.
+  `latest` after a stable tagged release. Opt-in manual image publications use
+  separate `sha-SHORTSHA-RUN_ID-ATTEMPT` tags and report the deployment digest.
 - **MCP package:** `@ngrislain/ergo-mcp@VERSION` on the public npm registry, with
   the native bridge and minimal browser/WASM runtime bundled together.
 
@@ -48,7 +49,7 @@ Once published:
 
 ```sh
 npx -y @ngrislain/ergo-mcp@0.3.1 --workspace /absolute/path/construction.ergo.json
-npx -y @ngrislain/ergo-mcp@0.3.1 --login --publish-url https://ergosandbox.com
+npx -y @ngrislain/ergo-mcp@0.3.1 --login
 ```
 
 Or install globally with `npm install -g @ngrislain/ergo-mcp@0.3.1` and use
@@ -61,7 +62,6 @@ Or install globally with `npm install -g @ngrislain/ergo-mcp@0.3.1` and use
       "command": "npx",
       "args": ["-y", "@ngrislain/ergo-mcp@0.3.1", "--workspace", "/absolute/path/construction.ergo.json"],
       "env": {
-        "ERGO_PUBLISH_URL": "https://ergosandbox.com",
         "ERGO_PUBLISH_TOKEN_FILE": "/absolute/path/ergo-mcp-token"
       }
     }
@@ -83,6 +83,15 @@ arguments, environment and MCP stdio, and sets the packaged `ERGO_WEB_DIR` unles
 the operator explicitly overrides it. JSON-RPC remains the native bridge's stdout;
 launcher errors go to stderr. `--version` reports the package version.
 
+The npm launcher defaults login and authenticated publishing to
+**https://ergosandbox.com**. `--publish-url` takes precedence over
+`ERGO_PUBLISH_URL`, which overrides the hosted default. Supplying a publication
+token through its environment variable or token-file option enables this default
+for the native bridge. Without credentials, local editing remains available and
+startup makes no hosted-server request. `--login` opens the hosted sign-in/token
+setup; save the downloaded token and configure its path before publishing. This
+default configures the client; it does not deploy or verify the hosted service.
+
 Only the minimal `mcp.html`, JS/WASM runtime, launcher, native binaries, license,
 README, and distribution manifest are packaged. The private source template is
 **not** a publishable standalone npm package. No S3/Google credentials, workspaces,
@@ -92,8 +101,12 @@ publication-permission, and edit-pacing requirements are unchanged.
 ## Maintainer release automation
 
 [`.github/workflows/release.yml`](../.github/workflows/release.yml) runs on `v*`
-tag pushes or a manual dispatch. **Manual dispatch is build/test only**; it never
-publishes. A tag push must exactly match Cargo and npm stable semver versions.
+tag pushes or a manual dispatch. **Manual dispatch defaults to build/test only.**
+Setting its boolean `publish_container` input to `true` instead runs only the
+version checks and API image build/smoke-test/publication. This image-only path
+uses the repository's `GITHUB_TOKEN`, skips the native/npm build matrix, and never
+publishes npm or updates versioned/`latest` image tags. A tag push must exactly
+match Cargo and npm stable semver versions.
 
 The workflow:
 
@@ -108,6 +121,21 @@ The workflow:
 4. Publishes the npm tarball with provenance on a matching release tag.
 5. Independently builds/smoke-tests the API image with Podman and publishes the
    versioned/latest image to GHCR on a matching release tag.
+
+To publish a server image from CI before the next tagged release, first push the
+workflow changes to the default branch, then run:
+
+```sh
+gh workflow run release.yml --repo ngrislain/ergo --ref main -f publish_container=true
+gh run list --repo ngrislain/ergo --workflow release.yml --limit 5
+gh run watch RUN_ID --repo ngrislain/ergo --exit-status
+```
+
+Use the new run's ID for `RUN_ID`. A successful image publication writes its
+run-specific tag and digest-pinned `ghcr.io/ngrislain/ergo@sha256:...` reference
+to the workflow summary. Use that digest for the Scaleway `image` variable and
+make the GHCR package public before deployment. See the
+[deployment guide](scaleway-deployment.md) for the DNS and managed-TLS bootstrap.
 
 The npm and image publication jobs are independent: a green image publication
 does not imply the npm job succeeded. Inspect both before announcing a release.
@@ -134,6 +162,14 @@ token afterward. Tokens are not checked into this repository or embedded in npm
 artifacts. Published npm versions are immutable; bump all version files rather
 than republishing the same version.
 
+For a local bootstrap, use `npm login --auth-type=web` and complete the browser
+and security-key prompts. npm stores that login in its user configuration
+(`~/.npmrc` by default); do not duplicate it in the application's `.env` or the
+Scaleway `.tfvars`. Once the trusted publisher is configured, GitHub Actions uses
+short-lived OIDC credentials and needs no `NPM_TOKEN` repository secret. GHCR
+publishing uses GitHub's automatically supplied `GITHUB_TOKEN`, so it also needs
+no locally stored publishing secret.
+
 ### Local assembly and checks
 
 `scripts/package-mcp.py` provides `version`, `native`, `web`, and `npm` commands.
@@ -156,12 +192,15 @@ node --test packages/mcp/test/*.test.cjs
 python3 scripts/test-distribution.py
 ```
 
-The macOS ARM64 package has been assembled, packed, installed offline with
-install scripts disabled, and exercised through actual MCP/WASM editing/rendering
-outside the repository. Workflow syntax and release guards are checked locally;
-the other native targets and public registry publication use the release CI
-and maintainer registry configuration. The ordinary source-build workflow remains
-supported until prebuilt releases are available.
+The complete four-platform native matrix, WASM assembly, offline npm install/MCP
+browser checks, and API image smoke test passed in
+[release validation run 40018268135](https://github.com/ngrislain/ergo/actions/runs/40018268135).
+That manual run did not publish registries. The npm hosted-server default was
+subsequently assembled from the same checksummed native/WASM artifacts and
+verified locally with the actual macOS ARM64 runtime, offline installation,
+browser login/URL overrides, and MCP/WASM editing/rendering outside the checkout.
+Registry publication still requires the separate maintainer setup above. The
+ordinary source-build workflow remains supported.
 
 References: [npm trusted publishing](https://docs.npmjs.com/trusted-publishers),
 [GitHub container publishing](https://docs.github.com/en/actions/tutorials/publish-packages/publish-docker-images),

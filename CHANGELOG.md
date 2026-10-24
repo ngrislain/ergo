@@ -5,6 +5,8 @@
 - Add tag-driven GHCR server-image publishing, retaining Podman build/smoke tests.
 - Add an npm MCP launcher/bundle with native macOS/Linux binaries and the minimal
   browser/WASM runtime; consumer installs do not need Rust or install hooks.
+- Default npm browser login and authenticated publishing to `https://ergosandbox.com`,
+  retaining explicit server overrides and token-free local editing.
 - Add version/checksum/platform release guards, offline tarball-install/MCP tests,
   and GitHub Actions artifact assembly and npm trusted-publishing/provenance support.
 - Document one-time registry authorization/public visibility and distinguish

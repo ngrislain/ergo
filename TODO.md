@@ -197,5 +197,11 @@ the limits and paging work below concern individual operations and indexes.
   Scaleway resources, custom-domain certificate, Google SSO, and production S3.
 - [x] Add versioned GHCR/npm release automation and native/WASM npm packaging,
   with architecture/version/checksum guards and an offline host install/MCP test.
-- [ ] Configure the npm scope/trusted publisher and GHCR public visibility, then
-  run the complete native release matrix and actually publish v0.3.1 distributions.
+- [x] Run the complete four-platform native/WASM release matrix, offline npm
+  install/MCP browser checks, and API image smoke test in GitHub Actions.
+- [x] Default npm login/authenticated publishing to ergosandbox.com and verify
+  server overrides plus token-free local editing with the assembled package.
+- [ ] Publish the assembled v0.3.1 npm package and configure its GitHub trusted
+  publisher once npm account authorization permits package creation.
+- [ ] Publish the v0.3.1 GHCR image and confirm public visibility before using
+  it directly in the Scaleway deployment.

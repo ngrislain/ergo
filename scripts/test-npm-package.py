@@ -50,6 +50,27 @@ def main():
         workspace_dir.mkdir()
         version = subprocess.check_output([str(executable),'--version'],cwd=workspace_dir,env=environment,text=True).strip()
         assert version == manifest['version']
+        browser_bin = directory / 'browser-bin'
+        browser_bin.mkdir()
+        captured_login = directory / 'login-url'
+        for command in ['open', 'xdg-open']:
+            opener = browser_bin / command
+            opener.write_text('#!/usr/bin/env python3\nimport os, pathlib, sys\n'
+                              'pathlib.Path(os.environ["ERGO_TEST_LOGIN_CAPTURE"]).write_text(sys.argv[1])\n')
+            opener.chmod(0o755)
+        login_environment = dict(environment, PATH=str(browser_bin)+os.pathsep+environment['PATH'],
+                                 ERGO_TEST_LOGIN_CAPTURE=str(captured_login))
+        for arguments, override, expected in [
+            (['--login'], {}, 'https://ergosandbox.com/login#connect'),
+            (['--login'], {'ERGO_PUBLISH_URL':'https://custom.example'}, 'https://custom.example/login#connect'),
+            (['--login','--publish-url','http://127.0.0.1:3000'],
+             {'ERGO_PUBLISH_URL':'https://custom.example'}, 'http://127.0.0.1:3000/login#connect'),
+        ]:
+            login = subprocess.run([str(executable),*arguments], cwd=workspace_dir,
+                                   env={**login_environment,**override}, check=True,
+                                   capture_output=True, text=True, timeout=15)
+            assert captured_login.read_text() == expected
+            assert login.stdout == '', 'Browser-login diagnostics must stay off MCP stdout'
         process = subprocess.Popen([str(executable),'--workspace',str(workspace_dir/'construction.ergo.json'),'--attach'],
                                    cwd=workspace_dir,env=environment,stdin=subprocess.PIPE,
                                    stdout=subprocess.PIPE,stderr=subprocess.PIPE,text=True)
@@ -82,7 +103,7 @@ def main():
         if args.browser:
             subprocess.run([sys.executable,str(ROOT/'scripts/test-mcp.py'),'--binary',str(executable)],
                            cwd=workspace_dir,env=environment,check=True)
-        print('npm package passed: offline --ignore-scripts install, executable/version, bundled web/WASM, '
+        print('npm package passed: offline --ignore-scripts install, executable/version, hosted login/URL overrides, bundled web/WASM, '
               'MCP JSON-RPC stdio, and startup outside the checkout.')
 
 

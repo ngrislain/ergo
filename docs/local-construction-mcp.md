@@ -93,6 +93,13 @@ HTTPS origin without credentials, a path, query, or fragment. HTTP and an omitte
 token are allowed only on loopback; a Google-enabled loopback server still
 requires authentication. `ERGO_API_URL` remains a separate part-asset setting.
 
+The npm launcher defaults browser login and authenticated publication to
+`https://ergosandbox.com`, so npm users only need to configure their token unless
+targeting a different server. `npx -y @ngrislain/ergo-mcp@0.3.1 --login` opens the
+hosted setup page. The source-built native command still requires an explicit
+publication URL. Token-free local editing does not contact the hosted server at
+startup; supplying a token or token-file option enables the npm hosted default.
+
 Obtain a delegation from the target server while signed in: the landing page
 provides **Generate access token**, **Copy token**, and **Download MCP token**.
 `ergo-mcp --login --publish-url https://ergosandbox.com` opens that setup/SSO page

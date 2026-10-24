@@ -21,7 +21,6 @@ MCP client configuration:
       "command": "npx",
       "args": ["-y", "@ngrislain/ergo-mcp@0.3.1", "--workspace", "/absolute/path/construction.ergo.json"],
       "env": {
-        "ERGO_PUBLISH_URL": "https://ergosandbox.com",
         "ERGO_PUBLISH_TOKEN_FILE": "/absolute/path/ergo-mcp-token"
       }
     }
@@ -34,6 +33,12 @@ working directory, arguments, environment, and MCP stdio, while resolving the
 bundled WASM assets independently of the source checkout. `ERGO_WEB_DIR` or the
 native `--web-dir` option can explicitly override the packaged assets.
 
+Login and authenticated publishing default to **https://ergosandbox.com**.
+Override the server with `ERGO_PUBLISH_URL` or `--publish-url`; the CLI option takes
+precedence. Local editing needs no account or token and does not contact the
+hosted server at startup. To publish, supply `ERGO_PUBLISH_TOKEN_FILE`,
+`--publish-token-file`, or `ERGO_PUBLISH_TOKEN` after signing in.
+
 The default opens your browser; `--attach` prints the local attachment URL.
 `--headless` requires an installed Google Chrome (or `ERGO_CHROME_BIN`). The
 package does not install a browser or download executable code at startup.
@@ -41,7 +46,7 @@ package does not install a browser or download executable code at startup.
 For sign-in/token setup:
 
 ```sh
-npx -y @ngrislain/ergo-mcp@0.3.1 --login --publish-url https://ergosandbox.com
+npx -y @ngrislain/ergo-mcp@0.3.1 --login
 ```
 
 Publishing retains server authorization, pacing, and measured-physics checks.
