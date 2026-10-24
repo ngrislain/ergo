@@ -12,6 +12,8 @@ struct Account {
     signed_in: bool,
     development: bool,
     edit_allowance: Option<serde_json::Value>,
+    #[serde(default)]
+    common_world: Option<String>,
 }
 
 #[component]
@@ -38,7 +40,7 @@ pub fn Entry() -> impl IntoView {
     let workspace = pathname == "/app";
     let home = pathname == "/";
     view! {
-        <Show when=move ||account.get().is_some_and(|a|(workspace&&(a.signed_in||a.development))||(home&&a.signed_in&&!a.development))
+        <Show when=move ||account.get().is_some_and(|a|(workspace&&(a.signed_in||a.development||a.common_world.is_some()))||(home&&(a.common_world.is_some()||(a.signed_in&&!a.development))))
             fallback=move ||view!{<Landing account error/>}>
             <crate::app::App/>
         </Show>
@@ -79,9 +81,31 @@ fn Landing(account: RwSignal<Option<Account>>, error: RwSignal<Option<String>>) 
             .as_string()
             .unwrap_or_default()
     ));
+    let mut environment = serde_json::json!({"ERGO_PUBLISH_URL":origin,"ERGO_PUBLISH_TOKEN_FILE":"/absolute/path/ergo-mcp-token"});
+    let query = web_sys::window()
+        .and_then(|w| w.location().search().ok())
+        .and_then(|q| web_sys::UrlSearchParams::new_with_str(&q).ok());
+    if let Some(query) = query {
+        let position =
+            ["x", "y", "z"].map(|key| query.get(key).and_then(|v| v.parse::<f64>().ok()));
+        if let [Some(x), Some(y), Some(z)] = position {
+            if [x, y, z]
+                .iter()
+                .all(|v| v.is_finite() && v.abs() <= ergo_world::MAX_WORLD_COORD)
+            {
+                environment["ERGO_POSITION_WORLD"] =
+                    serde_json::json!(serde_json::to_string(&[x, y, z]).unwrap_or_default());
+            }
+        }
+        if let Some(assembly) = query.get("assembly") {
+            if assembly.len() == 64 && assembly.bytes().all(|b| b.is_ascii_hexdigit()) {
+                environment["ERGO_SHARED_ASSEMBLY_ID"] = serde_json::json!(assembly);
+            }
+        }
+    }
     let mcp = serde_json::to_string_pretty(&serde_json::json!({"mcpServers":{"ergo":{
         "command":"ergo-mcp","args":["--workspace","/absolute/path/construction.ergo.json"],
-        "env":{"ERGO_PUBLISH_URL":origin,"ERGO_PUBLISH_TOKEN_FILE":"/absolute/path/ergo-mcp-token"}
+        "env":environment
     }}}))
     .unwrap();
     let api = format!(
@@ -117,7 +141,7 @@ curl --fail '{origin}/api/shared-worlds?quad=&limit=32' \
                 </div>
             </section>
             <section id="connect" class="connection-section" aria-labelledby="connect-title">
-                <div class="connection-copy"><h2 id="connect-title">"Connect your agent."</h2><p>"Run the local MCP bridge beside your agent. Edits and rendering run on your device; publishing uses this server and your signed-in identity."</p>
+                <div class="connection-copy"><h2 id="connect-title">"Connect your agent."</h2><p>"Run the MCP bridge beside your agent. Rendering runs on your device; accepted production edits commit to the common world in S3 under your signed-in identity. The local file is a cache."</p>
                     <ol><li>"Install the prebuilt npm package using the project guide."</li><li>"Generate a token below and download it as ergo-mcp-token."</li><li>"Add this MCP configuration to your agent, using your actual local file paths."</li></ol>
                     <a class="text-button" href="https://www.ergosandbox.com/#connect">"Install the MCP server with npm"</a>
                     <p class="landing-note">"The package includes the native bridge and WASM assets. Your MCP client starts ergo-mcp automatically; no Rust build is needed."</p>

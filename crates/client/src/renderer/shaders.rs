@@ -8,14 +8,30 @@ layout(location=7) in vec4 color;
 uniform mat4 view_projection;
 uniform mat4 display_scale;
 uniform mat4 shadow_matrix;
+uniform vec3 eye;
+uniform float projection_pixels;
+uniform highp int stud_mode;
 out vec3 v_normal;
 out vec3 v_color;
 out vec3 v_position;
 out float v_selected;
 out vec4 v_shadow;
+out vec3 v_local;
+out vec3 v_local_normal;
+out vec3 v_tangent_x;
+out vec3 v_tangent_z;
+out float v_stud_geometry;
 void main() {
     mat4 physical_model = display_scale * model;
-    vec4 world = physical_model * vec4(position, 1.0);
+    float stud_pixels=projection_pixels*0.6*length(physical_model[0].xyz)/max(distance(eye,physical_model[3].xyz),0.1);
+    v_stud_geometry=stud_mode==3?1.0:(stud_mode==1?smoothstep(1.25,6.0,stud_pixels):0.0);
+    vec3 local=position;
+    if(stud_mode==1 && local.y>0.0)local.y*=v_stud_geometry;
+    vec4 world = physical_model * vec4(local, 1.0);
+    v_local=position;
+    v_local_normal=normal;
+    v_tangent_x=normalize(physical_model[0].xyz);
+    v_tangent_z=normalize(physical_model[2].xyz);
     v_position = world.xyz;
     v_normal = normalize(transpose(inverse(mat3(physical_model))) * normal);
     v_color = face_color.x < 0.0 ? color.rgb : face_color;
@@ -31,6 +47,11 @@ in vec3 v_color;
 in vec3 v_position;
 in float v_selected;
 in vec4 v_shadow;
+in vec3 v_local;
+in vec3 v_local_normal;
+in vec3 v_tangent_x;
+in vec3 v_tangent_z;
+in float v_stud_geometry;
 uniform vec3 eye;
 uniform int floor_mode;
 uniform int grid;
@@ -44,6 +65,9 @@ uniform float sky_amount;
 uniform highp sampler2DShadow shadow_map;
 uniform float shadow_texel;
 uniform float ground_stud_range;
+uniform float projection_pixels;
+uniform highp int stud_mode;
+uniform vec2 stud_offset;
 out vec4 out_color;
 const float PI = 3.14159265359;
 vec3 sky_horizon() { return mix(vec3(0.004,0.007,0.016),vec3(0.735,0.829,0.894),sky_amount); }
@@ -71,9 +95,19 @@ void main() {
         float rim = smoothstep(0.23,0.29,radius)*(1.0-smoothstep(0.29,0.34,radius));
         // Near studs already have real sides and cast shadows: don't shade a
         // second procedural rim beneath them. Tops keep the same albedo as the plate.
-        float real_studs = ground_stud_range > 0.0 ? 1.0-smoothstep(ground_stud_range-0.75,ground_stud_range+0.25,distance(eye,v_position)) : 0.0;
-        float detail = (1.0-smoothstep(0.15,0.6,footprint))*(1.0-real_studs);
+        float d=distance(eye,v_position);
+        float real_studs = ground_stud_range > 0.0 ? smoothstep(1.25,6.0,projection_pixels*0.6/max(d,0.1))*(1.0-smoothstep(ground_stud_range*0.6,ground_stud_range,d)) : 0.0;
+        float detail = (1.0-smoothstep(0.35,1.2,footprint))*(1.0-real_studs);
         n = normalize(vec3(p.x*rim*6.0*detail,1.0,p.y*rim*6.0*detail));
+    }
+    if(stud_mode>0 && v_local_normal.y>0.8 && abs(v_local.y)<0.001) {
+        vec2 p=fract(v_local.xz+stud_offset)-0.5;
+        float radius=length(p);
+        float aa=max(fwidth(radius),0.015);
+        float rim=smoothstep(0.27-aa,0.31,radius)*(1.0-smoothstep(0.31,0.35+aa,radius));
+        float footprint=max(length(dFdx(v_local.xz)),length(dFdy(v_local.xz)));
+        float detail=(1.0-smoothstep(0.35,1.2,footprint))*(1.0-v_stud_geometry);
+        n=normalize(n+(v_tangent_x*p.x+v_tangent_z*p.y)*rim*6.0*detail);
     }
     vec3 albedo = pow(base,vec3(2.2));
     vec3 view = normalize(eye-v_position);
@@ -129,7 +163,18 @@ layout(location=0) in vec3 position;
 layout(location=3) in mat4 model;
 uniform mat4 display_scale;
 uniform mat4 shadow_matrix;
-void main() { gl_Position=shadow_matrix*display_scale*model*vec4(position,1.0); }
+uniform vec3 eye;
+uniform float projection_pixels;
+uniform highp int stud_mode;
+void main() {
+    mat4 physical_model=display_scale*model;
+    vec3 local=position;
+    if(stud_mode==1 && local.y>0.0) {
+        float px=projection_pixels*0.6*length(physical_model[0].xyz)/max(distance(eye,physical_model[3].xyz),0.1);
+        local.y*=smoothstep(1.25,6.0,px);
+    }
+    gl_Position=shadow_matrix*physical_model*vec4(local,1.0);
+}
 "#;
 pub const SHADOW_FRAGMENT: &str = r#"#version 300 es
 precision highp float;

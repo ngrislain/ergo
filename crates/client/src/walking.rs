@@ -1,4 +1,4 @@
-//! Local kinematic walking and ballistic jumping in internal Y-up coordinates.
+//! Shared kinematic collision scene for flying, walking and ballistic jumping.
 use ergo_world::{Aabb, BlockCoord, Brick, physical, spatial::Octree};
 use glam::DVec3;
 
@@ -17,6 +17,74 @@ pub struct Scene<'a> {
 }
 
 impl<'a> Scene<'a> {
+    /// Continuous camera-volume sweep and wall sliding; flight has no stepping
+    /// or gravity. Reuses the walker's broad phase and unloaded-cell policy.
+    pub fn fly_slide(&self, eye: DVec3, movement: DVec3) -> DVec3 {
+        let radius = DVec3::new(
+            RADIUS,
+            RADIUS * physical::STUD_PITCH_M / physical::BRICK_HEIGHT_M,
+            RADIUS,
+        );
+        let mut position = eye;
+        position.y = position.y.max(radius.y + SKIN);
+        let mut remaining = movement;
+        for _ in 0..3 {
+            if remaining.length_squared() < 1e-20 {
+                break;
+            }
+            let sweep = Aabb::new(
+                position.min(position + remaining) - radius,
+                position.max(position + remaining) + radius,
+            );
+            let mut obstacles = self.colliders(sweep).collect::<Vec<_>>();
+            let lo = BlockCoord::at(sweep.min);
+            let hi = BlockCoord::at(sweep.max);
+            if [hi.0 - lo.0, hi.1 - lo.1, hi.2 - lo.2]
+                .iter()
+                .any(|n| *n > 4)
+            {
+                return eye;
+            }
+            for x in lo.0..=hi.0 {
+                for y in lo.1..=hi.1 {
+                    for z in lo.2..=hi.2 {
+                        let cell = BlockCoord(x, y, z);
+                        if (self.blocked)(cell) {
+                            let p = cell.origin();
+                            obstacles.push(Aabb::new(p, p + DVec3::splat(ergo_world::BLOCK_SIZE)));
+                        }
+                    }
+                }
+            }
+            let mut collision = None;
+            for bounds in obstacles {
+                if let Some((time, normal)) = sweep_box(
+                    position,
+                    remaining,
+                    Aabb::new(bounds.min - radius, bounds.max + radius),
+                ) {
+                    if collision.is_none_or(|(old, _)| time < old) {
+                        collision = Some((time, normal));
+                    }
+                }
+            }
+            if remaining.y < 0. {
+                let time = (radius.y + SKIN - position.y) / remaining.y;
+                if (0.0..=1.0).contains(&time) && collision.is_none_or(|(old, _)| time < old) {
+                    collision = Some((time, DVec3::Y));
+                }
+            }
+            let Some((time, normal)) = collision else {
+                position += remaining;
+                break;
+            };
+            let travel = (time - SKIN / remaining.length()).clamp(0., 1.);
+            position += remaining * travel;
+            remaining *= 1. - travel;
+            remaining -= normal * remaining.dot(normal).min(0.);
+        }
+        position
+    }
     pub fn new(
         bricks: &'a [Brick],
         tree: &'a Octree,
@@ -135,6 +203,30 @@ fn horizontal_overlap(a: Aabb, b: Aabb) -> bool {
     overlap.x > SKIN && overlap.z > SKIN
 }
 
+fn sweep_box(origin: DVec3, delta: DVec3, bounds: Aabb) -> Option<(f64, DVec3)> {
+    let mut enter = f64::NEG_INFINITY;
+    let mut exit = f64::INFINITY;
+    let mut normal = DVec3::ZERO;
+    for axis in 0..3 {
+        if delta[axis].abs() < 1e-12 {
+            if origin[axis] < bounds.min[axis] || origin[axis] > bounds.max[axis] {
+                return None;
+            }
+        } else {
+            let a = (bounds.min[axis] - origin[axis]) / delta[axis];
+            let b = (bounds.max[axis] - origin[axis]) / delta[axis];
+            let near = a.min(b);
+            exit = exit.min(a.max(b));
+            if near > enter {
+                enter = near;
+                normal = DVec3::ZERO;
+                normal[axis] = -delta[axis].signum();
+            }
+        }
+    }
+    (enter >= 0. && enter <= 1. && enter <= exit).then_some((enter, normal))
+}
+
 #[derive(Default)]
 pub struct Walker {
     vertical_velocity: f64,
@@ -220,6 +312,33 @@ mod tests {
     use super::*;
     use crate::navigation::{DEFAULT_EYE_HEIGHT, MIN_EYE_HEIGHT};
     use glam::DMat3;
+
+    #[test]
+    fn flight_sweeps_thin_walls_and_slides_without_tunneling() {
+        let world = TestWorld::new([brick([1., 0., -10.], [1.01, 10., 10.])]);
+        let scene = world.scene();
+        let position = scene.fly_slide(DVec3::new(0., 3., 0.), DVec3::new(100., 0., 4.));
+        assert!(position.x < 1. - RADIUS && position.x > 0.7);
+        assert!((position.z - 4.).abs() < 1e-6);
+        let away = scene.fly_slide(position, DVec3::new(-3., 0., 0.));
+        assert!(away.x < position.x - 2.9);
+    }
+    #[test]
+    fn flight_hits_floor_ceiling_and_unloaded_cells() {
+        let world = TestWorld::new([brick([-3., 5., -3.], [3., 5.01, 3.])]);
+        let scene = world.scene();
+        assert!(scene.fly_slide(DVec3::new(0., 3., 0.), DVec3::Y * 50.).y < 5.);
+        assert!(
+            scene
+                .fly_slide(DVec3::new(0., 3., 0.), DVec3::NEG_Y * 50.)
+                .y
+                > 0.
+        );
+        let blocked = |c: BlockCoord| c.0 >= 1;
+        let scene = Scene::new(&world.bricks, &world.tree, 4., &blocked);
+        let position = scene.fly_slide(DVec3::new(1020., 3., 0.5), DVec3::X * 20.);
+        assert!(position.x <= 1024. - RADIUS);
+    }
 
     fn brick(min: [f64; 3], max: [f64; 3]) -> Brick {
         let bounds = Aabb::new(min.into(), max.into());

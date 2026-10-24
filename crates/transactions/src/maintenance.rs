@@ -460,6 +460,15 @@ pub struct Maintenance {
     pub(crate) poisoned: bool,
 }
 
+#[derive(Debug, Serialize)]
+pub struct MigrationReport {
+    pub source_prefix: String,
+    pub target_prefix: String,
+    pub objects: usize,
+    pub bytes: u64,
+    pub branches: usize,
+}
+
 pub struct RecordEdit {
     pub path: crate::OctreePath,
     pub value: Option<ciborium::value::Value>,
@@ -481,6 +490,90 @@ impl RecordEdit {
 impl Maintenance {
     pub fn token(&self) -> &str {
         &self.token
+    }
+
+    /// Copy a fenced namespace to an empty, non-overlapping prefix on the same
+    /// backend. Verify immutable hashes and publish heads last. The target is
+    /// opened only after the complete copy; the source stays fenced until the
+    /// operator switches configuration and explicitly releases/retires it.
+    pub async fn migrate_to(
+        &mut self,
+        target: &Repository,
+        max_object_bytes: usize,
+    ) -> Result<MigrationReport> {
+        self.assert_owner().await?;
+        if max_object_bytes == 0
+            || !Arc::ptr_eq(&self.repo.backend, &target.backend)
+            || target.prefix.is_empty()
+            || target.prefix == self.repo.prefix
+            || target.prefix.starts_with(&format!("{}/", self.repo.prefix))
+            || self.repo.prefix.starts_with(&format!("{}/", target.prefix))
+        {
+            return Err(Error::InvalidOptions);
+        }
+        let mut destination = target.maintenance().await?;
+        if target
+            .backend
+            .list(Some(&target.path("refs")))
+            .try_next()
+            .await?
+            .is_some()
+        {
+            destination.finish().await?;
+            return Err(Error::BranchExists(
+                "migration target already has heads".into(),
+            ));
+        }
+        self.poisoned = true;
+        destination.poisoned = true;
+        let mut report = MigrationReport {
+            source_prefix: self.repo.prefix.clone(),
+            target_prefix: target.prefix.clone(),
+            objects: 0,
+            bytes: 0,
+            branches: 0,
+        };
+        let mut objects = self.repo.backend.list(Some(&self.repo.path("objects")));
+        while let Some(object) = objects.try_next().await? {
+            let name = object.location.filename().ok_or(Error::InvalidName)?;
+            let id: ContentId = name
+                .strip_suffix(".cbor")
+                .ok_or(Error::InvalidName)?
+                .parse()?;
+            let bytes = self.repo.download(&id, max_object_bytes).await?;
+            report.bytes += bytes.len() as u64;
+            target.put_object(&id, bytes).await?;
+            report.objects += 1;
+        }
+        let mut heads = self.repo.backend.list(Some(&self.repo.path("refs")));
+        while let Some(object) = heads.try_next().await? {
+            let bytes = self
+                .repo
+                .backend
+                .get(&object.location)
+                .await?
+                .bytes()
+                .await?;
+            let head: Head = decode(&bytes)?;
+            if !crate::supported_format(head.format) {
+                return Err(Error::Corrupt("unsupported migration head".into()));
+            }
+            target.download(&head.commit, max_object_bytes).await?;
+            let name = object.location.filename().ok_or(Error::InvalidName)?;
+            target
+                .backend
+                .put_opts(
+                    &target.path(&format!("refs/{name}")),
+                    bytes.into(),
+                    PutMode::Create.into(),
+                )
+                .await?;
+            report.branches += 1;
+        }
+        destination.poisoned = false;
+        destination.finish().await?;
+        self.poisoned = false;
+        Ok(report)
     }
 
     /// Stream a derived-index migration in bounded batches, publishing only the

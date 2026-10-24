@@ -22,8 +22,9 @@ try{
     let job;try{job=await api('/api/local/jobs/next');}catch(error){status.textContent=`Disconnected: ${error.message}`;break;}
     if(!job){await sleep(200);continue;}
     status.textContent=`Running locally: ${job.name}`;
-    let result,assetWarning;
-    try{
+     let result,assetWarning;
+     try{
+      if(job.revision!==revision){const fresh=await api('/api/local/workspace');runtime.restore(JSON.stringify(fresh.scene),fresh.revision);revision=fresh.revision;}
       if((job.name==='place_brick'||job.name==='get_catalog'&&job.arguments.part)&&runtime.needs_part(job.arguments.part)){
         const part=await api(`/api/local/parts/${encodeURIComponent(job.arguments.part)}`);runtime.insert_part(JSON.stringify(part));assetWarning=part.warning;
       }
@@ -33,6 +34,8 @@ try{
       if(snapshot&&!result.isError){
         const committed=await api('/api/local/workspace',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({job_id:job.id,expected_revision:revision,scene:JSON.parse(snapshot)})});
         revision=committed.revision;runtime.acknowledge();
+        if(committed.shared_commit){result.structuredContent={...result.structuredContent,shared_commit:committed.shared_commit,shared_editing:true};result.content.unshift({type:'text',text:JSON.stringify(committed.shared_commit)});}
+        if(committed.cache_warning)result.content.unshift({type:'text',text:committed.cache_warning});
       }
     }catch(error){
       result={content:[{type:'text',text:`Local client: ${error.message}`}],isError:true};

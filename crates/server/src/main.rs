@@ -62,6 +62,8 @@ impl IntoResponse for ApiError {
 
 #[derive(Serialize)]
 struct Config {
+    version: &'static str,
+    common_world: Option<String>,
     storage: String,
     geo: GeoReference,
     block_size: u32,
@@ -72,6 +74,8 @@ struct Config {
 
 async fn config(State(s): State<AppState>) -> Json<Config> {
     Json(Config {
+        version: env!("CARGO_PKG_VERSION"),
+        common_world: s.shared.common_world.clone(),
         storage: s.store.kind,
         geo: s.geo,
         block_size: 1024,
@@ -95,6 +99,12 @@ async fn worlds(
     headers: HeaderMap,
     Query(q): Query<WorldsQuery>,
 ) -> Result<Response, ApiError> {
+    if s.shared.common_world.is_some() {
+        return Err(anyhow::anyhow!(
+            "Only the shared Ergo Sandbox is available; use /api/shared-worlds"
+        )
+        .into());
+    }
     let principal = s.auth.principal(&headers);
     if q.limit.is_some() || q.cursor.is_some() {
         return Ok(Json(
@@ -153,6 +163,9 @@ async fn manifest(
     headers: HeaderMap,
     Path(id): Path<String>,
 ) -> Result<Json<WorldManifest>, ApiError> {
+    if s.shared.common_world.is_some() {
+        return Err(anyhow::anyhow!("Alternative snapshot worlds are not available").into());
+    }
     Ok(Json(
         s.store.manifest(&id, &s.auth.principal(&headers)).await?,
     ))
@@ -163,6 +176,9 @@ async fn object(
     headers: HeaderMap,
     Path((id, hash)): Path<(String, String)>,
 ) -> Result<Response, ApiError> {
+    if s.shared.common_world.is_some() {
+        return Err(anyhow::anyhow!("Alternative snapshot worlds are not available").into());
+    }
     if hash.len() != 64
         || !hash
             .bytes()
@@ -193,6 +209,11 @@ async fn export(
     headers: HeaderMap,
     Path(id): Path<String>,
 ) -> Result<Response, ApiError> {
+    if s.shared.common_world.is_some() {
+        return Err(
+            anyhow::anyhow!("Export a bounded construction from the shared Ergo Sandbox").into(),
+        );
+    }
     let manifest = s.store.manifest(&id, &s.auth.principal(&headers)).await?;
     let scene = s.store.export(&manifest).await?;
     Ok((
@@ -343,6 +364,12 @@ async fn snapshot(
     headers: HeaderMap,
     Json(mut scene): Json<WorldExport>,
 ) -> Result<Json<WorldManifest>, ApiError> {
+    if s.shared.common_world.is_some() {
+        return Err(anyhow::anyhow!(
+            "Private snapshots are disabled; commit to the shared Ergo Sandbox"
+        )
+        .into());
+    }
     let owner = s.auth.check_write(&headers)?;
     import::validate_export(&mut scene)?;
     Ok(Json(
@@ -387,6 +414,23 @@ async fn main() -> Result<()> {
         let shared = shared::SharedWorlds::from_env(store.clone())?;
         let repo = shared.repo(&id)?;
         match command.as_str() {
+            "shared-migrate" => {
+                let target = args
+                    .next()
+                    .context("Usage: ergo-server shared-migrate WORLD_ID TARGET_PREFIX")?;
+                anyhow::ensure!(args.next().is_none(), "Unexpected argument");
+                println!(
+                    "{}",
+                    serde_json::to_string_pretty(&shared.migrate_namespace(&id, &target).await?)?
+                );
+            }
+            "shared-cleanup-legacy" => {
+                anyhow::ensure!(args.next().is_none(), "Unexpected argument");
+                println!(
+                    "{}",
+                    serde_json::to_string_pretty(&shared.cleanup_legacy(&id).await?)?
+                );
+            }
             "shared-gc" => {
                 anyhow::ensure!(
                     args.next().is_none(),
@@ -500,7 +544,44 @@ async fn main() -> Result<()> {
             .unwrap_or(1.0),
     };
     geo.validate()?;
-    if store.kind == "Local object store"
+    let legacy = env::var("ERGO_LEGACY_FIXTURES").as_deref() == Ok("1");
+    anyhow::ensure!(
+        !legacy || store.kind == "Local object store",
+        "Legacy fixtures are only supported in disposable local test stores"
+    );
+    let mut shared = shared::SharedWorlds::from_env(store.clone())?;
+    if shared.common_world.is_none() && !legacy {
+        anyhow::ensure!(
+            !auth.google && store.kind == "Local object store",
+            "Configure ERGO_COMMON_WORLD_ID for the hosted Ergo Sandbox"
+        );
+        shared.bootstrap_local(geo).await?;
+    }
+    if let Some(id) = &shared.common_world {
+        let head = shared
+            .head(
+                id,
+                &auth::Principal {
+                    id: Some("public-viewer".into()),
+                },
+                None,
+            )
+            .await?;
+        anyhow::ensure!(
+            head.policy.authenticated_editing,
+            "The shared Ergo Sandbox must allow signed-in editors"
+        );
+        anyhow::ensure!(
+            head.metadata
+                .id
+                .as_deref()
+                .is_none_or(|stored| stored == id),
+            "Configured sandbox ID does not match the stored namespace"
+        );
+    }
+    if legacy
+        && shared.common_world.is_none()
+        && store.kind == "Local object store"
         && store
             .manifests(&auth::Principal { id: None })
             .await?
@@ -533,7 +614,7 @@ async fn main() -> Result<()> {
     let parts = store.part_cache()?;
     let ground = store.ground_cache()?;
     let state = AppState {
-        shared: shared::SharedWorlds::from_env(store.clone())?,
+        shared,
         store,
         geo,
         library: env::var_os("LDRAW_DIR").map(PathBuf::from),

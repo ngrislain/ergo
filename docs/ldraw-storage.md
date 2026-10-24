@@ -88,8 +88,8 @@ and streaming. The same scene reader accepts canonical construction files, so a
 download can be submitted to scene-based REST endpoints. Ambiguous documents with
 both an explicit construction format and `bricks`, or an unknown format, fail.
 
-LDraw/Studio imports retain their reference hierarchy in private snapshot
-manifests, and unchanged downloads preserve it. Geographic import placement wraps
+LDraw/Studio imports retain their reference hierarchy in authoring source blobs
+(and legacy test snapshot manifests); unchanged downloads preserve it. Geographic import placement wraps
 the root in a translated reference rather than discarding nested definitions.
 Independent leaf edits can make
 that hierarchy stale. The writer checks the complete leaf poses/colors and, if
@@ -97,9 +97,15 @@ they no longer match, writes a fresh root referencing the edited leaf parts.
 It never restores old template poses over edits. Automatic copy-on-write
 submodel editing/re-deduplication is not implemented.
 
+Embedded DAT parts/primitives remain baked mesh definitions even when they contain
+only scaled references to other primitives; they are not counted as scaled
+physical bricks. DAT authoring assemblies need an explicit Model/Submodel header.
+Canonical JSON `subparts` definitions are explicit and may use DAT names too.
+
 Spatial CBOR blocks and shared-world live piece records remain **materialized
 indexes**, with shared immutable part meshes. Shared imports also store an
-immutable import-time `source_model` blob referenced by their assembly header;
+immutable `source_model` blob referenced by their assembly header; accepted
+assembly replacements update that pointer to the new authoring source.
 retention/GC trace that link. It is provenance, not the authority for subsequent
 shared piece edits. A bounded shared navigation region is not a full-model export.
 

@@ -1,5 +1,15 @@
 # Scaleway deployment with OpenTofu
 
+## v0.4.0 single-sandbox rollout
+
+The current hosted product has one public Ergo Sandbox. Configure
+`common_world_id = "fde184c4-222b-4a16-8a1f-c320da8a2f35"` and
+`world_prefix = "world"` only after the [namespace migration](object-store-layout.md)
+has copied/verified its accepted history. These inject `ERGO_COMMON_WORLD_ID`
+and `ERGO_WORLD_PREFIX`; the hosted server refuses to serve legacy alternative
+worlds. The bucket itself remains private. `/api/config` reports the running
+version and common-world ID for rollout diagnostics.
+
 [`infra/scaleway/`](../infra/scaleway/) defines one Serverless Container service
 for the API and built web application at **https://ergosandbox.com**. It looks up
 the existing **`ergo`** Object Storage bucket as a data source. Bucket contents,

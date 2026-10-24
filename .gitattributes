@@ -1,0 +1,2 @@
+# LDraw files use CRLF. Preserve their bytes and recognize CR as a line ending.
+*.mpd -text whitespace=blank-at-eol,blank-at-eof,space-before-tab,cr-at-eol

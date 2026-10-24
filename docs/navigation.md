@@ -42,8 +42,12 @@ at its selected speed until slowed; arrow keys steer that motion.
 Speed changes by 64 stud-scaled units/s per second of held A/Z, bounded to
 0–2048 units/s. The wheel and on-screen plus/minus controls also adjust speed,
 including from zero. Motion is normalized in metric-proportioned directions so
-vertical movement respects the 9.6/8 unit ratio. Fly is a free camera and does not
-collide with pieces or the ground.
+vertical movement respects the 9.6/8 unit ratio. Fly continuously sweeps a small
+camera volume against brick body boxes, the Z=0 floor, and unloaded storage cells.
+It stops at surfaces and slides along walls, including thin walls at maximum
+speed; it does not step or apply gravity. The conservative camera box has a
+0.28-stud horizontal radius and metric-equivalent vertical radius. Decorative
+studs and exact mesh holes are not collision geometry.
 
 ## Walk
 

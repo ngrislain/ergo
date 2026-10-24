@@ -2,14 +2,15 @@
 
 The MCP process runs beside your agent. It builds a local working copy using
 the bundled browser/WASM engine and publishes through the authenticated production
-API at **https://ergosandbox.com**. Only the server writes S3.
+API at **https://ergosandbox.com**. Only the server writes S3. There is one public
+Ergo Sandbox; accepted current-client edits update it automatically.
 
 ## Install and sign in
 
 Use Node 20+ and the [prebuilt package](distribution.md); no Rust build is needed:
 
 ```sh
-export ERGO_MCP_PACKAGE='https://github.com/ngrislain/ergo/releases/download/v0.3.1/ngrislain-ergo-mcp-0.3.1.tgz'
+export ERGO_MCP_PACKAGE='https://github.com/ngrislain/ergo/releases/download/v0.4.0/ngrislain-ergo-mcp-0.4.0.tgz'
 npm install --global "$ERGO_MCP_PACKAGE"
 ergo-mcp --login --publish-url https://ergosandbox.com
 ```
@@ -33,17 +34,16 @@ configuration (the token itself does not belong in this JSON):
 }
 ```
 
-The released v0.3.1 package supports the ordinary placement/validation/image/
-publication workflow here. The newer LDraw submodel tool and canonical storage
-format require a current-source runtime until a newer prebuilt bundle is released.
+Use v0.4.0+ for shared in-place editing, LDraw submodels, current-position handoff,
+and canonical storage. v0.3.x uses the old manual-publication protocol.
 
 ## Ask your agent
 
 > Use Ergo MCP to build a small pixel rocket, a compass plaza, and a garden
 > courtyard. Use common parts and colors. Keep these as three separate local
 > constructions; inspect real isometric and top images, check overlap and static
-> stability, and run the short gravity test. Publish each as a new private
-> production world using my configured token. Return the confirmed viewer URL,
+> stability, and run the short gravity test. Save each as a shared
+> construction in the one public Ergo Sandbox using my configured token. Return the confirmed viewer URL,
 > accepted revision, and authenticated author name for each.
 
 For example, the first ordinary brick uses this MCP tool call:
@@ -65,13 +65,13 @@ After adding the remaining pieces:
 Read `publication_ready` and `revision` from validation. Then explicitly publish:
 
 ```json
-{"name":"publish_construction","arguments":{"name":"My rocket","expected_local_revision":1,"authenticated_editing":false}}
+{"name":"publish_construction","arguments":{"name":"My rocket","expected_local_revision":1}}
 ```
 
-Replace `1` with the actual local revision after all edits. Omit `world_id` to
-create a world; supplying an existing world imports an additional assembly, not
-an update of a prior published assembly. New worlds in this example are private
-to the account and its grants. Publishing does not bypass validation or pacing.
+Replace `1` with the actual local revision. Normal production edits already commit
+to the same shared assembly; this call can confirm/rename it, or admit an existing
+validated proposal. It cannot create a private/alternative world and never bypasses
+validation or pacing. See [position-based editing](agent-shared-editing.md).
 
 ## Repeatable demonstration
 
@@ -108,8 +108,10 @@ The demonstration was executed against production on 2026-10-24: Pixel rocket
 (29 bricks), Compass plaza (29), and Garden courtyard (30). All three returned
 confirmed world/assembly read-backs and the authenticated author name. The local
 run's PNGs, workspace files and acceptance receipts are in
-`target/prod-mcp-demo-20261024/` (generated, not versioned). These are private
-owner-scoped worlds, not public examples.
+`target/prod-mcp-demo-20261024/` (generated, not versioned). The three constructions
+were subsequently copied to the single common sandbox at distinct positions;
+their shared receipts are in `target/common-world-demo-20261024/`. The former
+private-world copies are retired by the single-world cleanup.
 
 Success requires `published: true` after the MCP tool reads back both the
 accepted world revision and assembly. The result includes `view_url`,

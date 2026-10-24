@@ -1,5 +1,11 @@
 # Client/server/MCP architecture
 
+**Current hosted mode:** one public Ergo Sandbox, with automatic validated
+shared-assembly commits from authenticated MCP/UI clients. Private/alternative
+world APIs below are retained only as isolated engine compatibility fixtures.
+See [shared editing](agent-shared-editing.md) and the
+[current object-store layout](object-store-layout.md).
+
 ![Ergo execution and persistence architecture](figures/architecture.svg)
 
 ## Execution boundaries

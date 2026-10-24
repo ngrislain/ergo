@@ -5,6 +5,13 @@ A Rust web workbench for geographically addressed brick constructions, with a
 Leptos UI, WebAssembly/WebGL2 rendering, object-store persistence, and a local
 MCP construction editor.
 
+**The hosted product has one public Ergo Sandbox.** Anyone may view it; signed-in
+users' accepted edits commit to the same world in S3 with authenticated author
+attribution. MCP v0.4.0+ updates shared assemblies in place; local files are caches.
+See [edit here or at a specified position](docs/agent-shared-editing.md),
+[object-store organization](docs/object-store-layout.md), and the reproducible
+[Haussmann-style building test](docs/haussmann-mcp.md).
+
 The public guide is at **https://www.ergosandbox.com**: authenticate a human,
 connect an agent, and start building. Its brick scene uses the navigator's
 shared WebGL/WASM engine, with fixed studio lighting and orbit/zoom controls.
@@ -12,7 +19,7 @@ The navigator uses geographic sun/shadows and a night flashlight.
 The guide also provides a [privacy notice](https://www.ergosandbox.com/privacy/)
 and [terms](https://www.ergosandbox.com/terms/). See [website deployment](docs/static-site.md)
 for its GitHub Pages source and publishing workflow.
-The apex shows sign-in to guests and opens the viewer for signed-in users;
+The apex opens the public sandbox for guests and signed-in users;
 `/login#connect` remains the agent-token setup page.
 The [operations runbook](docs/operations.md) lists the shell commands for tests,
 publication, DNS/TLS, server deployment, and configuration recovery.
@@ -31,8 +38,9 @@ cargo run --release -p ergo-server
 ```
 
 Open **http://127.0.0.1:3000**. Run commands from the repository root. The server
-creates a local `data/` object store, a labeled development user, and read-only
-fixture examples. Configure `.env` using [`.env.example`](.env.example) for other
+creates one local `data/world` sandbox and a labeled development user. Isolated
+compatibility tests opt into legacy fixtures explicitly; they are not hosted worlds.
+Configure `.env` using [`.env.example`](.env.example) for other
 storage/authentication settings. Neither a JavaScript package manager nor a
 database is needed.
 
@@ -74,9 +82,9 @@ explicitly, so ordinary server builds/tests do not require the WASM toolchain.
   MCP `place_submodel` instantiates LDraw/MPD assemblies atomically.
 - Server-side save validation: schema/catalog checks, overlap checks, grounding,
   static support/wrench checks with numerical tolerances, and measured connector-capacity requirements. The server runs no dynamic simulation.
-- Google OpenID Connect, object-store user profiles, signed HttpOnly sessions,
-  a landing/setup page with MCP/API tokens, per-user snapshots, and fixture examples.
-- Collaborative shared worlds with configurable per-user pacing (default 5,000
+- Google OpenID Connect, private object-store profiles, signed HttpOnly sessions,
+  token setup and authenticated author attribution in the single public sandbox.
+- One collaborative sandbox with configurable per-user pacing (default 5,000
   changed bricks refilled per day); paid entitlements bypass pacing, not validation.
 - An authenticated shared-world REST API with versioned region grants, optimistic
   commits, stable content-derived piece identities, paged spatial access, and
@@ -158,7 +166,7 @@ using GitHub's built-in registry credentials.
 Install the prebuilt npm package from its GitHub Release:
 
 ```sh
-export ERGO_MCP_PACKAGE='https://github.com/ngrislain/ergo/releases/download/v0.3.1/ngrislain-ergo-mcp-0.3.1.tgz'
+export ERGO_MCP_PACKAGE='https://github.com/ngrislain/ergo/releases/download/v0.4.0/ngrislain-ergo-mcp-0.4.0.tgz'
 npm install --global "$ERGO_MCP_PACKAGE"
 ergo-mcp --workspace /path/construction.ergo.json
 ```
@@ -180,10 +188,11 @@ MCP command opens a minimal client in the existing browser; `--attach` prints it
 local attachment URL and `--headless` uses isolated Chrome for automation. The
 bridge does not load the full application UI or run a native renderer/solver.
 
-The parent directory must exist. Edits are stored in this local working copy.
-`publish_construction` can publish a new shared-world assembly through the
-authenticated REST service when `ERGO_PUBLISH_URL` and a user delegation token
-are configured. The bridge confirms the accepted revision by remote read-back;
+The parent directory must exist. With the production URL/token configured, this
+file is a cache; accepted mutations update the same shared assembly automatically.
+`open_shared_construction` loads an assembly at a specified position or ID.
+`publish_construction` confirms a receipt, renames a construction, or admits a
+validated proposal, without creating another world. Remote revisions are read back;
 S3 credentials stay on the server. See [publication setup](docs/local-construction-mcp.md#remote-publication-setup).
 `view_construction` returns images from
 isometric, north, south, east, west, or top views. `test_solidity` returns
@@ -222,7 +231,8 @@ cargo run -p ergo-transactions --example s3_edits
 
 See [transactional storage](docs/transactional-storage.md) for the API, independence
 rules, S3 endpoint checks, and scaling limits. It also backs the permission-checked
-shared-world REST API; private snapshot saves retain their own workflow. See
+shared-world REST API. Legacy snapshot APIs are isolated compatibility fixtures,
+not available in the hosted single-sandbox mode. See
 [shared-world editing](docs/concurrent-global-editing.md).
 Use [storage operations](docs/storage-operations.md) for paging APIs, legacy
 upgrade/backfill commands, retention policy, and deployment flags.

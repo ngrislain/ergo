@@ -2,6 +2,10 @@ locals {
   public_url  = "https://${var.domain_name}"
   s3_endpoint = "https://s3.${var.bucket_region}.scw.cloud"
   dns_target  = "${trimprefix(scaleway_container.api.public_endpoint, "https://")}."
+  sandbox_environment = var.common_world_id == "" ? {} : {
+    ERGO_COMMON_WORLD_ID = var.common_world_id
+    ERGO_WORLD_PREFIX    = var.world_prefix
+  }
 }
 
 # This is an existing bucket, deliberately not a managed resource.
@@ -36,7 +40,7 @@ resource "scaleway_container" "api" {
     concurrent_requests_threshold = 10
   }
 
-  environment_variables = merge({ ERGO_GROUND_SOURCE = "satellite" }, var.extra_environment_variables, {
+  environment_variables = merge({ ERGO_GROUND_SOURCE = "satellite" }, var.extra_environment_variables, local.sandbox_environment, {
     ERGO_BIND                   = "0.0.0.0:8080"
     ERGO_PUBLIC_URL             = local.public_url
     S3_BUCKET                   = data.scaleway_object_bucket.ergo.name

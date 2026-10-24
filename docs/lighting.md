@@ -68,6 +68,11 @@ direct controls. Page scrolling remains available outside the interactive canvas
 The studio shadow projection is scene-fixed too. A cast shadow changes screen
 position/perspective during camera orbit, but its light-space projection does not
 rotate with the camera; this is separate from a moving view-dependent highlight.
+The homepage uploads its entire small illustration at fixed geometric detail to
+both passes, including off-camera casters. Its stud geometry does not morph with
+view distance. This avoids camera-dependent caster/LOD changes during orbit;
+tests compare the actual geometry/instance-buffer hashes and projection, not just
+the light-position diagnostic. Navigator scenes retain bounded progressive LOD.
 
 ## Ambient, diffuse, and specular light
 

@@ -66,7 +66,7 @@ def main():
         expect(page.get_by_role("button",name="＋ Import construction",exact=True)).to_have_count(1)
         expect(page.get_by_role("button",name="＋ Import from Studio",exact=True)).to_have_count(0)
         page.wait_for_function("Number(document.querySelector('#world-canvas').dataset.groundStuds) > 0")
-        assert int(page.locator("#world-canvas").get_attribute("data-ground-studs")) <= 97 * 97
+        assert int(page.locator("#world-canvas").get_attribute("data-ground-studs")) <= 193 * 193
         assert page.evaluate("document.querySelector('canvas').getContext('webgl2') !== null")
         page.locator("#world-canvas").click()
         expect(page.locator(".selected-part h3")).to_be_visible()

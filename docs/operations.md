@@ -1,5 +1,15 @@
 # Operations runbook
 
+## Current single-sandbox operations
+
+Use [object-store layout/migration](object-store-layout.md) for the current
+`ergo/world` namespace and cleanup commands. Legacy per-world/private operations
+below are compatibility/upgrade tools, not hosted world-creation workflows.
+Use [shared agent editing](agent-shared-editing.md) for normal editing and
+[the Haussmann test](haussmann-mcp.md) for reproducible non-destructive proposals.
+The release builds GitHub artifacts with npm publication disabled unless
+`ERGO_NPM_PUBLISH=true`. Never assume a green image job is an npm publication.
+
 Run commands from the repository root unless a section says otherwise. Current
 public endpoints are:
 

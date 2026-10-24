@@ -1,5 +1,27 @@
 # Construction MCP server
 
+## Current hosted workflow (v0.4.0+)
+
+The product offers one public **Ergo Sandbox**. Anyone can view it; signed-in
+editors' accepted mutations update the same S3-backed assembly automatically.
+There are no private/alternative hosted worlds. Workspace JSON and `.shared.json`
+are caches/journals, not separate authoritative constructions. Use
+`open_shared_construction` by assembly ID or public position to load an existing
+construction. See [the current/specified-position guide](agent-shared-editing.md).
+`get_catalog` and initialization guidance recommend minimizing brick count with
+the largest suitable parts while preserving the requested shape and constraints.
+
+`publish_construction` confirms a receipt, renames a shared construction, or
+admits a validated pre-existing proposal. The hosted schema has no world-creation
+or private-sharing options. Unknown outcomes are fenced; invalid edits are not
+reported as successful shared commits. `lighting: "studio"` on
+`test_visual_appearance` / `view_construction` enables UTC-independent inspection.
+
+The older standalone draft/private-publication protocol described below remains
+only for isolated developer compatibility fixtures, not the hosted product.
+For the current npm client use
+`https://github.com/ngrislain/ergo/releases/download/v0.4.0/ngrislain-ergo-mcp-0.4.0.tgz`.
+
 ## Purpose and scope
 
 `ergo-mcp` is a thin stdio/loopback-REST bridge to a minimal local WASM client. An agent can

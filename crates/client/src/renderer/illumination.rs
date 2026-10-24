@@ -18,6 +18,7 @@ pub(super) struct LightPass {
 }
 
 pub(super) struct Observer {
+    pub projection_pixels: f64,
     pub geo: GeoReference,
     pub eye: DVec3,
     pub target: DVec3,
@@ -177,7 +178,18 @@ impl LightPass {
                 Mat4::from_scale(observer.display_scale.as_vec3()),
             );
             uniform_matrix(gl, &self.shadow_program, "shadow_matrix", matrix);
+            uniform_vector(gl, &self.shadow_program, "eye", eye);
+            gl.uniform1f(
+                gl.get_uniform_location(&self.shadow_program, "projection_pixels")
+                    .as_ref(),
+                observer.projection_pixels as f32,
+            );
             for mesh in gpu.values().filter(|mesh| mesh.instances > 0) {
+                gl.uniform1i(
+                    gl.get_uniform_location(&self.shadow_program, "stud_mode")
+                        .as_ref(),
+                    mesh.stud_mode,
+                );
                 gl.bind_vertex_array(Some(&mesh.vao));
                 gl.draw_arrays_instanced(Gl::TRIANGLES, 0, mesh.vertices, mesh.instances);
             }

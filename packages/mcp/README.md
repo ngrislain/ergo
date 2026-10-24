@@ -6,10 +6,11 @@ required by package consumers. The package includes macOS ARM64/Intel and Linux
 ARM64/x64 binaries. macOS 13+ and Linux glibc 2.36+ are the release baselines;
 Windows and Linux musl/Alpine binaries are not included.
 
-After the package is published:
+Install the GitHub-hosted bundle with npm (registry publication is currently disabled):
 
 ```sh
-npx -y @ngrislain/ergo-mcp@0.3.1 --workspace /absolute/path/construction.ergo.json
+npm install --global 'https://github.com/ngrislain/ergo/releases/download/v0.4.0/ngrislain-ergo-mcp-0.4.0.tgz'
+ergo-mcp --workspace /absolute/path/construction.ergo.json
 ```
 
 MCP client configuration:
@@ -18,8 +19,8 @@ MCP client configuration:
 {
   "mcpServers": {
     "ergo": {
-      "command": "npx",
-      "args": ["-y", "@ngrislain/ergo-mcp@0.3.1", "--workspace", "/absolute/path/construction.ergo.json"],
+      "command": "ergo-mcp",
+      "args": ["--workspace", "/absolute/path/construction.ergo.json"],
       "env": {
         "ERGO_PUBLISH_TOKEN_FILE": "/absolute/path/ergo-mcp-token"
       }
@@ -35,8 +36,9 @@ native `--web-dir` option can explicitly override the packaged assets.
 
 Login and authenticated publishing default to **https://ergosandbox.com**.
 Override the server with `ERGO_PUBLISH_URL` or `--publish-url`; the CLI option takes
-precedence. Local editing needs no account or token and does not contact the
-hosted server at startup. To publish, supply `ERGO_PUBLISH_TOKEN_FILE`,
+precedence. With a production token, accepted edits automatically update the one
+public Ergo Sandbox and the file is a cache. Runs without a URL/token are isolated
+developer/proposal tests, not alternative hosted worlds. Supply `ERGO_PUBLISH_TOKEN_FILE`,
 `--publish-token-file`, or `ERGO_PUBLISH_TOKEN` after signing in.
 
 The default opens your browser; `--attach` prints the local attachment URL.
@@ -46,7 +48,7 @@ package does not install a browser or download executable code at startup.
 For sign-in/token setup:
 
 ```sh
-npx -y @ngrislain/ergo-mcp@0.3.1 --login
+ergo-mcp --login
 ```
 
 Publishing retains server authorization, pacing, and measured-physics checks.

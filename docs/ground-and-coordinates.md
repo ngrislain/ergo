@@ -54,8 +54,11 @@ is Z=0, so placed piece bases have height zero without z-fighting the display.
 
 The surface has one stud per horizontal construction unit, so a full plate has
 1024×1024 stud positions. Nearby visible studs use an instanced 12-sided cylinder
-(4.8 mm diameter, 1.6 mm high). The renderer considers at most a 97×97 local
-grid, then frustum/distance culls it. Farther studs use derivative-filtered shader
+(4.8 mm diameter, 1.6 mm high). The renderer considers at most a 193×193 local
+grid, then frustum/distance culls it. Near cylinders use 16 sides and distant
+cylinders use 8. Geometric height blends over a wide band into derivative-filtered
+relief; the 94-unit radius stays inside the grid. See [stud LOD](stud-lod.md).
+Farther studs use derivative-filtered shader
 relief that fades when subpixel; a million separate meshes are never allocated.
 Studs are decorative and do not change the flat navigation/physics support plane.
 

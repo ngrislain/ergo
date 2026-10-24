@@ -49,8 +49,7 @@
               fonts, scripts, and shared Rust/WASM brick renderer are served
               with the site. It does not run advertising or analytics scripts,
               set application cookies, or store your token. Interactions with
-              the brick illustration stay in browser memory. The lighting uses
-              the illustration's world coordinates and current UTC time; it does
+              the brick illustration stay in browser memory. Its fixed studio lighting does
               not request your device's location.
             </p>
             <p>
@@ -88,11 +87,12 @@
               metadata.
             </p>
             <p>
-              Local MCP drafts stay in the workspace you choose until you
-              publish them. Shared-world access follows the world’s current
-              policy. New MCP-created worlds allow other signed-in identities to
-              read and edit by default; an owner/grant-only world can be created
-              with <code>authenticated_editing: false</code>. Do not use shared
+              There is one public Ergo Sandbox, viewable without signing in.
+              Accepted edits from the workbench and current MCP client are stored
+              in that shared world under the signed-in account's stable ID and
+              server-resolved display name. The local MCP file is a cache, not a
+              private world. Rejected/uncertain edits are not presented as confirmed
+              shared changes. Do not use shared
               constructions to store secrets or information you are not entitled
               to share.
             </p>

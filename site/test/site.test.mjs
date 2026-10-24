@@ -59,7 +59,7 @@ test("agent setup uses a human-issued token and the canonical API origin", async
   assert.doesNotMatch(html, /npx -y @ngrislain/);
   assert.match(guide, /no public remote MCP endpoint/);
   assert.match(guide, /not automatically retry/);
-  assert.match(guide, /authenticated_editing=false/);
+  assert.match(guide, /one public Ergo Sandbox/);
   assert.match(guide, /X-Ergo-Request: 1/);
 });
 
@@ -86,7 +86,7 @@ test("privacy and terms describe current credential and sharing semantics", asyn
   assert.match(privacy, /Logging out does not individually revoke/);
   assert.match(privacy, /not currently implemented/);
   assert.match(terms, /not professional engineering advice/);
-  assert.match(terms, /authenticated_editing: false/);
+  assert.match(terms, /one public Ergo Sandbox/);
 });
 
 test("the Pages artifact contains no dotenv, state, or infrastructure files", async () => {

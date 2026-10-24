@@ -32,6 +32,31 @@ pub fn conversion() -> DMat3 {
     DMat3::from_diagonal(DVec3::new(1.0 / 20.0, -1.0 / 24.0, -1.0 / 20.0))
 }
 
+/// Primitive-only DAT geometry remains one physical part. A DAT model needs an
+/// explicit Model/Submodel header; LDR/MPD files are models by convention.
+pub fn is_assembly(name: &str, text: &str) -> bool {
+    if !name.ends_with(".dat") {
+        return true;
+    }
+    text.lines().any(|line| {
+        let tokens = line.split_whitespace().collect::<Vec<_>>();
+        tokens.first() == Some(&"0")
+            && tokens
+                .get(1)
+                .is_some_and(|s| s.eq_ignore_ascii_case("!LDRAW_ORG"))
+            && tokens.get(2).is_some_and(|s| {
+                [
+                    "model",
+                    "submodel",
+                    "unofficial_model",
+                    "unofficial_submodel",
+                ]
+                .iter()
+                .any(|kind| s.eq_ignore_ascii_case(kind))
+            })
+    })
+}
+
 #[derive(Clone, Debug)]
 pub struct Reference {
     pub color: u32,
@@ -174,11 +199,11 @@ impl Document {
             let transform = matrix * r.transform;
             let p = matrix * r.position + position;
             let code = if r.color == 16 { inherited } else { r.color };
-            if self.files.get(&r.name).is_some_and(|text| {
-                !text
-                    .lines()
-                    .any(|line| matches!(line.split_whitespace().next(), Some("3" | "4")))
-            }) {
+            if self
+                .files
+                .get(&r.name)
+                .is_some_and(|text| is_assembly(&r.name, text))
+            {
                 self.flatten(&r.name, transform, p, code, stack, out)?;
             } else {
                 ensure!(
@@ -340,6 +365,17 @@ fn bake_recursive(
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn primitive_only_dat_parts_are_not_flattened_into_scaled_physical_bricks() {
+        let doc=Document::parse("0 FILE main.ldr\n1 4 0 0 0 1 0 0 0 1 0 0 0 1 custom.dat\n0 FILE custom.dat\n0 !LDRAW_ORG Unofficial_Part\n1 16 0 0 0 2 0 0 0 2 0 0 0 2 primitive.dat\n0 FILE primitive.dat\n3 16 0 0 0 20 0 0 0 20 0", "model.mpd").unwrap();
+        let refs = doc.instances().unwrap();
+        assert_eq!(refs.len(), 1);
+        assert_eq!(refs[0].name, "custom.dat");
+        assert_eq!(refs[0].transform, DMat3::IDENTITY);
+        let model = crate::assembly::Model::from_document(&doc).unwrap();
+        assert!(!model.subparts.contains_key("custom.dat"));
+        assert_eq!(model.references().unwrap()[0].name, "custom.dat");
+    }
 
     #[test]
     fn flattens_submodel_transforms_inherited_colors_and_spaced_names() {

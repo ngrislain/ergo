@@ -99,7 +99,7 @@ def main():
     url = f"http://127.0.0.1:{port}"
     environment = {k: v for k, v in os.environ.items()
                    if not k.startswith(("ERGO_", "GOOGLE_", "S3_"))}
-    environment.update(ERGO_ASSET_FETCH="0", ERGO_GROUND_SOURCE="disabled")
+    environment.update(ERGO_ASSET_FETCH="0", ERGO_GROUND_SOURCE="disabled",ERGO_LEGACY_FIXTURES="1")
     with tempfile.TemporaryDirectory(prefix="ergo-publish-test-") as temporary:
         directory = pathlib.Path(temporary)
         server_environment = {**environment, "ERGO_BIND": f"127.0.0.1:{port}",

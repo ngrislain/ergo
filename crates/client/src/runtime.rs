@@ -219,6 +219,7 @@ impl LocalClientRuntime {
             );
         }
         let renderer = self.renderer.as_mut().unwrap();
+        renderer.studio_lighting = args["lighting"].as_str() == Some("studio");
         renderer.clear();
         renderer.geo = scene.geo;
         renderer.meshes = scene.meshes.clone();
@@ -297,7 +298,7 @@ impl LocalClientRuntime {
                 let part = args["part"].as_str().map(canonical);
                 let asset = part.as_ref().and_then(|p|self.scene.meshes.get(p)).map(|m|json!({"part":m.part,"quality":m.quality,"bounds":m.bounds,"mass_kg":self.measurements.mass_kg(&m.part).ok()}));
                 Ok(text(
-                    json!({"catalog":catalog,"requested_part":asset,"units":{"position":"X east, Y north, Z up; X/Y 8 mm, Z 9.6 mm","force":"N","torque":"N m","mass":"kg"},"execution":"local-wasm-client"}),
+                    json!({"catalog":catalog,"requested_part":asset,"building_guidance":"For a given shape, minimize brick count. Prefer the largest suitable standard bricks, plates or tiles instead of many small pieces, while preserving shape, colors, support, connectivity and physical validation.","units":{"position":"X east, Y north, Z up; X/Y 8 mm, Z 9.6 mm","force":"N","torque":"N m","mass":"kg"},"execution":"local-wasm-client"}),
                 ))
             }
             "list_bricks" => {

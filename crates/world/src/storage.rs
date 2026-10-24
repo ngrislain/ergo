@@ -314,7 +314,7 @@ mod tests {
 
     #[test]
     fn nested_dat_subparts_and_namespaced_instances_preserve_hierarchy() {
-        let doc = ldraw::Document::parse("0 FILE main.ldr\n1 4 0 0 0 1 0 0 0 1 0 0 0 1 sub.dat\n0 FILE sub.dat\n1 16 0 -24 0 1 0 0 0 1 0 0 0 1 3003.dat", "model.mpd").unwrap();
+        let doc = ldraw::Document::parse("0 FILE main.ldr\n1 4 0 0 0 1 0 0 0 1 0 0 0 1 sub.dat\n0 FILE sub.dat\n0 !LDRAW_ORG Model\n1 16 0 -24 0 1 0 0 0 1 0 0 0 1 3003.dat", "model.mpd").unwrap();
         assert_eq!(doc.instances().unwrap()[0].name, "3003.dat");
         let mut a = Model::from_document(&doc).unwrap();
         let b = a.clone();

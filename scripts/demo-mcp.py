@@ -141,7 +141,7 @@ def main():
                 model["publication_attempted"] = True
                 manifest.write_text(json.dumps(results,indent=2)+"\n")
                 result = mcp.call("publish_construction",name="MCP demo — "+model["name"],
-                    expected_local_revision=feedback["revision"],authenticated_editing=False)
+                    expected_local_revision=feedback["revision"])
                 publication = result["structuredContent"]
                 model["publication"] = publication
                 manifest.write_text(json.dumps(results,indent=2)+"\n")

@@ -12,6 +12,30 @@ fn service() -> SharedWorlds {
     })
     .unwrap()
 }
+
+#[tokio::test]
+async fn local_sandbox_bootstraps_one_persistent_namespace() {
+    let mut first = service();
+    first.bootstrap_local(Default::default()).await.unwrap();
+    let id = first.common_world.clone().unwrap();
+    assert_eq!(first.repo(&id).unwrap().prefix(), "world");
+    let mut second = SharedWorlds::new(first.store.clone()).unwrap();
+    second.bootstrap_local(Default::default()).await.unwrap();
+    assert_eq!(second.common_world.as_deref(), Some(id.as_str()));
+    assert!(
+        second
+            .create(
+                "development",
+                NewWorld {
+                    name: "No fork".into(),
+                    geo: Default::default(),
+                    authenticated_editing: true
+                }
+            )
+            .await
+            .is_err()
+    );
+}
 fn scene(x: f64) -> WorldExport {
     let mut d = ergo_world::demo::Demo::new();
     d.add("3003", 4, x, 0.0, 100.0);
@@ -100,6 +124,100 @@ async fn seeded(service: &SharedWorlds, initial: WorldExport) -> (Head, Imported
         .await
         .unwrap();
     (head, imported)
+}
+
+#[tokio::test]
+async fn bounded_assembly_replacement_preserves_ids_and_is_atomic() {
+    let mut service = service();
+    let (head, imported) = seeded(&service, scene(10.)).await;
+    service.common_world = Some(head.id.clone());
+    let mut candidate = scene(10.);
+    candidate.bricks[0].translated(glam::DVec3::X * 3.);
+    let mut extra = ergo_world::demo::Demo::new();
+    extra.add("3003", 14, 50., 0., 100.);
+    extra.bricks[0].id = 3;
+    candidate.bricks.push(extra.bricks.remove(0));
+    let next = service
+        .replace_assembly(
+            &head.id,
+            "alice",
+            &imported.assembly,
+            authoring::ReplaceRequest {
+                base: imported.accepted.revision.clone(),
+                scene: candidate.clone(),
+            },
+        )
+        .await
+        .unwrap();
+    assert_eq!(next.assembly, imported.assembly);
+    assert_eq!(next.pieces[&1], imported.pieces[&1]);
+    assert_eq!(next.pieces[&2], imported.pieces[&2]);
+    assert_eq!(next.pieces.len(), 3);
+    let loaded = service
+        .authoring_scene(&head.id, "alice", &next.assembly, &next.accepted.revision)
+        .await
+        .unwrap();
+    let loaded: WorldExport = serde_json::from_value(loaded["scene"].clone()).unwrap();
+    assert_eq!(loaded.bricks.len(), 3);
+    assert_eq!(loaded.bricks[0].position, candidate.bricks[0].position);
+    let accepted = next.accepted.revision.clone();
+    candidate.bricks[0].translated(glam::DVec3::Y * 20.);
+    assert!(
+        service
+            .replace_assembly(
+                &head.id,
+                "alice",
+                &next.assembly,
+                authoring::ReplaceRequest {
+                    base: accepted.clone(),
+                    scene: candidate
+                }
+            )
+            .await
+            .is_err()
+    );
+    assert_eq!(
+        service
+            .head(
+                &head.id,
+                &Principal {
+                    id: Some("alice".into())
+                },
+                None
+            )
+            .await
+            .unwrap()
+            .revision,
+        accepted
+    );
+    let mut cleared = loaded;
+    cleared.bricks.clear();
+    let deleted = service
+        .replace_assembly(
+            &head.id,
+            "alice",
+            &next.assembly,
+            authoring::ReplaceRequest {
+                base: accepted,
+                scene: cleared,
+            },
+        )
+        .await
+        .unwrap();
+    assert!(deleted.pieces.is_empty());
+    let redirected = service
+        .create(
+            "alice",
+            NewWorld {
+                name: "ignored private world".into(),
+                geo: Default::default(),
+                authenticated_editing: false,
+            },
+        )
+        .await
+        .err()
+        .unwrap();
+    assert_eq!(redirected.status, StatusCode::CONFLICT);
 }
 
 #[tokio::test]

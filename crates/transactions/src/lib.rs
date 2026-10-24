@@ -37,7 +37,9 @@ pub use batch::Submission;
 pub use cache::CacheStats;
 pub use codec::canonical_cbor;
 pub use history::{PruneReport, RevisionEntry, RevisionPage};
-pub use maintenance::{GcOptions, GcReport, Maintenance, MaintenanceStatus, RecordEdit};
+pub use maintenance::{
+    GcOptions, GcReport, Maintenance, MaintenanceStatus, MigrationReport, RecordEdit,
+};
 pub use path::{MAX_DEPTH, OctreePath};
 
 use bytes::Bytes;
@@ -225,6 +227,10 @@ pub struct Repository {
 }
 
 impl Repository {
+    /// Dedicated object-store namespace, without credentials or bucket location.
+    pub fn prefix(&self) -> &str {
+        &self.prefix
+    }
     /// Use a dedicated namespace. Heads must never be overwritten/deleted outside this API.
     /// LocalFileSystem in object_store 0.12 does not support conditional updates;
     /// InMemory is suitable for tests, and S3 uses conditional ETag PUTs.

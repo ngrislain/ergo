@@ -92,12 +92,9 @@ impl Model {
     pub fn from_document(document: &ldraw::Document) -> Result<Self> {
         let mut subparts = BTreeMap::new();
         for (name, text) in &document.files {
-            // Polygon-bearing .dat files are mesh definitions, not assemblies.
-            if name != &document.root
-                && text
-                    .lines()
-                    .any(|line| matches!(line.split_whitespace().next(), Some("3" | "4")))
-            {
+            // DAT part/primitive geometry is baked, not counted as individual
+            // physical bricks merely because its faces are in other subfiles.
+            if name != &document.root && !ldraw::is_assembly(name, text) {
                 continue;
             }
             let mut references = Vec::new();

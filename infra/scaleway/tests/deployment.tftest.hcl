@@ -24,10 +24,15 @@ variables {
   session_secret       = "synthetic-session-secret-at-least-32-characters"
   s3_access_key_id     = "synthetic-access-key"
   s3_secret_access_key = "synthetic-secret-key"
+  common_world_id      = "33333333-3333-4333-8333-333333333333"
 }
 
 run "scale_zero_existing_bucket_and_apex_domain" {
   command = apply
+  assert {
+    condition     = scaleway_container.api.environment_variables["ERGO_COMMON_WORLD_ID"] == var.common_world_id && scaleway_container.api.environment_variables["ERGO_WORLD_PREFIX"] == "world"
+    error_message = "The hosted container must target the single migrated world namespace."
+  }
   assert {
     condition     = scaleway_container.api.min_scale == 0 && scaleway_container.api.max_scale == 1
     error_message = "The default deployment must scale between zero and one instance."

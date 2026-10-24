@@ -24,7 +24,7 @@ with tempfile.TemporaryDirectory(prefix="ergo-isolated-web-") as temporary:
     directory = pathlib.Path(temporary)
     (directory / "web").symlink_to(ROOT / "web", target_is_directory=True)
     environment = {k:v for k,v in os.environ.items() if not k.startswith(("ERGO_","GOOGLE_","S3_"))}
-    environment.update(ERGO_BIND=f"127.0.0.1:{port}", ERGO_ASSET_FETCH="0", ERGO_GROUND_SOURCE="disabled")
+    environment.update(ERGO_BIND=f"127.0.0.1:{port}", ERGO_ASSET_FETCH="0", ERGO_GROUND_SOURCE="disabled",ERGO_LEGACY_FIXTURES="1")
     with tempfile.TemporaryFile(mode="w+t") as log:
         server = subprocess.Popen([str(pathlib.Path(args.server_binary).resolve())], cwd=directory,
                                   env=environment, stdout=log, stderr=log)

@@ -114,6 +114,9 @@ impl SharedWorlds {
         id: &str,
         users: impl IntoIterator<Item = String>,
     ) -> Result<()> {
+        if self.common_world.is_some() || self.common_root.is_some() {
+            return Ok(());
+        }
         for user in users.into_iter().collect::<BTreeSet<_>>() {
             let repo = self.catalog_repo(&format!("users/{}", user_key(&user)))?;
             upsert(
@@ -136,6 +139,9 @@ impl SharedWorlds {
         geo: ergo_world::GeoReference,
         blocks: &BTreeSet<ergo_world::BlockCoord>,
     ) -> Result<()> {
+        if self.common_world.is_some() || self.common_root.is_some() {
+            return Ok(());
+        }
         let mut buckets: BTreeMap<String, Vec<_>> = BTreeMap::new();
         for &coord in blocks {
             for q in tiles(geo, coord) {
@@ -216,6 +222,18 @@ impl SharedWorlds {
         }))
     }
     async fn catalog_page(&self, principal: &Principal, q: CatalogQuery) -> SharedResult<Page> {
+        if let Some(id) = &self.common_world {
+            let head = self.head(id, principal, None).await?;
+            return Ok(Page {
+                items: vec![Item {
+                    world: id.clone(),
+                    revision: head.revision,
+                    metadata: head.metadata,
+                    coord: None,
+                }],
+                next: None,
+            });
+        }
         let actor = principal
             .id
             .as_deref()

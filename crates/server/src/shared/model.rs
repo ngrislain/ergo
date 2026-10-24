@@ -66,6 +66,8 @@ impl Policy {
 /// World metadata has no piece list, global counts, or world-sized graph.
 #[derive(Clone, Serialize, Deserialize)]
 pub struct Metadata {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub id: Option<String>,
     pub name: String,
     pub geo: GeoReference,
     pub model: ContentId,
@@ -173,7 +175,8 @@ pub struct Rules {
     pub joints: Vec<JointSpec>,
     pub fixed_bricks: Vec<u32>,
     pub groups: Vec<Group>,
-    /// Immutable import-time LDraw hierarchy, not a live geometry authority.
+    /// Immutable authoring/provenance blob for this accepted assembly state;
+    /// materialized piece records remain the live geometry authority.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub source_model: Option<ContentId>,
 }

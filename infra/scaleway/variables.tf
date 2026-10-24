@@ -28,6 +28,22 @@ variable "s3_prefix" {
   default     = "ergo"
 }
 
+variable "common_world_id" {
+  description = "The only public Ergo Sandbox UUID; set after creating/migrating its persistent root."
+  type        = string
+  default     = ""
+  validation {
+    condition     = var.common_world_id == "" || can(regex("^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$", var.common_world_id))
+    error_message = "Supply a sandbox UUID or leave empty for isolated development."
+  }
+}
+
+variable "world_prefix" {
+  description = "Dedicated repository prefix relative to s3_prefix; production uses world."
+  type        = string
+  default     = "world"
+}
+
 variable "image" {
   description = "Published linux/amd64 Ergo image, using an immutable tag or digest; private Scaleway images must be accessible to the container project."
   type        = string

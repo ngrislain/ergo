@@ -1,5 +1,22 @@
 # Changelog
 
+## v0.4.0
+
+- Make one public Ergo Sandbox authoritative; authenticated UI/MCP edits commit
+  atomically in place with stable piece IDs, conflict detection and author names.
+- Add position/selection-based agent handoff and shared authoring workspaces.
+- Add LDraw-aligned reusable subparts, affine 4×4 construction storage, legacy
+  readers and affine visual previews without weakening physical admission.
+- Distinguish DAT geometry/primitive references from physical assembly instances.
+- Add progressive stud-specific geometry/relief LOD and collision-aware flight.
+- Fix navigation headlamp alignment, complete homepage shadow casters, proportional
+  catalog illustrations, immediate sign-out feedback and redundant import controls.
+- Add fenced, hash-verified namespace migration and operator cleanup; retain active
+  part/terrain caches and private account/operations records.
+- Add a reproducible 868-part Haussmann-style MCP test and document its remaining
+  gravity-probe/calibration limitations rather than publishing an uncertified model.
+- Publish prebuilt GitHub bundles while npm publication remains explicitly disabled.
+
 ## v0.3.1
 
 - Add tag-driven GHCR server-image publishing, retaining Podman build/smoke tests.

@@ -1,5 +1,19 @@
 # Prebuilt server image and npm MCP distribution
 
+## v0.4.0 single-sandbox release
+
+The current client uses the one public sandbox: accepted production mutations
+commit automatically; local files are caches. Install the complete GitHub Release
+asset with npm while registry publication is disabled:
+`https://github.com/ngrislain/ergo/releases/download/v0.4.0/ngrislain-ergo-mcp-0.4.0.tgz`.
+The historical v0.3.x examples below describe older distribution baselines, not
+alternative hosted worlds. See [shared editing](agent-shared-editing.md).
+
+Tag builds still assemble and verify all four native platforms. npm publication
+also requires repository variable `ERGO_NPM_PUBLISH=true`; it is currently false
+while the account is unavailable. The GitHub tarball/image release does not need
+an npm publish. Set that variable only when registry publication is intended.
+
 ## Status and release channels
 
 The repository now contains versioned distribution assembly and GitHub Actions
@@ -142,7 +156,8 @@ The workflow:
    assembles the complete npm package; installs its real tarball offline with
    `--ignore-scripts`; checks stdio/startup outside the checkout; and runs real
    browser/WASM MCP edits and PNG tests on Linux/x64.
-4. Publishes the npm tarball with provenance on a matching release tag.
+4. Publishes the npm tarball with provenance on a matching release tag only when
+   `ERGO_NPM_PUBLISH=true`; otherwise the verified artifact can be released on GitHub.
 5. Independently builds/smoke-tests the API image with Podman and publishes the
    versioned/latest image to GHCR on a matching release tag.
 

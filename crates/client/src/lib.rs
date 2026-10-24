@@ -1,4 +1,5 @@
 pub mod lighting;
+pub mod lod;
 pub mod navigation;
 #[cfg(all(target_arch = "wasm32", feature = "site-entry"))]
 mod preview;

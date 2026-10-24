@@ -1,5 +1,15 @@
 # Sign-in, agent access, and shared-world edit pacing
 
+## v0.4.0 hosted product
+
+There is one public **Ergo Sandbox**. Guests can view `/` and `/app`; signing in
+is required for attributed edits. The viewer and current MCP client commit
+accepted edits to that same S3-backed world, not private snapshots. The header's
+**Edit here with an agent** handoff includes the current target and selected
+assembly; see [the current/specified-position guide](agent-shared-editing.md).
+The older per-world publication descriptions below apply only to isolated
+compatibility fixtures. Hosted world creation/alternative IDs are rejected.
+
 ## Landing page and workbench
 
 The static public guide at **https://www.ergosandbox.com** explains the

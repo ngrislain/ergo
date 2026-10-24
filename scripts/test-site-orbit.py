@@ -22,7 +22,16 @@ with sync_playwright() as p:
         context = browser.new_context(viewport={"width":1440,"height":1000}, reduced_motion="reduce")
         context.add_init_script("""Date.now=()=>Date.UTC(2026,9,24,HOUR);
           window.__gpu={shadow:0,main:0,errors:[],eye:[],scale:[]};
-          const names=new WeakMap(), proto=WebGL2RenderingContext.prototype;
+          const names=new WeakMap(), buffers=new WeakMap(), proto=WebGL2RenderingContext.prototype;
+          const upload=proto.bufferData;
+          proto.bufferData=function(target,value,...args){
+            if(target===this.ARRAY_BUFFER&&ArrayBuffer.isView(value)){
+              let hash=2166136261;for(const n of new Uint8Array(value.buffer,value.byteOffset,value.byteLength))hash=Math.imul(hash^n,16777619);
+              buffers.set(this.getParameter(this.ARRAY_BUFFER_BINDING),hash>>>0);
+            }return upload.call(this,target,value,...args);
+          };
+          const bind=proto.bindFramebuffer;
+          proto.bindFramebuffer=function(target,fb){if(target===this.FRAMEBUFFER&&fb)window.__gpu.shadowCasters=[];return bind.call(this,target,fb);};
           const location=proto.getUniformLocation;
           proto.getUniformLocation=function(p,n){const v=location.call(this,p,n);if(v)names.set(v,n);return v;};
           const vector=proto.uniform3f;
@@ -30,7 +39,7 @@ with sync_playwright() as p:
           const matrix=proto.uniformMatrix4fv;
           proto.uniformMatrix4fv=function(l,t,m){if(names.get(l)==='display_scale')window.__gpu.scale=Array.from(m);if(names.get(l)==='shadow_matrix')window.__gpu.shadowMatrix=Array.from(m);return matrix.call(this,l,t,m);};
           const draw=proto.drawArraysInstanced;
-          proto.drawArraysInstanced=function(...args){window.__gpu[this.getParameter(this.DRAW_FRAMEBUFFER_BINDING)?'shadow':'main']++;draw.apply(this,args);const e=this.getError();if(e)window.__gpu.errors.push(e);};
+          proto.drawArraysInstanced=function(...args){const shadow=!!this.getParameter(this.DRAW_FRAMEBUFFER_BINDING);window.__gpu[shadow?'shadow':'main']++;if(shadow)window.__gpu.shadowCasters.push([args[2],args[3],buffers.get(this.getVertexAttrib(0,this.VERTEX_ATTRIB_ARRAY_BUFFER_BINDING)),buffers.get(this.getVertexAttrib(3,this.VERTEX_ATTRIB_ARRAY_BUFFER_BINDING)),this.getUniform(this.getParameter(this.CURRENT_PROGRAM),this.getUniformLocation(this.getParameter(this.CURRENT_PROGRAM),'stud_mode'))].join(':'));draw.apply(this,args);const e=this.getError();if(e)window.__gpu.errors.push(e);};
         """.replace("HOUR",str(hour)))
         page = context.new_page()
         page.on("pageerror", lambda e: errors.append(str(e)))
@@ -58,6 +67,7 @@ with sync_playwright() as p:
             assert page.evaluate("window.__gpu.eye") != before_eye, "Orbit must move the actual eye uniform"
             assert canvas.get_attribute("data-light-position") == light
             assert page.evaluate("window.__gpu.shadowMatrix") == gpu["shadowMatrix"], "Studio shadow projection must stay scene-fixed while orbiting"
+            assert sorted(page.evaluate("window.__gpu.shadowCasters"))==sorted(gpu["shadowCasters"]), "Orbit must not change caster geometry, instances or stud LOD"
             assert canvas.screenshot() != initial
             canvas.focus()
             canvas.press("Home")

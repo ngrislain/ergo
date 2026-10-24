@@ -1,6 +1,6 @@
 use crate::{
     navigation::{MAX_FRAME_DT, Navigation, NavigationInput, NavigationMode, TURN_RATE},
-    walking::{Scene as WalkScene, Walker},
+    walking::{Scene as CollisionScene, Walker},
 };
 use ergo_world::{
     Aabb, Brick,
@@ -21,6 +21,8 @@ use illumination::{LightPass, Observer};
 use shaders::{FRAGMENT, VERTEX};
 
 struct GpuMesh {
+    stud_mode: i32,
+    stud_offset: [f32; 2],
     vao: WebGlVertexArrayObject,
     vertex_buffer: WebGlBuffer,
     instance_buffer: WebGlBuffer,
@@ -391,7 +393,7 @@ impl Renderer {
         } else {
             if mode == NavigationMode::Walk {
                 let height = self.navigation.eye_height();
-                let scene = WalkScene::new(&self.bricks, &self.tree, height, &|_| false);
+                let scene = CollisionScene::new(&self.bricks, &self.tree, height, &|_| false);
                 let mut floor = scene.support_height(eye.x, eye.z, (eye.y - height).max(0.0));
                 if !scene.clear(DVec3::new(eye.x, floor, eye.z)) {
                     floor = scene.support_height(eye.x, eye.z, f64::INFINITY);
@@ -448,10 +450,11 @@ impl Renderer {
             let mut direction = -self.backward();
             let length = (direction * DISPLAY_SCALE).length();
             direction /= length;
-            eye += direction * status.speed * dt;
+            let scene = CollisionScene::new(&self.bricks, &self.tree, status.eye_height, blocked);
+            eye = scene.fly_slide(eye, direction * status.speed * dt);
         } else {
             let direction = DVec3::new(-self.yaw.sin(), 0.0, -self.yaw.cos()) * input.vertical;
-            let scene = WalkScene::new(&self.bricks, &self.tree, status.eye_height, blocked);
+            let scene = CollisionScene::new(&self.bricks, &self.tree, status.eye_height, blocked);
             let feet = self.walker.advance(
                 &scene,
                 eye - DVec3::Y * status.eye_height,
@@ -578,6 +581,7 @@ impl Renderer {
                 origin: self.origin,
                 display_scale: DISPLAY_SCALE,
                 distance: self.distance,
+                projection_pixels: self.projection_pixels(),
                 studio: self.studio_lighting,
             },
             &self.gpu,
@@ -650,6 +654,11 @@ impl Renderer {
         }
         gl.use_program(Some(&self.program));
         self.lighting.uniforms(&self.program, &light);
+        gl.uniform1f(
+            gl.get_uniform_location(&self.program, "projection_pixels")
+                .as_ref(),
+            self.projection_pixels() as f32,
+        );
         gl.uniform_matrix4fv_with_f32_array(
             gl.get_uniform_location(&self.program, "view_projection")
                 .as_ref(),
@@ -690,6 +699,16 @@ impl Renderer {
                 continue;
             }
             gl.uniform1i(
+                gl.get_uniform_location(&self.program, "stud_mode").as_ref(),
+                mesh.stud_mode,
+            );
+            gl.uniform2f(
+                gl.get_uniform_location(&self.program, "stud_offset")
+                    .as_ref(),
+                mesh.stud_offset[0],
+                mesh.stud_offset[1],
+            );
+            gl.uniform1i(
                 gl.get_uniform_location(&self.program, "floor_mode")
                     .as_ref(),
                 (key == "__ground__") as i32,
@@ -706,13 +725,15 @@ impl Renderer {
         let mut groups: BTreeMap<String, Vec<f32>> = BTreeMap::new();
         let visibility = self.visibility();
         self.lod_counts = [0; 4];
-        let candidates = if self.explode > 0.0 {
+        // The small homepage illustration is a complete resident scene: camera
+        // culling/LOD must not remove or reshape its world-fixed shadow casters.
+        let complete_illustration = self.transparent_background;
+        let candidates = if self.explode > 0.0 || complete_illustration {
             (0..self.bricks.len()).collect()
         } else {
             self.tree.frustum(&visibility.planes, visibility.origin)
         };
-        let pixels = self.canvas.client_height().max(1) as f64
-            / (2.0 * (self.fov_degrees.to_radians() * 0.5).tan());
+        let pixels = self.projection_pixels();
         let mut aggregates = BTreeMap::<(i64, i64, i64, u32), Aabb>::new();
         for index in candidates {
             let brick = &self.bricks[index];
@@ -724,22 +745,31 @@ impl Renderer {
                 brick.render_bounds.min + offset,
                 brick.render_bounds.max + offset,
             );
-            if !visibility.contains(bounds) {
+            if !complete_illustration && !visibility.contains(bounds) {
                 continue;
             }
             let distance = ((bounds.center() - self.eye()) * DISPLAY_SCALE)
                 .length()
                 .max(0.1);
             let size = (bounds.size() * DISPLAY_SCALE).length() * pixels / distance;
-            let lod = if self.selected == Some(brick.id) || size >= 24.0 {
-                0
-            } else if size >= 8.0 {
-                1
-            } else if size >= 2.0 || self.highlighted.contains(&brick.id) {
-                2
-            } else {
-                3
-            };
+            let mut lod =
+                if complete_illustration || self.selected == Some(brick.id) || size >= 24.0 {
+                    0
+                } else if size >= 8.0 {
+                    1
+                } else if size >= 2.0 || self.highlighted.contains(&brick.id) {
+                    2
+                } else {
+                    3
+                };
+            let stud_pixels =
+                pixels * 0.6 * (brick.transform.x_axis * DISPLAY_SCALE).length() / distance;
+            if lod == 2
+                && stud_pixels > crate::lod::STUD_FLAT_PX
+                && ergo_world::geometry::part_spec(&brick.part).is_some_and(|p| p.studs)
+            {
+                lod = 1;
+            }
             self.lod_counts[lod] += 1;
             if lod == 3 {
                 let p = (bounds.center() / 8.0).floor();
@@ -828,8 +858,12 @@ impl Renderer {
             let cells: HashSet<_> = visible_ground.into_iter().collect();
             let center_x = eye.x.floor() as i64;
             let center_z = eye.z.floor() as i64;
-            for x in center_x - 48..=center_x + 48 {
-                for z in center_z - 48..=center_z + 48 {
+            for x in center_x - crate::lod::GROUND_GRID_RADIUS
+                ..=center_x + crate::lod::GROUND_GRID_RADIUS
+            {
+                for z in center_z - crate::lod::GROUND_GRID_RADIUS
+                    ..=center_z + crate::lod::GROUND_GRID_RADIUS
+                {
                     let cell = (x.div_euclid(1024), z.div_euclid(1024));
                     if !cells.contains(&cell) {
                         continue;
@@ -848,9 +882,23 @@ impl Renderer {
                         continue;
                     }
                     let color = self.ground.get(&cell).map(|b| b.color).unwrap_or(71);
+                    let distance = ((position - eye) * DISPLAY_SCALE).length();
+                    let weight = crate::lod::ground_geometry(distance, pixels, maximum_distance);
+                    if weight <= 0.005 {
+                        continue;
+                    }
+                    let key = if pixels * 0.6 / distance.max(0.1) < 5. {
+                        "__ground_studs_low__"
+                    } else {
+                        "__ground_studs__"
+                    };
                     instance(
-                        groups.entry("__ground_studs__".into()).or_default(),
-                        DMat4::from_translation(position - self.origin),
+                        groups.entry(key.into()).or_default(),
+                        DMat4::from_scale_rotation_translation(
+                            DVec3::new(1., weight, 1.),
+                            glam::DQuat::IDENTITY,
+                            position - self.origin,
+                        ),
                         ergo_world::color_rgb(color),
                         false,
                     );
@@ -858,7 +906,8 @@ impl Renderer {
                 }
             }
         }
-        let studs = ergo_world::geometry::ground_stud_mesh();
+        let studs = ergo_world::geometry::ground_stud_mesh_with_segments(16);
+        let low_studs = ergo_world::geometry::ground_stud_mesh_with_segments(8);
         self.gpu.retain(|key, mesh| {
             if groups.contains_key(key) {
                 true
@@ -875,6 +924,8 @@ impl Renderer {
                 &ground
             } else if key == "__ground_studs__" {
                 &studs
+            } else if key == "__ground_studs_low__" {
+                &low_studs
             } else if key.ends_with("|0") {
                 &self.meshes[key.strip_suffix("|0").unwrap()]
             } else {
@@ -884,6 +935,9 @@ impl Renderer {
                 .gpu
                 .entry(key)
                 .or_insert_with(|| create_mesh(&self.gl, cpu));
+            if complete_illustration && mesh.stud_mode == 1 {
+                mesh.stud_mode = 3;
+            }
             self.gl.bind_vertex_array(Some(&mesh.vao));
             self.gl
                 .bind_buffer(Gl::ARRAY_BUFFER, Some(&mesh.instance_buffer));
@@ -900,9 +954,12 @@ impl Renderer {
         if !self.ground_visible {
             return 0.0;
         }
-        let pixels = self.canvas.client_height().max(1) as f64
-            / (2.0 * (self.fov_degrees.to_radians() * 0.5).tan());
-        (pixels * 0.6 / 4.0).min(100.0)
+        (self.projection_pixels() * 0.6 / crate::lod::STUD_FLAT_PX)
+            .min(crate::lod::GROUND_STUD_RADIUS)
+    }
+    fn projection_pixels(&self) -> f64 {
+        self.canvas.client_height().max(1) as f64
+            / (2. * (self.fov_degrees.to_radians() * 0.5).tan())
     }
 }
 
@@ -965,6 +1022,11 @@ fn create_mesh(gl: &Gl, mesh: &Mesh) -> GpuMesh {
     gl.vertex_attrib_pointer_with_i32(7, 4, Gl::FLOAT, false, 80, 64);
     gl.vertex_attrib_divisor(7, 1);
     GpuMesh {
+        stud_mode: ergo_world::geometry::part_spec(&mesh.part)
+            .filter(|p| p.studs)
+            .map_or(0, |_| if mesh.quality == "body_lod" { 2 } else { 1 }),
+        stud_offset: ergo_world::geometry::part_spec(&mesh.part)
+            .map_or([0., 0.], |p| [p.width as f32 * 0.5, p.depth as f32 * 0.5]),
         vao,
         vertex_buffer,
         instance_buffer,

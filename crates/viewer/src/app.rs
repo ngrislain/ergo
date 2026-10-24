@@ -24,6 +24,8 @@ use wasm_bindgen::{JsCast, JsValue};
 use wasm_bindgen_futures::spawn_local;
 
 type Handle = StoredValue<Rc<RefCell<Client>>, LocalStorage>;
+#[path = "common.rs"]
+mod common;
 
 #[derive(Clone, Deserialize)]
 struct SharedMetadata {
@@ -42,6 +44,7 @@ struct SharedPage {
     next: Option<String>,
 }
 struct SharedView {
+    assemblies: BTreeMap<u32, String>,
     id: String,
     coord: [i64; 3],
     last_check: f64,
@@ -52,10 +55,16 @@ struct SharedView {
 struct SharedRegion {
     scene: WorldExport,
     revision: String,
+    #[serde(default)]
+    assemblies: BTreeMap<u32, String>,
 }
 
 #[derive(Clone, Copy)]
 struct Ui {
+    common_world: RwSignal<Option<String>>,
+    common_assemblies: RwSignal<Vec<common::Assembly>>,
+    common_more: RwSignal<Option<String>>,
+    editing_shared: RwSignal<bool>,
     worlds: RwSignal<Vec<WorldManifest>>,
     current: RwSignal<Option<WorldManifest>>,
     selected: RwSignal<Option<Brick>>,
@@ -91,8 +100,56 @@ struct Ui {
 }
 
 impl Ui {
+    fn scene_label(self) -> &'static str {
+        if self.common_world.get().is_some() {
+            if self.dirty.get() {
+                "Pending shared edit"
+            } else if self.editing_shared.get() {
+                "Saved in Ergo Sandbox"
+            } else {
+                "Ergo Sandbox"
+            }
+        } else if self.dirty.get() {
+            "Working copy"
+        } else if self.current.get().is_some_and(|w| w.owner == "examples") {
+            "Fixture example"
+        } else if self.current.get().is_some_and(|w| w.owner == "shared") {
+            "Shared world view"
+        } else {
+            "Validated snapshot"
+        }
+    }
+    fn construction_details(self) -> String {
+        self.current
+            .get()
+            .map(|w| {
+                if w.id == "draft" {
+                    if self.common_world.get().is_some() {
+                        if self.dirty.get() {
+                            "Preview — awaiting shared acceptance".into()
+                        } else {
+                            "Shared construction".into()
+                        }
+                    } else {
+                        "Workspace draft".into()
+                    }
+                } else {
+                    format!(
+                        "{} bricks in {} spatial block{}",
+                        number(w.brick_count),
+                        w.blocks.len(),
+                        if w.blocks.len() == 1 { "" } else { "s" }
+                    )
+                }
+            })
+            .unwrap_or_default()
+    }
     fn new() -> Self {
         Self {
+            common_world: RwSignal::new(None),
+            common_assemblies: RwSignal::new(Vec::new()),
+            common_more: RwSignal::new(None),
+            editing_shared: RwSignal::new(false),
             worlds: RwSignal::new(Vec::new()),
             current: RwSignal::new(None),
             selected: RwSignal::new(None),
@@ -134,6 +191,9 @@ impl Ui {
 }
 
 struct Client {
+    common_binding: Option<common::Binding>,
+    common_attempt: Option<u64>,
+    common_fenced: bool,
     shared: Option<SharedView>,
     renderer: Option<Renderer>,
     world: Option<WorldManifest>,
@@ -163,6 +223,9 @@ struct Client {
 impl Client {
     fn new(ui: Ui) -> Self {
         Self {
+            common_binding: None,
+            common_attempt: None,
+            common_fenced: false,
             shared: None,
             renderer: None,
             world: None,
@@ -247,6 +310,10 @@ impl Client {
     }
     fn request_all(&mut self) -> anyhow::Result<()> {
         anyhow::ensure!(
+            self.ui.common_world.get_untracked().is_none() || self.ui.signed_in.get_untracked(),
+            "Sign in to edit the shared Ergo Sandbox"
+        );
+        anyhow::ensure!(
             self.shared.is_none(),
             "This is a bounded shared-world navigation view, not a complete editable mechanical domain. Use the MCP/shared-world API for edits."
         );
@@ -262,6 +329,13 @@ impl Client {
         Ok(())
     }
     fn require_all(&mut self) -> anyhow::Result<()> {
+        anyhow::ensure!(
+            !self
+                .common_binding
+                .as_ref()
+                .is_some_and(|b| b.external_dependencies),
+            "This shared assembly has external mechanical dependencies; local isolated manipulation/simulation would be incomplete"
+        );
         self.request_all()?;
         anyhow::ensure!(
             self.complete(),
@@ -367,6 +441,9 @@ fn with_client<T>(handle: Handle, f: impl FnOnce(&mut Client) -> T) -> T {
 }
 fn act(handle: Handle, f: impl FnOnce(&mut Client) -> anyhow::Result<()>) {
     with_client(handle, |c| {
+        if c.ui.common_world.get_untracked().is_some() && c.ui.busy.get_untracked() {
+            return;
+        }
         c.ui.error.set(None);
         if let Err(e) = f(c) {
             c.ui.fail(e);
@@ -462,6 +539,10 @@ fn open_shared(handle: Handle, location: SharedLocation) {
         .unwrap_or_else(|| BlockCoord::from([0, 0, 0]))
         .into();
     with_client(handle, |c| {
+        c.common_binding = None;
+        c.common_attempt = None;
+        c.common_fenced = false;
+        c.ui.editing_shared.set(false);
         c.generation += 1;
         c.blocks.clear();
         c.pending.clear();
@@ -504,6 +585,7 @@ fn open_shared(handle: Handle, location: SharedLocation) {
         c.ui.group_selection.set(Vec::new());
         c.ui.busy.set(true);
         c.shared = Some(SharedView {
+            assemblies: BTreeMap::new(),
             id: location.world.clone(),
             coord,
             last_check: 0.,
@@ -534,6 +616,7 @@ fn request_shared_region(handle: Handle, id: String, coord: [i64; 3], fit_view: 
             match result {
                 Ok(region) => {
                     if let Some(shared) = &mut c.shared {
+                        shared.assemblies = region.assemblies;
                         shared.revision = region.revision.clone();
                     }
                     let scene = region.scene;
@@ -759,8 +842,13 @@ fn open_world(handle: Handle, world: WorldManifest) {
 
 fn open_draft(handle: Handle, scene: WorldExport) -> anyhow::Result<()> {
     let blocks = ergo_world::partition(&scene.bricks)?;
-    let bounds = ergo_world::bounds(&scene.bricks).ok_or_else(|| anyhow::anyhow!("Empty model"))?;
+    let bounds = ergo_world::bounds(&scene.bricks)
+        .unwrap_or_else(|| ergo_world::Aabb::new(DVec3::ZERO, DVec3::splat(10.)));
     with_client(handle, |c| {
+        c.common_binding = None;
+        c.common_attempt = None;
+        c.common_fenced = false;
+        c.ui.editing_shared.set(false);
         c.generation += 1;
         c.shared = None;
         c.pending.clear();
@@ -843,6 +931,9 @@ fn open_draft(handle: Handle, scene: WorldExport) -> anyhow::Result<()> {
 
 fn pump(handle: Handle) {
     pump_ground(handle);
+    if with_client(handle, |c| c.common_binding.is_some()) {
+        return;
+    }
     if with_client(handle, |c| c.shared.is_some()) {
         pump_shared(handle);
         return;
@@ -1196,6 +1287,7 @@ pub fn App() -> impl IntoView {
             });
             if ticks % 12 == 0 {
                 pump(handle);
+                common::pump(handle);
             }
             if now - measured > 1000.0 {
                 ui.fps
@@ -1208,6 +1300,8 @@ pub fn App() -> impl IntoView {
         spawn_local(async move {
             #[derive(Deserialize)]
             struct Config {
+                #[serde(default)]
+                common_world: Option<String>,
                 storage: String,
                 geo: ergo_world::GeoReference,
                 #[serde(default)]
@@ -1220,6 +1314,7 @@ pub fn App() -> impl IntoView {
                 signed_in: bool,
             }
             if let Ok(config) = json::<Config>("/api/config").await {
+                ui.common_world.set(config.common_world);
                 ui.storage.set(config.storage);
                 with_client(handle, |c| {
                     c.default_geo = config.geo;
@@ -1230,6 +1325,42 @@ pub fn App() -> impl IntoView {
                 ui.user.set(me.name);
                 ui.google.set(me.google_enabled);
                 ui.signed_in.set(me.signed_in);
+            }
+            if let Some(common) = ui.common_world.get_untracked() {
+                let query = web_sys::window()
+                    .and_then(|w| w.location().search().ok())
+                    .and_then(|q| web_sys::UrlSearchParams::new_with_str(&q).ok());
+                let coord = BlockCoord::from(["x", "y", "z"].map(|key| {
+                    query
+                        .as_ref()
+                        .and_then(|q| q.get(key))
+                        .and_then(|v| v.parse::<i64>().ok())
+                        .unwrap_or(0)
+                }));
+                #[derive(Deserialize)]
+                struct Head {
+                    metadata: SharedMetadata,
+                }
+                match json::<Head>(&format!("/api/shared-worlds/{common}")).await {
+                    Ok(head) => {
+                        ui.shared_locations.set(vec![SharedLocation {
+                            world: common.clone(),
+                            metadata: head.metadata.clone(),
+                            coord: None,
+                        }]);
+                        open_shared(
+                            handle,
+                            SharedLocation {
+                                world: common,
+                                metadata: head.metadata,
+                                coord: Some(coord),
+                            },
+                        );
+                        common::refresh(handle);
+                    }
+                    Err(error) => ui.fail(error),
+                }
+                return;
             }
             if let Ok(page) = json::<SharedPage>("/api/shared-worlds?quad=&limit=32").await {
                 ui.shared_locations.set(page.items);
@@ -1297,12 +1428,12 @@ pub fn App() -> impl IntoView {
     view! {
         <header class="app-header">
             <a class="brand" href="https://www.ergosandbox.com/" aria-label="Ergo home"><img src="/favicon.svg" alt="" width="38" height="38"/>"ergo"<span class="brand-description">"A world, brick by brick."</span></a>
-            <div class="header-actions"><span class="account-name">{move ||ui.user.get()}</span><Show when=move ||ui.google.get()&&!ui.signed_in.get()><a class="button quiet" href="/auth/google">"Sign in with Google"</a></Show><Show when=move ||ui.google.get()&&ui.signed_in.get()><button class="button quiet sign-out" disabled=move ||ui.signing_out.get() aria-busy=move ||ui.signing_out.get().to_string() on:click=move |_|logout(ui)>{move ||if ui.signing_out.get(){"Signing out…"}else{"Sign out"}}</button></Show><button class="button primary" disabled=move ||ui.signing_out.get() on:click=move |_|show_dialog("import-dialog")>"＋ Import construction"</button></div>
+            <div class="header-actions"><span class="account-name">{move ||ui.user.get()}</span><Show when=move ||ui.google.get()&&!ui.signed_in.get()><a class="button quiet" href="/auth/google">"Sign in with Google"</a></Show><Show when=move ||ui.google.get()&&ui.signed_in.get()><button class="button quiet sign-out" disabled=move ||ui.signing_out.get() aria-busy=move ||ui.signing_out.get().to_string() on:click=move |_|logout(ui)>{move ||if ui.signing_out.get(){"Signing out…"}else{"Sign out"}}</button></Show><button class="icon-button agent-handoff" title="Edit here with an agent" aria-label="Edit here with an agent" disabled=move ||ui.busy.get() on:click=move |_|common::agent_handoff(handle)>"⌘"</button><button class="button primary" disabled=move ||ui.signing_out.get()||ui.busy.get() on:click=move |_|show_dialog("import-dialog")>"＋ Import construction"</button></div>
         </header>
         <main class="workbench">
             <aside class="left-dock"><ConstructionBrowser/><div class="dock-bottom"><span class="storage-dot"></span>{move ||ui.storage.get()}<p>"Standard parts first · Studio / LDraw"</p></div></aside>
             <section id="world-viewport" class="viewport-area" class:is-fullscreen=move ||ui.fullscreen.get() aria-label="3D construction workbench">
-                <div class="scene-heading"><div><p class="scene-location">"World origin"<span>{move ||ui.current.get().map(|w|format!("{:.4}°, {:.4}°",w.geo.latitude,w.geo.longitude)).unwrap_or_default()}</span></p><h1>{move ||ui.current.get().map(|w|w.name).unwrap_or_else(||"Your next construction".into())}</h1><p>{move ||ui.current.get().map(|w|if w.id=="draft" {"Workspace draft".into()} else {format!("{} bricks in {} spatial block{}",number(w.brick_count),w.blocks.len(),if w.blocks.len()==1{""}else{"s"})}).unwrap_or_default()}</p></div><span class="snapshot-badge" class:draft=move ||ui.dirty.get()>{move ||if ui.dirty.get(){"Working copy"}else if ui.current.get().is_some_and(|w|w.owner=="examples"){"Fixture example"}else if ui.current.get().is_some_and(|w|w.owner=="shared"){"Shared world view"}else{"Validated snapshot"}}</span></div>
+                <div class="scene-heading"><div><p class="scene-location">"World origin"<span>{move ||ui.current.get().map(|w|format!("{:.4}°, {:.4}°",w.geo.latitude,w.geo.longitude)).unwrap_or_default()}</span></p><h1>{move ||ui.current.get().map(|w|w.name).unwrap_or_else(||"Your next construction".into())}</h1><p>{move ||ui.construction_details()}</p></div><span class="snapshot-badge" class:draft=move ||ui.dirty.get()>{move ||ui.scene_label()}</span></div>
                 <canvas node_ref=canvas id="world-canvas" tabindex="0" aria-label=move ||format!("3D brick construction. {} navigation. Drag to look; focus canvas for keyboard controls.",ui.navigation.get().mode.name())
                     on:contextmenu=move |e|e.prevent_default()
                     on:pointerdown=move |e|with_client(handle,|c|{let x=e.client_x() as f64;let y=e.client_y() as f64;c.pointer=Some((x,y,x,y,e.button(),e.shift_key()));if let Some(r)=&c.renderer{let _=r.canvas.set_pointer_capture(e.pointer_id());}})
@@ -1636,12 +1767,16 @@ fn ConstructionBrowser() -> impl IntoView {
     let ui = expect_context::<Ui>();
     let handle = expect_context::<Handle>();
     view! {
-        <div class="dock-section browser"><div class="section-heading"><h2>"Constructions"</h2><span class="count-badge">{move ||ui.worlds.get().len()}</span></div>
+        <div class="dock-section browser"><div class="section-heading"><h2>"Constructions"</h2><span class="count-badge">{move ||if ui.common_world.get().is_some(){ui.common_assemblies.get().len()}else{ui.worlds.get().len()}}</span></div>
             <p class="subtle">"Your corner of a much bigger world."</p>
+            <Show when=move ||ui.common_world.get().is_some()><div class="world-list">{move ||ui.common_assemblies.get().into_iter().map(|assembly|{
+                let id=assembly.id;view!{<button class="world-item" disabled=move ||ui.busy.get() on:click=move |_|common::open(handle,id.clone())><span class="world-thumbnail">"▦"</span><span><strong>{assembly.name}</strong><small>"Edit shared construction"</small></span></button>}
+            }).collect_view()}</div></Show>
+            <Show when=move ||ui.common_more.get().is_some()><button class="text-button" on:click=move |_|common::more(handle)>"More constructions"</button></Show>
             <div class="world-list">{move ||ui.worlds.get().into_iter().map(|world|{let id=world.id.clone();let model=world.clone();view!{
                 <button class="world-item" class:active=move ||ui.current.get().is_some_and(|w|w.id==id) on:click=move |_|open_world(handle,model.clone())><span class="world-thumbnail">{if world.name.contains("pavilion"){ "⌂" }else{"▦"}}</span><span><strong>{world.name.clone()}</strong><small>{format!("{} bricks",number(world.brick_count))}</small></span><span class="world-more">"›"</span></button>
             }}).collect_view()}</div>
-            <Show when=move ||!ui.shared_locations.get().is_empty()><div class="section-heading shared-world-heading"><h2>"Shared worlds"</h2></div><div class="world-list shared-world-list">{move ||ui.shared_locations.get().into_iter().map(|location|(location.world.clone(),location)).collect::<BTreeMap<_,_>>().into_values().map(|location|{
+            <Show when=move ||!ui.shared_locations.get().is_empty()><div class="section-heading shared-world-heading"><h2>{move ||if ui.common_world.get().is_some(){"Ergo Sandbox"}else{"Shared worlds"}}</h2></div><div class="world-list shared-world-list">{move ||ui.shared_locations.get().into_iter().map(|location|(location.world.clone(),location)).collect::<BTreeMap<_,_>>().into_values().map(|location|{
                 let name=location.metadata.name.clone();let item=location.clone();
                 view!{<button class="world-item" on:click=move |_|open_shared(handle,item.clone())><span class="world-thumbnail">"◎"</span><span><strong>{name}</strong><small>"Navigate shared regions"</small></span><span class="world-more">"›"</span></button>}
             }).collect_view()}</div></Show>
@@ -1701,7 +1836,7 @@ fn SimulationControls() -> impl IntoView {
             <p class="physics-note">"A sandbox uses the complete construction, up to 5,000 bricks. Saved models must be overlap-free and stable under gravity."</p>
             <button class="button quiet full" on:click=move |_|show_dialog("solidity-dialog")>"Test solidity…"</button>
             <button class="button quiet full group-button" on:click=move |_|show_dialog("groups-dialog")>{move ||format!("Groups… ({})",ui.authoring_groups.get().len())}</button>
-            <button class="button full save-button" disabled=move ||ui.busy.get()||!ui.dirty.get() on:click=move |_|save(handle)>"Validate & save snapshot"</button>
+            <button class="button full save-button" disabled=move ||ui.busy.get()||!ui.dirty.get() on:click=move |_|save(handle)>{move ||if ui.common_world.get().is_some(){"Commit to common world"}else{"Validate & save snapshot"}}</button>
             <button class="text-button" on:click=move |_|export_scene(handle)>"Export workspace JSON"<span>"↓"</span></button>
         </div>
     }
@@ -1766,6 +1901,11 @@ fn SolidityDialog() -> impl IntoView {
 }
 
 fn save(handle: Handle) {
+    if with_client(handle, |c| c.ui.common_world.get_untracked().is_some()) {
+        with_client(handle, |c| c.common_attempt = None);
+        common::pump(handle);
+        return;
+    }
     let scene = with_client(handle, |c| {
         c.freeze_simulation();
         c.ui.error.set(None);

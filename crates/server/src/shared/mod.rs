@@ -4,6 +4,8 @@ macro_rules! ensure {
     ($condition:expr, $($message:tt)*) => { if !$condition { return Err(anyhow::anyhow!($($message)*).into()); } };
 }
 pub(crate) mod address;
+mod administration;
+mod authoring;
 pub(crate) mod catalog;
 mod events;
 mod group_commit;
@@ -125,6 +127,8 @@ type SharedResult<T> = std::result::Result<T, SharedError>;
 
 #[derive(Clone)]
 pub struct SharedWorlds {
+    pub(crate) common_world: Option<String>,
+    common_root: Option<Repository>,
     root: Repository,
     store: Store,
     limits: Limits,
@@ -149,6 +153,8 @@ impl SharedWorlds {
             format!("{}/shared", store.prefix)
         };
         Ok(Self {
+            common_world: None,
+            common_root: None,
             pacing: pacing::Pacing::disabled(store.clone()),
             root: Repository::new(store.backend.clone(), &prefix)?
                 .with_cache_capacity(64 * 1024 * 1024)
@@ -163,6 +169,17 @@ impl SharedWorlds {
     }
     pub fn from_env(store: Store) -> Result<Self> {
         let mut service = Self::new(store)?;
+        service.common_world = std::env::var("ERGO_COMMON_WORLD_ID")
+            .ok()
+            .map(|id| uuid::Uuid::parse_str(&id).map(|id| id.to_string()))
+            .transpose()?;
+        if let Ok(prefix) = std::env::var("ERGO_WORLD_PREFIX") {
+            anyhow::ensure!(
+                service.common_world.is_some() && !prefix.trim_matches('/').is_empty(),
+                "ERGO_WORLD_PREFIX requires a configured common world and a dedicated prefix"
+            );
+            service.common_root = Some(service.namespace(&prefix)?);
+        }
         service.pacing = pacing::Pacing::from_env(service.store.clone())?;
         if let Ok(v) = std::env::var("ERGO_SHARED_GROUP_COMMIT") {
             anyhow::ensure!(
@@ -191,9 +208,22 @@ impl SharedWorlds {
         Ok(service)
     }
     pub(crate) fn repo(&self, id: &str) -> SharedResult<Repository> {
+        if self
+            .common_world
+            .as_ref()
+            .is_some_and(|common| common != id)
+        {
+            return Err(SharedError::status(
+                StatusCode::NOT_FOUND,
+                "Only the shared Ergo Sandbox is available",
+            ));
+        }
         uuid::Uuid::parse_str(id).map_err(|_| {
             SharedError::status(StatusCode::BAD_REQUEST, "Invalid shared-world UUID")
         })?;
+        if let Some(repo) = &self.common_root {
+            return Ok(repo.clone());
+        }
         Ok(self.root.child(id)?)
     }
     async fn authorized(
@@ -211,7 +241,7 @@ impl SharedWorlds {
             .get_limited(&root(0), self.limits.bytes)
             .await?
             .ok_or_else(SharedError::forbidden)?;
-        if !policy.can_read(actor) {
+        if self.common_world.as_deref() != Some(id) && !policy.can_read(actor) {
             return Err(SharedError::forbidden());
         }
         Ok((repo, snapshot, policy))
@@ -226,12 +256,20 @@ impl SharedWorlds {
             )
             .await?;
         let ws = Working::new(repo.begin_at("main", base).await?, self.limits).await?;
-        if !ws.policy.can_read(actor) {
+        if self.common_world.as_deref() != Some(id) && !ws.policy.can_read(actor) {
             return Err(SharedError::forbidden());
         }
         Ok(ws)
     }
     pub async fn create(&self, actor: &str, request: NewWorld) -> SharedResult<Head> {
+        if let Some(common) = &self.common_world {
+            return Err(SharedError::status(
+                StatusCode::CONFLICT,
+                &format!(
+                    "World creation is disabled; only the public Ergo Sandbox ({common}) is available"
+                ),
+            ));
+        }
         ensure!(
             !request.name.trim().is_empty() && request.name.chars().count() <= 120,
             "Invalid world name"
@@ -256,6 +294,7 @@ impl SharedWorlds {
         model.tolerances.validate()?;
         let model = tx.stage_blob(&model)?;
         let metadata = Metadata {
+            id: Some(id.clone()),
             name: request.name,
             geo: request.geo,
             model,
@@ -334,6 +373,7 @@ impl SharedWorlds {
         actor: &str,
         mut request: ImportRequest,
     ) -> SharedResult<Imported> {
+        self.destination(id)?;
         if request.scene.bricks.len() > self.limits.pieces {
             return Err(SharedError::working_limit("import batch pieces"));
         }
@@ -449,6 +489,7 @@ impl SharedWorlds {
         actor: &str,
         request: CommitRequest,
     ) -> SharedResult<Prepared> {
+        self.destination(id)?;
         ensure!(
             !request.pieces.is_empty() || !request.rules.is_empty() || !request.joints.is_empty(),
             "Empty edit"
@@ -625,6 +666,10 @@ impl SharedWorlds {
         actor: &str,
         request: GrantRequest,
     ) -> SharedResult<ContentId> {
+        ensure!(
+            self.common_world.is_none() || request.authenticated_editing != Some(false),
+            "The public Ergo Sandbox must remain editable by signed-in users"
+        );
         let mut ws = self.working(id, actor, &request.base).await?;
         if ws.policy.owner != actor {
             return Err(SharedError::forbidden());
@@ -730,9 +775,17 @@ pub fn routes() -> Router<AppState> {
     Router::new()
         .route("/api/shared-worlds", get(catalog::list).post(create))
         .route("/api/shared-worlds/allowance", get(allowance))
+        .route("/api/common-world/locate", get(authoring::locate))
         .route("/api/shared-worlds/{id}", get(head))
         .route("/api/shared-worlds/{id}/view", get(view::view))
-        .route("/api/shared-worlds/{id}/assemblies", post(import))
+        .route(
+            "/api/shared-worlds/{id}/assemblies",
+            get(authoring::list).post(import),
+        )
+        .route(
+            "/api/shared-worlds/{id}/assemblies/{assembly}/workspace",
+            get(authoring::workspace).put(authoring::replace),
+        )
         .route(
             "/api/shared-worlds/{id}/assemblies/{assembly}",
             get(assembly),
@@ -765,6 +818,11 @@ fn reader(s: &AppState, h: &HeaderMap) -> SharedResult<Principal> {
         .auth
         .shared_principal(h)
         .map_err(|_| SharedError::unauthorized())?;
+    if p.id.is_none() && s.shared.common_world.is_some() {
+        return Ok(Principal {
+            id: Some("public-viewer".into()),
+        });
+    }
     if p.id.is_none() {
         return Err(SharedError::unauthorized());
     }
@@ -774,7 +832,12 @@ async fn allowance(
     State(s): State<AppState>,
     headers: HeaderMap,
 ) -> SharedResult<Json<serde_json::Value>> {
-    let actor = reader(&s, &headers)?.required()?;
+    let actor = s
+        .auth
+        .shared_principal(&headers)
+        .map_err(|_| SharedError::unauthorized())?
+        .required()
+        .map_err(|_| SharedError::unauthorized())?;
     let mut status = s.shared.pacing.status(&actor).await?;
     status["actor"] = serde_json::json!(actor);
     Ok(Json(status))

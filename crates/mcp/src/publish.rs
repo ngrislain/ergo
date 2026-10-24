@@ -7,6 +7,7 @@ use serde::Deserialize;
 use serde_json::{Value, json};
 use std::{env, path::PathBuf, time::Duration};
 
+#[derive(Clone)]
 pub struct Publisher {
     base: Url,
     token: Option<String>,
@@ -24,8 +25,8 @@ struct Arguments {
 }
 
 #[derive(Debug)]
-struct RemoteFailure {
-    status: u16,
+pub(crate) struct RemoteFailure {
+    pub(crate) status: u16,
     body: Value,
 }
 impl std::fmt::Display for RemoteFailure {
@@ -157,11 +158,16 @@ impl Publisher {
         })
     }
 
-    fn url(&self, path: &str) -> Result<Url> {
+    pub(crate) fn url(&self, path: &str) -> Result<Url> {
         Ok(self.base.join(path.trim_start_matches('/'))?)
     }
 
-    async fn request(&self, method: Method, path: &str, body: Option<Value>) -> Result<Value> {
+    pub(crate) async fn request(
+        &self,
+        method: Method,
+        path: &str,
+        body: Option<Value>,
+    ) -> Result<Value> {
         let mut request = self
             .client
             .request(method, self.url(path)?)

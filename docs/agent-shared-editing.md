@@ -1,0 +1,127 @@
+# Edit Ergo Sandbox with an agent at a position
+
+There is one **public Ergo Sandbox**. Anyone can view it; signed-in users can
+edit it, subject to pacing and physical validation. Current MCP clients commit
+accepted edits to that same S3-backed world automatically. A working file is a
+cache, not a private world. Use MCP **v0.4.0 or newer** for this workflow.
+
+## Start from the viewer's current position
+
+1. Open [Ergo Sandbox](https://ergosandbox.com/), sign in, and navigate to the place
+   you want to work on. Select a brick for an exact construction selection.
+2. Click **Edit here with an agent** (the command-symbol button in the header).
+3. The setup page carries the current view target in public construction
+   coordinates, plus the selected/edited assembly ID when available. Generate
+   and download a short-lived token. Copy its MCP configuration into your agent.
+4. Use a fresh, absolute cache path for that context. Keep the token in a private
+   file and put only its path in the configuration.
+
+Example configuration (replace the file paths):
+
+```json
+{
+  "mcpServers": {
+    "ergo": {
+      "command": "ergo-mcp",
+      "args": ["--workspace", "/absolute/path/ergo-here.cache.json"],
+      "env": {
+        "ERGO_PUBLISH_URL": "https://ergosandbox.com",
+        "ERGO_PUBLISH_TOKEN_FILE": "/absolute/path/ergo-mcp-token",
+        "ERGO_POSITION_WORLD": "[128,64,0]"
+      }
+    }
+  }
+}
+```
+
+For a selection the handoff also includes `ERGO_SHARED_ASSEMBLY_ID`. It takes
+precedence over nearest-position selection. The UUID/assembly hash are identifiers,
+not credentials. Sign-in stays in the human's browser; never pass Google or S3
+credentials to the agent.
+
+## Specify a position explicitly
+
+Positions are `[east,north,height]`, with 8 mm horizontal units and 9.6 mm height
+units. They are **not LDraw LDU**, GPS degrees, or storage-block indices.
+
+Set `ERGO_POSITION_WORLD` as the JSON string above before starting a new cache,
+or have the agent call this on an already running configured MCP server:
+
+```json
+{"name":"open_shared_construction","arguments":{"position_world":[128,64,0]}}
+```
+
+To choose a known construction exactly:
+
+```json
+{"name":"open_shared_construction","arguments":{"assembly_id":"REPLACE_WITH_64_HEX_ASSEMBLY_ID"}}
+```
+
+Position lookup chooses the nearest assembly among candidates in a bounded
+±1536-unit search box. It is not a whole-world nearest-neighbor scan. An exact
+assembly ID is preferable when several constructions are close together. Inspect
+`list_bricks`/bounds after opening. An empty search is reported explicitly; on
+startup an empty position can initialize a new construction cache with the
+sandbox's geographic reference.
+
+For GPS, first use the viewer's **Go to a location** dialog, then the handoff.
+The conversion is documented in [ground and coordinates](ground-and-coordinates.md):
+`x = Δlongitude × 3600 × 1024 / arcseconds_per_block`,
+`y = Δlatitude × 3600 × 1024 / arcseconds_per_block`, with longitude wrapping.
+For example, in the default Paris reference, `[128,64,0]` is approximately
+48.8566173611° N, 2.3522347222° E. Viewer `/app?x=...&y=...&z=...` links use
+**block indices**; `/login` handoff coordinates and MCP positions use construction
+units. Do not interchange them.
+
+## A useful agent prompt
+
+> Open the selected shared construction at the supplied position. Inspect its
+> parts, bounds and connections first. Modify the façade as requested, preserving
+> other users' work. Minimize the part count for the required shape: prefer the
+> largest suitable standard bricks/plates over many small parts, while preserving
+> shape, colors, support and connectivity. Inspect actual front/isometric renders.
+> Return each confirmed shared revision and author attribution; do not describe
+> local previews, failed validation, or uncertain requests as committed edits.
+
+Discover tools with `tools/list`; use `get_catalog`, `list_bricks`, and
+`inspect_brick`. `place_brick`, `place_submodel`, removal, groups and transforms
+update the **same** shared assembly. `place_submodel` can submit an inline MPD
+batch atomically, avoiding a stream of unsupported intermediate states.
+
+Read `shared_commit` in a successful mutation result. It contains the accepted
+revision and server audit. `publish_construction` can confirm a receipt, rename a
+construction, or submit an existing validated proposal; it cannot create another
+world. There is no `authenticated_editing=false` private-world option in the
+production tool schema.
+
+## Acceptance, conflicts, and cache recovery
+
+The server revalidates the affected mechanical dependency domain, permissions and
+quota, then publishes with compare-and-swap. It assigns names from the account
+profile, not tool arguments: `audit.actor` is stable; `audit.actor_name` is the
+display name at acceptance. Names are authenticated attribution, not unique
+usernames or a personal cryptographic signature.
+
+- Invalid MCP edits restore the preceding accepted cache; no successful shared
+  mutation is reported. The browser can retain a clearly labeled **Preview only**
+  proposal for inspection/correction, but does not call it saved.
+- Concurrent changes to the same assembly cause a conflict instead of overwriting
+  another editor's work. Reopen it with `open_shared_construction`, inspect the
+  current state, and apply the intended change again.
+- Unknown outcomes are fenced and never automatically retried. Resolve them from
+  accepted history/assembly read-back before another mutation.
+- The `.shared.json` sidecar records origin, sandbox ID, assembly, accepted base
+  revision and pending state. It contains no token. Do not delete a pending journal
+  merely to repeat an unconfirmed import. On restart, a bound cache reloads the
+  authoritative shared assembly.
+- A bounded authoring assembly is limited to the configured working-set budget
+  (normally 5,000 pieces/128 MiB). Assemblies with external mechanical dependencies
+  do not claim a complete isolated client simulation; server validation still
+  follows the full affected dependency closure.
+
+Use `test_visual_appearance`/`view_construction` with `lighting: "studio"` for
+time-independent inspection. Gravity and earthquake tests are non-mutating
+diagnostics, not permission to bypass the server's certificate or measurements.
+
+See [production examples](mcp-production-examples.md), the
+[Haussmann building exercise](haussmann-mcp.md), and [MCP tools](local-construction-mcp.md).

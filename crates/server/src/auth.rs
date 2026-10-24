@@ -572,7 +572,7 @@ pub async fn me(State(s): State<AppState>, headers: HeaderMap) -> Result<Respons
         None
     };
     Ok(([(header::CACHE_CONTROL, "no-store")], Json(
-        serde_json::json!({"id":principal.id,"name":user.as_ref().map(|u|u.name.as_str()).unwrap_or("Guest"),"google_enabled":s.auth.google,"signed_in":user.is_some(),"development":!s.auth.google,"edit_allowance":edit_allowance}),
+        serde_json::json!({"id":principal.id,"name":user.as_ref().map(|u|u.name.as_str()).unwrap_or("Guest"),"google_enabled":s.auth.google,"signed_in":user.is_some(),"development":!s.auth.google,"edit_allowance":edit_allowance,"common_world":s.shared.common_world}),
     )).into_response())
 }
 

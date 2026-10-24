@@ -38,7 +38,10 @@ environment:
   ERGO_PUBLISH_URL=https://ergosandbox.com
   ERGO_PUBLISH_TOKEN_FILE=/absolute/path/ergo-mcp-token
 
-The workspace parent directory must exist. A missing JSON file starts empty.
+The workspace parent directory must exist. In production the JSON file and its
+.shared.json binding are caches of the one public Ergo Sandbox, not private worlds.
+Accepted mutations commit atomically through the server to S3 before success is
+returned. Invalid edits roll back; unknown outcomes are fenced and not retried.
 The bridge does not automatically load .env. A browser is required; the package
 includes its WASM assets. Local editing can operate without a hosted token; publication
 requires one. Keep credentials out of tool arguments and URLs.
@@ -57,17 +60,23 @@ launches this process itself using the configuration above, one process per work
 
 Discover the current tools and their JSON schemas. Start with get_catalog and
 list_bricks. Use place_brick, move_brick, connect_bricks and grouping tools to
-make a small grounded draft. Coordinates are X east, Y north, Z up.
+edit the shared construction. Coordinates are X east, Y north, Z up.
+Minimize brick count for the requested shape: use the largest suitable standard
+bricks/plates while preserving shape, colors, support and connection constraints.
+Use the viewer's Edit here with an agent button to get the current target/selected
+assembly. Its setup includes ERGO_POSITION_WORLD (a JSON [east,north,height] string)
+and, for an exact selection, ERGO_SHARED_ASSEMBLY_ID. Use a fresh cache path.
+Or call open_shared_construction with assembly_id or position_world explicitly.
 Run validate_construction, test_stability_by_gravity, and
 test_visual_appearance. Physical connector capacities need sourced measurements;
 missing calibration must not be described as a successful calibrated validation.
 
-publish_construction creates a new world/assembly or imports a new assembly into
-an existing world. It does not update a previously published assembly in place.
-MCP-created worlds allow signed-in collaborators by default; set
-authenticated_editing=false for an owner/grant-only new world. Inspect confirmed
-returned revisions and view_url. Do not automatically retry unknown or
-accepted_unconfirmed publication outcomes: imports are not idempotent.
+Normal edits update the same shared assembly automatically and preserve stable
+piece identities. publish_construction can confirm the last shared receipt,
+rename the construction, or submit a pre-existing validated proposal. It cannot
+create a private/alternative world. Inspect shared_commit, accepted revisions
+and view_url; audit.actor_name is server-resolved. Do not automatically retry
+unknown or accepted_unconfirmed outcomes: first imports are not idempotent.
 
 get_edit_allowance reports the current allowance. Free accounts have capacity
 5,000 changed bricks, continuously refilling by 5,000 changes per 86400 seconds.
@@ -84,3 +93,4 @@ Authoritative docs:
 https://github.com/ngrislain/ergo/blob/main/docs/local-construction-mcp.md
 https://github.com/ngrislain/ergo/blob/main/docs/concurrent-global-editing.md#rest-workflow
 https://github.com/ngrislain/ergo/blob/main/docs/access-and-onboarding.md
+https://github.com/ngrislain/ergo/blob/main/docs/agent-shared-editing.md

@@ -148,8 +148,11 @@ pub fn ground_mesh() -> Mesh {
 /// One reusable decorative stud; the renderer instances only nearby visible
 /// studs rather than allocating all 1,048,576 studs of a storage baseplate.
 pub fn ground_stud_mesh() -> Mesh {
+    ground_stud_mesh_with_segments(12)
+}
+pub fn ground_stud_mesh_with_segments(segments: u32) -> Mesh {
     let mut vertices = Vec::new();
-    add_stud(&mut vertices, Vec3::ZERO);
+    add_stud_segments(&mut vertices, Vec3::ZERO, segments.clamp(6, 48));
     let bounds = Aabb::new(DVec3::new(-0.3, 0., -0.3), DVec3::new(0.3, 1. / 6., 0.3));
     Mesh {
         schema: crate::SCHEMA_VERSION,
@@ -220,11 +223,14 @@ fn add_box(out: &mut Vec<f32>, min: Vec3, max: Vec3) {
 }
 
 fn add_stud(out: &mut Vec<f32>, center: Vec3) {
+    add_stud_segments(out, center, 12);
+}
+fn add_stud_segments(out: &mut Vec<f32>, center: Vec3, segments: u32) {
     let height = 1.0 / 6.0;
     let top = center + Vec3::Y * height;
-    for i in 0..12 {
-        let a = i as f32 * std::f32::consts::TAU / 12.0;
-        let b = (i + 1) as f32 * std::f32::consts::TAU / 12.0;
+    for i in 0..segments {
+        let a = i as f32 * std::f32::consts::TAU / segments as f32;
+        let b = (i + 1) as f32 * std::f32::consts::TAU / segments as f32;
         let p = center + Vec3::new(a.cos() * 0.3, 0.0, a.sin() * 0.3);
         let q = center + Vec3::new(b.cos() * 0.3, 0.0, b.sin() * 0.3);
         triangle(out, p, p + Vec3::Y * height, q + Vec3::Y * height, None);

@@ -170,6 +170,10 @@ pub fn import_ldraw(
 
 pub fn validate_export(scene: &mut WorldExport) -> Result<()> {
     ensure!(
+        !scene.name.trim().is_empty() && scene.name.chars().count() <= 120,
+        "Construction name must contain 1–120 characters"
+    );
+    ensure!(
         scene.schema == ergo_world::SCHEMA_VERSION,
         "Unsupported scene schema"
     );

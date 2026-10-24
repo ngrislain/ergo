@@ -115,7 +115,7 @@
                 <h3>Build, piece by piece.</h3>
                 <p>
                   Place, move, group, and connect bricks. Your agent edits a
-                  local construction through MCP, with a browser doing the
+                  shared sandbox through MCP, with a browser doing the
                   rendering.
                 </p>
               </div>
@@ -360,8 +360,8 @@ curl --fail "$ERGO_URL/api/shared-worlds/allowance" \
               <h3>Start small. See what stands.</h3>
               <p>
                 Ask your agent to inspect its tools and catalog, make a grounded
-                construction, and show you what it built. Local drafts don’t
-                need a token; publishing does.
+                construction, and show you what it built. Accepted production
+                edits commit to the one public sandbox under your signed-in identity.
               </p>
               <p class="small-note">
                 The renderer’s appearance is not a structural certificate.
@@ -384,12 +384,13 @@ curl --fail "$ERGO_URL/api/shared-worlds/allowance" \
                 </button>
               </div>
               <p id="first-prompt">
-                Use the Ergo MCP tools to build a small, grounded brick arch.
-                Start with get_catalog and list_bricks. Place and connect the
+                Use the Ergo MCP tools to build a small, grounded courtyard in
+                the shared Ergo Sandbox. Start with get_catalog and list_bricks.
+                Minimize brick count with larger suitable parts. Place the
                 bricks, run validate_construction and test_stability_by_gravity,
                 then show me a view with test_visual_appearance. Explain any
-                unsupported parts or missing calibration. Keep the build local
-                until I ask you to publish it.
+                unsupported parts or missing calibration, and return confirmed
+                shared revisions. Do not call an unaccepted preview a saved edit.
               </p>
               <div class="tool-chain" aria-label="Build workflow">
                 <code>get_catalog</code><span aria-hidden="true">→</span

@@ -7,6 +7,15 @@ or Scaleway's S3-compatible object store. User profiles also live in object stor
 
 ## Reading order
 
+- [Edit with an agent here or at a position](agent-shared-editing.md): the current
+  single public sandbox workflow, automatic accepted commits and author attribution.
+- [Object-store folders and consolidation](object-store-layout.md): active caches,
+  the one world namespace, inventory, migration and cleanup.
+- [Haussmann building MCP exercise](haussmann-mcp.md): a reproducible architectural
+  proposal with real renders and honest validation/gravity results.
+- [Progressive stud LOD](stud-lod.md): CAD viewer references and the implemented
+  geometry-to-filtered-detail transition.
+
 - [Architecture and execution boundaries](architecture.md): browser, thin MCP
   bridge, minimal WASM runtime, REST API, and object storage, with an SVG overview.
 - [Ground and coordinates](ground-and-coordinates.md): public Z-up schema, lazy
