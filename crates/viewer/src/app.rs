@@ -270,7 +270,7 @@ impl Client {
             name: world.name.clone(),
             geo: world.geo,
             bricks: renderer.bricks.clone(),
-            meshes: renderer.meshes.clone(),
+            meshes: renderer.meshes().clone(),
             joints: self.joints.clone(),
             fixed_bricks: self.fixed.clone(),
             ground: renderer.ground.values().cloned().collect(),
@@ -357,7 +357,7 @@ impl Client {
             let r = self.renderer.as_ref().unwrap();
             self.simulation = Some(Simulation::new(
                 &r.bricks,
-                &r.meshes,
+                r.meshes(),
                 &self.joints,
                 &self.fixed,
                 false,
@@ -648,7 +648,7 @@ fn request_shared_region(handle: Handle, id: String, coord: [i64; 3], fit_view: 
                         let ground = std::mem::take(&mut renderer.ground);
                         renderer.clear();
                         renderer.ground = ground;
-                        renderer.meshes = scene.meshes;
+                        renderer.set_meshes(scene.meshes);
                         renderer.set_bricks(scene.bricks);
                         if fit_view {
                             renderer.fit(manifest.bounds);
@@ -829,7 +829,7 @@ fn open_world(handle: Handle, world: WorldManifest) {
             }
             match result {
                 Ok(meshes) => {
-                    c.renderer.as_mut().unwrap().meshes = meshes;
+                    c.renderer.as_mut().unwrap().set_meshes(meshes);
                     c.ready = true;
                     c.ui.message
                         .set("Streaming visible blocks inside the fog horizon…".into());
@@ -906,7 +906,7 @@ fn open_draft(handle: Handle, scene: WorldExport) -> anyhow::Result<()> {
         c.navigation_controls.clear();
         let r = c.renderer.as_mut().unwrap();
         r.clear();
-        r.meshes = scene.meshes;
+        r.set_meshes(scene.meshes);
         r.set_bricks(scene.bricks);
         r.fit(bounds);
         for block in scene.ground {

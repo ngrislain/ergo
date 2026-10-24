@@ -7,4 +7,5 @@ mod preview;
 pub mod renderer;
 #[cfg(all(target_arch = "wasm32", feature = "mcp-entry"))]
 mod runtime;
+pub mod scene;
 pub mod walking;

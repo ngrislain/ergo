@@ -20,11 +20,13 @@ impl LandingPreview {
         console_error_panic_hook::set_once();
         let mut renderer = Renderer::new_preview(canvas)?;
         let scene = doorway();
-        renderer.meshes = scene.meshes.clone();
+        renderer.set_meshes(scene.meshes.clone());
         renderer.set_bricks(scene.bricks.clone());
         renderer.fit(ergo_world::bounds(&scene.bricks).ok_or("Empty landing illustration")?);
         renderer.grid = false;
         renderer.ground_visible = false;
+        renderer.ambient_light = 0.3;
+        renderer.studio_fill = 0.35;
         let distance = renderer.distance;
         let mut preview = Self {
             renderer,
@@ -74,7 +76,7 @@ impl LandingPreview {
                 9.0,
             );
             self.added += 1;
-            self.renderer.meshes = self.scene.meshes.clone();
+            self.renderer.set_meshes(self.scene.meshes.clone());
             self.renderer.set_bricks(self.scene.bricks.clone());
             self.previous_assembly = -1.0;
         }

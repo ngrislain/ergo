@@ -68,6 +68,7 @@ The white/slate/amber tokens, typography, logo, and buttons follow the apex UI.
 The brick model uses the navigator's catalog geometry, instancing, shaders and
 shadow pass, with a cursor-positioned point light and studio fill so it remains
 readable at any time and from rear/side views. See [lighting](lighting.md).
+Indirect light is scaled to 0.30 and studio fill to 0.35 for stronger cast shadows.
 Free mouse movement positions the light; click-drag orbits the actual camera
 horizontally and vertically while keeping the light fixed in world space.
 Pinch changes the camera distance; wheel scrolling moves the page.

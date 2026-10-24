@@ -1,8 +1,10 @@
-use super::{GpuMesh, link, shaders};
+use super::{
+    batches::{Batches, Pass},
+    link, shaders,
+};
 use crate::lighting::{SolarPosition, solar_position};
 use ergo_world::GeoReference;
 use glam::{DVec3, Mat4, Vec3};
-use std::collections::HashMap;
 use wasm_bindgen::JsValue;
 use web_sys::{WebGl2RenderingContext as Gl, WebGlFramebuffer, WebGlProgram, WebGlTexture};
 
@@ -34,7 +36,8 @@ pub(super) struct LightFrame {
     point: bool,
     pub sun: SolarPosition,
     pub updated: bool,
-    matrix: Mat4,
+    pub matrix: Mat4,
+    pub shadow_changed: bool,
     pub position: Vec3,
     forward: Vec3,
 }
@@ -93,12 +96,7 @@ impl LightPass {
         })
     }
 
-    pub fn prepare(
-        &mut self,
-        observer: Observer,
-        gpu: &HashMap<String, GpuMesh>,
-        changed: bool,
-    ) -> LightFrame {
+    pub fn prepare(&mut self, observer: &Observer) -> LightFrame {
         let gps = observer.geo.to_gps(observer.target);
         let seconds = (js_sys::Date::now() / 60000.0).floor() * 60.0;
         let key = [
@@ -179,7 +177,26 @@ impl LightPass {
                 forward,
             )
         };
-        if changed || self.previous_matrix != Some(matrix) {
+        LightFrame {
+            studio: observer.studio,
+            point: observer.point_light.is_some(),
+            sun,
+            updated,
+            shadow_changed: self.previous_matrix != Some(matrix),
+            matrix,
+            position,
+            forward,
+        }
+    }
+
+    pub fn draw(
+        &mut self,
+        observer: &Observer,
+        frame: &LightFrame,
+        gpu: &Batches,
+        changed: bool,
+    ) -> usize {
+        if changed || frame.shadow_changed {
             let gl = &self.gl;
             gl.bind_framebuffer(Gl::FRAMEBUFFER, Some(&self.framebuffer));
             gl.viewport(0, 0, self.size, self.size);
@@ -193,36 +210,25 @@ impl LightPass {
                 "display_scale",
                 Mat4::from_scale(observer.display_scale.as_vec3()),
             );
-            uniform_matrix(gl, &self.shadow_program, "shadow_matrix", matrix);
-            uniform_vector(gl, &self.shadow_program, "eye", eye);
+            uniform_matrix(gl, &self.shadow_program, "shadow_matrix", frame.matrix);
+            uniform_vector(
+                gl,
+                &self.shadow_program,
+                "eye",
+                ((observer.eye - observer.origin) * observer.display_scale).as_vec3(),
+            );
             gl.uniform1f(
                 gl.get_uniform_location(&self.shadow_program, "projection_pixels")
                     .as_ref(),
                 observer.projection_pixels as f32,
             );
-            for mesh in gpu.values().filter(|mesh| mesh.instances > 0) {
-                gl.uniform1i(
-                    gl.get_uniform_location(&self.shadow_program, "stud_mode")
-                        .as_ref(),
-                    mesh.stud_mode,
-                );
-                gl.bind_vertex_array(Some(&mesh.vao));
-                gl.draw_arrays_instanced(Gl::TRIANGLES, 0, mesh.vertices, mesh.instances);
-            }
-            gl.bind_vertex_array(None);
+            let (calls, _, _) = gpu.draw(gl, &self.shadow_program, Pass::Shadow, true);
             gl.disable(Gl::POLYGON_OFFSET_FILL);
             gl.bind_framebuffer(Gl::FRAMEBUFFER, None);
-            self.previous_matrix = Some(matrix);
+            self.previous_matrix = Some(frame.matrix);
+            return calls;
         }
-        LightFrame {
-            studio: observer.studio,
-            point: observer.point_light.is_some(),
-            sun,
-            updated,
-            matrix,
-            position,
-            forward,
-        }
+        0
     }
 
     pub fn sky(&self, frame: &LightFrame, view_projection: Mat4, eye: Vec3) {

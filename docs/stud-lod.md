@@ -47,15 +47,19 @@ studs. Near cylinders use 16 sides; small distant cylinders use 8. The far basep
 shader retains filtered stud relief and fades that detail only as it becomes
 subpixel. The cap body color is unchanged; this is not alpha-fading whole bricks.
 
-The main and shadow passes use the same morphed geometry. Source meshes, saved
+The passes share one stud-deformation helper and Rust-generated thresholds.
+Interactive color geometry morphs; shadow parts retain full source detail so
+camera-driven LOD does not remove or flatten resident casters. Ground studs use
+the same morphed instances in both passes. Source meshes, saved
 transforms, body bounds, picking and physics are unchanged. Full near detail keeps
 nominal physical proportions. As with any LOD, the far image is an approximation.
 Automatic analytic stud relief applies only to the known rectangular studded
 catalog parts and virtual ground, not arbitrary specialty geometry or tiles.
-Generic body/aggregate LOD still exists; this is not a guarantee of seamless
+Body proxies apply to known rectangular parts; arbitrary LDraw silhouettes remain
+canonical through the medium tiers. Subpixel aggregate LOD still exists; this is not a guarantee of seamless
 cross-fading of every nonstandard model feature.
 
-Implementation: `crates/client/src/lod.rs`, `renderer.rs`,
+Implementation: `crates/client/src/lod.rs`, `scene.rs`, `scene/ground.rs`, `renderer.rs`,
 `renderer/{shaders,illumination}.rs`, and `crates/world/src/geometry.rs`.
-The Rust and GLSL transition constants must remain synchronized. Tests check
+The GLSL transition constants are emitted from Rust at shader compilation. Tests check
 continuity/monotonicity, real WebGL main/shadow passes and browser navigation.

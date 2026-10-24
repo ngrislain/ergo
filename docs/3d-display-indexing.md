@@ -16,6 +16,42 @@ range, then builds a resident octree. The tree prunes individual draw candidates
 geometry is batched by part and detail level. Display residency, render LOD, and
 the complete working set required by physics are separate concerns.
 
+## One block-oriented engine, three entry points
+
+The navigator, homepage and MCP captures use one scene-planning and WebGL2
+pipeline. Entry points select explicit quality/visibility policies, camera/input
+and lighting parameters; background transparency does not select geometry policy.
+
+- `crates/client/src/scene/view.rs` owns physical-scale projection, floating origin,
+  frusta and pick-ray unprojection, shared by drawing, streaming and picking.
+- `scene.rs` produces deterministic part/LOD batches and **separate camera and
+  light-space instance lists** from the resident octree.
+- `scene/ground.rs` produces bounded baseplate/stud instances without a browser/GPU
+  dependency. The same CPU planner is usable in native regression tests.
+- `renderer/batches.rs` owns immutable prototype buffers, per-pass instance buffers,
+  draw submission and resource release. Replacing a prototype invalidates its
+  derived LOD/GPU entries; unchanged prototypes survive streaming updates.
+- `renderer/illumination.rs` prepares the light, then renders depth from the
+  independent caster list. `renderer/shaders.rs` supplies shared block deformation
+  and material code. Stud thresholds are generated from the Rust detail constants.
+- `renderer.rs` orchestrates planning, upload, depth, sky and opaque-color passes.
+  Preview, navigator and MCP wrappers do not implement alternative draw backends.
+
+This adopts game-engine ideas of shared prototypes, data-oriented instance batches,
+hierarchical visibility, explicit passes, change-driven uploads and LOD hysteresis;
+see [instancing references](references.md#s5-engine-style-instancing-and-pass-reuse).
+Blocks make prototype reuse unusually effective: palette colors/transforms are
+instance attributes, not separate copies of a part's vertices. Render chunks are
+derived from residency, not mechanical assembly boundaries or S3 file boundaries.
+This is a small ordered pass pipeline, not a general frame-graph compiler, voxel
+mesher or GPU-driven virtualized-geometry implementation. Hi-Z occlusion, interior
+face elimination and per-page tree updates remain future work.
+
+Interactive views use adaptive detail and camera culling. MCP captures retain
+full source geometry for camera-visible pieces. The tiny homepage illustration
+keeps every color instance at full detail. All use light-volume culling for
+resident shadow casters; camera clipping no longer removes an offscreen caster.
+
 ## Frustum- and fog-bounded streaming
 
 For camera position $\mathbf{c}$ and block side $B=1024$:
@@ -116,15 +152,20 @@ where $H$ is viewport height, $D$ the metric-proportioned bound diameter, $d$ ca
 distance, and $\theta_v$ vertical field of view. The implemented discrete tiers are:
 
 - At least 24 px: detailed supplied/cached LDraw mesh.
-- At least 8 px: simplified parametric studded mesh.
-- At least 2 px: nominal body box.
+- At least 8 px: simplified parametric mesh for known rectangular catalog parts.
+- At least 2 px: nominal body box for those rectangular parts.
 - Below 2 px: coarse colored bounds aggregated in 8-unit spatial buckets.
 
+The listed thresholds initialize a piece's tier. Subsequent changes use a **12%
+hysteresis band**: refine above 1.12× a boundary and coarsen below 0.88× it.
+Large camera moves can cross several tiers in one update. Nonrectangular/custom
+LDraw parts retain their canonical mesh through the medium tiers, rather than
+substituting a box that changes their silhouette; subpixel aggregates still apply.
 The selected piece keeps detailed geometry; highlighted group members retain at
 least box-level individual display. Full resident geometry remains available for
 picking, and physics never substitutes these render LODs for its body model.
-Fog hides the final distance cutoff. Threshold hysteresis and QEM/progressive-mesh
-streams are future work, not current behavior; see [S3–S4](references.md).
+Fog hides the final distance cutoff. QEM/progressive-mesh streams remain future
+work; see [S3–S4](references.md).
 
 ## Picking: broad phase, then triangle tests
 
@@ -162,10 +203,14 @@ For $N$ bricks, $P$ unique part meshes, $V_p$ vertices in part $p$, and $I$ byte
 per instance:
 
 $$
-M_{GPU}\approx\sum_{p=1}^{P}V_p\,s_{vertex}+NI.
+M_{GPU}\approx\sum_{p=1}^{P}V_p\,s_{vertex}+(N_{color}+N_{shadow})I.
 $$
 
-The current layout uses 36 bytes per vertex and 80 bytes per instance. Draw-call
+The current layout uses 36 bytes per vertex and 80 bytes per instance per pass.
+Color and depth VAOs share the same prototype vertex buffer. A batch uploads its
+instance array only when its contents change; orbiting the complete static
+homepage scene needs no geometry/instance re-upload. Retained CPU copies allow
+these comparisons and are separate from the GPU-byte counter. Draw-call
 count follows the number of visible part/LOD batches, aggregates, and ground draws.
 This is why increasing the number of brick instances is often cheaper than
 increasing the number of unique geometries or materials.
@@ -200,7 +245,8 @@ global placement separate.
 - **CPU cache:** nearby decoded blocks, deduplicated brick records, shared meshes,
   and the resident octree. A raw CBOR byte count understates decoded memory.
 - **GPU cache:** shared mesh buffers and instance buffers for the current scene.
-  Buffers are explicitly deleted when no longer used or when switching worlds.
+  A prototype is released when neither pass references it, when replaced, or when
+  switching worlds. The shadow depth texture/driver overhead is additional memory.
 
 Content-addressed objects never need in-place invalidation. New content gets a
 new hash; manifests select a new set of hashes. The current service worker does
@@ -211,7 +257,7 @@ full offline operation. Logout clears model caches.
 
 Measure decode latency, peak resident bytes, index rebuild time, instance upload
 time, triangles, and frame time separately. Then add, in order of observed need:
-per-page trees, worker decoding, smaller render pages, LOD hysteresis, and more
+per-page trees, worker decoding, smaller render pages, and more
 accurate simplification. Persisting an octree is useful only when the
 saved build time exceeds transfer/versioning costs; raw brick data remains the
 source of truth.

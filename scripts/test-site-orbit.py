@@ -21,10 +21,12 @@ with sync_playwright() as p:
     for hour in [0, 12]:
         context = browser.new_context(viewport={"width":1440,"height":1000}, reduced_motion="no-preference")
         context.add_init_script("""Date.now=()=>Date.UTC(2026,9,24,HOUR);
-          window.__gpu={shadow:0,main:0,errors:[],eye:[],scale:[]};
-          const names=new WeakMap(), buffers=new WeakMap(), proto=WebGL2RenderingContext.prototype;
+          window.__gpu={shadow:0,main:0,errors:[],eye:[],scale:[],uniforms:{},staticUploads:0,instanceUploads:0,colorBuffers:[],shadowBuffers:[]};
+          const names=new WeakMap(), buffers=new WeakMap(), ids=new WeakMap(), proto=WebGL2RenderingContext.prototype;
           const upload=proto.bufferData;
-          proto.bufferData=function(target,value,...args){
+           proto.bufferData=function(target,value,...args){
+             if(args[0]===this.STATIC_DRAW)ids.set(this.getParameter(this.ARRAY_BUFFER_BINDING),++window.__gpu.staticUploads);
+             if(args[0]===this.DYNAMIC_DRAW)window.__gpu.instanceUploads++;
             if(target===this.ARRAY_BUFFER&&ArrayBuffer.isView(value)){
               let hash=2166136261;for(const n of new Uint8Array(value.buffer,value.byteOffset,value.byteLength))hash=Math.imul(hash^n,16777619);
               buffers.set(this.getParameter(this.ARRAY_BUFFER_BINDING),hash>>>0);
@@ -34,12 +36,14 @@ with sync_playwright() as p:
           proto.bindFramebuffer=function(target,fb){if(target===this.FRAMEBUFFER&&fb)window.__gpu.shadowCasters=[];return bind.call(this,target,fb);};
           const location=proto.getUniformLocation;
           proto.getUniformLocation=function(p,n){const v=location.call(this,p,n);if(v)names.set(v,n);return v;};
-          const vector=proto.uniform3f;
-          proto.uniform3f=function(l,x,y,z){if(names.get(l)==='eye')window.__gpu.eye=[x,y,z];return vector.call(this,l,x,y,z);};
+           const vector=proto.uniform3f;
+           proto.uniform3f=function(l,x,y,z){if(names.get(l)==='eye')window.__gpu.eye=[x,y,z];return vector.call(this,l,x,y,z);};
+           const scalar=proto.uniform1f;
+           proto.uniform1f=function(l,v){const name=names.get(l);if(name)window.__gpu.uniforms[name]=v;return scalar.call(this,l,v);};
           const matrix=proto.uniformMatrix4fv;
           proto.uniformMatrix4fv=function(l,t,m){if(names.get(l)==='display_scale')window.__gpu.scale=Array.from(m);if(names.get(l)==='shadow_matrix')window.__gpu.shadowMatrix=Array.from(m);return matrix.call(this,l,t,m);};
           const draw=proto.drawArraysInstanced;
-          proto.drawArraysInstanced=function(...args){const shadow=!!this.getParameter(this.DRAW_FRAMEBUFFER_BINDING);window.__gpu[shadow?'shadow':'main']++;if(shadow)window.__gpu.shadowCasters.push([args[2],args[3],buffers.get(this.getVertexAttrib(0,this.VERTEX_ATTRIB_ARRAY_BUFFER_BINDING)),buffers.get(this.getVertexAttrib(3,this.VERTEX_ATTRIB_ARRAY_BUFFER_BINDING)),this.getUniform(this.getParameter(this.CURRENT_PROGRAM),this.getUniformLocation(this.getParameter(this.CURRENT_PROGRAM),'stud_mode'))].join(':'));draw.apply(this,args);const e=this.getError();if(e)window.__gpu.errors.push(e);};
+          proto.drawArraysInstanced=function(...args){const shadow=!!this.getParameter(this.DRAW_FRAMEBUFFER_BINDING);window.__gpu[shadow?'shadow':'main']++;const id=ids.get(this.getVertexAttrib(0,this.VERTEX_ATTRIB_ARRAY_BUFFER_BINDING));const list=window.__gpu[shadow?'shadowBuffers':'colorBuffers'];if(!list.includes(id))list.push(id);if(shadow)window.__gpu.shadowCasters.push([args[2],args[3],buffers.get(this.getVertexAttrib(0,this.VERTEX_ATTRIB_ARRAY_BUFFER_BINDING)),buffers.get(this.getVertexAttrib(3,this.VERTEX_ATTRIB_ARRAY_BUFFER_BINDING)),this.getUniform(this.getParameter(this.CURRENT_PROGRAM),this.getUniformLocation(this.getParameter(this.CURRENT_PROGRAM),'stud_mode'))].join(':'));draw.apply(this,args);const e=this.getError();if(e)window.__gpu.errors.push(e);};
         """.replace("HOUR",str(hour)))
         page = context.new_page()
         page.on("pageerror", lambda e: errors.append(str(e)))
@@ -51,7 +55,9 @@ with sync_playwright() as p:
         expect(canvas).to_have_attribute("data-lighting","point")
         gpu = page.evaluate("window.__gpu")
         assert gpu["shadow"] and gpu["main"] and not gpu["errors"], gpu
+        assert set(gpu["shadowBuffers"])<=set(gpu["colorBuffers"]), "Color and shadow passes must reference the same GPU geometry buffers"
         assert abs(gpu["scale"][5]-1.2) < 1e-6, "Physical height must not use flattened construction proportions"
+        assert abs(gpu["uniforms"]["ambient_light"]-0.3)<1e-6 and abs(gpu["uniforms"]["studio_fill"]-0.35)<1e-6, "Homepage shadows need reduced ambient and fill light"
         initial = canvas.screenshot()
         initial_pixels = Image.open(io.BytesIO(initial)).convert("RGB").getdata()
         assert sum(1 for rgb in initial_pixels if isinstance(rgb,tuple) and rgb[1]>rgb[0]*1.25 and rgb[1]>rgb[2]*1.25 and rgb[1]>50)>100, "Tree foliage must render green"
@@ -75,10 +81,12 @@ with sync_playwright() as p:
             page.mouse.move(x+160,y+60,steps=12)
             page.mouse.up()
             page.wait_for_function("Number(document.querySelector('[data-brick-scene]').dataset.viewPitch)>1")
+            page.wait_for_function("document.querySelector('[data-brick-scene]').dataset.motion==='still'")
             assert page.evaluate("window.__gpu.eye") != before_eye, "Orbit must move the actual eye uniform"
             assert canvas.get_attribute("data-light-position") == light
             assert page.evaluate("window.__gpu.shadowMatrix") == gpu["shadowMatrix"], "Studio shadow projection must stay scene-fixed while orbiting"
             assert sorted(page.evaluate("window.__gpu.shadowCasters"))==sorted(gpu["shadowCasters"]), "Orbit must not change caster geometry, instances or stud LOD"
+            assert page.evaluate("[window.__gpu.staticUploads,window.__gpu.instanceUploads]")==[gpu["staticUploads"],gpu["instanceUploads"]], "Orbit must reuse unchanged geometry and instance buffers"
             assert canvas.screenshot() != initial
             canvas.focus()
             canvas.press("Home")
@@ -104,6 +112,12 @@ with sync_playwright() as p:
             assert 'data-part="3003.dat"' in svg and 'data-body-mm="16,9.6,16"' in svg
             expect(image).to_be_visible()
             page.screenshot(path=str(output/"site-studio-desktop.png"))
+            before_uploads = page.evaluate("window.__gpu.staticUploads")
+            before_instances = int(canvas.get_attribute("data-color-instances"))
+            page.get_by_role("button",name="Add a brick",exact=True).click()
+            page.wait_for_function("old=>Number(document.querySelector('[data-brick-scene] canvas').dataset.colorInstances)>old",arg=before_instances)
+            assert page.evaluate("window.__gpu.staticUploads")==before_uploads, "Adding an existing part must reuse its prototype geometry"
+            assert not page.evaluate("window.__gpu.errors"), "Interactions must not introduce GL errors"
         context.close()
     assert pictures[0] == pictures[1], "Point/studio rendering should be independent of UTC"
     mobile = browser.new_context(viewport={"width":390,"height":844}, is_mobile=True, has_touch=True, reduced_motion="reduce")

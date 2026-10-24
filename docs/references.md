@@ -54,6 +54,19 @@ Ergo's implemented LODs are simpler: detailed catalog mesh, parametric studded
 mesh, nominal body box, and coarse colored aggregates. It does not currently
 perform QEM decimation or encode progressive mesh streams.
 
+### S5. Engine-style instancing and pass reuse
+
+Francesco Carucci, **Inside Geometry Instancing**, GPU Gems 2, chapter 3 (2005).
+[NVIDIA's published chapter](https://developer.nvidia.com/gpugems/gpugems2/part-i-geometric-complexity/chapter-3-inside-geometry-instancing)
+separates geometry packets, per-instance attributes, batch updates and rendering,
+including reuse across shadow/reflection passes. Ergo adapts these ideas to
+repeated brick prototypes using WebGL2 instanced attributes, shared color/depth
+vertex buffers, independent pass visibility, and change-driven instance uploads.
+It does not copy the chapter's Direct3D backend or its historical performance
+numbers. Projected-size hysteresis and bounded octree residency complement this
+batching; a general frame-graph compiler or virtualized meshlet engine is not
+implemented.
+
 ## Rigid-body dynamics, static checks, and constraints
 
 ### P1. Contact-force computation

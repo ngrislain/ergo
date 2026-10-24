@@ -222,7 +222,7 @@ impl LocalClientRuntime {
         renderer.studio_lighting = args["lighting"].as_str() == Some("studio");
         renderer.clear();
         renderer.geo = scene.geo;
-        renderer.meshes = scene.meshes.clone();
+        renderer.set_meshes(scene.meshes.clone());
         renderer.set_bricks(scene.bricks.clone());
         for block in &scene.ground {
             renderer.set_ground(block.clone());

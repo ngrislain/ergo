@@ -17,6 +17,9 @@ connect an agent, and start building. Its brick scene uses the navigator's
 shared WebGL/WASM engine, with a cursor-positioned point light, drag-to-orbit
 controls, and pinch/keyboard zoom.
 The navigator uses geographic sun/shadows and a night flashlight.
+The engine's [block display pipeline](docs/3d-display-indexing.md) is shared by
+the navigator, homepage and MCP captures. See also the
+[S3 layout](docs/object-store-layout.md) and [file-format reference](docs/object-store-formats.md).
 The guide also provides a [privacy notice](https://www.ergosandbox.com/privacy/)
 and [terms](https://www.ergosandbox.com/terms/). See [website deployment](docs/static-site.md)
 for its GitHub Pages source and publishing workflow.

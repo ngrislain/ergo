@@ -11,8 +11,12 @@ or Scaleway's S3-compatible object store. User profiles also live in object stor
   single public sandbox workflow, automatic accepted commits and author attribution.
 - [Object-store folders and consolidation](object-store-layout.md): active caches,
   the one world namespace, inventory, migration and cleanup.
+- [S3 keys and file formats](object-store-formats.md): encodings and field layouts
+  for heads, typed CBOR objects, assets, terrain, profiles, pacing and backups.
 - [Haussmann building MCP exercise](haussmann-mcp.md): a reproducible architectural
   proposal with real renders and honest validation/gravity results.
+- [Swiss village MCP exercise](swiss-village-mcp.md): eight chalets, landscaped
+  square, reusable submodels and reproducible MCP-rendered views.
 - [Progressive stud LOD](stud-lod.md): CAD viewer references and the implemented
   geometry-to-filtered-detail transition.
 

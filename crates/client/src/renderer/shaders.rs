@@ -1,3 +1,23 @@
+// Both geometry passes use the same block deformation. Detail thresholds are
+// emitted from the CPU policy so shader and planner constants cannot drift.
+pub fn source(template: &str) -> String {
+    let weight = format!(
+        "float stud_weight(float pixels) {{ return smoothstep({:.2},{:.2},pixels); }}",
+        crate::lod::STUD_FLAT_PX,
+        crate::lod::STUD_FULL_PX
+    );
+    template.replace("/* STUD_WEIGHT */", &weight).replace("/* BLOCK_POSITION */", r#"
+float part_stud_weight(mat4 physical_model) {
+    float pixels=projection_pixels*0.6*length(physical_model[0].xyz)/max(distance(eye,physical_model[3].xyz),0.1);
+    return stud_mode==3?1.0:(stud_mode==1?stud_weight(pixels):0.0);
+}
+vec3 block_position(vec3 local, mat4 physical_model) {
+    if(stud_mode==1 && local.y>0.0)local.y*=part_stud_weight(physical_model);
+    return local;
+}
+"#)
+}
+
 pub const VERTEX: &str = r#"#version 300 es
 precision highp float;
 layout(location=0) in vec3 position;
@@ -21,12 +41,12 @@ out vec3 v_local_normal;
 out vec3 v_tangent_x;
 out vec3 v_tangent_z;
 out float v_stud_geometry;
+/* STUD_WEIGHT */
+/* BLOCK_POSITION */
 void main() {
     mat4 physical_model = display_scale * model;
-    float stud_pixels=projection_pixels*0.6*length(physical_model[0].xyz)/max(distance(eye,physical_model[3].xyz),0.1);
-    v_stud_geometry=stud_mode==3?1.0:(stud_mode==1?smoothstep(1.25,6.0,stud_pixels):0.0);
-    vec3 local=position;
-    if(stud_mode==1 && local.y>0.0)local.y*=v_stud_geometry;
+    v_stud_geometry=part_stud_weight(physical_model);
+    vec3 local=block_position(position,physical_model);
     vec4 world = physical_model * vec4(local, 1.0);
     v_local=position;
     v_local_normal=normal;
@@ -62,6 +82,8 @@ uniform vec3 light_forward;
 uniform int flashlight;
 uniform int point_light;
 uniform int studio;
+uniform float ambient_light;
+uniform float studio_fill;
 uniform float sky_amount;
 uniform highp sampler2DShadow shadow_map;
 uniform float shadow_texel;
@@ -71,6 +93,7 @@ uniform highp int stud_mode;
 uniform vec2 stud_offset;
 out vec4 out_color;
 const float PI = 3.14159265359;
+/* STUD_WEIGHT */
 vec3 sky_horizon() { return mix(vec3(0.004,0.007,0.016),vec3(0.735,0.829,0.894),sky_amount); }
 float visibility(vec3 n, vec3 light) {
     if (v_shadow.w <= 0.0) return 1.0;
@@ -97,7 +120,7 @@ void main() {
         // Near studs already have real sides and cast shadows: don't shade a
         // second procedural rim beneath them. Tops keep the same albedo as the plate.
         float d=distance(eye,v_position);
-        float real_studs = ground_stud_range > 0.0 ? smoothstep(1.25,6.0,projection_pixels*0.6/max(d,0.1))*(1.0-smoothstep(ground_stud_range*0.6,ground_stud_range,d)) : 0.0;
+        float real_studs = ground_stud_range > 0.0 ? stud_weight(projection_pixels*0.6/max(d,0.1))*(1.0-smoothstep(ground_stud_range*0.6,ground_stud_range,d)) : 0.0;
         float detail = (1.0-smoothstep(0.35,1.2,footprint))*(1.0-real_studs);
         n = normalize(vec3(p.x*rim*6.0*detail,1.0,p.y*rim*6.0*detail));
     }
@@ -143,13 +166,13 @@ void main() {
     vec3 environment = mix(sky_horizon(),mix(vec3(0.006,0.009,0.02),vec3(0.3,0.5,0.76),sky_amount),clamp(reflection.y,0.0,1.0));
     vec3 ambient_fresnel = vec3(0.04)+(1.0-vec3(0.04))*pow(1.0-nv,5.0);
     ambient += environment*ambient_fresnel*(1.0-roughness)*0.3;
-    vec3 radiance = ambient+((1.0-fresnel)*albedo/PI+specular)*light_color*power*nl*visibility(n,light);
+    vec3 radiance = ambient*ambient_light+((1.0-fresnel)*albedo/PI+specular)*light_color*power*nl*visibility(n,light);
     if (studio == 1) {
         // Broad world-fixed fill and rim keep rear/side faces readable while
         // orbiting. The key retains real shadowing and plastic highlights.
         vec3 fill = normalize(vec3(0.8,0.45,-0.6));
         vec3 rim = normalize(vec3(-0.3,0.6,-1.0));
-        radiance += albedo*(vec3(0.16)+vec3(0.62,0.70,0.82)*max(dot(n,fill),0.0)
+        radiance += studio_fill*albedo*(vec3(0.16)+vec3(0.62,0.70,0.82)*max(dot(n,fill),0.0)
             +vec3(0.28,0.31,0.36)*max(dot(n,rim),0.0));
     }
     vec3 shaded = pow(radiance/(radiance+vec3(1.0)),vec3(1.0/2.2));
@@ -167,13 +190,11 @@ uniform mat4 shadow_matrix;
 uniform vec3 eye;
 uniform float projection_pixels;
 uniform highp int stud_mode;
+/* STUD_WEIGHT */
+/* BLOCK_POSITION */
 void main() {
     mat4 physical_model=display_scale*model;
-    vec3 local=position;
-    if(stud_mode==1 && local.y>0.0) {
-        float px=projection_pixels*0.6*length(physical_model[0].xyz)/max(distance(eye,physical_model[3].xyz),0.1);
-        local.y*=smoothstep(1.25,6.0,px);
-    }
+    vec3 local=block_position(position,physical_model);
     gl_Position=shadow_matrix*physical_model*vec4(local,1.0);
 }
 "#;

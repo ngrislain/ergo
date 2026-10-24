@@ -14,7 +14,8 @@ The deployed server is an **I/O and commit-validation service**. It does not run
 interactive rigid-body integration, earthquakes, impact tests, or image rendering.
 Those operations execute in Rust/WebAssembly on the user's device.
 
-There are two client entry points, sharing the renderer and simulation code:
+There are three rendering entry points sharing the same engine; the two
+authoring clients also share simulation code:
 
 - **Browser application:** Leptos UI plus the Rust WebGL2 renderer and WASM physics.
   It streams visible construction blocks inside a finite fog horizon, uses distance
@@ -23,6 +24,8 @@ There are two client entry points, sharing the renderer and simulation code:
   `ergo-client` WASM module. It does not mount the Leptos application. WebGL is
   initialized only for visual tools; transient rendering buffers are released
   after tool execution. There is no continuous rendering loop while idle.
+- **Public homepage:** a small WASM illustration wrapper and TypeScript input
+  adapter. It selects full detail and cursor lighting through engine parameters.
 
 The minimal client normally attaches in an existing local browser session.
 `--attach` allows manual attachment, and `--headless` creates an isolated Chrome
@@ -117,6 +120,15 @@ parametric parts, body boxes, or coarse colored aggregates for display. Frustum
 tests and a finite fog distance bound visible residency; the ground is generated
 as needed rather than preloading an infinite plane.
 
+Backend-independent `scene.rs` and `scene/{view,ground}.rs` own block batching,
+camera/frustum/picking conversion, LOD hysteresis and bounded ground instances.
+`renderer/batches.rs` shares prototype GPU buffers between independently culled
+color/depth instance lists. Light preparation precedes planning, so resident
+off-camera pieces can still cast shadows. Explicit interactive/capture/illustration
+policies replace implicit geometry rules based on canvas alpha. See the
+[block display pipeline](3d-display-indexing.md) for implemented engine patterns
+and scale-out limits.
+
 The WASM physics engine uses nominal metric geometry, sourced part masses, and
 configured measured connector capacities. It works on a complete mechanical
 working set rather than removing supports when the camera turns away.
@@ -176,8 +188,8 @@ to repeated GPU→CPU→WebGL2 transfers. Server commit checks remain independen
 
 ## Build orchestration
 
-The public landing page is on `www.ergosandbox.com`. The authenticated apex
-shows sign-in at `/` to guests and the viewer to signed-in users; `/app` is the
+The public landing page is on `www.ergosandbox.com`. The apex
+opens the public Sandbox viewer at `/` and `/app`; editing requires sign-in. `/app` is the
 explicit viewer route and `/login#connect` retains token download and MCP/API
 setup. The Scaleway deployment
 serves both from one scale-to-zero container, with the existing `ergo` bucket.
@@ -204,7 +216,9 @@ legacy shell entry point forwards to the same Rust task.
 
 - `crates/viewer/src/app.rs`: browser UI, REST data loading, and streaming orchestration.
 - `crates/client/src/renderer.rs`: shared WebGL2 drawing, picking, fog, and LOD.
-- `crates/client/src/renderer/`: shared material/sky shaders and shadow-map pass.
+- `crates/client/src/scene.rs`, `scene/`: backend-independent block planning,
+  camera/frustum/rays, quality policies, and ground detail.
+- `crates/client/src/renderer/`: shared GPU batches, material/sky shaders and shadow-map pass.
 - `crates/client/src/lighting.rs`: geographic UTC solar-position calculation.
 - `crates/client/src/preview.rs`: landing-illustration WASM wrapper.
 - `crates/client/src/navigation.rs`: shared typed controls, input conversion,

@@ -54,7 +54,10 @@ The public preview uses a transparent background and a cursor-positioned point
 key, independent of UTC. Free pointer movement maps to a bounded plane in front
 of the current camera. The point source uses per-fragment direction/distance
 attenuation (no spotlight cone), with a perspective shadow map aimed at the model.
-Broad studio fill/rim and ambient light keep rear faces readable. The tree crown
+The homepage scales indirect/environment light to **0.30** and broad studio
+fill/rim to **0.35**, making cast shadows stronger without changing the point
+key's power. Other entry points use independently configured engine parameters.
+The tree crown
 uses standard green color 2; its trunk uses brown 70. Ordinary MCP studio captures
 retain their fixed directional key; world sun/headlamp behavior is unchanged.
 
@@ -92,8 +95,8 @@ Stud sides and cast shadows can still naturally be darker than their tops.
 
 These plastic-appearance parameters do not supply physical masses or connector
 capacities and do not imply a construction validation certificate.
-The prebuilt v0.3.1 MCP package predates these visual upgrades; its captures use
-that bundled runtime. Current-source MCP builds share the updated renderer.
+Released MCP packages use their bundled runtime; rebuilding the current source
+is required to pick up unshipped engine changes.
 
 ## Cast shadows and limits
 
@@ -103,8 +106,12 @@ is initially at most 600 CSS pixels wide, otherwise 2048². Sunlight uses a boun
 orthographic volume near the target; the flashlight uses a bounded perspective
 volume. The map is reused while its matrix and uploaded geometry stay unchanged.
 
-Shadow casters are bounded by the loaded/rendered geometry and LOD. This is not
-a whole-world occlusion query: distant, clipped, or unloaded casters can be absent.
+Shadow casters use full source-part geometry from an **independent light-frustum
+query** of the resident octree. Camera clipping and body LOD no longer remove a
+resident caster. Ground studs retain their bounded camera-local detail region.
+This is not a whole-world occlusion query: unloaded or light-volume-clipped
+casters can still be absent. Full-detail shadow prototypes share GPU geometry
+with full-detail color batches; adaptive color proxies need separate prototypes.
 Bias/filtering trade contact detail against self-shadowing artifacts. Existing
 geometry/instance counters are not a complete GPU-memory account; the depth map
 adds roughly four bytes per texel plus driver overhead. GPU resources are
@@ -134,3 +141,6 @@ draw passes, GL-error inspection, studio-lit front/rear views and navigator flas
 They also cover orbit/zoom/keyboard controls, reduced motion, fallback, the navigator's sky path, and root
 login/viewer routing. Canvas diagnostics include `data-renderer`, `data-lighting`,
 `data-sun-elevation`, `data-sun-azimuth`, and `data-shadow-map`.
+`data-color-instances`, `data-shadow-draw-calls` and `data-instance-upload-bytes`
+expose current-frame submission/upload diagnostics (a reused shadow map has zero
+depth draw calls for that frame).

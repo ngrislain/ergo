@@ -1,5 +1,6 @@
 use crate::{
     navigation::{MAX_FRAME_DT, Navigation, NavigationInput, NavigationMode, TURN_RATE},
+    scene::{Camera, GeometryKey, RenderPolicy, SceneOptions, ScenePlanner, ground},
     walking::{Scene as CollisionScene, Walker},
 };
 use ergo_world::{
@@ -7,34 +8,18 @@ use ergo_world::{
     geometry::{Mesh, fallback_mesh, mesh_ray},
     spatial::{Octree, Relation, relation},
 };
-use glam::{DMat4, DVec3, DVec4, Mat4};
+use glam::{DMat4, DVec3, Mat4};
 use std::collections::{BTreeMap, HashMap, HashSet};
 use wasm_bindgen::{JsCast, JsValue};
-use web_sys::{
-    HtmlCanvasElement, WebGl2RenderingContext as Gl, WebGlBuffer, WebGlProgram, WebGlShader,
-    WebGlVertexArrayObject,
-};
+use web_sys::{HtmlCanvasElement, WebGl2RenderingContext as Gl, WebGlProgram, WebGlShader};
 
+mod batches;
 mod illumination;
 mod shaders;
+pub use crate::scene::{DISPLAY_SCALE, Visibility};
+use batches::{Batches, Pass};
 use illumination::{LightPass, Observer};
 use shaders::{FRAGMENT, VERTEX};
-
-struct GpuMesh {
-    stud_mode: i32,
-    stud_offset: [f32; 2],
-    vao: WebGlVertexArrayObject,
-    vertex_buffer: WebGlBuffer,
-    instance_buffer: WebGlBuffer,
-    vertices: i32,
-    instances: i32,
-}
-
-pub(crate) const DISPLAY_SCALE: DVec3 = DVec3::new(
-    1.0,
-    ergo_world::physical::BRICK_HEIGHT_M / ergo_world::physical::STUD_PITCH_M,
-    1.0,
-);
 
 pub struct Renderer {
     pub canvas: HtmlCanvasElement,
@@ -47,9 +32,15 @@ pub struct Renderer {
     pub studio_lighting: bool,
     /// Optional world-space point key; the homepage positions it with the cursor.
     pub point_light: Option<DVec3>,
-    gpu: HashMap<String, GpuMesh>,
-    pub meshes: BTreeMap<String, Mesh>,
-    lod_meshes: BTreeMap<String, Mesh>,
+    /// Indirect/environment illumination and broad studio fill, independently
+    /// configurable without a different material or renderer implementation.
+    pub ambient_light: f32,
+    pub studio_fill: f32,
+    gpu: Batches,
+    planner: ScenePlanner,
+    pub policy: RenderPolicy,
+    meshes: BTreeMap<String, Mesh>,
+    lod_meshes: BTreeMap<GeometryKey, Mesh>,
     pub ground: HashMap<(i64, i64), ergo_world::terrain::GroundBlock>,
     pub bricks: Vec<Brick>,
     pub tree: Octree,
@@ -78,18 +69,19 @@ pub struct Renderer {
 
 impl Renderer {
     pub fn new(canvas: HtmlCanvasElement) -> Result<Self, JsValue> {
-        Self::new_mode(canvas, false, false)
+        Self::new_mode(canvas, false, false, RenderPolicy::INTERACTIVE)
     }
     pub fn new_capture(canvas: HtmlCanvasElement) -> Result<Self, JsValue> {
-        Self::new_mode(canvas, true, false)
+        Self::new_mode(canvas, true, false, RenderPolicy::CAPTURE)
     }
     pub fn new_preview(canvas: HtmlCanvasElement) -> Result<Self, JsValue> {
-        Self::new_mode(canvas, false, true)
+        Self::new_mode(canvas, false, true, RenderPolicy::ILLUSTRATION)
     }
     fn new_mode(
         canvas: HtmlCanvasElement,
         capture_mode: bool,
         transparent_background: bool,
+        policy: RenderPolicy,
     ) -> Result<Self, JsValue> {
         let options = js_sys::Object::new();
         js_sys::Reflect::set(&options, &"antialias".into(), &true.into())?;
@@ -121,7 +113,11 @@ impl Renderer {
             ground_visible: true,
             studio_lighting: transparent_background,
             point_light: None,
-            gpu: HashMap::new(),
+            ambient_light: 1.,
+            studio_fill: 1.,
+            gpu: Batches::default(),
+            planner: ScenePlanner::default(),
+            policy,
             meshes: BTreeMap::new(),
             lod_meshes: BTreeMap::new(),
             ground: HashMap::new(),
@@ -152,6 +148,7 @@ impl Renderer {
     }
 
     pub fn set_bricks(&mut self, bricks: Vec<Brick>) {
+        self.planner.retain(&bricks);
         self.tree = Octree::new(bricks.iter().map(|b| b.render_bounds).collect());
         self.bricks = bricks;
         if self
@@ -166,6 +163,31 @@ impl Renderer {
     pub fn changed(&mut self) {
         self.dirty = true;
     }
+    /// Replacing prototypes invalidates derived LODs and GPU geometry, not just
+    /// instance transforms. All entry points use this same invalidation path.
+    pub fn set_meshes(&mut self, meshes: BTreeMap<String, Mesh>) {
+        let changed: HashSet<_> = self
+            .meshes
+            .iter()
+            .filter(|(part, previous)| {
+                meshes.get(*part).is_none_or(|next| {
+                    previous.vertices != next.vertices
+                        || previous.quality != next.quality
+                        || previous.body_bounds.min != next.body_bounds.min
+                        || previous.body_bounds.max != next.body_bounds.max
+                })
+            })
+            .map(|(part, _)| part.clone())
+            .collect();
+        self.gpu.invalidate_parts(&changed);
+        self.lod_meshes
+            .retain(|key, _| !matches!(key,GeometryKey::Part(part,_) if changed.contains(part)));
+        self.meshes = meshes;
+        self.dirty = true;
+    }
+    pub fn meshes(&self) -> &BTreeMap<String, Mesh> {
+        &self.meshes
+    }
     pub fn set_ground(&mut self, block: ergo_world::terrain::GroundBlock) {
         if block.validate().is_ok() {
             self.ground.insert((block.coord.0, block.coord.2), block);
@@ -173,56 +195,20 @@ impl Renderer {
         }
     }
     pub fn visibility(&self) -> Visibility {
-        let display = DISPLAY_SCALE;
-        let origin = (self.target / 1024.0).floor() * 1024.0;
-        let aspect = (self.canvas.client_width().max(1) as f64)
-            / (self.canvas.client_height().max(1) as f64);
-        let m = DMat4::perspective_rh_gl(
-            self.fov_degrees.to_radians(),
-            aspect,
-            0.1,
+        self.camera().visibility
+    }
+    fn camera(&self) -> Camera {
+        Camera::new(
+            self.eye(),
+            self.target,
+            self.canvas.client_width() as f64,
+            self.canvas.client_height() as f64,
+            self.fov_degrees,
             self.fog_distance,
-        ) * DMat4::look_at_rh(
-            (self.eye() - origin) * display,
-            (self.target - origin) * display,
-            DVec3::Y,
-        ) * DMat4::from_scale(display);
-        let rows = [
-            DVec4::new(m.x_axis.x, m.y_axis.x, m.z_axis.x, m.w_axis.x),
-            DVec4::new(m.x_axis.y, m.y_axis.y, m.z_axis.y, m.w_axis.y),
-            DVec4::new(m.x_axis.z, m.y_axis.z, m.z_axis.z, m.w_axis.z),
-            DVec4::new(m.x_axis.w, m.y_axis.w, m.z_axis.w, m.w_axis.w),
-        ];
-        Visibility {
-            origin,
-            eye: self.eye(),
-            far: self.fog_distance,
-            planes: [
-                rows[3] + rows[0],
-                rows[3] - rows[0],
-                rows[3] + rows[1],
-                rows[3] - rows[1],
-                rows[3] + rows[2],
-                rows[3] - rows[2],
-            ]
-            .map(|p| p.to_array()),
-        }
+        )
     }
     pub fn visible_ground_cells(&self) -> Vec<(i64, i64)> {
-        let visibility = self.visibility();
-        let camera = ergo_world::BlockCoord::at(self.eye());
-        let radius = (self.fog_distance / 1024.0).ceil() as i64 + 1;
-        let mut cells = Vec::new();
-        for x in camera.0 - radius..=camera.0 + radius {
-            for y in camera.2 - radius..=camera.2 + radius {
-                let min = DVec3::new(x as f64 * 1024.0, -1.0 / 3.0, y as f64 * 1024.0);
-                if visibility.contains(Aabb::new(min, min + DVec3::new(1024.0, 1.0 / 3.0, 1024.0)))
-                {
-                    cells.push((x, y));
-                }
-            }
-        }
-        cells
+        ground::visible_cells(&self.camera(), self.fog_distance)
     }
 
     pub fn set_camera(&mut self, position: DVec3, target: DVec3, fov: f64) -> Result<(), JsValue> {
@@ -292,11 +278,8 @@ impl Renderer {
     }
 
     pub fn clear(&mut self) {
-        for (_, mesh) in self.gpu.drain() {
-            self.gl.delete_buffer(Some(&mesh.vertex_buffer));
-            self.gl.delete_buffer(Some(&mesh.instance_buffer));
-            self.gl.delete_vertex_array(Some(&mesh.vao));
-        }
+        self.gpu.clear();
+        self.planner.clear();
         self.meshes.clear();
         self.lod_meshes.clear();
         self.ground.clear();
@@ -500,16 +483,10 @@ impl Renderer {
     }
 
     pub fn pick(&mut self, x: f64, y: f64) -> Option<u32> {
-        let w = self.canvas.client_width() as f64;
-        let h = self.canvas.client_height() as f64;
-        let projection =
-            DMat4::perspective_rh_gl(self.fov_degrees.to_radians(), w / h, 0.1, self.fog_distance);
-        let display = DISPLAY_SCALE;
-        let view = DMat4::look_at_rh(self.eye() * display, self.target * display, DVec3::Y);
-        let inverse = (projection * view * DMat4::from_scale(display)).inverse();
-        let near = inverse.project_point3(DVec3::new(x / w * 2.0 - 1.0, 1.0 - y / h * 2.0, -1.0));
-        let far = inverse.project_point3(DVec3::new(x / w * 2.0 - 1.0, 1.0 - y / h * 2.0, 1.0));
-        let direction = (far - near).normalize();
+        let (near, direction) = self.camera().ray(
+            x / self.canvas.client_width().max(1) as f64 * 2. - 1.,
+            1. - y / self.canvas.client_height().max(1) as f64 * 2.,
+        );
         let mut best = f64::INFINITY;
         let mut selected = None;
         // Exploded view moves individual bricks; its broad-phase is rebuilt on demand.
@@ -566,30 +543,38 @@ impl Renderer {
             self.canvas.set_height(height);
             self.dirty = true;
         }
-        let origin = (self.target / 1024.0).floor() * 1024.0;
+        let camera = self.camera();
+        let origin = camera.origin;
         if origin != self.origin {
             self.origin = origin;
             self.dirty = true;
         }
-        let changed = self.dirty;
-        if self.dirty {
-            self.upload();
+        let observer = Observer {
+            geo: self.geo,
+            eye: self.eye(),
+            target: self.target,
+            origin: self.origin,
+            display_scale: DISPLAY_SCALE,
+            distance: self.distance,
+            projection_pixels: camera.projection_pixels,
+            studio: self.studio_lighting,
+            point_light: self.point_light,
+        };
+        let light = self.lighting.prepare(&observer);
+        let replan = self.dirty || light.shadow_changed;
+        if replan {
+            let shadow = Visibility::new(
+                light.matrix.as_dmat4() * DMat4::from_scale(DISPLAY_SCALE),
+                self.origin,
+            );
+            self.upload(&camera, &shadow);
             self.dirty = false;
         }
-        let light = self.lighting.prepare(
-            Observer {
-                geo: self.geo,
-                eye: self.eye(),
-                target: self.target,
-                origin: self.origin,
-                display_scale: DISPLAY_SCALE,
-                distance: self.distance,
-                projection_pixels: self.projection_pixels(),
-                studio: self.studio_lighting,
-                point_light: self.point_light,
-            },
+        let shadow_calls = self.lighting.draw(
+            &observer,
+            &light,
             &self.gpu,
-            changed,
+            replan && self.gpu.shadow_changed,
         );
         if light.updated {
             let _ = self.canvas.set_attribute(
@@ -644,32 +629,32 @@ impl Renderer {
         gl.use_program(Some(&self.program));
         let display = DISPLAY_SCALE.as_vec3();
         let eye = (self.eye() - self.origin).as_vec3() * display;
-        let view = Mat4::look_at_rh(
-            eye,
-            (self.target - self.origin).as_vec3() * display,
-            glam::Vec3::Y,
-        );
-        let projection = Mat4::perspective_rh_gl(
-            (self.fov_degrees as f32).to_radians(),
-            width as f32 / height as f32,
-            0.1,
-            self.fog_distance as f32,
-        );
+        let view_projection = camera.view_projection.as_mat4();
         if !self.transparent_background {
-            self.lighting.sky(&light, projection * view, eye);
+            self.lighting.sky(&light, view_projection, eye);
         }
         gl.use_program(Some(&self.program));
         self.lighting.uniforms(&self.program, &light);
         gl.uniform1f(
+            gl.get_uniform_location(&self.program, "ambient_light")
+                .as_ref(),
+            self.ambient_light,
+        );
+        gl.uniform1f(
+            gl.get_uniform_location(&self.program, "studio_fill")
+                .as_ref(),
+            self.studio_fill,
+        );
+        gl.uniform1f(
             gl.get_uniform_location(&self.program, "projection_pixels")
                 .as_ref(),
-            self.projection_pixels() as f32,
+            camera.projection_pixels as f32,
         );
         gl.uniform_matrix4fv_with_f32_array(
             gl.get_uniform_location(&self.program, "view_projection")
                 .as_ref(),
             false,
-            &(projection * view).to_cols_array(),
+            &view_projection.to_cols_array(),
         );
         gl.uniform_matrix4fv_with_f32_array(
             gl.get_uniform_location(&self.program, "display_scale")
@@ -690,7 +675,11 @@ impl Renderer {
         gl.uniform1f(
             gl.get_uniform_location(&self.program, "ground_stud_range")
                 .as_ref(),
-            self.ground_stud_range() as f32,
+            if self.ground_visible {
+                ground::stud_range(camera.projection_pixels) as f32
+            } else {
+                0.
+            },
         );
         gl.uniform2f(
             gl.get_uniform_location(&self.program, "fog_limits")
@@ -698,274 +687,80 @@ impl Renderer {
             (self.fog_distance * 0.65) as f32,
             self.fog_distance as f32,
         );
-        self.draw_calls = 0;
-        self.triangles = 0;
-        for (key, mesh) in &self.gpu {
-            if mesh.instances == 0 {
-                continue;
+        let (calls, triangles, instances) =
+            self.gpu
+                .draw(gl, &self.program, Pass::Color, self.policy.full_detail);
+        self.draw_calls = calls;
+        self.triangles = triangles;
+        for (name, value) in [
+            ("data-color-instances", instances),
+            ("data-shadow-draw-calls", shadow_calls),
+            (
+                "data-instance-upload-bytes",
+                if replan { self.gpu.uploaded_bytes } else { 0 },
+            ),
+        ] {
+            let value = value.to_string();
+            if self.canvas.get_attribute(name).as_deref() != Some(value.as_str()) {
+                let _ = self.canvas.set_attribute(name, &value);
             }
-            gl.uniform1i(
-                gl.get_uniform_location(&self.program, "stud_mode").as_ref(),
-                mesh.stud_mode,
-            );
-            gl.uniform2f(
-                gl.get_uniform_location(&self.program, "stud_offset")
-                    .as_ref(),
-                mesh.stud_offset[0],
-                mesh.stud_offset[1],
-            );
-            gl.uniform1i(
-                gl.get_uniform_location(&self.program, "floor_mode")
-                    .as_ref(),
-                (key == "__ground__") as i32,
-            );
-            gl.bind_vertex_array(Some(&mesh.vao));
-            gl.draw_arrays_instanced(Gl::TRIANGLES, 0, mesh.vertices, mesh.instances);
-            self.draw_calls += 1;
-            self.triangles += mesh.vertices as usize * mesh.instances as usize / 3;
         }
-        gl.bind_vertex_array(None);
     }
 
-    fn upload(&mut self) {
-        let mut groups: BTreeMap<String, Vec<f32>> = BTreeMap::new();
-        let visibility = self.visibility();
-        self.lod_counts = [0; 4];
-        // The small homepage illustration is a complete resident scene: camera
-        // culling/LOD must not remove or reshape its world-fixed shadow casters.
-        let complete_illustration = self.transparent_background;
-        let candidates = if self.explode > 0.0 || complete_illustration {
-            (0..self.bricks.len()).collect()
-        } else {
-            self.tree.frustum(&visibility.planes, visibility.origin)
-        };
-        let pixels = self.projection_pixels();
-        let mut aggregates = BTreeMap::<(i64, i64, i64, u32), Aabb>::new();
-        for index in candidates {
-            let brick = &self.bricks[index];
-            let Some(mesh) = self.meshes.get(&brick.part) else {
-                continue;
-            };
-            let offset = DVec3::Y * brick.bounds.center().y * self.explode;
-            let bounds = Aabb::new(
-                brick.render_bounds.min + offset,
-                brick.render_bounds.max + offset,
-            );
-            if !complete_illustration && !visibility.contains(bounds) {
-                continue;
-            }
-            let distance = ((bounds.center() - self.eye()) * DISPLAY_SCALE)
-                .length()
-                .max(0.1);
-            let size = (bounds.size() * DISPLAY_SCALE).length() * pixels / distance;
-            let mut lod =
-                if complete_illustration || self.selected == Some(brick.id) || size >= 24.0 {
-                    0
-                } else if size >= 8.0 {
-                    1
-                } else if size >= 2.0 || self.highlighted.contains(&brick.id) {
-                    2
-                } else {
-                    3
-                };
-            let stud_pixels =
-                pixels * 0.6 * (brick.transform.x_axis * DISPLAY_SCALE).length() / distance;
-            if lod == 2
-                && stud_pixels > crate::lod::STUD_FLAT_PX
-                && ergo_world::geometry::part_spec(&brick.part).is_some_and(|p| p.studs)
-            {
-                lod = 1;
-            }
-            self.lod_counts[lod] += 1;
-            if lod == 3 {
-                let p = (bounds.center() / 8.0).floor();
-                let key = (p.x as i64, p.y as i64, p.z as i64, brick.rgb);
-                aggregates
-                    .entry(key)
-                    .and_modify(|b| *b = b.union(bounds))
-                    .or_insert(bounds);
-                continue;
-            }
-            let key = format!("{}|{lod}", brick.part);
-            if lod == 1 {
-                self.lod_meshes.entry(key.clone()).or_insert_with(|| {
-                    if ergo_world::geometry::part_spec(&brick.part).is_some() {
-                        fallback_mesh(&brick.part)
-                    } else {
-                        ergo_world::geometry::body_mesh(&brick.part, mesh.body_bounds)
-                    }
-                });
-            }
-            if lod == 2 {
-                self.lod_meshes.entry(key.clone()).or_insert_with(|| {
-                    ergo_world::geometry::body_mesh(&brick.part, mesh.body_bounds)
-                });
-            }
-            let position = brick.position - self.origin + offset;
-            let matrix = DMat4::from_cols(
-                brick.transform.x_axis.extend(0.0),
-                brick.transform.y_axis.extend(0.0),
-                brick.transform.z_axis.extend(0.0),
-                position.extend(1.0),
-            );
-            instance(
-                groups.entry(key).or_default(),
-                matrix,
-                brick.rgb,
-                self.selected == Some(brick.id) || self.highlighted.contains(&brick.id),
-            );
-        }
-        for ((_, _, _, rgb), bounds) in aggregates {
-            let position =
-                DVec3::new(bounds.center().x, bounds.max.y, bounds.center().z) - self.origin;
-            instance(
-                groups.entry("__aggregate__".into()).or_default(),
-                DMat4::from_scale_rotation_translation(
-                    bounds.size().max(DVec3::splat(0.001)),
-                    glam::DQuat::IDENTITY,
-                    position,
-                ),
-                rgb,
-                false,
-            );
-        }
-        let ground = ergo_world::geometry::ground_mesh();
-        let visible_ground = if self.ground_visible {
-            self.visible_ground_cells()
-        } else {
-            Vec::new()
-        };
-        for &(x, y) in &visible_ground {
-            let color = self
-                .ground
-                .get(&(x, y))
-                .map(|block| block.color)
-                .unwrap_or(71);
-            let top = ergo_world::terrain::GROUND_TOP;
-            let center =
-                DVec3::new((x as f64 + 0.5) * 1024.0, top, (y as f64 + 0.5) * 1024.0) - self.origin;
-            instance(
-                groups.entry("__ground__".into()).or_default(),
-                DMat4::from_scale_rotation_translation(
-                    DVec3::new(1024.0, 1.0 / 3.0, 1024.0),
-                    glam::DQuat::IDENTITY,
-                    center,
-                ),
-                ergo_world::color_rgb(color),
-                false,
-            );
-        }
+    fn upload(&mut self, camera: &Camera, shadow: &Visibility) {
+        let mut plan = self.planner.plan(
+            &self.bricks,
+            &self.tree,
+            &self.meshes,
+            camera,
+            shadow,
+            SceneOptions {
+                policy: self.policy,
+                selected: self.selected,
+                highlighted: &self.highlighted,
+                explode: self.explode,
+            },
+        );
+        self.lod_counts = plan.lod_counts;
         self.ground_stud_instances = 0;
-        let eye = self.eye();
-        let maximum_distance = self.ground_stud_range();
-        if !visible_ground.is_empty()
-            && (eye.y - ergo_world::terrain::GROUND_TOP).abs() * DISPLAY_SCALE.y < maximum_distance
-        {
-            let cells: HashSet<_> = visible_ground.into_iter().collect();
-            let center_x = eye.x.floor() as i64;
-            let center_z = eye.z.floor() as i64;
-            for x in center_x - crate::lod::GROUND_GRID_RADIUS
-                ..=center_x + crate::lod::GROUND_GRID_RADIUS
-            {
-                for z in center_z - crate::lod::GROUND_GRID_RADIUS
-                    ..=center_z + crate::lod::GROUND_GRID_RADIUS
-                {
-                    let cell = (x.div_euclid(1024), z.div_euclid(1024));
-                    if !cells.contains(&cell) {
-                        continue;
-                    }
-                    let position = DVec3::new(
-                        x as f64 + 0.5,
-                        ergo_world::terrain::GROUND_TOP,
-                        z as f64 + 0.5,
-                    );
-                    if ((position - eye) * DISPLAY_SCALE).length() > maximum_distance
-                        || !visibility.contains(Aabb::new(
-                            position - DVec3::new(0.3, 0., 0.3),
-                            position + DVec3::new(0.3, 1. / 6., 0.3),
-                        ))
-                    {
-                        continue;
-                    }
-                    let color = self.ground.get(&cell).map(|b| b.color).unwrap_or(71);
-                    let distance = ((position - eye) * DISPLAY_SCALE).length();
-                    let weight = crate::lod::ground_geometry(distance, pixels, maximum_distance);
-                    if weight <= 0.005 {
-                        continue;
-                    }
-                    let key = if pixels * 0.6 / distance.max(0.1) < 5. {
-                        "__ground_studs_low__"
-                    } else {
-                        "__ground_studs__"
-                    };
-                    instance(
-                        groups.entry(key.into()).or_default(),
-                        DMat4::from_scale_rotation_translation(
-                            DVec3::new(1., weight, 1.),
-                            glam::DQuat::IDENTITY,
-                            position - self.origin,
-                        ),
-                        ergo_world::color_rgb(color),
-                        false,
-                    );
-                    self.ground_stud_instances += 1;
-                }
-            }
+        if self.ground_visible {
+            let (instances, count) = ground::plan(camera, self.fog_distance, &self.ground);
+            self.ground_stud_instances = count;
+            plan.shadow.extend(instances.clone());
+            plan.color.extend(instances);
         }
-        let studs = ergo_world::geometry::ground_stud_mesh_with_segments(16);
-        let low_studs = ergo_world::geometry::ground_stud_mesh_with_segments(8);
-        self.gpu.retain(|key, mesh| {
-            if groups.contains_key(key) {
-                true
-            } else {
-                self.gl.delete_buffer(Some(&mesh.vertex_buffer));
-                self.gl.delete_buffer(Some(&mesh.instance_buffer));
-                self.gl.delete_vertex_array(Some(&mesh.vao));
-                false
-            }
-        });
-        self.gpu_bytes = 0;
-        for (key, data) in groups {
-            let cpu = if key == "__ground__" || key == "__aggregate__" {
-                &ground
-            } else if key == "__ground_studs__" {
-                &studs
-            } else if key == "__ground_studs_low__" {
-                &low_studs
-            } else if key.ends_with("|0") {
-                &self.meshes[key.strip_suffix("|0").unwrap()]
-            } else {
-                &self.lod_meshes[&key]
+        self.gpu.begin(&plan);
+        let keys: std::collections::BTreeSet<_> = plan
+            .color
+            .keys()
+            .chain(plan.shadow.keys())
+            .cloned()
+            .collect();
+        for key in keys {
+            let cpu = match &key {
+                GeometryKey::Part(part, 0) => &self.meshes[part],
+                _ => self
+                    .lod_meshes
+                    .entry(key.clone())
+                    .or_insert_with(|| match &key {
+                        GeometryKey::Ground | GeometryKey::Aggregate => {
+                            ergo_world::geometry::ground_mesh()
+                        }
+                        GeometryKey::GroundStuds(segments) => {
+                            ergo_world::geometry::ground_stud_mesh_with_segments(u32::from(
+                                *segments,
+                            ))
+                        }
+                        GeometryKey::Part(part, 1) => fallback_mesh(part),
+                        GeometryKey::Part(part, _) => {
+                            ergo_world::geometry::body_mesh(part, self.meshes[part].body_bounds)
+                        }
+                    }),
             };
-            let mesh = self
-                .gpu
-                .entry(key)
-                .or_insert_with(|| create_mesh(&self.gl, cpu));
-            if complete_illustration && mesh.stud_mode == 1 {
-                mesh.stud_mode = 3;
-            }
-            self.gl.bind_vertex_array(Some(&mesh.vao));
-            self.gl
-                .bind_buffer(Gl::ARRAY_BUFFER, Some(&mesh.instance_buffer));
-            let array = js_sys::Float32Array::from(data.as_slice());
-            self.gl
-                .buffer_data_with_array_buffer_view(Gl::ARRAY_BUFFER, &array, Gl::DYNAMIC_DRAW);
-            mesh.instances = (data.len() / 20) as i32;
-            self.gpu_bytes += cpu.vertices.len() * 4 + data.len() * 4;
+            self.gpu.update(&self.gl, key, cpu, &plan);
         }
+        self.gpu_bytes = self.gpu.bytes();
         self.gl.bind_vertex_array(None);
-    }
-
-    fn ground_stud_range(&self) -> f64 {
-        if !self.ground_visible {
-            return 0.0;
-        }
-        (self.projection_pixels() * 0.6 / crate::lod::STUD_FLAT_PX)
-            .min(crate::lod::GROUND_STUD_RADIUS)
-    }
-    fn projection_pixels(&self) -> f64 {
-        self.canvas.client_height().max(1) as f64
-            / (2. * (self.fov_degrees.to_radians() * 0.5).tan())
     }
 }
 
@@ -976,74 +771,9 @@ impl Drop for Renderer {
     }
 }
 
-pub struct Visibility {
-    pub planes: [[f64; 4]; 6],
-    pub origin: DVec3,
-    eye: DVec3,
-    far: f64,
-}
-impl Visibility {
-    pub fn contains(&self, bounds: Aabb) -> bool {
-        let center = bounds.center() - self.origin;
-        let half = bounds.size() * 0.5;
-        if self.planes.iter().any(|p| {
-            let n = DVec3::new(p[0], p[1], p[2]);
-            n.dot(center) + p[3] + n.abs().dot(half) < 0.0
-        }) {
-            return false;
-        }
-        let nearest = self.eye.clamp(bounds.min, bounds.max);
-        ((self.eye - nearest) * DISPLAY_SCALE).length() <= self.far
-    }
-}
-fn instance(out: &mut Vec<f32>, matrix: DMat4, rgb: u32, selected: bool) {
-    out.extend(matrix.to_cols_array().iter().map(|v| *v as f32));
-    out.extend_from_slice(&[
-        ((rgb >> 16) & 255) as f32 / 255.0,
-        ((rgb >> 8) & 255) as f32 / 255.0,
-        (rgb & 255) as f32 / 255.0,
-        if selected { 1.0 } else { 0.0 },
-    ]);
-}
-
-fn create_mesh(gl: &Gl, mesh: &Mesh) -> GpuMesh {
-    let vao = gl.create_vertex_array().expect("WebGL VAO allocation");
-    gl.bind_vertex_array(Some(&vao));
-    let vertex_buffer = gl.create_buffer().expect("WebGL geometry allocation");
-    gl.bind_buffer(Gl::ARRAY_BUFFER, Some(&vertex_buffer));
-    let array = js_sys::Float32Array::from(mesh.vertices.as_slice());
-    gl.buffer_data_with_array_buffer_view(Gl::ARRAY_BUFFER, &array, Gl::STATIC_DRAW);
-    for i in 0..3 {
-        gl.enable_vertex_attrib_array(i);
-        gl.vertex_attrib_pointer_with_i32(i, 3, Gl::FLOAT, false, 36, (i * 12) as i32);
-    }
-    let instance_buffer = gl.create_buffer().expect("WebGL instance allocation");
-    gl.bind_buffer(Gl::ARRAY_BUFFER, Some(&instance_buffer));
-    for i in 0..4 {
-        gl.enable_vertex_attrib_array(3 + i);
-        gl.vertex_attrib_pointer_with_i32(3 + i, 4, Gl::FLOAT, false, 80, (i * 16) as i32);
-        gl.vertex_attrib_divisor(3 + i, 1);
-    }
-    gl.enable_vertex_attrib_array(7);
-    gl.vertex_attrib_pointer_with_i32(7, 4, Gl::FLOAT, false, 80, 64);
-    gl.vertex_attrib_divisor(7, 1);
-    GpuMesh {
-        stud_mode: ergo_world::geometry::part_spec(&mesh.part)
-            .filter(|p| p.studs)
-            .map_or(0, |_| if mesh.quality == "body_lod" { 2 } else { 1 }),
-        stud_offset: ergo_world::geometry::part_spec(&mesh.part)
-            .map_or([0., 0.], |p| [p.width as f32 * 0.5, p.depth as f32 * 0.5]),
-        vao,
-        vertex_buffer,
-        instance_buffer,
-        vertices: (mesh.vertices.len() / 9) as i32,
-        instances: 0,
-    }
-}
-
 fn shader(gl: &Gl, kind: u32, source: &str) -> Result<WebGlShader, JsValue> {
     let shader = gl.create_shader(kind).ok_or("Cannot allocate shader")?;
-    gl.shader_source(&shader, source);
+    gl.shader_source(&shader, &shaders::source(source));
     gl.compile_shader(&shader);
     if gl
         .get_shader_parameter(&shader, Gl::COMPILE_STATUS)

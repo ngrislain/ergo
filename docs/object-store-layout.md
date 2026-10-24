@@ -4,7 +4,10 @@ The bucket remains private. The application serves public accepted sandbox data;
 making the sandbox viewable never makes credentials, profiles, or the bucket
 itself anonymously readable.
 
-## Target organization
+The field-by-field [S3 file-format reference](object-store-formats.md) explains
+the encodings, version domains and reference graph for every key family below.
+
+## Current organization
 
 ```text
 s3://ergo/
@@ -21,6 +24,7 @@ s3://ergo/
     ground/blocks/<signature>/...          derived single-color baseplates
     users/<stable-user-id>.json            private sign-in profiles
     edit-pacing/<actor-hash>.json          edit allowance/reservation records
+    account-plans/<actor-hash>.json        optional operator-owned entitlement
 ```
 
 These folders have separate consumers. In particular, **`ergo/objects/` is active**:
