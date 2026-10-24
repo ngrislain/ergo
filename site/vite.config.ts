@@ -1,4 +1,5 @@
 import { resolve } from "node:path";
+import { readFileSync } from "node:fs";
 import { defineConfig } from "vite";
 import { footer, header } from "./src/layout.ts";
 
@@ -11,6 +12,21 @@ export default defineConfig({
         return html
           .replace("<!-- site:header -->", header)
           .replace("<!-- site:footer -->", footer);
+      },
+      generateBundle() {
+        for (const family of ["outfit", "manrope"]) {
+          this.emitFile({
+            type: "asset",
+            fileName: `licenses/${family}.txt`,
+            source: readFileSync(
+              resolve(
+                import.meta.dirname,
+                `node_modules/@fontsource-variable/${family}/LICENSE`,
+              ),
+              "utf8",
+            ),
+          });
+        }
       },
     },
   ],

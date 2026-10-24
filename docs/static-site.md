@@ -54,6 +54,7 @@ The WASM renderer loads dynamically only on the home page; legal pages load no
 3D engine. There is no Three.js dependency. Outfit and the shared Manrope
 wordmark fonts are bundled and self-hosted. There are no analytics scripts,
 external model downloads, token-entry fields, or persistent demo preferences.
+Their font license notices are emitted with the site under `/licenses/`.
 
 The brick model uses the navigator's catalog geometry, instancing, shaders,
 sun/shadows, and night flashlight. See [lighting](lighting.md) for geographic UTC

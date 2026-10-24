@@ -23,6 +23,8 @@ test("all public pages have legal navigation and deployable static content", asy
   }
   assert.equal((await text("CNAME")).trim(), "www.ergosandbox.com");
   await text(".nojekyll");
+  assert.match(await text("licenses/outfit.txt"), /SIL OPEN FONT LICENSE/);
+  assert.match(await text("licenses/manrope.txt"), /SIL OPEN FONT LICENSE/);
 });
 
 test("agent setup uses a human-issued token and the canonical API origin", async () => {
