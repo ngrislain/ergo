@@ -7,7 +7,7 @@ shared Sandbox. The bridge never grants itself acceptance or direct agent S3 acc
 ## Install and configure
 
 ```sh
-npm install --global --ignore-scripts 'https://github.com/ngrislain/ergo/releases/download/v0.5.2/ngrislain-ergo-mcp-0.5.2.tgz'
+npm install --global --ignore-scripts 'https://github.com/ngrislain/ergo/releases/download/v0.5.3/ngrislain-ergo-mcp-0.5.3.tgz'
 ergo-mcp --login --publish-url https://ergosandbox.com
 ```
 
@@ -51,13 +51,21 @@ expire and are origin/purpose-bound. They are not S3 credentials.
 - MCP initialization, `get_catalog` discovery and its returned `building_guidance`
   share one part-choice policy: inspect available model-library examples first,
   follow their demonstrated part choices/construction patterns and retain applicable
-  source attribution; prefer common standard studded bricks over plates;
+  source attribution; prefer common standard studded bricks over plates, normally
+  upright with their studs facing up (+Z). Reserve sideways or inverted orientations
+  for rare, clearly justified cases supported by established library building techniques.
+  House/palace storeys use nine brick courses (27 plate-height units, or 9 current
+  native Z units of room height), with floor slabs added separately;
   use plates sparingly for thinner layers, and smooth stud-less tiles for deliberate
   finishing surfaces. Within those preferences use the largest suitable parts,
   preserving shape, colors, support and physically valid connections. Stagger
   adjacent wall courses and interlock corners where geometry permits, using
   half/end bricks to preserve the footprint instead of shifting whole walls.
-  Support/connection checks still establish solidity. The catalog
+  Support/connection checks still establish solidity. Static reports may prove
+  gravity balance with zero joint wrench (`joint_strength_required:false`);
+  `connector_calibration_issue` still discloses unavailable clutch measurements,
+  which remain required for dynamic probes or certificates relying on bond strength.
+  The catalog
   resolves native Ergo part descriptions by ID.
 - `list_bricks` and `inspect_brick` expose actual IDs, poses, bounds, sourced
   masses and contact/constraint metadata.

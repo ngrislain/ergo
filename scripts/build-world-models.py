@@ -138,8 +138,9 @@ def palace_small():
     return model
 
 
-PALACE_CLEAR_HEIGHT=100/3
-PALACE_LEVELS=[1/3,34,203/3]
+PALACE_BRICK_COURSES=9
+PALACE_CLEAR_HEIGHT=PALACE_BRICK_COURSES
+PALACE_LEVELS=[1/3+level*(PALACE_CLEAR_HEIGHT+1/3) for level in range(3)]
 
 
 def palace_walk_route(origin):
@@ -152,42 +153,51 @@ def palace_walk_route(origin):
             (20,50,first,'return rear gallery'),(28,50,first,'return lower stairs'),
             (28,6,ground,'descend to ground hall'),(28,-12,0,'exit palace')]
     return {'format':'ergo-walk-route-1','schema':2,'origin_world':origin,'start':[28,-12,0],
-            'eye_height':20,'min_clearance':27,'speed':6,
-            'waypoints':[{'name':name,'feet':[x,north,height]} for x,north,height,name in points]}
+            'eye_height':4,'min_clearance':7.5,'speed':6,
+            'waypoints':[{'name':name,'feet':[x,north,height],'min_clearance':9} for x,north,height,name in points]}
 
 
 def palace():
-    """96x80, three walkable storeys with 33 1/3 clear height and real stairs.
+    """96x80, three storeys of nine upright brick courses, with real stairs.
 
     Reference: LEGO 5988, The Temple of Anubis (Henrik Rubin Saaby), catalogued at
     https://brickset.com/sets/5988-1 — Egyptian pylons, columned rooms and concealed
     chambers inform this original layout; it is not a reproduction of that set.
-    Nominal rigid standard bricks are used on edge for the masonry/columns.
-    Gravity is carried by contact compression; no unmeasured clutch is claimed.
+    Nine native height units equal 27 plate-height units. Bricks have studs up;
+    wall courses are staggered. Gravity support does not assume clutch strength.
     """
-    model=Model();side=east_rotation(math.pi/2)
-    post=multiply(yaw(math.pi/2),north_rotation(math.pi/2))
-    rise=5/3
+    model=Model();rise=1
     def panel(x,north,z,courses,turn=False):
         name=f'wall-{courses}-'+('north' if turn else 'east')
         if name not in model.definitions:
             model.definitions[name]=[]
-            rotation=multiply(yaw(math.pi/2),side) if turn else side
+            rotation=yaw(math.pi/2 if turn else 0)
             for layer in range(courses):
                 color=14 if layer in [0,courses-1] else (272 if layer==courses-2 and courses>3 else 19)
                 for offset,part in ([(0,'2456')] if layer%2==0 else [(0,'3002'),(3,'3002')]):
                     model.part(part,color,0 if turn else offset,offset if turn else 0,layer*rise,
                                rotation=rotation,definition=name)
+            if courses==3:model.part('3795',14,0,0,3,rotation=rotation,definition=name)
         model.reference(name,x,north,z)
     model.definitions['pillar']=[]
-    for layer in range(5):
-        model.part('3007',14 if layer==4 else (28 if layer==2 else 19),0,0,layer*20/3,rotation=post,definition='pillar')
+    for layer in range(PALACE_BRICK_COURSES):
+        model.part('3003',14 if layer==8 else (28 if layer==4 else 19),0,0,layer,definition='pillar')
+    full=[{(0,10,False),(1,10,False),(10,10,False),(11,10,False),
+           (8,6,False),(9,6,False),(8,8,True),(10,7,True)} for _ in range(3)]
+    full[0].update((i,0,False) for i in [1,2,5,6])
+    full[1].update([(10,8,True),(11,8,True),(10,9,False)])
+    full[2].update([(10,2,True),(11,2,True),(10,3,False)])
+    forced={(i,j) for i in range(13) for j in range(11) if i in [0,12] or j in [0,10]}
+    forced.update((i,j) for i in [3,4] for j in range(5))
+    for walls in full:
+        for i,j,turn in walls:forced.update([(i,j),(i+(0 if turn else 1),j+(1 if turn else 0))])
+    posts={(i,j) for i in range(13) for j in range(11) if (i+j)%2==0 or (i,j) in forced}
     def slab(level,roof=False):
         for x in range(0,96,8):
             for north in range(0,80,8):
                 if not roof and ((level==PALACE_LEVELS[1] and (x,north)==(80,64)) or
                                  (level==PALACE_LEVELS[2] and (x,north)==(80,16))):continue
-                if level>0 and not roof and x==24 and 8<=north<48:
+                if level>0 and not roof and x==24 and 8<=north<32:
                     # Full-length ledges span two column rows beside the stairwell.
                     for edge in [24,30]:model.part('3034',14,edge,north,level-1/3,turn=True)
                 else:
@@ -197,65 +207,54 @@ def palace():
     # Extended ground terrace supports full perimeter-column footprints.
     for x in range(-8,104,8):
         for north in range(-8,88,8):
-            if x==24 and 8<=north<48:
-                for edge in [24,30]:model.part('3034',14,edge,north,0,turn=True)
-            else:model.part('41539',19,x,north,0)
+            model.part('41539',19,x,north,0)
     for storey,base in enumerate(PALACE_LEVELS):
         if storey:slab(base)
-        for x in range(0,97,8):
-            for north in range(0,81,8):
-                model.reference('pillar',x-1,north-.6,base)
+        for i,j in sorted(posts):model.reference('pillar',i*8-1,j*8-1,base)
         # Open colonnades and tall enclosed maze/chamber bays leave clear walking routes.
         panels={}
         for i in range(12):
             for j in [0,10]:
                 if storey==0 and j==0 and i in [3,4]:continue
-                panels[(i,j,False)]=2
+                panels[(i,j,False)]=3
         for j in range(10):
-            for i in [0,12]:panels[(i,j,True)]=2
-        for key in [(0,10,False),(1,10,False),(10,10,False),(11,10,False),
-                    (8,6,False),(9,6,False),(8,8,True),(10,7,True)]:panels[key]=20
-        if storey==0:
-            for i in [1,2,5,6]:panels[(i,0,False)]=20
-        if storey==1:
-            for key in [(10,8,True),(11,8,True),(10,9,False)]:panels[key]=20
-        if storey==2:
-            for key in [(10,2,True),(11,2,True),(10,3,False)]:panels[key]=20
+            for i in [0,12]:panels[(i,j,True)]=3
+        for key in full[storey]:panels[key]=PALACE_BRICK_COURSES
         for (i,j,turn),height in panels.items():
-            panel(i*8-.6 if turn else i*8+1,j*8+1 if turn else j*8-.6,base,height,turn)
+            panel(i*8-1 if turn else i*8+1,j*8+1 if turn else j*8-1,base,height,turn)
         if storey:
-            for north in range(9,48,8):
-                for x in [22.8,32]:panel(x,north,base,2,True)
-            if storey==2:panel(25,6.8,base,2)
+            for north in range(9,32,8):
+                for x in [22,32]:panel(x,north,base,3,True)
+            if storey==2:panel(25,6,base,3)
     slab(PALACE_LEVELS[-1]+PALACE_CLEAR_HEIGHT+1/3,roof=True)
     crown=PALACE_LEVELS[-1]+PALACE_CLEAR_HEIGHT+1/3
     for layer in range(2):
         for north in [.4,78.4]:
             runs=[(x,'3007') for x in range(0,96,8)] if layer==0 else [(0,'3001')]+[(x,'3007') for x in range(4,92,8)]+[(92,'3001')]
-            for x,part in runs:model.part(part,14,x,north,crown+layer*rise,rotation=side)
-        for x in [.4,94.4]:
-            rotation=multiply(yaw(math.pi/2),side)
+            for x,part in runs:model.part(part,14,x,0 if north==.4 else 78,crown+layer*rise)
+        for x in [0,94]:
+            rotation=yaw(math.pi/2)
             runs=[(n,'3007') for n in range(2,74,8)]+[(74,'3001')] if layer==0 else [(2,'3001')]+[(n,'3007') for n in range(6,78,8)]
             for north,part in runs:model.part(part,14,x,north,crown+layer*rise,rotation=rotation)
-    # Two stacked 20-tread flights: 1 2/3 rise, 2 tread, 4 usable width.
-    # The upper flight bears on side posts above the corresponding lower tread,
-    # leaving a 2-wide clear central walking lane (avatar diameter 0.56).
+    # Nine one-brick risers per flight, then a landing flush with the next floor.
+    # Upright 1x1 side posts leave a two-unit clear central walking lane.
     for flight,base in enumerate(PALACE_LEVELS[:2]):
-        for step in range(1,21):
+        for step in range(1,10):
             north=8+(step-1)*2
             for x in [26.5,29.5]:
-                z=0 if flight==0 else PALACE_LEVELS[0]+step*rise
-                thirds=step*5 if flight==0 else 100
-                tall,rest=divmod(thirds,20)
-                for _ in range(tall):model.part('3008',19,x-.5,north+.4,z,rotation=post);z+=20/3
-                short,tiles=divmod(rest,5)
-                for _ in range(short):model.part('3004',19,x-.5,north+.4,z,rotation=post);z+=5/3
-                assert tiles==0
+                z=base if flight==0 else PALACE_LEVELS[0]+step
+                for _ in range(step-1 if flight==0 else 9):model.part('3005',19,x-.5,north+.5,z);z+=1
+                if flight==0:
+                    for _ in range(2):model.part('3024',19,x-.5,north+.5,z);z+=1/3
             model.part('3020',14,26,north,base+step*rise-1/3)
+        for x in [26.5,29.5]:
+            for north in [26.5,31.5]:
+                for layer in range(9):model.part('3005',19,x-.5,north-.5,base+layer)
+        model.part('3032',14,26,26,base+9,turn=True)
     # Recessed chamber pits and teeth are physical geometry, not scripted triggers.
     for base,north in [(PALACE_LEVELS[0],64),(PALACE_LEVELS[1],16)]:
         for x in [82,84,86]:
-            for dn in [2,5]:model.part('3003',0,x,north+dn,base,rotation=side)
+            for dn in [2,5]:model.part('3003',0,x,north+dn,base)
     return model
 
 

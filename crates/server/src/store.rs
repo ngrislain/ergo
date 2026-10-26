@@ -224,9 +224,15 @@ impl Store {
             measurements.normalize_scene(&mut scene)?;
             let pairs:std::collections::HashSet<_>=scene.joints.iter().map(|j|(j.a.min(j.b),j.a.max(j.b))).collect();
             scene.joints.extend(ergo_world::constraints::inferred_joints(&scene.bricks).into_iter().filter(|j|!pairs.contains(&(j.a.min(j.b),j.a.max(j.b)))));
-            if !example {measurements.apply(&scene.bricks,&mut scene.joints)?;}
+            if !example {for joint in &mut scene.joints {
+                joint.break_force=None;joint.break_torque=None;joint.strength_source=None;
+            }}
             let mut validation = ergo_world::validation::validate_static_with_measurements(&mut scene,tolerances,&measurements)?;
-            validation.physical_calibration=if example {"Read-only fixture example: nominal metric dimensions and catalog masses; idealized unbreakable joints"}else{"Nominal metric dimensions; sourced catalog masses; server-supplied measured connector capacities; box inertia and assumed friction"}.into();
+            if !example && validation.joint_strength_required != Some(false) {
+                measurements.apply(&scene.bricks,&mut scene.joints)?;
+                validation = ergo_world::validation::validate_static_with_measurements(&mut scene,tolerances,&measurements)?;
+            }
+            validation.physical_calibration=if example {"Read-only fixture example: nominal metric dimensions and catalog masses; idealized unbreakable joints"}else if validation.joint_strength_required == Some(false) {"Sourced catalog masses and nominal bounds; gravity balanced by compression with zero joint wrench; no clutch capacity assumed"}else{"Nominal metric dimensions; sourced catalog masses; server-supplied measured connector capacities; box inertia and assumed friction"}.into();
             Ok((scene, validation))
         }).await??;
         let id = uuid::Uuid::new_v4().to_string();
@@ -395,10 +401,18 @@ mod tests {
                 .is_err()
         );
         let mut untrusted = scene(true);
-        untrusted.joints = ergo_world::constraints::inferred_joints(&untrusted.bricks);
-        untrusted.joints[0].break_force = Some(1e20);
-        untrusted.joints[0].break_torque = Some(1e20);
-        untrusted.joints[0].strength_source = Some("untrusted client".into());
+        // A side-hung body really needs a bond; a standing stack can instead
+        // prove gravity balance without relying on any connector strength.
+        untrusted.bricks[1].translated(glam::DVec3::new(2., -0.5, 0.));
+        untrusted.joints = vec![ergo_world::JointSpec {
+            a: 1,
+            b: 2,
+            anchor: glam::DVec3::new(2., 0.75, 1.),
+            kind: ergo_world::JointKind::Fixed,
+            break_force: Some(1e20),
+            break_torque: Some(1e20),
+            strength_source: Some("untrusted client".into()),
+        }];
         let error = store
             .save(untrusted, "test".into(), Vec::new(), "alice".into())
             .await

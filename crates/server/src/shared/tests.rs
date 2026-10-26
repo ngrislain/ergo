@@ -127,6 +127,62 @@ async fn seeded(service: &SharedWorlds, initial: WorldExport) -> (Head, Imported
 }
 
 #[tokio::test]
+async fn upright_gravity_support_does_not_authorize_uncalibrated_hanging_bonds() {
+    let service = service();
+    let mut d = ergo_world::demo::Demo::new();
+    for level in 0..9 {
+        d.add("3003", 19, 0., f64::from(level), 0.);
+    }
+    let mut initial = scene(0.);
+    initial.bricks = d.bricks;
+    initial.meshes = d.meshes;
+    let (head, accepted) = seeded(&service, initial).await;
+    assert_eq!(
+        accepted
+            .accepted
+            .audit
+            .validation
+            .as_ref()
+            .unwrap()
+            .joint_strength_required,
+        Some(false)
+    );
+    let mut hung = ergo_world::demo::Demo::new();
+    hung.add("3003", 19, 100., 0., 0.);
+    hung.add("3003", 19, 102., 0.5, 0.);
+    let mut candidate = scene(0.);
+    candidate.bricks = hung.bricks;
+    candidate.meshes = hung.meshes;
+    candidate.joints = vec![ergo_world::JointSpec {
+        a: 1,
+        b: 2,
+        anchor: glam::DVec3::new(102., 0.75, 1.),
+        kind: ergo_world::JointKind::Fixed,
+        break_force: Some(1e20),
+        break_torque: Some(1e20),
+        strength_source: Some("untrusted".into()),
+    }];
+    let error = service
+        .import(
+            &head.id,
+            "alice",
+            ImportRequest {
+                base: accepted.accepted.revision,
+                scene: candidate,
+            },
+        )
+        .await
+        .err()
+        .expect("Hanging joint must require measured capacity");
+    assert!(
+        error
+            .to_string()
+            .contains("Missing measured connector capacity"),
+        "{error}"
+    );
+}
+
+#[tokio::test]
 async fn god_mode_removes_the_ordinary_authoring_piece_cap() {
     let mut service = service();
     service.limits.pieces = 1;

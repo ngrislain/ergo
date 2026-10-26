@@ -193,13 +193,18 @@ must be compressive and have their center of pressure inside the shared patch.
 Grounded authored fixtures can supply a foundation reaction. Residual wrench must
 be within the configured numerical tolerances.
 
-For loose, unanchored blocks, a separate constructive path processes bodies from
+For unanchored blocks, a separate constructive path processes bodies from
 top to bottom. Each body's own gravity and loads received from above are balanced
 by nonnegative barycentric reactions inside its horizontal support patches. Loads
 are passed to supporting bodies; grounded bodies balance their own weight rather
 than receiving zero reaction merely because a spanning tree selected other ground
 vertices. The certificate is independent of piece ordering and needs no dynamic
 simulation or guessed contact tension.
+It can also certify studded assemblies by assigning zero wrench to every joint.
+Reports mark this with `joint_strength_required:false`; no unmeasured clutch
+capacity is used. When a certificate needs bond forces/torques instead, the server
+still requires and checks its measurement book. Dynamic probes retain their
+connector-calibration requirements.
 
 These are sufficient constructive certificates; an uncertified arrangement is
 rejected. Mere graph reachability to the floor is not sufficient.

@@ -176,7 +176,25 @@ impl LocalClientRuntime {
             &self.measurements,
         );
         let valid = validation.is_ok();
-        json!({"revision":self.revision,"brick_count":scene.bricks.len(),"overlap_free":overlap_free(&scene).is_ok(),"static_under_current_joint_model":valid,"publication_ready":valid&&issue.is_none(),"stability_report":validation.as_ref().ok(),"failure":validation.err().map(|e|e.to_string()),"calibration_issue":issue,"global_commit_available":false,"execution":"local-wasm-client","next_action":if valid{"Inspect visual feedback and connector calibration before requesting an authorized commit."}else{"Add support or fix the reported constraint/contact. A client gravity test can provide additional diagnostics but cannot override the server certificate."}})
+        let connector_issue = if validation
+            .as_ref()
+            .is_ok_and(|report| report.joint_strength_required == Some(false))
+        {
+            issue.clone()
+        } else {
+            None
+        };
+        // Successful contact-only validation has already checked sourced masses
+        // and nominal geometry; an unused connector capacity is not required.
+        let issue = if validation
+            .as_ref()
+            .is_ok_and(|report| report.joint_strength_required == Some(false))
+        {
+            None
+        } else {
+            issue
+        };
+        json!({"revision":self.revision,"brick_count":scene.bricks.len(),"overlap_free":overlap_free(&scene).is_ok(),"static_under_current_joint_model":valid,"publication_ready":valid&&issue.is_none(),"stability_report":validation.as_ref().ok(),"failure":validation.err().map(|e|e.to_string()),"calibration_issue":issue,"connector_calibration_issue":connector_issue,"global_commit_available":false,"execution":"local-wasm-client","next_action":if valid{"Inspect visual feedback and connector calibration before requesting an authorized commit."}else{"Add support or fix the reported constraint/contact. A client gravity test can provide additional diagnostics but cannot override the server certificate."}})
     }
     fn update(&mut self, edit: impl FnOnce(&mut WorldExport) -> Result<()>) -> Result<Value> {
         let mut next = self.scene.clone();

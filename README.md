@@ -28,7 +28,7 @@ The prebuilt bundle includes native binaries and WASM assets; consumers need
 Node.js 20+ and Chrome/Chromium, not Rust.
 
 ```sh
-npm install --global --ignore-scripts 'https://github.com/ngrislain/ergo/releases/download/v0.5.2/ngrislain-ergo-mcp-0.5.2.tgz'
+npm install --global --ignore-scripts 'https://github.com/ngrislain/ergo/releases/download/v0.5.3/ngrislain-ergo-mcp-0.5.3.tgz'
 ergo-mcp --login --publish-url https://ergosandbox.com
 ```
 
@@ -73,7 +73,9 @@ from your current position. Storage-cell membership is not a physical anchor.
 Nominal geometry uses 8 mm stud pitch, 9.6 mm brick height and 3.2 mm plate height.
 The simulator uses sourced masses and SI gravity with box collision/inertia
 approximations. Loose blocks need a compressive static support certificate;
-physical joints need server-owned measured capacities. Forces are not guessed.
+certificates relying on physical joints need server-owned measured capacities.
+A contact-only gravity proof may instead use zero joint wrench, without assuming
+any clutch strength. Forces are not guessed.
 Dynamic simulations are bounded to 5,000 pieces; the world has no aggregate
 piece-count limit. God-mode accounts have no authoring brick-count cap; physical
 acceptance and byte/request budgets still apply.

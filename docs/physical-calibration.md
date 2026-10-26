@@ -71,8 +71,12 @@ by a different engagement count is not automatically valid.
 
 The repository therefore does **not** ship invented default clutch capacities.
 Local drafts and read-only fixture examples can run with idealized joints, but
-ordinary server publication requires operator-owned measured capacities for
-every connection in the published model.
+ordinary server publication requires operator-owned measured capacities whenever
+the static certificate relies on a connection's force or torque capacity. A complete
+nonnegative contact-reaction proof may instead establish gravity balance with zero
+wrench at every joint, including inferred stud joints. In that case
+`joint_strength_required:false` records that no clutch strength was used or assumed.
+This does not calibrate those joints for dynamics or certify their earthquake strength.
 
 ## Measurement-book format
 
@@ -132,10 +136,11 @@ and measurement assumptions; they are not calibrated material-stress predictions
 
 ## Admission and client probes
 
-For loose, unanchored assemblies the server constructs nonnegative gravity
+For unanchored assemblies the server first tries nonnegative gravity
 reactions through horizontal contact patches from top to bottom. This balances
 each supporting body's own weight and the loads delivered to it. For constrained
-assemblies it checks the static wrench assignment against connection capacities;
+assemblies that cannot obtain that contact-only proof it checks the static wrench
+assignment against measured connection capacities;
 it runs no dynamic fallback. Client dynamic
 working sets remain bounded to 5,000 bricks; short gravity probes default to one
 step with explicit pose tolerances.

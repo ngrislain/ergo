@@ -50,6 +50,10 @@ pub struct ValidationReport {
     pub inferred_joints: usize,
     pub checked_bricks: usize,
     pub max_displacement: f64,
+    /// None on historical reports. False means the certificate consumes no
+    /// joint strength; the method distinguishes contact-only and anchored proofs.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub joint_strength_required: Option<bool>,
     #[serde(default)]
     pub physical_calibration: String,
     #[serde(default)]
@@ -144,23 +148,35 @@ pub fn validate_static_with_measurements(
         .collect();
     let inferred_count = inferred.len();
     scene.joints.extend(inferred);
+    // A constructive contact-only proof is also valid when studs/joints exist:
+    // all joint wrenches can be zero. It assumes no unknown clutch capacity.
+    let contact_only = scene.fixed_bricks.is_empty()
+        && compression_certificate(&scene.bricks, tolerances, measurements)?;
     let report = ValidationReport {
         collision_model: "nominal body bounding boxes; visual studs excluded".into(),
-        method: "static support and constraint-wrench certificate (no simulation)".into(),
+        method: if contact_only {
+            "static compression certificate (zero joint wrench; no simulation)"
+        } else {
+            "static support and constraint-wrench certificate (no simulation)"
+        }
+        .into(),
         inferred_joints: inferred_count,
         checked_bricks: scene.bricks.len(),
         max_displacement: 0.0,
+        joint_strength_required: Some(!contact_only && !scene.joints.is_empty()),
         physical_calibration:
             "Metric dimensions and catalog masses; check connector calibration separately".into(),
         tolerances,
     };
-    support_certificate(
-        &scene.bricks,
-        &scene.joints,
-        &scene.fixed_bricks,
-        tolerances,
-        measurements,
-    )?;
+    if !contact_only {
+        support_certificate(
+            &scene.bricks,
+            &scene.joints,
+            &scene.fixed_bricks,
+            tolerances,
+            measurements,
+        )?;
+    }
     Ok(report)
 }
 
@@ -624,6 +640,25 @@ mod tests {
         for _ in 0..25 {
             validate_static(&mut model).unwrap();
             assert!(model.joints.is_empty());
+            model.bricks.rotate_left(1);
+        }
+    }
+
+    #[test]
+    fn upright_nine_course_columns_need_no_clutch_for_gravity_balance() {
+        let mut d = Demo::new();
+        for (x, z) in [(0., 0.), (6., 0.), (0., 6.), (6., 6.)] {
+            for level in 0..9 {
+                d.add("3003", 19, x, f64::from(level), z);
+            }
+        }
+        d.add("41539", 14, 0., 9., 0.);
+        let mut model = scene(d);
+        for _ in 0..8 {
+            let report = validate_static(&mut model).unwrap();
+            assert!(!model.joints.is_empty());
+            assert_eq!(report.joint_strength_required, Some(false));
+            assert!(model.joints.iter().all(|joint| joint.break_force.is_none()));
             model.bricks.rotate_left(1);
         }
     }

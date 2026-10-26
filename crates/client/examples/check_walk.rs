@@ -22,6 +22,8 @@ struct Route {
 struct Waypoint {
     name: String,
     feet: [f64; 3],
+    #[serde(default)]
+    min_clearance: Option<f64>,
 }
 
 fn main() -> Result<()> {
@@ -82,13 +84,19 @@ fn main() -> Result<()> {
             waypoint.name,
             relative
         );
+        let required = waypoint.min_clearance.unwrap_or(route.min_clearance);
         ensure!(
-            clearance.clear(feet),
+            required >= route.eye_height + 0.25,
+            "Waypoint clearance is smaller than the walker"
+        );
+        let arrival_clearance = Scene::new(&model.bricks, &tree, required - 0.25, &|_| false);
+        ensure!(
+            arrival_clearance.clear(feet),
             "Body/headroom intersects geometry on {}",
             waypoint.name
         );
         visited.push(
-            serde_json::json!({"waypoint":waypoint.name,"feet_relative":relative.to_array()}),
+            serde_json::json!({"waypoint":waypoint.name,"feet_relative":relative.to_array(),"arrival_clearance_checked":required}),
         );
     }
     println!(

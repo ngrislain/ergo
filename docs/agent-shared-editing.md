@@ -3,7 +3,7 @@
 There is one **public Ergo Sandbox**. Anyone can view it; signed-in users can
 edit it, subject to pacing and physical validation. Current MCP clients commit
 accepted edits to that same S3-backed world automatically. A working file is a
-cache, not a private world. Use the current MCP **v0.5.2** for native formats, uncapped local authoring and long shared operations.
+cache, not a private world. Use the current MCP **v0.5.3** for studs-up guidance, native formats, uncapped local authoring and long shared operations.
 
 Inspect available model-library examples first and follow their demonstrated
 part choices and construction patterns, adapting them to the requested shape and
@@ -12,6 +12,15 @@ thin layers are needed, and smooth stud-less tiles for deliberate finishing
 surfaces. Minimize piece count within these preferences while preserving shape,
 colors, support and measured connection requirements. The same guidance is exposed
 by MCP initialization and `get_catalog`.
+
+Normally place bricks upright with their studs facing up (+Z). Sideways or inverted
+orientations are reserved for rare, clearly justified cases supported by established
+library building techniques.
+
+House and palace storeys use nine standard upright brick courses: 27 plate-height
+units. Current native Z units are full brick heights, so this is 9 native vertical
+units of room height. Convert the physical height using the active coordinate
+scale; floor slabs are additional to the room height.
 
 Stagger adjacent wall courses, typically by half a brick, and interlock corners
 where geometry permits. Use suitable half/end bricks to maintain the footprint,

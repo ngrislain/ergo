@@ -176,15 +176,24 @@ def main():
             assert second["accepted_revision"] != receipt["accepted_revision"]
             accepted = second["accepted_revision"]
 
-            # Floating geometry and uncalibrated stacked connections cannot change the head.
+            # An upright stack may use contact-only gravity support. Floating
+            # geometry and hanging bonds still need real support/calibration.
+            stacked=mcp.call("place_brick",part="3003",color=4,min_corner=[10,0,1])
+            assert stacked['structuredContent']['publication_ready'],stacked
+            assert stacked['structuredContent']['stability_report']['joint_strength_required'] is False
+            assert not mcp.call('remove_bricks',ids=[2])['isError']
+            subprocess.run([str(server_binary),'user-plan','alice','paid'],cwd=directory,
+                           env=server_environment,check=True,stdout=subprocess.DEVNULL)
             geo = http(world_url, token=tokens["alice"])[1]["metadata"]["geo"]
             status, validation_world = http(url + "/api/shared-worlds", token=tokens["alice"],
                                              body={"name": "Validation rejection test", "geo": geo})
             assert status == 200, validation_world
             validation_url = url + "/api/shared-worlds/" + validation_world["id"]
-            for corner in ([30, 0, 8], [10, 0, 1]):
+            for corner in ([30, 0, 8], [12, 0, 0.5]):
                 assert not mcp.call("place_brick", part="3003", color=4,
                                     min_corner=corner)["isError"]
+                if corner[2]!=8:
+                    assert not mcp.call('connect_bricks',a=1,b=2,anchor=[12,1,.75],kind='fixed')['isError']
                 rejected = mcp.call("publish_construction", world_id=validation_world["id"])
                 assert rejected["isError"] and rejected["structuredContent"]["http_status"] == 422, rejected
                 assert rejected["structuredContent"]["publication_state"] == "rejected"
