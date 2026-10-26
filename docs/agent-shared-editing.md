@@ -3,7 +3,7 @@
 There is one **public Ergo Sandbox**. Anyone can view it; signed-in users can
 edit it, subject to pacing and physical validation. Current MCP clients commit
 accepted edits to that same S3-backed world automatically. A working file is a
-cache, not a private world. Use the current MCP **v0.5.1** for native formats and uncapped local authoring.
+cache, not a private world. Use the current MCP **v0.5.2** for native formats, uncapped local authoring and long shared operations.
 
 Inspect available model-library examples first and follow their demonstrated
 part choices and construction patterns, adapting them to the requested shape and

@@ -752,13 +752,16 @@ fn main() -> Result<()> {
                             h.pending.insert(job.id.clone(), tx);
                             h.queue.push_back(job);
                         }
-                        let value = rx.recv_timeout(Duration::from_secs(120));
+                        // A shared mutation includes publication and authoritative
+                        // read-back (up to 300s each), plus local WASM work. The
+                        // outer deadline must not cut off an accepted operation.
+                        let value = rx.recv_timeout(Duration::from_secs(720));
                         if value.is_err() {
                             let mut h = bridge.hub.lock().unwrap();
                             h.pending.remove(&job_id);
                             h.queue.retain(|j| j.id != job_id);
                         }
-                        let mut value=value.context("Local WASM client timed out; attach the browser client or check its console")?;
+                        let mut value=value.context(if bridge.common.is_some(){"Shared MCP request timed out; acceptance may be unknown. Reopen/reconcile the authoritative assembly before any retry; no automatic retry was performed"}else{"Local WASM client timed out; attach the browser client or check its console"})?;
                         if name == "export_construction" {
                             value["structuredContent"]["path"] = json!(path);
                             if let Some(text) =

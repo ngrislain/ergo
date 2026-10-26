@@ -63,3 +63,17 @@ explicit valid ground anchors. All accepted positions are server-validated.
 
 Implementation: `viewer/src/location.rs`, `presence.rs`, `common.rs`, `app.rs`;
 shared controls/collisions are in `client/src/navigation.rs` and `walking.rs`.
+
+## Checking a walking route
+
+`cargo run --locked -p ergo-client --example check_walk -- CONSTRUCTION ROUTE.json`
+loads a complete native construction and runs `walking::Walker` at 120 Hz, with
+gravity/stepping and no jumping or teleporting between checkpoints. It fails on
+blocked paths, wrong floor heights or insufficient specified headroom. This is
+geometry/navigation verification, not a physical acceptance or earthquake test.
+
+The `ergo-walk-route-1`/schema2 JSON contains `origin_world`, relative `start` and
+`waypoints` (`name`, `feet`), `eye_height`, `min_clearance` and `speed`. Coordinates
+use the usual public east/north/up units. Use a complete cache, not a clipped
+browser region or an assembly whose external collision dependencies are omitted.
+The tool checks the supplied scene; it does not fetch or publish world state.

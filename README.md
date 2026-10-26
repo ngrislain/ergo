@@ -28,7 +28,7 @@ The prebuilt bundle includes native binaries and WASM assets; consumers need
 Node.js 20+ and Chrome/Chromium, not Rust.
 
 ```sh
-npm install --global --ignore-scripts 'https://github.com/ngrislain/ergo/releases/download/v0.5.1/ngrislain-ergo-mcp-0.5.1.tgz'
+npm install --global --ignore-scripts 'https://github.com/ngrislain/ergo/releases/download/v0.5.2/ngrislain-ergo-mcp-0.5.2.tgz'
 ergo-mcp --login --publish-url https://ergosandbox.com
 ```
 
@@ -74,8 +74,9 @@ Nominal geometry uses 8 mm stud pitch, 9.6 mm brick height and 3.2 mm plate heig
 The simulator uses sourced masses and SI gravity with box collision/inertia
 approximations. Loose blocks need a compressive static support certificate;
 physical joints need server-owned measured capacities. Forces are not guessed.
-Physics working sets are bounded to 5,000 pieces; the world has no aggregate
-piece-count limit. Unlimited account plans bypass pacing, not acceptance checks.
+Dynamic simulations are bounded to 5,000 pieces; the world has no aggregate
+piece-count limit. God-mode accounts have no authoring brick-count cap; physical
+acceptance and byte/request budgets still apply.
 
 ## Developer setup
 
@@ -101,3 +102,6 @@ python3 scripts/check-docs.py
 
 The [operations runbook](docs/operations.md) covers browser/MCP checks, GitHub
 releases, the public website, deployment and private configuration recovery.
+For a complete construction cache and explicit route, `cargo run -p ergo-client
+--example check_walk -- construction.ergo.json route.json` checks continuous
+walking, floor arrivals and headroom with the viewer's actual movement engine.

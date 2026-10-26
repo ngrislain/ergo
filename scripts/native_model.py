@@ -3,7 +3,9 @@ import itertools
 import math
 
 PARTS={"3070b":(1,1,1/3),"3069b":(2,1,1/3),"3068b":(2,2,1/3),"2431":(4,1,1/3),
-       "3020":(4,2,1/3),"3031":(4,4,1/3),"3035":(8,4,1/3),"41539":(8,8,1/3)}
+       "3020":(4,2,1/3),"3031":(4,4,1/3),"3035":(8,4,1/3),"41539":(8,8,1/3),
+       "3007":(8,2,1),"3008":(8,1,1),"3004":(2,1,1),"2456":(6,2,1),"3002":(3,2,1),"3003":(2,2,1),
+       "3001":(4,2,1),"3795":(6,2,1/3),"3710":(4,1,1/3),"3034":(8,2,1/3)}
 
 
 def multiply(a,b):
@@ -20,9 +22,18 @@ def north_rotation(angle):
     return [[c,0,s],[0,1,0],[-s,0,c]]
 
 
+def east_rotation(angle):
+    c,s=math.cos(angle),math.sin(angle)
+    return [[1,0,0],[0,c,-s],[0,s,c]]
+
+
 def metric_matrix(rotation):
     scale=[.008,.008,.0096]
-    return [[rotation[i][j]*scale[j]/scale[i] for j in range(3)] for i in range(3)]
+    def clean(value):
+        if abs(value)<1e-12:return 0
+        if abs(value-round(value))<1e-12:return round(value)
+        return value
+    return [[clean(rotation[i][j]*scale[j]/scale[i]) for j in range(3)] for i in range(3)]
 
 
 def local_bounds(part,rotation):
@@ -49,7 +60,7 @@ def bounds(model):
             if target['kind']=='definition':walk(target['id'],matrix)
             else:
                 part=target['id'].removesuffix('.dat');w,d,h=PARTS[part]
-                top=1/6 if part in ['3020','3031','3035','41539'] else 0
+                top=0 if part in ['3070b','3069b','3068b','2431'] else 1/6
                 for p in itertools.product([-w/2,w/2],[-d/2,d/2],[-h,top],[1]):
                     points.append([sum(matrix[i][j]*p[j] for j in range(4)) for i in range(3)])
     walk(model['root'],[[int(i==j) for j in range(4)] for i in range(4)])

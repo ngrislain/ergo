@@ -28,6 +28,10 @@ npm test --prefix site
 Serve `site/dist` with the site's preview command for `scripts/test-site-orbit.py`.
 The common-world test uses an isolated current-format store; it checks shared
 commits/conflicts, public in-world list navigation, pagination, GPS and handoff.
+For geometry-dependent walking guarantees, use the native
+[walking route checker](navigation.md#checking-a-walking-route) against a complete
+construction cache and its explicit route. It verifies continuous traversal,
+arrival heights and clearance with the same movement engine as the viewer.
 
 ## GitHub releases
 
@@ -40,7 +44,7 @@ prove an asset or image was published.
 
 ```sh
 gh run list --repo ngrislain/ergo --workflow release.yml --limit 5
-gh release view v0.5.1 --repo ngrislain/ergo
+gh release view v0.5.2 --repo ngrislain/ergo
 ```
 
 Verify the public tarball version/checksum, consumer install and actual MCP smoke
@@ -51,7 +55,7 @@ After publication, set the public Pages variable and rebuild:
 
 ```sh
 gh variable set ERGO_MCP_PACKAGE --repo ngrislain/ergo \
-  --body 'https://github.com/ngrislain/ergo/releases/download/v0.5.1/ngrislain-ergo-mcp-0.5.1.tgz'
+  --body 'https://github.com/ngrislain/ergo/releases/download/v0.5.2/ngrislain-ergo-mcp-0.5.2.tgz'
 gh workflow run pages.yml --repo ngrislain/ergo --ref main
 ```
 

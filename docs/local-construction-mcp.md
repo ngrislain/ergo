@@ -7,7 +7,7 @@ shared Sandbox. The bridge never grants itself acceptance or direct agent S3 acc
 ## Install and configure
 
 ```sh
-npm install --global --ignore-scripts 'https://github.com/ngrislain/ergo/releases/download/v0.5.1/ngrislain-ergo-mcp-0.5.1.tgz'
+npm install --global --ignore-scripts 'https://github.com/ngrislain/ergo/releases/download/v0.5.2/ngrislain-ergo-mcp-0.5.2.tgz'
 ergo-mcp --login --publish-url https://ergosandbox.com
 ```
 
@@ -31,7 +31,7 @@ opens the minimal client. Quit/restart the MCP client after configuration/token 
         "ERGO_PUBLISH_TOKEN_FILE":"/absolute/private/path/ergo-mcp-token"
       },
       "enabled":true,
-      "timeout":180000
+      "timeout":900000
     }
   }
 }
@@ -118,6 +118,12 @@ changes require reopening/reapplying. Unknown outcomes are fenced and never
 automatically repeated. The `.shared.json` journal stores origin, world, assembly,
 base revision and pending state, not a credential. Bound caches reload server
 authority instead of interpreting stale local file formats.
+
+Each publication/read-back HTTP request has a 300-second deadline; a complete
+WASM/MCP job allows 720 seconds so local work and both remote phases can finish.
+Configure the host MCP execution timeout to at least 900,000 ms. A timeout is not
+proof of rejection: reconcile the authoritative assembly/receipt before any new
+attempt. No publication request is automatically retried.
 
 Native models are limited to 768KiB inline, imported text to128KiB. Local editing
 has no 5,000-piece cap; dynamics simulations remain limited to5,000 bodies.

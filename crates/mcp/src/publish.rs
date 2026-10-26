@@ -162,7 +162,7 @@ impl Publisher {
             base,
             token,
             client: Client::builder()
-                .timeout(Duration::from_secs(90))
+                .timeout(Duration::from_secs(300))
                 .retry(reqwest::retry::never())
                 .redirect(reqwest::redirect::Policy::none())
                 .build()?,
