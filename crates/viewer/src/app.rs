@@ -427,6 +427,14 @@ impl Client {
             "Use Pull in simulation to move an articulated group"
         );
         let r = self.renderer.as_mut().unwrap();
+        let bounds = r
+            .bricks
+            .iter()
+            .filter(|b| group.contains(&b.id))
+            .map(|b| b.bounds)
+            .reduce(ergo_world::Aabb::union)
+            .ok_or_else(|| anyhow::anyhow!("Empty selection"))?;
+        let delta = ergo_world::placement::snap_translation(bounds, delta);
         physics::can_translate(&r.bricks, &group, delta)?;
         let mut bricks = r.bricks.clone();
         for brick in &mut bricks {
@@ -1489,11 +1497,14 @@ pub fn App() -> impl IntoView {
                     on:blur=move |_|with_client(handle,|c|c.navigation_controls.clear())
                 ></canvas>
                 <div class="view-tools"><button title="Fit construction (F)" aria-label="Fit construction" on:click=move |_|fit(handle)>"⊡"</button><button title="Zoom in / faster" aria-label="Zoom in" on:click=move |_|with_client(handle,|c|{if let Some(r)=&mut c.renderer{r.zoom(-180.0);}})>"＋"</button><button title="Zoom out / slower" aria-label="Zoom out" on:click=move |_|with_client(handle,|c|{if let Some(r)=&mut c.renderer{r.zoom(180.0);}})>"−"</button><button title="Top view" aria-label="Top view" on:click=move |_|with_client(handle,|c|{if let Some(r)=&mut c.renderer{r.set_navigation(NavigationMode::Orbit);r.pitch=1.55;r.changed();}})>"⌑"</button><button title="Full screen (Shift+F; Esc to exit)" aria-label=move ||if ui.fullscreen.get(){"Exit full screen"}else{"Enter full screen"} aria-pressed=move ||ui.fullscreen.get().to_string() on:click=move |_|toggle_fullscreen(ui)>"⛶"</button></div>
-                <button class="nearest-construction" title="Go to nearest construction (N)" aria-label="Nearest construction" on:click=move |_|nearest_construction(handle)>"⌖ Nearest construction"</button>
                 <Show when=move ||ui.navigation.get().mode!=NavigationMode::Orbit><MovementPad/></Show>
+                <div class="viewport-status-stack">
                 <div class="north-marker" role="img" aria-label="Geographic north relative to camera heading"><div class="north-pointer" data-angle=move ||ui.north_angle.get().to_string() style:transform=move ||format!("rotate({}deg)",ui.north_angle.get())><span>"N"</span><svg viewBox="0 0 40 40" aria-hidden="true"><path d="M20 3 L29 33 L20 27 L11 33 Z" fill="#334b61"/><path d="M20 3 L20 27 L11 33 Z" fill="#8c9faf"/></svg></div></div>
-                <div class="viewport-footer"><span>{move ||ui.navigation.get().mode.instructions()}</span><span class="render-badge">"WebGL2"<b>{move ||format!("{} fps",ui.fps.get())}</b></span></div>
+                <button class="nearest-construction" title="Go to nearest construction (N)" aria-label="Nearest construction" on:click=move |_|nearest_construction(handle)>"⌖ Nearest construction"</button>
                 <div class="map-attribution" title=move ||ui.ground_status.get()><Show when=move ||ui.ground_attribution.get().is_some() fallback=move ||view!{<span>"Ground: palette fallback"</span>}><a target="_blank" rel="noopener noreferrer" href=move ||ui.ground_attribution.get().map(|(_,url)|url).unwrap_or_default()>{move ||ui.ground_attribution.get().map(|(label,_)|label).unwrap_or_default()}</a></Show></div>
+                <span class="render-badge">"WebGL2"<b>{move ||format!("{} fps",ui.fps.get())}</b></span>
+                </div>
+                <div class="viewport-footer"><span>{move ||ui.navigation.get().mode.instructions()}</span></div>
                 <Show when=move ||ui.busy.get()><div class="loading-pill" role="status"><span class="spinner"></span>"Loading construction…"</div></Show>
                 <Show when=move ||ui.fullscreen.get()><ErrorToast/></Show>
             </section>

@@ -55,6 +55,175 @@ fn scene(x: f64) -> WorldExport {
 }
 
 #[tokio::test]
+async fn commit_integrity_rejects_off_grid_and_non_isometric_geometry_without_advancing_head() {
+    let service = service();
+    let (head, imported) = seeded(&service, scene(100.)).await;
+    for (name, matrix) in [
+        (
+            "scale",
+            glam::DMat3::from_diagonal(glam::DVec3::new(1.1, 1., 1.)),
+        ),
+        (
+            "reflection",
+            glam::DMat3::from_diagonal(glam::DVec3::new(-1., 1., 1.)),
+        ),
+        (
+            "shear",
+            glam::DMat3::from_cols(
+                glam::DVec3::X,
+                glam::DVec3::new(0.1, 1., 0.),
+                glam::DVec3::Z,
+            ),
+        ),
+    ] {
+        let global = &imported.pieces[&1];
+        let original = piece(&service, &head.id, global).await;
+        let mut geometry = original.geometry.clone();
+        geometry.transform = matrix;
+        let request = CommitRequest {
+            base: head.revision.clone(),
+            pieces: vec![PieceEdit {
+                id: global.clone(),
+                geometry: Some(geometry),
+                mesh: None,
+            }],
+            rules: vec![],
+            joints: vec![],
+            message: name.into(),
+        };
+        assert!(
+            service.prepare(&head.id, "alice", request).await.is_err(),
+            "{name} accepted"
+        );
+    }
+    let global = &imported.pieces[&1];
+    let mut request = edit(&service, &head, global, glam::DVec3::X * 0.2).await;
+    request.message = "off-grid grounded pose".into();
+    let error = service
+        .prepare(&head.id, "alice", request)
+        .await
+        .err()
+        .unwrap();
+    assert!(error.message.contains("stud grid"), "{error:?}");
+    let mut candidate = scene(200.2);
+    assert!(
+        service
+            .import(
+                &head.id,
+                "alice",
+                ImportRequest {
+                    base: head.revision.clone(),
+                    scene: candidate.clone()
+                }
+            )
+            .await
+            .is_err()
+    );
+    let (app, headers) = http(&service);
+    let (status, _) = json(
+        &app,
+        "PUT",
+        &format!(
+            "/api/shared-worlds/{}/assemblies/{}/workspace",
+            head.id, imported.assembly
+        ),
+        &headers,
+        Some(serde_json::json!({"base":head.revision,"scene":candidate})),
+    )
+    .await;
+    assert!(!status.is_success());
+    assert_eq!(
+        service
+            .head(
+                &head.id,
+                &Principal {
+                    id: Some("alice".into())
+                },
+                None
+            )
+            .await
+            .unwrap()
+            .revision,
+        head.revision
+    );
+    ergo_world::placement::snap_scene(&mut candidate).unwrap();
+    service
+        .import(
+            &head.id,
+            "alice",
+            ImportRequest {
+                base: head.revision,
+                scene: candidate,
+            },
+        )
+        .await
+        .unwrap();
+}
+
+#[tokio::test]
+async fn hierarchy_scale_cancellation_cannot_bypass_publication_isometry_checks() {
+    use ergo_world::assembly::{Model, Reference, Transform};
+    let service = service();
+    let (head, _) = seeded(&service, scene(100.)).await;
+    let mut candidate = scene(200.);
+    let original = Model::from_bricks(&candidate.bricks);
+    let mut model = original.clone();
+    let old_root = model.root.clone();
+    model.subparts.insert(
+        "half".into(),
+        vec![Reference {
+            file: old_root,
+            color: 16,
+            matrix: Transform::from_pose(
+                glam::DMat3::from_diagonal(glam::DVec3::splat(0.5)),
+                glam::DVec3::ZERO,
+            ),
+        }],
+    );
+    model.subparts.insert(
+        "double".into(),
+        vec![Reference {
+            file: "half".into(),
+            color: 16,
+            matrix: Transform::from_pose(
+                glam::DMat3::from_diagonal(glam::DVec3::splat(2.)),
+                glam::DVec3::ZERO,
+            ),
+        }],
+    );
+    model.root = "double".into();
+    assert!(model.matches(&candidate.bricks));
+    candidate.model = Some(model);
+    assert!(
+        service
+            .import(
+                &head.id,
+                "alice",
+                ImportRequest {
+                    base: head.revision.clone(),
+                    scene: candidate
+                }
+            )
+            .await
+            .is_err()
+    );
+    assert_eq!(
+        service
+            .head(
+                &head.id,
+                &Principal {
+                    id: Some("alice".into())
+                },
+                None
+            )
+            .await
+            .unwrap()
+            .revision,
+        head.revision
+    );
+}
+
+#[tokio::test]
 async fn accepted_changes_use_server_profile_name_and_retain_the_source_model() {
     let service = service();
     service
@@ -248,9 +417,9 @@ async fn dense_neighbor_queries_charge_immutable_spatial_rows_once() {
             d.add(
                 "3068b",
                 19,
-                f64::from(x) * 2. + 0.125,
+                f64::from(x) * 2. + 1.,
                 0.,
-                f64::from(y) * 2. + 0.125,
+                f64::from(y) * 2. + 1.,
             );
         }
     }

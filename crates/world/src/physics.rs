@@ -258,12 +258,7 @@ impl Simulation {
             s.render_bounds.insert(brick.part.clone(), _mesh.bounds);
             let half = to_meters(local.size() * 0.5);
             let offset = to_meters(brick.transform * local.center());
-            let mut rotation = crate::physical::metric_transform(brick.transform);
-            // Reflecting a centred cuboid does not change its volume. Keep the
-            // reflected centre above, and use a proper quaternion for its axes.
-            if rotation.determinant() < 0. {
-                rotation.x_axis = -rotation.x_axis;
-            }
+            let rotation = crate::physical::metric_transform(brick.transform);
             let rotation = na::UnitQuaternion::from_matrix(&na::Matrix3::from_column_slice(
                 &rotation.to_cols_array(),
             ));

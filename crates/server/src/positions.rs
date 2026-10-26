@@ -174,7 +174,7 @@ mod tests {
         );
         let update = PositionUpdate {
             world_id: "world".into(),
-            position_world: [12., 34., 5.],
+            position_world: [12.2, 34.8, 5.],
             view_target_world: [14., 35., 0.],
             navigation: "walk".into(),
             client_session: "browser".into(),
@@ -204,7 +204,11 @@ mod tests {
         .await;
         assert_eq!(
             own["ground_position_world"],
-            serde_json::json!([12., 34., 0.])
+            serde_json::json!([12., 35., 0.])
+        );
+        assert_eq!(
+            own["position"]["context"]["position_world"],
+            serde_json::json!([12.2, 34.8, 5.])
         );
         assert_eq!(own["position"]["context"]["sequence"], 2);
         let other = value(

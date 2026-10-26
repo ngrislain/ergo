@@ -122,6 +122,9 @@ pub fn validate_static_with_measurements(
     );
     crate::catalog::validate(&scene.bricks)?;
     crate::groups::validate(&scene.bricks, &scene.groups)?;
+    if let Some(model) = &scene.model {
+        model.validate_isometries()?;
+    }
     for brick in &scene.bricks {
         crate::physical::validate_pose(brick)?;
         ensure!(
@@ -133,6 +136,7 @@ pub fn validate_static_with_measurements(
     }
     constraints::validate_joints(&scene.bricks, &scene.joints, &scene.fixed_bricks)?;
     validate_ground_anchors_with_tolerances(&scene.bricks, &scene.fixed_bricks, tolerances)?;
+    validate_baseplate_registration(&scene.bricks, tolerances)?;
     let tree = Octree::new(scene.bricks.iter().map(|b| b.bounds).collect());
     for (i, brick) in scene.bricks.iter().enumerate() {
         ensure!(
@@ -207,6 +211,55 @@ pub fn validate_static_with_measurements(
         )?;
     }
     Ok(report)
+}
+
+pub fn validate_baseplate_registration(
+    bricks: &[Brick],
+    tolerances: StaticTolerances,
+) -> Result<()> {
+    tolerances.validate()?;
+    for brick in bricks
+        .iter()
+        .filter(|b| b.bounds.min.y.abs() <= tolerances.position_brick_units)
+    {
+        ensure!(
+            (crate::physical::metric_transform(brick.transform).y_axis - DVec3::Y).length()
+                <= tolerances.rotation_radians,
+            "Grounded brick {} ({}) is not upright for baseplate registration",
+            brick.id,
+            brick.part
+        );
+        ensure!(
+            [brick.bounds.min.x, brick.bounds.max.z]
+                .iter()
+                .all(|v| (v - v.round()).abs() <= tolerances.position_brick_units),
+            "Grounded brick {} ({}) is off the baseplate stud grid at {:?}; snap the whole placement to integer X/Y stud coordinates",
+            brick.id,
+            brick.part,
+            crate::coordinates::public(DVec3::new(
+                brick.bounds.min.x,
+                brick.bounds.min.y,
+                brick.bounds.max.z
+            ))
+        );
+    }
+    Ok(())
+}
+
+#[cfg(test)]
+mod registration_tests {
+    use super::*;
+    #[test]
+    fn grounded_tiles_also_need_registration_even_without_studs_of_their_own() {
+        let mut d = crate::demo::Demo::new();
+        d.add("3070b", 19, -3., 0., -8.);
+        validate_baseplate_registration(&d.bricks, Default::default()).unwrap();
+        d.bricks[0].translated(DVec3::new(0.201, 0., 0.471));
+        assert!(validate_baseplate_registration(&d.bricks, Default::default()).is_err());
+        d.bricks[0].translated(DVec3::new(-0.201, 0., -0.471));
+        d.bricks[0].translated(DVec3::splat(1e-8));
+        validate_baseplate_registration(&d.bricks, Default::default()).unwrap();
+    }
 }
 
 #[derive(Clone, Copy)]

@@ -387,6 +387,9 @@ impl SharedWorlds {
             "Imported coordinates must use the world's geographic origin"
         );
         crate::import::validate_export(&mut request.scene)?;
+        if let Some(model) = &request.scene.model {
+            model.validate_isometries()?;
+        }
         ws.model.measurements.normalize_scene(&mut request.scene)?;
         let mut ids = BTreeSet::new();
         ensure!(

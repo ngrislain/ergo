@@ -57,8 +57,12 @@ D=\operatorname{diag}(0.008,0.008,0.0096),\qquad A=D^{-1}RD.
 $$
 
 Thus a physically rigid rotation need not be orthonormal in differently scaled
-brick coordinates. Visual affine imports retain supplied scale/shear, but physical
-simulation and publication require nominal metric dimensions.
+brick coordinates. Physical poses require a proper metric isometry: R is
+orthonormal and det(R)=+1. Scale, shear and reflections are rejected. Authoring
+and publication check every model instance, including unused definitions, so
+opposing scales in a hierarchy cannot cancel to bypass the rule. Visual import
+inspection and historical reads may retain affine source data; that does not
+authorize physical editing, simulation or publication of those transforms.
 
 ## Construction envelope
 
@@ -94,6 +98,11 @@ inline import, exactly one at a time. `transform` is always an Ergo world-space
 Local editing has no 5,000-piece cap; dynamics simulations remain limited to
 5,000 bodies. Server admission uses the caller's plan: god-mode authoring has no
 brick-count cap, while encoded-byte/request budgets and physical checks apply.
+
+Placement snaps the incoming model with one translation of its nominal bounding
+corner (one stud horizontally, one plate vertically). Internal geometry is not
+individually rounded. Grounded nominal footprints must register on the baseplate
+grid at commit; see [ground and coordinates](ground-and-coordinates.md).
 
 Implementation: `crates/world/src/assembly.rs`, `assembly/format.rs`, `storage.rs`,
 `coordinates.rs`; import conversion is separate from these native wire types.

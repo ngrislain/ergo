@@ -371,6 +371,17 @@ impl Working {
         &mut self,
         affected: &BTreeSet<ContentId>,
     ) -> SharedResult<Option<ergo_world::validation::ValidationReport>> {
+        let sources = self
+            .rules
+            .values()
+            .filter_map(|r| r.source_model.clone())
+            .collect::<BTreeSet<_>>();
+        for source in sources {
+            let model: ergo_world::assembly::Model =
+                self.tx.blob_limited(&source, self.remaining()).await?;
+            self.charge(&model)?;
+            model.validate_isometries()?;
+        }
         let mut local = BTreeMap::new();
         let mut bricks = Vec::new();
         for id in affected {

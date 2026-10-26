@@ -32,7 +32,8 @@ keepalive flush on hiding/leaving the page. Per-session sequence numbers prevent
 late requests from overwriting a newer observation from that session.
 
 The MCP `get_user_position` tool reads this user's saved camera/target and supplies
-a ground-level `model_transform` for new standing models. Existing edits retain
+a snapped ground-level `model_transform` for new standing models. Raw saved
+camera/target remain continuous. Existing edits retain
 their accepted absolute coordinates. See [agent placement](agent-shared-editing.md).
 
 ## Scrolling construction list
@@ -68,7 +69,11 @@ shared controls/collisions are in `client/src/navigation.rs` and `walking.rs`.
 
 The compass rotates geographic north relative to the current camera heading in
 orbit, fly and walk modes. Fullscreen/mobile navigation buttons flow below the
-location/title; view tools occupy a separate right-hand column. Keyboard focus
+location/title; view tools occupy a separate right-hand column. Compass, nearest,
+attribution and render-status pills use one lower-right layout stack with an
+allocated compass area; short landscape viewports place the compass beside the
+pills. Browser regression checks cover eight compass headings in normal,
+fullscreen and mobile layouts. Keyboard focus
 uses a neutral thin indicator and an explicit focus label, with scroll-preserving
 canvas focus.
 

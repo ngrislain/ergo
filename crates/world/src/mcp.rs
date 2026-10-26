@@ -3,6 +3,7 @@ use anyhow::{Context, Result, ensure};
 use serde_json::{Value, json};
 pub const BUILDING_GUIDANCE: &str = concat!(
     "Build at minifigure scale by default, with appropriately sized doors, windows, stairs, furniture and landscaping. ",
+    "Before building, call get_building_techniques for the requested structure and propose applicable sourced wall bonds, junctions, openings, floors and roof techniques. ",
     "Inspect available model-library examples before designing and follow their demonstrated part choices and construction patterns, adapting them to the requested shape and retaining source attribution where applicable. ",
     "Prefer common standard bricks with studs over plates. Normally place bricks upright with their studs facing up (+Z). Reserve sideways or inverted orientations for rare, clearly justified cases supported by established library building techniques. ",
     "Use nine standard brick courses for each house or palace storey: 27 plate-height units, equivalent to 9 native vertical units in the current coordinate system. Convert this physical height using the active coordinate scale. ",
@@ -49,6 +50,7 @@ pub fn tools() -> Value {
     allowance["annotations"]["openWorldHint"] = json!(true);
     json!({"tools":[
         tool("get_catalog",&catalog_description,json!({"include_extended":{"type":"boolean"},"part":{"type":"string"}}),&[],true),
+        tool("get_building_techniques","Propose sourced LEGO building techniques before construction. Curated guidance starts with Brick Builder's Handbook: running/English bonds, L/T junctions, lintels, staggered slabs, stepped roofs, slope roofs and dormers. Filter by keywords such as chalet, category or exact technique_id. Results distinguish starter parts from techniques needing additional catalogue geometry/physics; no technique is an automatic stability certificate.",json!({"query":{"type":"string"},"category":{"type":"string","enum":["walls","junctions","openings","floors","roofs"]},"technique_id":{"type":"string"}}),&[],true),
         tool("get_user_position","Read the authenticated user's last private S3-backed camera position, view target and ground-level model transform. For a new standing construction, pass model_transform to place_submodel as transform. This does not move existing constructions.",json!({}),&[],true),
         tool("open_shared_construction","Load an authoritative editable assembly from the common S3 world, by assembly_id or by nearest construction in a bounded search around public position_world [east,north,height]. Use the viewer's agent handoff for its current position. Subsequent accepted edits commit to the same assembly automatically; local files are caches.",json!({"assembly_id":{"type":"string"},"position_world":vec}),&[],true),
         tool("list_bricks","List IDs, poses, bounds, and sourced masses.",json!({"offset":{"type":"integer","minimum":0},"limit":{"type":"integer","minimum":1,"maximum":200}}),&[],true),

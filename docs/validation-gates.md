@@ -18,6 +18,8 @@ For `POST /api/shared-worlds/{id}/commits`:
    calls `validate_static_with_measurements` with the world's frozen server-owned
    measurement book, and requires measured capacities if the certificate needs
    joint strength.
+   It also checks every instance in retained source-model blobs, including unused
+   definitions. Nested cancelling scales cannot bypass the pose checks.
 4. Only the resulting prepared operation can reach
    [`Prepared::publish`](../crates/server/src/shared/mod.rs), which calls
    the transaction's conditional `commit`. A changed dependency causes a conflict;
@@ -41,10 +43,19 @@ dependency closure, spatial phantom protection, and optimistic publication.
 normalizes nominal bounds from the trusted catalog/measurement book, validates
 poses and joint references, and checks:
 
-- Rigid metric poses and axis-aligned nominal body faces. Tilted pieces cannot
+- Proper metric isometries: translation and rotation only, with orthonormal metric
+  rotation and determinant +1. Scale, shear and reflection are rejected, both in
+  materialized pieces and in model instances. Native construction axes have
+  different scales; the test is performed after metric conversion.
+- Axis-aligned nominal body faces. Tilted pieces cannot
   obtain this axis-aligned static support certificate; dynamic diagnostics use
   their actual oriented cuboids.
 - Baseplate penetration: the per-brick minimum-height check.
+- Baseplate registration: grounded pieces must be upright, with integer public
+  minimum X/Y nominal footprint edges, within the server position tolerance.
+  This includes smooth tiles; flat-plane support alone does not authorize a
+  fractional-stud foundation. Client snapping is convenience, not a substitute
+  for this independent commit gate.
 - Brick-to-brick penetration: the octree candidate-pair loop, using
   candidate pairs and the per-axis overlap of their nominal body AABBs.
 - Catalogue stud/solid interference:

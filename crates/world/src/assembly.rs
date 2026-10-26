@@ -38,6 +38,16 @@ impl From<Transform> for [[f64; 4]; 4] {
     }
 }
 impl Transform {
+    /// Assembly adapters store linear matrices in uniform LDraw units. Native
+    /// anisotropic construction units are converted at the format boundary.
+    pub fn validate_isometry(&self) -> Result<()> {
+        Transform::try_from(<[[f64; 4]; 4]>::from(*self))?;
+        ensure!(
+            crate::physical::is_proper_rotation(DMat3::from_mat4(self.0)),
+            "Model transform must be a proper isometry (translation + rotation); no scale, shear or reflection"
+        );
+        Ok(())
+    }
     pub fn from_world(rows: [[f64; 4]; 4]) -> Result<Self> {
         format::world_transform(rows)
     }
@@ -77,6 +87,18 @@ pub struct Model {
 }
 
 impl Model {
+    pub fn validate_isometries(&self) -> Result<()> {
+        self.references()?;
+        for (name, refs) in &self.subparts {
+            for reference in refs {
+                reference
+                    .matrix
+                    .validate_isometry()
+                    .with_context(|| format!("Invalid instance {name} -> {}", reference.file))?;
+            }
+        }
+        Ok(())
+    }
     pub fn from_bricks(bricks: &[Brick]) -> Self {
         Self {
             root: "main.ldr".into(),
@@ -351,5 +373,53 @@ impl Model {
             }
         }
         Ok(text)
+    }
+}
+
+#[cfg(test)]
+mod isometry_tests {
+    use super::*;
+    #[test]
+    fn nested_cancelling_scales_and_unused_invalid_instances_are_rejected() {
+        let leaf = Reference {
+            file: "3003.dat".into(),
+            color: 19,
+            matrix: Transform::from_pose(DMat3::from_diagonal(DVec3::splat(0.5)), DVec3::ZERO),
+        };
+        let mut model = Model {
+            root: "main".into(),
+            subparts: BTreeMap::from([
+                (
+                    "main".into(),
+                    vec![Reference {
+                        file: "child".into(),
+                        color: 16,
+                        matrix: Transform::from_pose(
+                            DMat3::from_diagonal(DVec3::splat(2.)),
+                            DVec3::ZERO,
+                        ),
+                    }],
+                ),
+                ("child".into(), vec![leaf]),
+            ]),
+        };
+        assert!(crate::physical::is_proper_rotation(
+            model.references().unwrap()[0].transform
+        ));
+        assert!(model.validate_isometries().is_err());
+        model = Model::from_bricks(&crate::demo::physics_lab().bricks);
+        model.validate_isometries().unwrap();
+        model.subparts.insert(
+            "unused".into(),
+            vec![Reference {
+                file: "3003.dat".into(),
+                color: 19,
+                matrix: Transform::from_pose(
+                    DMat3::from_diagonal(DVec3::new(-1., 1., 1.)),
+                    DVec3::ZERO,
+                ),
+            }],
+        );
+        assert!(model.validate_isometries().is_err());
     }
 }

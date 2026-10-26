@@ -58,7 +58,9 @@ cylinders use 8. Geometric height blends over a wide band into derivative-filter
 relief; the 94-unit radius stays inside the grid. See [stud LOD](stud-lod.md).
 Farther studs use derivative-filtered shader
 relief that fades when subpixel; a million separate meshes are never allocated.
-Studs are decorative and do not change the flat navigation/physics support plane.
+Studs do not change the flat navigation/dynamic-physics support plane. The static
+commit gate independently checks that grounded pieces are upright and registered
+to the baseplate grid; the visual studs are not the acceptance test.
 
 A part's reference origin can be above its base. For example, a brick placed
 with minimum-corner Z=0 can have reference-origin Z=1. `bounds.min.z` is its base
@@ -66,6 +68,28 @@ height; the inspector displays both concepts.
 
 Vertical storage cells do not create additional floors. Ground is a horizontal
 Z=0 layer, even for constructions crossing vertical indexing boundaries.
+
+## Placement grid and proper transforms
+
+Ground stud centres are at half-integer X/Y coordinates. Standard upright nominal
+part footprint edges therefore register on integer coordinates. CAD placements
+snap horizontally to one stud and vertically to one plate (1/3 native height),
+using nearest rounding with half ties away from zero. Nominal bounds are used,
+not cosmetic mesh gaps or protruding studs.
+
+`place_brick` snaps the requested minimum corner. Submodels, import previews,
+connected moves and authoring-group transforms receive one coherent translation
+of their nominal union corner; constituent poses and joint frames retain their
+relative layout. Snapping does not repair an internally misregistered model.
+The independent commit check rejects grounded pieces whose footprint is still
+off grid. Odd-sized part centres need not be integers, and this is not a blanket
+integer-coordinate requirement for every elevated detail.
+
+Camera motion and saved private camera/target remain continuous. Only the
+suggested standing-model origin returned by `get_user_position` is rounded.
+Accepted history is not automatically rewritten by the new placement rules.
+See [validation gates](validation-gates.md) for authoritative checks and
+[construction format](construction-format.md) for proper metric isometries.
 
 ## Lazy generation
 

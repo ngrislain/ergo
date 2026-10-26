@@ -28,7 +28,7 @@ The prebuilt bundle includes native binaries and WASM assets; consumers need
 Node.js 20+ and Chrome/Chromium, not Rust.
 
 ```sh
-npm install --global --ignore-scripts 'https://github.com/ngrislain/ergo/releases/download/v0.5.5/ngrislain-ergo-mcp-0.5.5.tgz'
+npm install --global --ignore-scripts 'https://github.com/ngrislain/ergo/releases/download/v0.5.6/ngrislain-ergo-mcp-0.5.6.tgz'
 ergo-mcp --login --publish-url https://ergosandbox.com
 ```
 
@@ -47,6 +47,11 @@ transform when creating a standing model there. To edit an existing construction
 use `open_shared_construction` with its ID or a specified position. Accepted
 mutations update the same shared assembly automatically; the working file is a
 cache. Read the confirmed `shared_commit` receipt.
+
+Call `get_building_techniques` to propose sourced wall, junction, opening, floor
+and roof patterns before building. Placements snap complete models coherently to
+the stud/plate grid. The server independently checks ground registration and
+proper metric isometries (translation + rotation, no scale/shear/reflection).
 
 See [agent workflows](docs/agent-shared-editing.md), [MCP tools](docs/local-construction-mcp.md)
 and [distribution](docs/distribution.md).

@@ -109,6 +109,9 @@ impl SharedWorlds {
             crate::import::validate_export(&mut request.scene)?;
         }
         ws.model.measurements.normalize_scene(&mut request.scene)?;
+        if let Some(model) = &request.scene.model {
+            model.validate_isometries()?;
+        }
         if request.scene.bricks.len() > ws.piece_limit()
             || canonical_cbor(&request.scene)?.len() > self.limits.bytes
         {

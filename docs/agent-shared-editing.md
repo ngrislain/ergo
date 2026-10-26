@@ -3,7 +3,9 @@
 There is one **public Ergo Sandbox**. Anyone can view it; signed-in users can
 edit it, subject to pacing and physical validation. Current MCP clients commit
 accepted edits to that same S3-backed world automatically. A working file is a
-cache, not a private world. Use MCP **v0.5.5** for studs-up guidance, per-piece stability diagnostics, explicit estimated connector tests, native formats, uncapped local authoring and long shared operations.
+cache, not a private world. Use MCP **v0.5.6** for sourced building techniques,
+coherent grid snapping, proper-isometry checks, per-piece stability diagnostics,
+explicit estimated connector tests and long shared operations.
 
 Inspect available model-library examples first and follow their demonstrated
 part choices and construction patterns, adapting them to the requested shape and
@@ -12,6 +14,12 @@ thin layers are needed, and smooth stud-less tiles for deliberate finishing
 surfaces. Minimize piece count within these preferences while preserving shape,
 colors, support and measured connection requirements. The same guidance is exposed
 by MCP initialization and `get_catalog`.
+
+Call `get_building_techniques` and propose relevant sourced patterns before
+generating geometry. Its curated starter library includes running bond,
+interlocked L/T junctions, lintels, overlapping slabs and roof techniques, with
+explicit additional-asset requirements for slopes/dormers. It is guidance rather
+than a physical certificate or semantic model-library search.
 
 Use minifigure scale by default for architectural details, stairs, furniture and
 landscaping. Prefer purpose-made catalogue roof/sloped parts, window and door
@@ -32,6 +40,12 @@ where geometry permits. Use suitable half/end bricks to maintain the footprint,
 openings and support rather than shifting whole walls outward. Avoid continuous
 vertical seams. This is a construction rule, not a substitute for checking support
 and measured connections or a guarantee of solidity by itself.
+
+Place and move complete models coherently on the stud/plate grid. The client
+snaps the nominal union corner, preserving relative poses; the server separately
+rejects off-grid grounded footprints and scale/shear/reflection. Every hierarchy
+instance must be a proper metric isometry, even if nested invalid scales would
+cancel in the final part pose. Camera coordinates are not placement coordinates.
 
 ## Start from the viewer's current position
 

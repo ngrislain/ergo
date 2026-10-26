@@ -22,10 +22,18 @@
 #world-canvas:focus-visible{outline:1px solid #52647380;outline-offset:-2px}
 .canvas-focus-status{display:none;font-size:10px;line-height:1.4;color:#526473;margin-top:7px}
 .viewport-area:has(#world-canvas:focus-visible) .canvas-focus-status{display:block}
-.viewport-area .north-marker{right:20px;bottom:112px;width:48px;height:48px}
+.viewport-status-stack{position:absolute;right:20px;bottom:16px;display:flex;flex-direction:column;align-items:flex-end;gap:10px;max-width:min(280px,calc(100% - 128px));pointer-events:none}
+.viewport-status-stack .north-marker{position:relative;inset:auto;width:72px;height:72px;display:grid;place-items:center;flex:none}
+.viewport-status-stack .nearest-construction,.viewport-status-stack .map-attribution{position:static;inset:auto;max-width:100%;margin:0;pointer-events:auto}
+.viewport-status-stack .map-attribution{overflow-wrap:anywhere;text-align:right}
 .viewport-area .north-marker .north-pointer{position:relative;width:40px;height:40px;transform-origin:center}
 .viewport-area .north-marker .north-pointer span{position:absolute;top:-11px;left:50%;transform:translateX(-50%)}
 .viewport-area .north-marker .north-pointer svg{width:40px;height:40px}
+@media(max-height:560px){
+  .viewport-status-stack{display:grid;grid-template-columns:72px minmax(0,1fr);gap:6px 10px;max-width:min(280px,calc(100% - 128px))}
+  .viewport-status-stack .north-marker{grid-row:1/4;grid-column:1;align-self:start}
+  .viewport-status-stack .nearest-construction,.viewport-status-stack .map-attribution,.viewport-status-stack .render-badge{grid-column:2;justify-self:end}
+}
 @media(max-width:560px){
   .camera-gps strong{font-size:11px}
   .scene-heading .camera-location{margin-bottom:6px}

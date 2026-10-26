@@ -349,6 +349,13 @@ async fn upload(
         }
         scene.geo = s.geo;
     }
+    let snap_delta = ergo_world::placement::snap_scene(&mut scene)?;
+    if snap_delta != glam::DVec3::ZERO {
+        notes.push(format!(
+            "Snapped whole-model placement by {:?} to the stud/plate grid",
+            ergo_world::coordinates::public(snap_delta)
+        ));
+    }
     ergo_world::catalog::validate(&scene.bricks)?;
     let pairs: std::collections::HashSet<_> = scene
         .joints

@@ -266,6 +266,24 @@ pub fn transform(
     );
     let rotation_metric = DMat3::from_axis_angle(axis_metric.normalize(), angle);
     let rotation = crate::physical::world_transform(rotation_metric);
+    let destination = scene
+        .bricks
+        .iter()
+        .filter(|b| pieces.contains(&b.id))
+        .map(|b| {
+            let position = pivot + rotation * (b.position - pivot) + translation;
+            let mesh = scene
+                .meshes
+                .get(&b.part)
+                .context("Missing group geometry")?;
+            Ok(crate::placement::body_bounds(mesh).transformed(rotation * b.transform, position))
+        })
+        .collect::<Result<Vec<_>>>()?
+        .into_iter()
+        .reduce(Aabb::union);
+    let translation = (translation
+        + destination.map_or(DVec3::ZERO, crate::placement::snapping_delta))
+    .map(|v| if v.abs() < 1e-9 { 0. } else { v });
     let point = |p: DVec3| pivot + rotation * (p - pivot) + translation;
     let mut bricks = scene.bricks.clone();
     for b in &mut bricks {

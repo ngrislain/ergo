@@ -199,6 +199,19 @@ impl LocalClientRuntime {
     fn update(&mut self, edit: impl FnOnce(&mut WorldExport) -> Result<()>) -> Result<Value> {
         let mut next = self.scene.clone();
         edit(&mut next)?;
+        if next
+            .model
+            .as_ref()
+            .is_some_and(|m| !m.matches(&next.bricks))
+        {
+            next.model = None;
+        }
+        if let Some(model) = &next.model {
+            model.validate_isometries()?;
+        }
+        for brick in &next.bricks {
+            ergo_world::physical::validate_pose(brick)?;
+        }
         ergo_world::catalog::validate(&next.bricks)?;
         constraints::validate_joints(&next.bricks, &next.joints, &next.fixed_bricks)?;
         ergo_world::groups::validate(&next.bricks, &next.groups)?;
@@ -303,6 +316,11 @@ impl LocalClientRuntime {
     }
     fn call(&mut self, name: &str, args: Value) -> Result<Value> {
         match name {
+            "get_building_techniques" => Ok(text(ergo_world::techniques::library(
+                args["query"].as_str(),
+                args["category"].as_str(),
+                args["technique_id"].as_str(),
+            )?)),
             "get_catalog" => {
                 let catalog = if args["include_extended"].as_bool().unwrap_or(false) {
                     ergo_world::catalog::catalog()
@@ -355,8 +373,11 @@ impl LocalClientRuntime {
                     quarter_turns: i32,
                 }
                 let a: Args = serde_json::from_value(args)?;
+                let requested = ergo_world::coordinates::internal(DVec3::from(a.min_corner));
+                ensure!(requested.is_finite(), "Invalid placement corner");
+                let corner = ergo_world::placement::snap_point(requested);
                 let part = canonical(&a.part);
-                let feedback = self.update(|scene| {
+                let mut feedback = self.update(|scene| {
                     let mesh = scene
                         .meshes
                         .entry(part.clone())
@@ -364,9 +385,9 @@ impl LocalClientRuntime {
                     let rotation = DMat3::from_rotation_y(
                         (a.quarter_turns.rem_euclid(4) as f64) * std::f64::consts::FRAC_PI_2,
                     );
-                    let bounds = mesh.body_bounds.transformed(rotation, DVec3::ZERO);
-                    let p = ergo_world::coordinates::internal(DVec3::from(a.min_corner))
-                        - DVec3::new(bounds.min.x, bounds.min.y, bounds.max.z);
+                    let bounds =
+                        ergo_world::placement::body_bounds(mesh).transformed(rotation, DVec3::ZERO);
+                    let p = corner - DVec3::new(bounds.min.x, bounds.min.y, bounds.max.z);
                     let c = ergo_world::ldraw::conversion();
                     let reference = ergo_world::ldraw::Reference {
                         name: part,
@@ -390,6 +411,7 @@ impl LocalClientRuntime {
                     ));
                     Ok(())
                 })?;
+                feedback["placement"] = json!({"min_corner":ergo_world::coordinates::public(corner),"snap_delta_world":ergo_world::coordinates::public(corner-requested)});
                 Ok(text(feedback))
             }
             "place_submodel" => {
@@ -416,6 +438,7 @@ impl LocalClientRuntime {
                 } else {
                     ergo_world::assembly::Model::from_document(document.as_ref().unwrap())?
                 };
+                model.validate_isometries()?;
                 let colors = document
                     .as_ref()
                     .map(|d| d.colors.clone())
@@ -427,15 +450,19 @@ impl LocalClientRuntime {
                 } else {
                     Default::default()
                 };
+                matrix.validate_isometry()?;
                 let color = args
                     .get("color")
                     .map(|v| serde_json::from_value::<u32>(v.clone()))
                     .transpose()?
                     .unwrap_or(71);
-                Ok(text(self.update(|scene| {
-                    let mut combined = ergo_world::assembly::Model::for_scene(scene);
+                let mut snap_delta = DVec3::ZERO;
+                let mut feedback = self.update(|scene| {
+                    let base = ergo_world::assembly::Model::for_scene(scene);
+                    let mut combined = base.clone();
                     combined.append(&model, matrix, color)?;
                     let references = combined.references()?;
+                    let first = scene.bricks.len();
                     let mut next_id = scene.bricks.iter().map(|b| b.id).max().unwrap_or(0);
                     for r in references.iter().skip(scene.bricks.len()) {
                         if !scene.meshes.contains_key(&r.name) {
@@ -468,21 +495,61 @@ impl LocalClientRuntime {
                         ergo_world::physical::validate_pose(&brick)?;
                         scene.bricks.push(brick);
                     }
+                    if let Some(bounds) = scene.bricks[first..]
+                        .iter()
+                        .map(|b| b.bounds)
+                        .reduce(ergo_world::Aabb::union)
+                    {
+                        snap_delta = ergo_world::placement::snapping_delta(bounds);
+                        if snap_delta != DVec3::ZERO {
+                            for brick in &mut scene.bricks[first..] {
+                                brick.translated(snap_delta);
+                            }
+                            let shift = ergo_world::assembly::Transform::from_pose(
+                                DMat3::IDENTITY,
+                                ergo_world::ldraw::conversion().inverse() * snap_delta,
+                            );
+                            combined = base;
+                            combined.append(
+                                &model,
+                                ergo_world::assembly::Transform(shift.0 * matrix.0),
+                                color,
+                            )?;
+                        }
+                    }
                     scene.model = Some(combined);
                     Ok(())
-                })?))
+                })?;
+                feedback["placement"] =
+                    json!({"snap_delta_world":ergo_world::coordinates::public(snap_delta)});
+                Ok(text(feedback))
             }
             "move_brick" => {
                 let selected = id(&args, "id")?;
-                let delta = vector(&args, "delta")?;
+                let requested_delta = vector(&args, "delta")?;
+                ensure!(
+                    self.scene.bricks.iter().any(|b| b.id == selected),
+                    "Brick is absent"
+                );
+                let mut graph = self.scene.joints.clone();
+                graph.extend(constraints::inferred_joints(&self.scene.bricks));
+                let group = constraints::connected_group(selected, &graph);
+                let bounds = self
+                    .scene
+                    .bricks
+                    .iter()
+                    .filter(|b| group.contains(&b.id))
+                    .map(|b| b.bounds)
+                    .reduce(ergo_world::Aabb::union)
+                    .context("Empty selection")?;
+                let delta = ergo_world::placement::snap_translation(bounds, requested_delta);
+                if delta == DVec3::ZERO {
+                    let mut feedback = self.feedback();
+                    feedback["working_copy_changed"] = json!(false);
+                    feedback["placement"] = json!({"applied_translation_world":[0,0,0]});
+                    return Ok(text(feedback));
+                }
                 Ok(text(self.update(|scene| {
-                    ensure!(
-                        scene.bricks.iter().any(|b| b.id == selected),
-                        "Brick is absent"
-                    );
-                    let mut graph = scene.joints.clone();
-                    graph.extend(constraints::inferred_joints(&scene.bricks));
-                    let group = constraints::connected_group(selected, &graph);
                     ensure!(
                         !scene.fixed_bricks.iter().any(|id| group.contains(id)),
                         "The group is anchored"

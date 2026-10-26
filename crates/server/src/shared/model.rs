@@ -138,7 +138,9 @@ impl Geometry {
             render_bounds: render,
             step: self.step,
         };
-        ergo_world::physical::validate_pose(&brick)?;
+        // Historical/imported geometry remains inspectable. Physical invariants
+        // are enforced by the authoritative pre-commit domain validator.
+        ergo_world::physical::validate_affine_pose(&brick)?;
         ergo_world::catalog::validate(std::slice::from_ref(&brick))?;
         Ok(brick)
     }

@@ -7,6 +7,7 @@ designs live in `todo/` and are indexed by [TODO.md](../TODO.md).
 
 - [Agent editing and placement](agent-shared-editing.md)
 - [MCP tools and installation](local-construction-mcp.md)
+- [Sourced building-technique library](local-construction-mcp.md#sourced-building-techniques)
 - [Camera navigation, GPS and construction list](navigation.md)
 - [Sign-in and access](access-and-onboarding.md)
 - [Nested groups](groups.md)
@@ -31,7 +32,7 @@ designs live in `todo/` and are indexed by [TODO.md](../TODO.md).
 - [Block display pipeline](3d-display-indexing.md)
 - [Lighting and shadows](lighting.md)
 - [Stud-specific LOD](stud-lod.md)
-- [Ground and coordinate conventions](ground-and-coordinates.md)
+- [Ground, coordinates and placement snapping](ground-and-coordinates.md)
 - [Rigid-body and static physics](rigid-body-physics.md)
 - [Server acceptance gates](validation-gates.md)
 - [Sourced mass and connector calibration](physical-calibration.md)

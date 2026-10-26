@@ -7,7 +7,7 @@ shared Sandbox. The bridge never grants itself acceptance or direct agent S3 acc
 ## Install and configure
 
 ```sh
-npm install --global --ignore-scripts 'https://github.com/ngrislain/ergo/releases/download/v0.5.5/ngrislain-ergo-mcp-0.5.5.tgz'
+npm install --global --ignore-scripts 'https://github.com/ngrislain/ergo/releases/download/v0.5.6/ngrislain-ergo-mcp-0.5.6.tgz'
 ergo-mcp --login --publish-url https://ergosandbox.com
 ```
 
@@ -43,7 +43,8 @@ expire and are origin/purpose-bound. They are not S3 credentials.
 ## Position and current state
 
 - `get_user_position` reads the caller's private last S3 camera/target and returns
-  `ground_position_world` plus native `model_transform` for new standing models.
+  snapped integer-horizontal `ground_position_world` plus native `model_transform`
+  for new standing models. Saved camera/target coordinates remain continuous.
 - `open_shared_construction` loads a complete authoritative assembly by ID or
   bounded nearest-position lookup. Accepted edits update that same assembly.
 - `get_edit_allowance` returns pacing capacity/refill and the authoring piece limit;
@@ -111,10 +112,14 @@ standard gray. Imported source units are converted at the boundary.
 Models can reuse definitions. Existing/resolved parts are shared geometry; known
 catalog shapes can use labeled nominal geometry. Nonstandard geometry must be
 resolved or supplied by the import. Placement is an atomic batch and rejects
-overlap, floor crossing and metric scale/shear for physical bricks.
+overlap, floor crossing and metric scale/shear/reflection for physical bricks.
+Every nested model instance must be a proper metric isometry, including unused
+definitions; cancelling parent/child scales are rejected.
 
-- `place_brick`: add a supported part by minimum corner.
-- `move_brick`: move its fixed-connected component with collision checks.
+- `place_brick`: snap a requested minimum corner to studs/plate heights, then add
+  the supported part; feedback includes the applied placement and snap delta.
+- `move_brick`: snap the destination of its fixed-connected component coherently,
+  with collision checks. A snapped zero move leaves cache/revision unchanged.
 - `remove_bricks`: remove parts and incident constraints, reporting lost support.
 - `connect_bricks`: author a fixed or explicit revolute constraint.
 - `create_group`, `set_group_members`, `transform_group`, `list_groups`, `ungroup`:
@@ -124,6 +129,38 @@ overlap, floor crossing and metric scale/shear for physical bricks.
 - `export_construction`: flush/identify the current native cache file.
 
 See [construction format](construction-format.md) and [groups](groups.md).
+
+Incoming submodels are snapped with one translation of the new pieces' nominal
+union corner. Existing pieces and relative internal poses are preserved. The
+server independently rejects off-grid grounded footprints; an internally
+misregistered source model is not repaired by rounding every piece.
+
+## Sourced building techniques
+
+Call `get_building_techniques` before generating architectural geometry and propose
+the relevant techniques. Optional `query`, `category` (`walls`, `junctions`,
+`openings`, `floors`, `roofs`) and exact `technique_id` filter the curated library.
+For example, `{"query":"Swiss chalet"}` returns attributed patterns for bonded
+walls, corners/T-junctions, lintels, floors and roofs. Filtering is case-insensitive
+keyword matching, not live semantic catalogue/model search.
+
+The initial `ergo-building-techniques-1` library paraphrases
+[Brick Builder's Handbook: Basic LEGO Techniques](https://brickbuildershandbook.com/basic-lego-techniques/).
+Nine entries cover running bond, interlocked corners/T-junctions, English bond,
+supported openings, staggered slabs, stepped roofs, catalogue-slope roofs and
+dormers. Slab guidance is an explicit application of the source's overlap
+principle. Slope/dormer entries identify their additional catalogue/physics needs;
+they do not invent available slope assets or measured connectors. Guidance is not
+a stability certificate. Source: `crates/world/src/techniques.rs`.
+
+The generator in `scripts/chalet_model.py` applies six of these patterns to a
+24×16-stud, two-storey chalet with nine upright brick courses per room, staggered
+floors, bonded wall junctions, an external staircase and balcony. Its shallow
+studs-up roof uses overlapping standard plates with supported gables rather than
+scaled bricks or freely tilted slabs. Window/door openings are brick-built, not
+claimed catalogue inserts. `scripts/build-world-models.py` records the selected
+library guidance and emits an actual-walker route for each chalet. Preflight and
+publication receipts remain separate.
 
 ## Validation and images
 

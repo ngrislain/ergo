@@ -13,10 +13,12 @@ pub mod mcp;
 pub mod physical;
 #[cfg(feature = "simulation")]
 pub mod physics;
+pub mod placement;
 #[cfg(feature = "simulation")]
 pub mod solidity;
 pub mod spatial;
 pub mod storage;
+pub mod techniques;
 pub mod terrain;
 pub mod user_position;
 pub mod validation;

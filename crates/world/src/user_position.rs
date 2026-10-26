@@ -62,8 +62,8 @@ impl UserPosition {
     }
     pub fn ground_position(&self) -> [f64; 3] {
         [
-            self.context.position_world[0],
-            self.context.position_world[1],
+            self.context.position_world[0].round(),
+            self.context.position_world[1].round(),
             0.,
         ]
     }

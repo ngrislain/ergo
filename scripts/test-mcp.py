@@ -50,10 +50,18 @@ def main():
                                             "capabilities": {}, "clientInfo": {"name": "ergo-smoke", "version": "1"}})
             assert initialized["capabilities"]["tools"]["listChanged"] is False
             names = {tool["name"] for tool in rpc("tools/list")["tools"]}
+            techniques=call('get_building_techniques',query='Swiss chalet')['structuredContent']['techniques']
+            assert any(t['id']=='interlocked-corner' for t in techniques)
+            assert any(t['id']=='stepped-roof' for t in techniques)
+            assert all(t['source']['url']=='https://brickbuildershandbook.com/basic-lego-techniques/' for t in techniques)
             assert {"test_stability_by_gravity", "test_visual_appearance",
                     "test_stability_by_earthquake", "test_moderate_earthquake_stability"} <= names
-            result = call("place_brick", part="3003", color=4, min_corner=[2, 2, 0])
+            result = call("place_brick", part="3003", color=4, min_corner=[2.23, 2.41, 0.04])
             assert result["structuredContent"]["overlap_free"] is True
+            assert result['structuredContent']['placement']['min_corner']==[2,2,0],result
+            before=workspace.read_bytes()
+            noop=call('move_brick',id=1,delta=[.23,-.41,.1])
+            assert noop['structuredContent']['working_copy_changed'] is False and workspace.read_bytes()==before,noop
             assert call("place_brick", part="3003", color=4, min_corner=[2, 2, 0])["isError"] is True
             assert call("list_bricks")["structuredContent"]["total"] == 1
             result = call("place_brick", part="3003", color=1, min_corner=[8, 2, 8])
@@ -129,7 +137,7 @@ def main():
                         "1 16 100 0 0 1 0 0 0 1 0 0 0 1 pillar.ldr\n"
                         "0 FILE pillar.ldr\n"
                         "1 16 0 -24 0 1 0 0 0 1 0 0 0 1 3003.dat\n")
-            matrix = [[1, 0, 0, 25], [0, 1, 0, -5], [0, 0, 1, 0], [0, 0, 0, 1]]
+            matrix = [[1, 0, 0, 25.23], [0, 1, 0, -5.3], [0, 0, 1, 0], [0, 0, 0, 1]]
             result = call("place_submodel", document=submodel, transform=matrix, color=14)
             assert result["isError"] is False, result
             stored = json.loads(workspace.read_text())
@@ -138,7 +146,8 @@ def main():
             assert any(name.endswith("pillar.ldr") for name in stored["model"]["definitions"])
             added = call("list_bricks")["structuredContent"]["bricks"][-2:]
             assert [brick["color"] for brick in added] == [14, 14]
-            assert [brick["position"][0] for brick in added] == [25, 30]
+            assert all(abs(brick['position'][0]-x)<1e-9 for brick,x in zip(added,[25,30]))
+            assert all(abs(brick['position'][1]+5)<1e-9 for brick in added)
             before = workspace.read_bytes()
             assert call("place_submodel", document=submodel, transform=matrix, color=14)["isError"] is True
             assert workspace.read_bytes() == before, "Failed submodel placement must roll back"
@@ -149,6 +158,16 @@ def main():
                 "transform":[[1,0,0,60],[0,1,0,0],[0,0,1,1],[0,0,0,1]]}]}}
             native_result=call("place_submodel",model=native)
             assert not native_result.get("isError"),native_result
+            before=workspace.read_bytes()
+            for linear in [[[-1,0,0],[0,1,0],[0,0,1]],[[2,0,0],[0,1,0],[0,0,1]],[[1,.2,0],[0,1,0],[0,0,1]]]:
+                invalid=[row+[translation] for row,translation in zip(linear,[200,0,0])]+[[0,0,0,1]]
+                assert call('place_submodel',model=native,transform=invalid)['isError'] is True
+                assert workspace.read_bytes()==before
+            cancelling={'format':'ergo-model-1','schema':2,'root':'main','definitions':{
+                'main':[{'target':{'kind':'definition','id':'half'},'transform':[[2,0,0,0],[0,2,0,0],[0,0,2,0],[0,0,0,1]]}],
+                'half':[{'target':{'kind':'part','id':'3003.dat'},'color':19,'transform':[[.5,0,0,40],[0,.5,0,0],[0,0,.5,.5],[0,0,0,1]]}]}}
+            assert call('place_submodel',model=cancelling)['isError'] is True
+            assert workspace.read_bytes()==before
             assert call("place_submodel",ldraw=submodel).get("isError"),"Retired protocol argument must not remain accepted"
             # Editing and group membership are not capped by the dynamics engine's
             # 5,000-body limit; account-specific admission remains server-owned.

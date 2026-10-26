@@ -19,7 +19,8 @@ match the authoritative piece poses.
 
 ## Rigid transforms and dimensions
 
-Only translation/rotation is supported; catalog pieces are not scaled or sheared.
+Only proper translation/rotation is supported; catalog pieces are not scaled,
+sheared or reflected.
 With public construction-to-SI scale $D=\operatorname{diag}(0.008,0.008,0.0096)$,
 SI rotation $R$, world pivot $\mathbf p$, and construction-unit translation
 $\mathbf t$:
@@ -48,6 +49,12 @@ Group transforms are atomic CAD edits. They validate the **destination** body
 boxes and floor. A rotation is not a continuously swept physics trajectory;
 conservative world AABBs may reject some otherwise valid rotated arrangements.
 Dynamic dragging is handled by the separate client constraint solver.
+
+After applying a CAD rotation/translation, the destination nominal union corner
+is snapped to the stud/plate grid with one additional translation. All descendant
+poses, pivots and internal joint frames move together; members are never rounded
+independently. The server still checks grounded footprints and all metric poses
+before accepting the edit.
 
 ## UI and MCP
 

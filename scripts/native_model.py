@@ -6,7 +6,15 @@ PARTS={"3070b":(1,1,1/3),"3069b":(2,1,1/3),"3068b":(2,2,1/3),"2431":(4,1,1/3),
        "3020":(4,2,1/3),"3031":(4,4,1/3),"3035":(8,4,1/3),"41539":(8,8,1/3),
        "3007":(8,2,1),"3008":(8,1,1),"3004":(2,1,1),"2456":(6,2,1),"3002":(3,2,1),"3003":(2,2,1),
        "3001":(4,2,1),"3010":(4,1,1),"3005":(1,1,1),"3024":(1,1,1/3),"3032":(6,4,1/3),"3021":(3,2,1/3),"3022":(2,2,1/3),
-       "3795":(6,2,1/3),"3710":(4,1,1/3),"3034":(8,2,1/3)}
+         "3795":(6,2,1/3),"3710":(4,1,1/3),"3034":(8,2,1/3),"3832":(10,2,1/3),"4282":(16,2,1/3),"3023":(2,1,1/3),"3666":(6,1,1/3),"3009":(6,1,1)}
+
+
+def snap_origin(origin):
+    def nearest(value):
+        if not math.isfinite(value):raise ValueError('Placement coordinates must be finite')
+        return math.floor(value+.5) if value>=0 else math.ceil(value-.5)
+    x,north,height=origin
+    return [nearest(x),nearest(north),nearest(height*3)/3]
 
 
 def multiply(a,b):
@@ -78,6 +86,15 @@ class Model:
         position=[p-q for p,q in zip([x,north,height],lo)]
         self.definitions.setdefault(definition,[]).append(instance("part",part+".dat",position,color,rotation))
 
+    def plate_rectangle(self,width,depth,color,x,north,height):
+        if not width or not depth:return
+        parts=['41539','3035','3032','3031','4282','3832','3034','3795','3020','3021','3022','3666','3710','3023','3024']
+        choices=[(w*d,part,w,d,turn) for part in parts for w,d,turn in [(*PARTS[part][:2],False),(PARTS[part][1],PARTS[part][0],True)] if w<=width and d<=depth]
+        _,part,w,d,turn=max(choices,key=lambda v:v[0])
+        self.part(part,color,x,north,height,turn=turn)
+        self.plate_rectangle(width-w,d,color,x+w,north,height)
+        self.plate_rectangle(width,depth-d,color,x,north+d,height)
+
     def reference(self,id,x,north,height,color=None,rotation=None,definition="main"):
         self.definitions.setdefault(definition,[]).append(instance("definition",id,[x,north,height],color,rotation))
 
@@ -96,6 +113,7 @@ class Model:
         for layer in range(layers):self.part(part,color,x,north,height+layer/3,definition=definition)
 
     def export(self,origin=(0,0,0)):
+        origin=tuple(snap_origin(origin))
         if origin!=(0,0,0):
             root="placed";definitions={**self.definitions,root:[instance("definition","main",list(origin))]}
         else:root="main";definitions=self.definitions

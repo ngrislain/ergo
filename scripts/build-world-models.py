@@ -7,8 +7,9 @@ import json
 import math
 from pathlib import Path
 import shutil
+import chalet_model
 
-from native_model import Model,bounds,east_rotation,local_bounds,multiply,north_rotation,yaw
+from native_model import Model,bounds,east_rotation,local_bounds,multiply,north_rotation,yaw,snap_origin
 
 ROOT=Path(__file__).resolve().parents[1]
 spec=importlib.util.spec_from_file_location("demo",ROOT/"scripts/demo-mcp.py")
@@ -17,65 +18,20 @@ demo=importlib.util.module_from_spec(spec);spec.loader.exec_module(demo)
 
 
 def chalet(wall,timber,roof,shutter):
-    model=Model()
-    for layer in range(12):
-        z=layer/3;color=wall if layer<6 else timber
-        model.strip(8,color,0,5,z)
-        for x in [0,7]:model.strip(4,color,x,1,z,turn=True)
-        for x in range(8):
-            front=color
-            if x in [3,4] and layer<6:front=70
-            if x in [1,2,5,6] and layer in [3,4,5,8,9,10]:front=321
-            if x in [0,7] and layer in [3,4,5,8,9,10]:front=shutter
-            model.part("3070b",front,x,0,z)
-    # Two topmost rigid pitched slabs: no assumed stud clutch above either slab.
-    angle=math.radians(25)
-    left=multiply(north_rotation(-angle),yaw(math.pi/2))
-    right=multiply(north_rotation(angle),yaw(math.pi/2))
-    lo,hi=local_bounds("3035",left);span=hi[0]-lo[0]
-    model.part("3035",roof,4-span,-1,4,rotation=left)
-    model.part("3035",roof,4,-1,4,rotation=right)
-    # Supported balcony deck and independent grounded balustrade.
-    for x in [1,5]:model.column("3068b",70,x,-2,7)
-    for x in [0,4]:model.part("3020",70,x,-2,7/3)
-    for x in range(8):model.column("3070b",70,x,-3,8)
-    for x in [1,2,5,6]:
-        model.part("3070b",2,x,-3,8/3)
-        model.part("3070b",4 if x%2 else 14,x,-3,3)
-    return model
+    return chalet_model.chalet(wall,timber,roof,shutter)
 
 
 def landscape():
-    model=Model()
-    for n in [11,13,21,23]:model.floor(50,2,71,-1,n,0)
-    model.floor(22,6,7,13,15,0)
-    for x in [4,18,32,46]:
-        for n in [9,34]:model.floor(4,2,28,x,n,0)
-    for x in [-5,9,23,37,51]:
-        for n in [5,29]:
-            model.column("3068b",70,x,n,3)
-            for dx in [-1,1]:
-                for dn in [-1,1]:model.part("3068b",288,x+dx,n+dn,1)
-            model.column("3068b",2,x,n,2,4/3)
-            model.column("3070b",288,x+.5,n+.5,2,2)
-    # A low fountain and planter borders in the public square.
-    model.floor(6,4,321,21,16,1/3)
-    for n in [15,20]:
-        for h in range(2):model.strip(8,71,20,n,1/3+h/3)
-    for x in [20,27]:
-        for h in range(2):model.strip(4,71,x,16,1/3+h/3,turn=True)
-    model.column("3068b",71,23,17,3,2/3)
-    model.column("3070b",321,23.5,17.5,2,5/3)
-    return model
+    return chalet_model.landscape()
 
 
 def village_layout():
     model=Model()
     styles=[(15,19,320,288),(19,70,72,4),(15,70,70,272)]
     for index,style in enumerate(styles):model.definitions[f'house-{index}']=chalet(*style).definitions['main']
-    for row,north in enumerate([0,28]):
-        for column,x in enumerate([0,14,28,42]):
-            model.reference(f'house-{(column+row)%3}',x+(8 if row==0 else 0),north+(6 if row==0 else 0),0,
+    for row,north in enumerate([0,56]):
+        for column,x in enumerate([0,40,80,120]):
+            model.reference(f'house-{(column+row)%3}',x+(24 if row==0 else 0),north+(16 if row==0 else 0),0,
                             rotation=yaw(math.pi if row==0 else 0))
     model.definitions['main'].extend(landscape().definitions['main'])
     return model
@@ -145,6 +101,7 @@ PALACE_LEVELS=[1/3+level*(PALACE_CLEAR_HEIGHT+PALACE_FLOOR_HEIGHT) for level in 
 
 
 def palace_walk_route(origin):
+    origin=snap_origin(origin)
     ground,first,second=PALACE_LEVELS
     points=[(28,6,ground,'ground hall'),(28,38,first,'first-floor landing'),
             (20,38,first,'first-floor west gallery'),(36,38,first,'first-floor doorway gallery'),
@@ -322,11 +279,13 @@ def palace():
 
 
 def run_model(binary,output,name,model,origin,token_file=None,publish=False,estimated_connectors=False):
+    origin=snap_origin(origin)
     output.mkdir(parents=True,exist_ok=True);workspace=output/"construction.ergo.json"
     if workspace.exists():raise RuntimeError("Choose a fresh output directory: "+str(output))
     native=model.export(tuple(origin));(output/"model.ergo-model.json").write_text(json.dumps(native,separators=(',',':'))+'\n')
     mcp=demo.Mcp(binary,workspace,'https://ergosandbox.com',None)
     try:
+        technique_plan=mcp.call('get_building_techniques',query='palace' if 'palace' in name.lower() else 'chalet')['structuredContent']
         mcp.call('place_submodel',model=native)
         validation=mcp.call('validate_construction')['structuredContent']
         lo,hi=bounds(native);target=[(a+b)/2 for a,b in zip(lo,hi)];span=max(b-a for a,b in zip(lo,hi))
@@ -335,7 +294,7 @@ def run_model(binary,output,name,model,origin,token_file=None,publish=False,esti
         image=mcp.call('test_visual_appearance',camera=camera,width=1024,height=768,lighting='studio')
         picture=next(c for c in image['content'] if c['type']=='image')
         (output/'preview.png').write_bytes(base64.b64decode(picture['data']))
-        report={'name':name,'validation':validation,'origin':origin,'shared_committed':False}
+        report={'name':name,'validation':validation,'origin':origin,'shared_committed':False,'technique_plan':technique_plan}
         (output/'report.json').write_text(json.dumps(report,indent=2)+'\n')
     finally:mcp.close()
     if publish or estimated_connectors:
@@ -383,24 +342,28 @@ def main():
     parser.add_argument('--publish',action='store_true');parser.add_argument('--token-file',type=Path)
     parser.add_argument('--estimated-connectors',action='store_true',help='Explicit ballpark connector diagnostics, not measured calibration')
     args=parser.parse_args();binary=shutil.which(args.binary)
+    args.origin=snap_origin(args.origin)
     if not binary:parser.error('Install the released client or pass --binary')
     if args.publish and not args.token_file:parser.error('--publish requires --token-file')
     if args.kind=='palace':
         run_model(binary,args.output,'Palace of the Hidden Sun',palace(),args.origin,args.token_file,args.publish,args.estimated_connectors)
         (args.output/'walk-route.json').write_text(json.dumps(palace_walk_route(args.origin),indent=2)+'\n')
-    elif args.kind=='chalet':run_model(binary,args.output,'Alpine chalet',chalet(15,70,320,288),args.origin,args.token_file,args.publish,args.estimated_connectors)
+    elif args.kind=='chalet':
+        run_model(binary,args.output,'Alpine chalet',chalet(15,70,320,288),args.origin,args.token_file,args.publish,args.estimated_connectors)
+        (args.output/'walk-route.json').write_text(json.dumps(chalet_model.walk_route(args.origin),indent=2)+'\n')
     else:
         layout=run_model(binary,args.output/'layout-preflight','Alpine village layout preflight',village_layout(),args.origin)
         if not layout['validation']['publication_ready']:raise RuntimeError('Combined village layout is not publishable')
         styles=[(15,19,320,288),(19,70,72,4),(15,70,70,272)]
-        for row,north in enumerate([0,28]):
-            for column,x in enumerate([0,14,28,42]):
+        for row,north in enumerate([0,56]):
+            for column,x in enumerate([0,40,80,120]):
                 model=chalet(*styles[(column+row)%3])
                 if row==0:
                     placed=Model();placed.definitions={**{('house' if k=='main' else k):v for k,v in model.definitions.items()},'main':[]}
-                    placed.reference('house',8,6,0,rotation=yaw(math.pi));model=placed
+                    placed.reference('house',24,16,0,rotation=yaw(math.pi));model=placed
                 origin=[args.origin[0]+x,args.origin[1]+north,args.origin[2]]
                 run_model(binary,args.output/f'chalet-{row*4+column+1}',f'Alpine chalet {row*4+column+1}',model,origin,args.token_file,args.publish,args.estimated_connectors)
+                (args.output/f'chalet-{row*4+column+1}'/'walk-route.json').write_text(json.dumps(chalet_model.walk_route(origin,row==0),indent=2)+'\n')
         run_model(binary,args.output/'square','Alpine village square',landscape(),args.origin,args.token_file,args.publish,args.estimated_connectors)
 
 

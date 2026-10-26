@@ -59,6 +59,13 @@ pub fn world_transform(m: DMat3) -> DMat3 {
     DMat3::from_diagonal(SCALE.recip()) * m * DMat3::from_diagonal(SCALE)
 }
 
+pub fn is_proper_rotation(rotation: DMat3) -> bool {
+    let error = rotation.transpose() * rotation - DMat3::IDENTITY;
+    rotation.is_finite()
+        && error.to_cols_array().iter().all(|n| n.abs() < 1e-5)
+        && (rotation.determinant() - 1.).abs() < 1e-5
+}
+
 /// Safe visual/model pose, including the affine transforms permitted by LDraw.
 pub fn validate_affine_pose(brick: &Brick) -> Result<()> {
     ensure!(
@@ -74,11 +81,9 @@ pub fn validate_affine_pose(brick: &Brick) -> Result<()> {
 pub fn validate_pose(brick: &Brick) -> Result<()> {
     validate_affine_pose(brick)?;
     let rotation = metric_transform(brick.transform);
-    let error = rotation.transpose() * rotation - DMat3::IDENTITY;
     ensure!(
-        error.to_cols_array().iter().all(|n| n.abs() < 1e-5)
-            && (rotation.determinant().abs() - 1.0).abs() < 1e-5,
-        "Brick {} ({}) is scaled or sheared in metric space; it can be viewed/exported, but simulation and publication require nominal rigid part dimensions",
+        is_proper_rotation(rotation),
+        "Brick {} ({}) must be a proper metric isometry (translation + rotation): scale, shear and reflection are not allowed for simulation or publication",
         brick.id,
         brick.part
     );
@@ -108,6 +113,10 @@ pub fn mass_kg(part: &str) -> Result<f64> {
         "3020.dat" => 1.20,
         "3795.dat" => 1.74,
         "3034.dat" => 2.27,
+        // BrickLink 3832, Plate 2 x 10, verified 2026-10-26.
+        "3832.dat" => 2.91,
+        // BrickLink item-info weight verified 2026-10-26 (plate 2 × 16).
+        "4282.dat" => 4.50,
         "3031.dat" => 2.22,
         "3032.dat" => 3.30,
         "3035.dat" => 4.70,
@@ -265,6 +274,31 @@ impl ConnectionMeasurements {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn proper_metric_isometries_accept_rotations_but_reject_scale_shear_and_reflection() {
+        let mut d = crate::demo::Demo::new();
+        d.add("3003", 19, 2., 0., 2.);
+        let b = &mut d.bricks[0];
+        for rotation in [
+            DMat3::from_rotation_x(0.7),
+            DMat3::from_rotation_y(1.3),
+            DMat3::from_rotation_z(std::f64::consts::FRAC_PI_2),
+        ] {
+            b.transform = world_transform(rotation);
+            validate_pose(b).unwrap();
+        }
+        for invalid in [
+            DMat3::from_diagonal(DVec3::new(-1., 1., 1.)),
+            DMat3::from_diagonal(DVec3::new(2., 1., 1.)),
+            DMat3::from_cols(DVec3::X, DVec3::new(0.2, 1., 0.), DVec3::Z),
+        ] {
+            b.transform = world_transform(invalid);
+            assert!(validate_pose(b).is_err());
+        }
+        b.transform = DMat3::IDENTITY;
+        b.position.x = f64::INFINITY;
+        assert!(validate_pose(b).is_err());
+    }
     #[cfg(feature = "simulation")]
     #[test]
     fn visual_affine_pose_cannot_be_used_as_a_rigid_simulation_body() {

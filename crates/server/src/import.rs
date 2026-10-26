@@ -158,7 +158,7 @@ pub fn import_ldraw(
         .filter(|brick| ergo_world::physical::validate_pose(brick).is_err())
         .collect::<Vec<_>>();
     if let Some(first) = non_rigid.first() {
-        notes.push(format!("Imported {} scaled/sheared LDraw occurrences without changing their transforms (first: brick {} / {}). Viewing and export are available; rigid-body simulation and publication require nominal rigid dimensions.", non_rigid.len(), first.id, first.part));
+        notes.push(format!("Imported {} scaled/sheared/reflected LDraw occurrences without changing their transforms (first: brick {} / {}). Viewing and export are available; rigid-body simulation and publication require proper metric isometries.", non_rigid.len(), first.id, first.part));
     }
     Ok(ImportedLdraw {
         bricks,

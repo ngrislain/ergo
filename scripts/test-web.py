@@ -10,6 +10,24 @@ import urllib.request
 from playwright.sync_api import sync_playwright, expect
 
 
+def assert_status_overlay_separation(page):
+    assert page.evaluate("""() => {
+        const pointer=document.querySelector('.north-pointer');
+        const original=pointer.style.transform;
+        const pills=[...document.querySelectorAll('.nearest-construction,.map-attribution,.render-badge')];
+        const separated=(a,b)=>a.right+8<=b.left||b.right+8<=a.left||a.bottom+8<=b.top||b.bottom+8<=a.top;
+        try {
+            for(const angle of [0,45,90,135,180,225,270,315]) {
+                pointer.style.transform=`rotate(${angle}deg)`;
+                for(const item of pointer.querySelectorAll('span,svg'))
+                    for(const pill of pills)
+                        if(!separated(item.getBoundingClientRect(),pill.getBoundingClientRect()))return false;
+            }
+            return true;
+        } finally {pointer.style.transform=original;}
+    }"""),"Compass arrow/label must clear every lower-right pill at every heading"
+
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--url", default="http://127.0.0.1:3000")
@@ -187,6 +205,7 @@ def main():
         page.get_by_role("button", name="Fit construction", exact=True).click()
         expect(canvas).to_have_attribute("data-navigation", "orbit")
         page.screenshot(path=str(artifacts / "smoke-desktop.png"))
+        assert_status_overlay_separation(page)
 
         # Full-screen keeps camera/navigation controls and supports both exits.
         viewport = page.locator("#world-viewport")
@@ -210,6 +229,7 @@ def main():
         try:page.wait_for_function("old=>Math.abs(Number(document.querySelector('.north-pointer').dataset.angle)-old)>2",arg=angle)
         finally:page.keyboard.up('ArrowRight')
         expect(page.locator('.canvas-focus-status')).to_be_visible()
+        assert_status_overlay_separation(page)
         assert canvas.evaluate("el=>{const s=getComputedStyle(el);return s.outlineStyle!=='auto' && parseFloat(s.outlineWidth)<=1}")
         page.get_by_role("button", name="Exit full screen", exact=True).click()
         expect(viewport).not_to_have_class(re.compile(r"is-fullscreen"))
@@ -279,6 +299,13 @@ def main():
         expect(page.locator("#world-canvas")).to_be_visible()
         assert page.evaluate("document.documentElement.scrollWidth <= innerWidth")
         page.screenshot(path=str(artifacts / "smoke-mobile.png"), full_page=True)
+        assert_status_overlay_separation(page)
+        page.get_by_role('button',name='Enter full screen',exact=True).click()
+        assert_status_overlay_separation(page)
+        page.set_viewport_size({'width':844,'height':390})
+        assert_status_overlay_separation(page)
+        page.keyboard.press('Escape')
+        page.set_viewport_size({'width':390,'height':844})
         assert not errors, errors
         # Reopening the same immutable scene should hit the bounded download cache.
         assert cached, "No persistent model-cache hit was observed"
