@@ -47,6 +47,14 @@ with tempfile.TemporaryDirectory(prefix="ergo-common-") as directory:
         status,head=helpers.http(url+"/api/shared-worlds",session=helpers.signed_session("alice"),
             body={"name":"Ergo Sandbox","geo":{"latitude":48.8566,"longitude":2.3522,"arcseconds_per_block":1},"authenticated_editing":True})
         assert status==200,head
+        # A completed HTTP response can precede asynchronous snapshot-pin cleanup.
+        # Quiesce the disposable source before stopping its runtime for migration.
+        for _ in range(100):
+            settled=subprocess.run([str(ROOT/'target/debug/ergo-server'),'shared-maintenance-status',head['id']],
+                cwd=directory,env=server_env,capture_output=True,text=True,check=True)
+            if not json.loads(settled.stdout)['pins']:break
+            time.sleep(.02)
+        else:raise AssertionError('Source readers did not quiesce before migration')
         server.terminate();server.wait(timeout=10)
         migration=subprocess.run([str(ROOT/"target/debug/ergo-server"),"shared-migrate",head["id"],"world"],
             cwd=directory,env=server_env,capture_output=True,text=True)
@@ -112,6 +120,8 @@ with tempfile.TemporaryDirectory(prefix="ergo-common-") as directory:
             expect(guest.locator(".status-message")).to_contain_text("Shared-world region loaded",timeout=30000)
             expect(guest.locator("h1")).to_have_text("Ergo Sandbox")
             expect(guest.locator(".status-bar")).to_contain_text("4 bricks")
+            short_list_height=guest.locator(".construction-list").evaluate("el=>el.clientHeight")
+            assert guest.locator(".world-coordinates").bounding_box()['y']<guest.locator(".browser").bounding_box()['y']
             guest.close()
             context=browser.new_context(viewport={"width":1440,"height":950})
             context.add_cookies([{"name":"ergo_session","value":helpers.signed_session("alice"),"url":url,"httpOnly":True}])
@@ -130,8 +140,10 @@ with tempfile.TemporaryDirectory(prefix="ergo-common-") as directory:
             expect(page.locator(".construction-list .world-item")).to_have_count(32,timeout=30000)
             panel=page.locator(".construction-list")
             assert panel.evaluate("el=>el.scrollHeight>el.clientHeight && getComputedStyle(el).overflowY==='auto'")
+            assert panel.evaluate("el=>el.clientHeight")==short_list_height,"List height must not grow with its item count"
             panel.evaluate("el=>el.scrollTop=el.scrollHeight")
             expect(page.locator(".construction-list .world-item")).to_have_count(42,timeout=15000)
+            assert panel.evaluate("el=>el.clientHeight")==short_list_height,"Pagination must stay inside the fixed-height zone"
             panel.evaluate("el=>el.scrollTop=0")
             page.locator(f'[data-assembly-id="{assembly}"]').click()
             expect(page.locator(".status-message")).to_contain_text("Shared-world region loaded",timeout=30000)

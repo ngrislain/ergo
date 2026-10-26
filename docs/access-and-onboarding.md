@@ -20,7 +20,7 @@ control. Sign-out does not revoke an already-issued delegated token.
 Install the current prebuilt client from its GitHub Release:
 
 ```sh
-npm install --global --ignore-scripts 'https://github.com/ngrislain/ergo/releases/download/v0.5.0/ngrislain-ergo-mcp-0.5.0.tgz'
+npm install --global --ignore-scripts 'https://github.com/ngrislain/ergo/releases/download/v0.5.1/ngrislain-ergo-mcp-0.5.1.tgz'
 ergo-mcp --login --publish-url https://ergosandbox.com
 ```
 
@@ -47,7 +47,11 @@ refill and are not automatically repeated.
 
 `get_edit_allowance` reports remaining changes or `unlimited:true`. An operator
 can set an account's unlimited plan with `ergo-server user-plan USER_ID paid`.
-Unlimited bypasses pacing, not permissions, physical acceptance or operation budgets.
+The operator-owned unlimited plan enables god mode: no pacing quota and no
+authoring brick-count cap. The response includes `god_mode:true` and
+`authoring_piece_limit:null`. Permissions and physical acceptance still apply,
+as do encoded-byte/request budgets. Browser streaming and dynamics have separate
+working-set limits; they do not cap the number of bricks an account can build.
 
 ## Position context
 

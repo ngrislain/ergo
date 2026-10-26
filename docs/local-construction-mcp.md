@@ -7,7 +7,7 @@ shared Sandbox. The bridge never grants itself acceptance or direct agent S3 acc
 ## Install and configure
 
 ```sh
-npm install --global --ignore-scripts 'https://github.com/ngrislain/ergo/releases/download/v0.5.0/ngrislain-ergo-mcp-0.5.0.tgz'
+npm install --global --ignore-scripts 'https://github.com/ngrislain/ergo/releases/download/v0.5.1/ngrislain-ergo-mcp-0.5.1.tgz'
 ergo-mcp --login --publish-url https://ergosandbox.com
 ```
 
@@ -46,9 +46,19 @@ expire and are origin/purpose-bound. They are not S3 credentials.
   `ground_position_world` plus native `model_transform` for new standing models.
 - `open_shared_construction` loads a complete authoritative assembly by ID or
   bounded nearest-position lookup. Accepted edits update that same assembly.
-- `get_edit_allowance` returns pacing capacity/refill or `unlimited:true`.
-- `get_catalog` recommends large suitable standard parts/colors and resolves
-  native Ergo part descriptions by ID.
+- `get_edit_allowance` returns pacing capacity/refill and the authoring piece limit;
+  god mode reports `unlimited:true`, `god_mode:true`, `authoring_piece_limit:null`.
+- MCP initialization, `get_catalog` discovery and its returned `building_guidance`
+  share one part-choice policy: inspect available model-library examples first,
+  follow their demonstrated part choices/construction patterns and retain applicable
+  source attribution; prefer common standard studded bricks over plates;
+  use plates sparingly for thinner layers, and smooth stud-less tiles for deliberate
+  finishing surfaces. Within those preferences use the largest suitable parts,
+  preserving shape, colors, support and physically valid connections. Stagger
+  adjacent wall courses and interlock corners where geometry permits, using
+  half/end bricks to preserve the footprint instead of shifting whole walls.
+  Support/connection checks still establish solidity. The catalog
+  resolves native Ergo part descriptions by ID.
 - `list_bricks` and `inspect_brick` expose actual IDs, poses, bounds, sourced
   masses and contact/constraint metadata.
 
@@ -109,9 +119,10 @@ automatically repeated. The `.shared.json` journal stores origin, world, assembl
 base revision and pending state, not a credential. Bound caches reload server
 authority instead of interpreting stale local file formats.
 
-Native models are limited to 768KiB inline, imported text to128KiB. The local
-mechanical working set is5,000 pieces; shared operations normally budget5,000
-identities/128MiB. External dependencies prevent pretending a clipped local
+Native models are limited to 768KiB inline, imported text to128KiB. Local editing
+has no 5,000-piece cap; dynamics simulations remain limited to5,000 bodies.
+Shared operations normally budget5,000 identities/128MiB; god-mode authoring
+removes the identity-count cap. External dependencies prevent pretending a clipped local
 simulation is complete. Missing joint measurements never become guessed strength.
 
 Source: `crates/world/src/mcp.rs`, `crates/mcp/src/`, `crates/client/src/runtime.rs`

@@ -3,7 +3,21 @@
 There is one **public Ergo Sandbox**. Anyone can view it; signed-in users can
 edit it, subject to pacing and physical validation. Current MCP clients commit
 accepted edits to that same S3-backed world automatically. A working file is a
-cache, not a private world. Use the current MCP **v0.5.0** for native formats.
+cache, not a private world. Use the current MCP **v0.5.1** for native formats and uncapped local authoring.
+
+Inspect available model-library examples first and follow their demonstrated
+part choices and construction patterns, adapting them to the requested shape and
+retaining source attribution where applicable. Prefer common standard bricks with studs over plates. Use plates sparingly when
+thin layers are needed, and smooth stud-less tiles for deliberate finishing
+surfaces. Minimize piece count within these preferences while preserving shape,
+colors, support and measured connection requirements. The same guidance is exposed
+by MCP initialization and `get_catalog`.
+
+Stagger adjacent wall courses, typically by half a brick, and interlock corners
+where geometry permits. Use suitable half/end bricks to maintain the footprint,
+openings and support rather than shifting whole walls outward. Avoid continuous
+vertical seams. This is a construction rule, not a substitute for checking support
+and measured connections or a guarantee of solidity by itself.
 
 ## Start from the viewer's current position
 
@@ -115,7 +129,8 @@ usernames or a personal cryptographic signature.
   merely to repeat an unconfirmed import. On restart, a bound cache reloads the
   authoritative shared assembly.
 - A bounded authoring assembly is limited to the configured working-set budget
-  (normally 5,000 pieces/128 MiB). Assemblies with external mechanical dependencies
+  (normally 5,000 pieces/128 MiB; god-mode authoring has no piece-count cap).
+  Assemblies with external mechanical dependencies
   do not claim a complete isolated client simulation; server validation still
   follows the full affected dependency closure.
 

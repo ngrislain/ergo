@@ -37,7 +37,10 @@ their accepted absolute coordinates. See [agent placement](agent-shared-editing.
 
 ## Scrolling construction list
 
-The list pages accepted assemblies in bounded batches. Scrolling near the end
+Compact construction rows occupy a fixed-height scrolling zone on the left,
+immediately after World coordinates. The zone keeps its height as items/pages
+arrive; long names are truncated visually with the full name on hover. It is
+shorter on mobile. The list pages accepted assemblies in bounded batches. Scrolling near the end
 loads another page; Load more and Refresh list remain explicit controls. Requests
 are coalesced and repeated identities are deduplicated.
 

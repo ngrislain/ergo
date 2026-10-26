@@ -43,8 +43,9 @@ parameter. Conditional writes and per-browser sequences reject delayed observati
 The MCP receives only its user's saved point and derived ground-level transform.
 
 Pacing and `account-plans` are independent of identity/profile and world geometry.
-An unlimited plan is server-owned, persists across cold starts and bypasses only
-the pacing bucket. It does not authorize a region or validate a construction.
+An unlimited plan is server-owned, persists across cold starts and enables god
+mode: no pacing quota or authoring brick-count cap. It does not authorize a region
+or validate a construction. Byte/request budgets remain independent of entitlement.
 
 See [record formats](object-store-formats.md), [access](access-and-onboarding.md)
 and [shared editing](concurrent-global-editing.md).

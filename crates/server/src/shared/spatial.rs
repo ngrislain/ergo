@@ -176,14 +176,12 @@ impl Working {
                         loop {
                             let refs = self.tx.scan_page(&own, cursor.as_ref(), 128).await?;
                             for (_, cid) in refs.leaves {
-                                let r: SpatialRef =
-                                    self.tx.blob_limited(&cid, self.remaining()).await?;
-                                self.charge(&r)?;
+                                let r = self.spatial_ref(&cid).await?;
                                 if r.bounds.intersects(bounds)
                                     && let Some(piece) = self.piece(&r.piece).await?
                                     && self.brick(&piece, 1).await?.bounds.intersects(bounds)
                                 {
-                                    result.insert(r.piece);
+                                    result.insert(r.piece.clone());
                                 }
                             }
                             cursor = refs.next;

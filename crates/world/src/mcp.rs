@@ -1,6 +1,7 @@
 //! Shared MCP schema only. Implementations execute in the minimal WASM client.
 use anyhow::{Context, Result, ensure};
 use serde_json::{Value, json};
+pub const BUILDING_GUIDANCE: &str = "Inspect available model-library examples before designing and follow their demonstrated part choices and construction patterns, adapting them to the requested shape and retaining source attribution where applicable. Prefer common standard bricks with studs over plates. Use plates more sparingly, where thinner layers or the intended geometry need them. Prefer studded parts over stud-less tiles; reserve smooth tiles for deliberate finishing surfaces. Stagger bricks between adjacent wall courses, typically by half a brick, and interlock corners where geometry permits rather than aligning vertical seams. Use suitable half/end bricks to preserve the footprint, openings and support instead of shifting entire walls outward. Verify support and measured connections; staggered joints alone do not prove solidity. For a given shape, minimize brick count using the largest suitable preferred standard parts while preserving shape, colors, support, connectivity and physical validation.";
 fn tool(
     name: &str,
     description: &str,
@@ -11,6 +12,9 @@ fn tool(
     json!({"name":name,"description":description,"inputSchema":{"type":"object","properties":properties,"required":required,"additionalProperties":false},"annotations":{"readOnlyHint":read_only,"destructiveHint":!read_only,"openWorldHint":false}})
 }
 pub fn tools() -> Value {
+    let catalog_description = format!(
+        "{BUILDING_GUIDANCE} Resolve Ergo part descriptions by catalog ID. Set include_extended for all colors, or part to resolve geometry. Measured physics is required for publication."
+    );
     let int = json!({"type":"integer","minimum":1,"maximum":4294967295_u64});
     let vec = json!({"type":"array","items":{"type":"number"},"minItems":3,"maxItems":3});
     let matrix = json!({"type":"array","minItems":4,"maxItems":4,"items":{"type":"array","minItems":4,"maxItems":4,"items":{"type":"number"}}});
@@ -28,14 +32,14 @@ pub fn tools() -> Value {
     publish["annotations"]["openWorldHint"] = json!(true);
     let mut allowance = tool(
         "get_edit_allowance",
-        "Read the signed-in actor's remaining shared-world brick-change allowance and refill period. Paid entitlements bypass pacing, not permission or physical validation.",
+        "Read the signed-in actor's shared-world brick-change allowance, refill period and authoring piece limit. God mode reports unlimited:true, god_mode:true and authoring_piece_limit:null; permissions and physical validation still apply.",
         json!({}),
         &[],
         true,
     );
     allowance["annotations"]["openWorldHint"] = json!(true);
     json!({"tools":[
-        tool("get_catalog","Minimize brick count for a given shape: prefer the largest suitable standard bricks/plates over many small ones, preserving shape, colors, support and connection constraints. Resolve Ergo part descriptions by catalog ID. Set include_extended for all colors, or part to resolve geometry. Measured physics is required for publication.",json!({"include_extended":{"type":"boolean"},"part":{"type":"string"}}),&[],true),
+        tool("get_catalog",&catalog_description,json!({"include_extended":{"type":"boolean"},"part":{"type":"string"}}),&[],true),
         tool("get_user_position","Read the authenticated user's last private S3-backed camera position, view target and ground-level model transform. For a new standing construction, pass model_transform to place_submodel as transform. This does not move existing constructions.",json!({}),&[],true),
         tool("open_shared_construction","Load an authoritative editable assembly from the common S3 world, by assembly_id or by nearest construction in a bounded search around public position_world [east,north,height]. Use the viewer's agent handoff for its current position. Subsequent accepted edits commit to the same assembly automatically; local files are caches.",json!({"assembly_id":{"type":"string"},"position_world":vec}),&[],true),
         tool("list_bricks","List IDs, poses, bounds, and sourced masses.",json!({"offset":{"type":"integer","minimum":0},"limit":{"type":"integer","minimum":1,"maximum":200}}),&[],true),
@@ -43,11 +47,11 @@ pub fn tools() -> Value {
         tool("place_brick","Place a supported part by minimum corner [east,north,height]. Reject overlap atomically; return client stability feedback.",json!({"part":{"type":"string"},"color":{"type":"integer"},"min_corner":vec,"quarter_turns":{"type":"integer"}}),&["part","color","min_corner"],false),
         tool("place_submodel","Place a native Ergo model with reusable definitions, or convert an inline imported document at the boundary. Supply exactly one of model or document. The optional row-major 4x4 transform uses public east/north/up construction units. Resolve nonstandard parts with get_catalog first. Placement checks metric dimensions, floor and overlaps atomically.",json!({"model":{"type":"object"},"document":{"type":"string"},"transform":matrix,"color":{"type":"integer","minimum":0}}),&[],false),
         tool("move_brick","Move the selected fixed-connected group with collision checks.",json!({"id":int,"delta":vec}),&["id","delta"],false),
-        tool("remove_bricks","Remove parts/incident joints and report lost support.",json!({"ids":{"type":"array","items":int,"minItems":1,"maxItems":5000}}),&["ids"],false),
+        tool("remove_bricks","Remove parts/incident joints and report lost support.",json!({"ids":{"type":"array","items":int,"minItems":1}}),&["ids"],false),
         tool("connect_bricks","Add/replace a fixed or revolute constraint. Coordinates/axis use X east, Y north, Z up; limits are radians.",json!({"a":int,"b":int,"anchor":vec,"kind":{"type":"string","enum":["fixed","revolute"]},"axis":vec,"limits":{"type":"array","items":{"type":"number"},"minItems":2,"maxItems":2}}),&["a","b","anchor"],false),
         tool("list_groups","List nested authoring groups, members, pivots, and derived bounds. Grouping does not weld pieces.",json!({}),&[],true),
-        tool("create_group","Create a group from pieces and/or existing groups. A member has one direct parent. Transform poses remain world-space.",json!({"name":{"type":"string"},"piece_ids":{"type":"array","items":int,"maxItems":5000},"group_ids":{"type":"array","items":int,"maxItems":10000},"pivot_world":vec}),&["name"],false),
-        tool("set_group_members","Replace group members. reparent=true explicitly moves them from prior parents; cycles are rejected.",json!({"group_id":int,"piece_ids":{"type":"array","items":int,"maxItems":5000},"group_ids":{"type":"array","items":int,"maxItems":10000},"reparent":{"type":"boolean"}}),&["group_id"],false),
+        tool("create_group","Create a group from pieces and/or existing groups. A member has one direct parent. Transform poses remain world-space.",json!({"name":{"type":"string"},"piece_ids":{"type":"array","items":int},"group_ids":{"type":"array","items":int,"maxItems":10000},"pivot_world":vec}),&["name"],false),
+        tool("set_group_members","Replace group members. reparent=true explicitly moves them from prior parents; cycles are rejected.",json!({"group_id":int,"piece_ids":{"type":"array","items":int},"group_ids":{"type":"array","items":int,"maxItems":10000},"reparent":{"type":"boolean"}}),&["group_id"],false),
         tool("transform_group","Rigidly translate/rotate every nested member once. Axis is an orthonormal ENU direction; angle is radians. Check destination body boxes, floor, anchors, and external constraints. This is a CAD edit, not a continuous rotational sweep.",json!({"group_id":int,"translation":vec,"rotation_axis":vec,"rotation_radians":{"type":"number","minimum":(-std::f64::consts::TAU),"maximum":std::f64::consts::TAU},"pivot_world":vec}),&["group_id"],false),
         tool("ungroup","Dissolve a group while preserving pieces, nested groups, and world poses; splice its children into its parent.",json!({"group_id":int}),&["group_id"],false),
         tool("validate_construction","Run overlap/static-certificate checks locally and disclose missing calibration. No global publication.",json!({}),&[],true),

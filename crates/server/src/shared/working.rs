@@ -21,6 +21,7 @@ pub struct Working {
     joints: BTreeMap<ContentId, super::paged::BoundJoint>,
     fixed: BTreeSet<ContentId>,
     meshes: BTreeMap<ContentId, Arc<Mesh>>,
+    spatial_refs: BTreeMap<ContentId, Arc<super::spatial::SpatialRef>>,
     pub regions: BTreeSet<OctreePath>,
     pub new_blocks: BTreeSet<BlockCoord>,
     pub loaded_bytes: usize,
@@ -67,6 +68,7 @@ impl Working {
             joints: BTreeMap::new(),
             fixed: BTreeSet::new(),
             meshes: BTreeMap::new(),
+            spatial_refs: BTreeMap::new(),
             regions: BTreeSet::new(),
             new_blocks: BTreeSet::new(),
             loaded_bytes: 0,
@@ -79,6 +81,22 @@ impl Working {
     }
     pub(super) fn remaining(&self) -> usize {
         self.limits.bytes.saturating_sub(self.loaded_bytes)
+    }
+    pub(super) fn piece_limit(&self) -> usize {
+        self.limits.pieces
+    }
+    pub(super) async fn spatial_ref(
+        &mut self,
+        id: &ContentId,
+    ) -> SharedResult<Arc<super::spatial::SpatialRef>> {
+        if let Some(value) = self.spatial_refs.get(id) {
+            return Ok(value.clone());
+        }
+        let value: super::spatial::SpatialRef = self.tx.blob_limited(id, self.remaining()).await?;
+        self.charge(&value)?;
+        let value = Arc::new(value);
+        self.spatial_refs.insert(id.clone(), value.clone());
+        Ok(value)
     }
     pub fn charge<T: Serialize>(&mut self, value: &T) -> SharedResult<()> {
         let bytes = canonical_cbor(value)?.len();

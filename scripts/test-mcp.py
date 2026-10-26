@@ -133,8 +133,17 @@ def main():
             native_result=call("place_submodel",model=native)
             assert not native_result.get("isError"),native_result
             assert call("place_submodel",ldraw=submodel).get("isError"),"Retired protocol argument must not remain accepted"
+            # Editing and group membership are not capped by the dynamics engine's
+            # 5,000-body limit; account-specific admission remains server-owned.
+            large={"format":"ergo-model-1","schema":2,"root":"main","definitions":{"main":[{
+                "target":{"kind":"part","id":"3003.dat"},"color":19,
+                "transform":[[1,0,0,200+3*(i%100)],[0,1,0,200+3*(i//100)],[0,0,1,1],[0,0,0,1]]
+            } for i in range(5001)]}}
+            assert not call("place_submodel",model=large).get("isError")
+            assert call("list_bricks")["structuredContent"]["total"]==5007
+            assert not call("create_group",name="Large authoring group",piece_ids=list(range(7,5008))).get("isError")
             assert workspace.exists()
-            print("MCP smoke passed: tool discovery, collision rollback, gravity, camera PNGs, earthquakes, reusable LDraw subparts, matrix placement, and canonical storage.")
+            print("MCP smoke passed: tool discovery, collision rollback, gravity, camera PNGs, earthquakes, native/imported models, canonical storage, and editing/grouping above 5,000 bricks.")
         finally:
             process.stdin.close()
             process.wait(timeout=10)

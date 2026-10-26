@@ -169,7 +169,8 @@ of the payload. Successful cells have a seven-day TTL; fallback cells retry afte
   units; available changes are credits/seconds, refill adds bricks per second,
   capped at bricks×seconds. Reservation receipts map IDs to `{bricks,at}`.
 - **`account-plans/<actor-hash>.json`:** `{unlimited:boolean}`. Missing means false.
-  Only the operator sets the plan; unlimited bypasses pacing, not acceptance.
+  Only the operator sets the plan; unlimited enables god mode with no pacing quota
+  or authoring brick-count cap. It does not bypass physical acceptance.
 
 Actor hashes are SHA-256 of the authenticated ID, not construction IDs. Position
 GET/PUT has no arbitrary user-ID parameter. These records are outside world GC.

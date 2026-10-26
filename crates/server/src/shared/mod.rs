@@ -255,7 +255,11 @@ impl SharedWorlds {
                 },
             )
             .await?;
-        let ws = Working::new(repo.begin_at("main", base).await?, self.limits).await?;
+        let mut limits = self.limits;
+        if self.pacing.unlimited(actor).await? {
+            limits.pieces = usize::MAX;
+        }
+        let ws = Working::new(repo.begin_at("main", base).await?, limits).await?;
         if self.common_world.as_deref() != Some(id) && !ws.policy.can_read(actor) {
             return Err(SharedError::forbidden());
         }
@@ -374,10 +378,10 @@ impl SharedWorlds {
         mut request: ImportRequest,
     ) -> SharedResult<Imported> {
         self.destination(id)?;
-        if request.scene.bricks.len() > self.limits.pieces {
+        let mut ws = self.working(id, actor, &request.base).await?;
+        if request.scene.bricks.len() > ws.piece_limit() {
             return Err(SharedError::working_limit("import batch pieces"));
         }
-        let mut ws = self.working(id, actor, &request.base).await?;
         ensure!(
             canonical_cbor(&request.scene.geo)? == canonical_cbor(&ws.metadata.geo)?,
             "Imported coordinates must use the world's geographic origin"
@@ -494,16 +498,16 @@ impl SharedWorlds {
             "Empty edit"
         );
         ensure!(request.message.len() <= 4096, "Commit message is too large");
+        let mut ws = self.working(id, actor, &request.base).await?;
         if request
             .pieces
             .len()
             .saturating_add(request.rules.len())
             .saturating_add(request.joints.len())
-            > self.limits.pieces
+            > ws.piece_limit()
         {
             return Err(SharedError::working_limit("mutation batch"));
         }
-        let mut ws = self.working(id, actor, &request.base).await?;
         let mut old = BTreeMap::new();
         let mut seeds = BTreeSet::new();
         let mut rule_changes = BTreeMap::new();
@@ -841,6 +845,11 @@ async fn allowance(
         .required()
         .map_err(|_| SharedError::unauthorized())?;
     let mut status = s.shared.pacing.status(&actor).await?;
+    status["authoring_piece_limit"] = if status["god_mode"] == true {
+        serde_json::Value::Null
+    } else {
+        serde_json::json!(s.shared.limits.pieces)
+    };
     status["actor"] = serde_json::json!(actor);
     Ok(Json(status))
 }

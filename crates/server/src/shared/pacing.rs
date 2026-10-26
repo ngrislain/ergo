@@ -116,7 +116,7 @@ impl Pacing {
             )
             .await
     }
-    async fn unlimited(&self, actor: &str) -> SharedResult<bool> {
+    pub(super) async fn unlimited(&self, actor: &str) -> SharedResult<bool> {
         match self
             .store
             .backend
@@ -164,14 +164,15 @@ impl Pacing {
         }
     }
     pub async fn status(&self, actor: &str) -> SharedResult<serde_json::Value> {
-        if self.budget.is_none() || self.unlimited(actor).await? {
-            return Ok(serde_json::json!({"unlimited":true}));
+        let god_mode = self.unlimited(actor).await?;
+        if self.budget.is_none() || god_mode {
+            return Ok(serde_json::json!({"unlimited":true,"god_mode":god_mode}));
         }
         let budget = self.budget.unwrap();
         let (mut ledger, _) = self.read(actor, budget, now()).await?;
         ledger.refill(budget, now());
         Ok(
-            serde_json::json!({"unlimited":false,"remaining_brick_changes":ledger.credits/budget.seconds,"capacity":budget.bricks,"refill_period_seconds":budget.seconds}),
+            serde_json::json!({"unlimited":false,"god_mode":false,"remaining_brick_changes":ledger.credits/budget.seconds,"capacity":budget.bricks,"refill_period_seconds":budget.seconds}),
         )
     }
     pub(super) async fn reserve(&self, actor: &str, bricks: usize) -> SharedResult<Option<Ticket>> {

@@ -50,7 +50,7 @@ def landscape():
     for n in [11,13,21,23]:model.floor(50,2,71,-1,n,0)
     model.floor(22,6,7,13,15,0)
     for x in [4,18,32,46]:
-        for n in [8,25]:model.floor(4,2,28,x,n,0)
+        for n in [9,34]:model.floor(4,2,28,x,n,0)
     for x in [-5,9,23,37,51]:
         for n in [5,29]:
             model.column("3068b",70,x,n,3)
@@ -66,6 +66,18 @@ def landscape():
         for h in range(2):model.strip(4,71,x,16,1/3+h/3,turn=True)
     model.column("3068b",71,23,17,3,2/3)
     model.column("3070b",321,23.5,17.5,2,5/3)
+    return model
+
+
+def village_layout():
+    model=Model()
+    styles=[(15,19,320,288),(19,70,72,4),(15,70,70,272)]
+    for index,style in enumerate(styles):model.definitions[f'house-{index}']=chalet(*style).definitions['main']
+    for row,north in enumerate([0,28]):
+        for column,x in enumerate([0,14,28,42]):
+            model.reference(f'house-{(column+row)%3}',x+(8 if row==0 else 0),north+(6 if row==0 else 0),0,
+                            rotation=yaw(math.pi if row==0 else 0))
+    model.definitions['main'].extend(landscape().definitions['main'])
     return model
 
 
@@ -152,6 +164,15 @@ def run_model(binary,output,name,model,origin,token_file=None,publish=False):
             receipt=mcp.call('publish_construction',name=name,expected_local_revision=current['revision'])['structuredContent']
             report['publication']=receipt;report['shared_committed']=receipt.get('published') is True
             (output/'report.json').write_text(json.dumps(report,indent=2)+'\n')
+            if not report['shared_committed']:raise RuntimeError('Shared publication was not confirmed')
+            readback=mcp.call('open_shared_construction',assembly_id=receipt['assembly_id'])['structuredContent']
+            report['readback']=readback
+            (output/'report.json').write_text(json.dumps(report,indent=2)+'\n')
+            if not readback['external_dependencies']:
+                assert readback['brick_count']==validation['brick_count'],'Accepted piece count differs'
+            accepted=mcp.call('test_visual_appearance',camera=camera,width=1024,height=768,lighting='studio')
+            picture=next(c for c in accepted['content'] if c['type']=='image')
+            (output/'accepted-preview.png').write_bytes(base64.b64decode(picture['data']))
         finally:mcp.close()
     print(json.dumps({'name':name,'pieces':validation['brick_count'],'ready':validation['publication_ready'],
                       'failure':validation.get('failure'),'calibration':validation.get('calibration_issue'),
@@ -171,6 +192,8 @@ def main():
     if args.kind=='palace':run_model(binary,args.output,'Palace of the Hidden Sun',palace(),args.origin,args.token_file,args.publish)
     elif args.kind=='chalet':run_model(binary,args.output,'Alpine chalet',chalet(15,70,320,288),args.origin,args.token_file,args.publish)
     else:
+        layout=run_model(binary,args.output/'layout-preflight','Alpine village layout preflight',village_layout(),args.origin)
+        if not layout['validation']['publication_ready']:raise RuntimeError('Combined village layout is not publishable')
         styles=[(15,19,320,288),(19,70,72,4),(15,70,70,272)]
         for row,north in enumerate([0,28]):
             for column,x in enumerate([0,14,28,42]):

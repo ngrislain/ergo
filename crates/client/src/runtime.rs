@@ -181,10 +181,6 @@ impl LocalClientRuntime {
     fn update(&mut self, edit: impl FnOnce(&mut WorldExport) -> Result<()>) -> Result<Value> {
         let mut next = self.scene.clone();
         edit(&mut next)?;
-        ensure!(
-            next.bricks.len() <= ergo_world::MAX_SIMULATION_BRICKS,
-            "Local simulation workspace is limited to 5,000 bricks"
-        );
         ergo_world::catalog::validate(&next.bricks)?;
         constraints::validate_joints(&next.bricks, &next.joints, &next.fixed_bricks)?;
         ergo_world::groups::validate(&next.bricks, &next.groups)?;
@@ -298,7 +294,7 @@ impl LocalClientRuntime {
                 let part = args["part"].as_str().map(canonical);
                 let asset = part.as_ref().and_then(|p|self.scene.meshes.get(p)).map(|m|json!({"part":m.part,"quality":m.quality,"bounds":m.bounds,"mass_kg":self.measurements.mass_kg(&m.part).ok()}));
                 Ok(text(
-                    json!({"catalog":catalog,"requested_part":asset,"building_guidance":"For a given shape, minimize brick count. Prefer the largest suitable standard bricks, plates or tiles instead of many small pieces, while preserving shape, colors, support, connectivity and physical validation.","units":{"position":"X east, Y north, Z up; X/Y 8 mm, Z 9.6 mm","force":"N","torque":"N m","mass":"kg"},"execution":"local-wasm-client"}),
+                    json!({"catalog":catalog,"requested_part":asset,"building_guidance":ergo_world::mcp::BUILDING_GUIDANCE,"units":{"position":"X east, Y north, Z up; X/Y 8 mm, Z 9.6 mm","force":"N","torque":"N m","mass":"kg"},"execution":"local-wasm-client"}),
                 ))
             }
             "list_bricks" => {
@@ -422,10 +418,6 @@ impl LocalClientRuntime {
                     let mut combined = ergo_world::assembly::Model::for_scene(scene);
                     combined.append(&model, matrix, color)?;
                     let references = combined.references()?;
-                    ensure!(
-                        references.len() <= ergo_world::MAX_SIMULATION_BRICKS,
-                        "Local simulation workspace is limited to 5,000 bricks"
-                    );
                     let mut next_id = scene.bricks.iter().map(|b| b.id).max().unwrap_or(0);
                     for r in references.iter().skip(scene.bricks.len()) {
                         if !scene.meshes.contains_key(&r.name) {

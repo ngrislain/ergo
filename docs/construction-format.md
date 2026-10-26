@@ -91,7 +91,9 @@ credits are retained as provenance.
 `place_submodel` accepts `model` for a native description or `document` for an
 inline import, exactly one at a time. `transform` is always an Ergo world-space
 4×4 matrix. Native inline models are bounded to 768 KiB; imported text to 128 KiB.
-The local editing/simulation working set remains limited to 5,000 pieces.
+Local editing has no 5,000-piece cap; dynamics simulations remain limited to
+5,000 bodies. Server admission uses the caller's plan: god-mode authoring has no
+brick-count cap, while encoded-byte/request budgets and physical checks apply.
 
 Implementation: `crates/world/src/assembly.rs`, `assembly/format.rs`, `storage.rs`,
 `coordinates.rs`; import conversion is separate from these native wire types.

@@ -5,7 +5,7 @@
 The current prebuilt client is the GitHub Release tarball:
 
 ```sh
-npm install --global --ignore-scripts 'https://github.com/ngrislain/ergo/releases/download/v0.5.0/ngrislain-ergo-mcp-0.5.0.tgz'
+npm install --global --ignore-scripts 'https://github.com/ngrislain/ergo/releases/download/v0.5.1/ngrislain-ergo-mcp-0.5.1.tgz'
 ergo-mcp --version
 ```
 
@@ -21,8 +21,9 @@ editing defaults to the canonical apex service. Local files are caches when boun
 ## Release automation
 
 `release.yml` validates workspace/npm/tag consistency, builds the four native
-targets and WASM assets, assembles/tests the tarball, publishes a GitHub Release
-asset and the server image. The source package alone is not the assembled bundle.
+targets and WASM assets, assembles/tests the tarball artifact and publishes the
+server image. The maintainer uploads the verified tarball/checksum to its GitHub
+Release. The source package alone is not the assembled bundle.
 The assembled package contains the native/runtime files, license and distribution
 manifest. Platform checks prevent accidentally packaging a host-only binary.
 

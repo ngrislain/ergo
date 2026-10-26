@@ -127,6 +127,93 @@ async fn seeded(service: &SharedWorlds, initial: WorldExport) -> (Head, Imported
 }
 
 #[tokio::test]
+async fn god_mode_removes_the_ordinary_authoring_piece_cap() {
+    let mut service = service();
+    service.limits.pieces = 1;
+    let head = service
+        .create(
+            "alice",
+            NewWorld {
+                name: "God mode".into(),
+                geo: Default::default(),
+                authenticated_editing: true,
+            },
+        )
+        .await
+        .unwrap();
+    let request = ImportRequest {
+        base: head.revision.clone(),
+        scene: scene(10.),
+    };
+    assert!(service.import(&head.id, "alice", request).await.is_err());
+    service.pacing.set_unlimited("alice", true).await.unwrap();
+    let imported = service
+        .import(
+            &head.id,
+            "alice",
+            ImportRequest {
+                base: head.revision,
+                scene: scene(10.),
+            },
+        )
+        .await
+        .unwrap();
+    assert_eq!(imported.pieces.len(), 2);
+    let loaded = service
+        .authoring_scene(
+            &head.id,
+            "alice",
+            &imported.assembly,
+            &imported.accepted.revision,
+        )
+        .await
+        .unwrap();
+    assert_eq!(loaded["scene"]["bricks"].as_array().unwrap().len(), 2);
+    service.pacing.set_unlimited("alice", false).await.unwrap();
+    assert!(
+        service
+            .authoring_scene(
+                &head.id,
+                "alice",
+                &imported.assembly,
+                &imported.accepted.revision
+            )
+            .await
+            .is_err()
+    );
+}
+
+#[tokio::test]
+async fn dense_neighbor_queries_charge_immutable_spatial_rows_once() {
+    let mut service = service();
+    let mut d = ergo_world::demo::Demo::new();
+    for x in 0..8 {
+        for y in 0..8 {
+            d.add(
+                "3068b",
+                19,
+                f64::from(x) * 2. + 0.125,
+                0.,
+                f64::from(y) * 2. + 0.125,
+            );
+        }
+    }
+    let mut initial = scene(0.);
+    initial.bricks = d.bricks;
+    initial.meshes = d.meshes;
+    let bounds = ergo_world::bounds(&initial.bricks).unwrap().expanded(0.1);
+    let (head, _) = seeded(&service, initial).await;
+    service.limits.bytes = 128 * 1024;
+    let mut ws = service
+        .working(&head.id, "alice", &head.revision)
+        .await
+        .unwrap();
+    for _ in 0..128 {
+        assert_eq!(ws.neighbors(bounds).await.unwrap().len(), 64);
+    }
+}
+
+#[tokio::test]
 async fn bounded_assembly_replacement_preserves_ids_and_is_atomic() {
     let mut service = service();
     let (head, imported) = seeded(&service, scene(10.)).await;

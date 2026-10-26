@@ -118,17 +118,20 @@ budget is exceeded. No unloaded support is silently treated as empty space.
 ### Working-set limits, never world limits
 
 Defaults are 5,000 loaded/candidate identities and 128 MiB of charged CBOR data per
-edit. Configure `ERGO_SHARED_WORKING_PIECES` and `ERGO_SHARED_WORKING_BYTES` to
-change these operation budgets. Oversized closures return HTTP 413 before
+edit. An operator-owned unlimited account plan removes the authoring identity-count
+cap. Configure `ERGO_SHARED_WORKING_PIECES` and `ERGO_SHARED_WORKING_BYTES` to
+change the ordinary count/encoded-byte budgets. Oversized closures return HTTP 413 before
 publication. Imports are bounded batches; arbitrarily many separate assemblies
 can coexist in a world whose total size exceeds those budgets.
 
 The byte budget covers application CBOR, not a complete allocator RSS bound.
 Index nodes, decoded structures, and serialization buffers have their own
 overhead. Adaptive local spatial pages select bounding references before loading
-piece geometry, and ordinary edits read per-piece rule rows. Whole-rule replacements
-remain bounded authoring operations. Legacy records use their bounded compatibility
-path until upgraded. There is no global counter coupling unrelated imports.
+piece geometry, and ordinary edits read per-piece rule rows. Immutable spatial
+references are cached by CID within the operation and charged once even when
+overlapping neighbor queries revisit them. Whole-rule replacements remain subject
+to the byte budget. Only current paged records are supported. There is no global
+counter coupling unrelated imports.
 
 ### Frozen physical model
 

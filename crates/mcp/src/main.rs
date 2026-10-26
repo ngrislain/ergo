@@ -265,10 +265,6 @@ fn normalize(scene: &mut WorldExport, measurements: &ConnectionMeasurements) -> 
         scene.schema == ergo_world::SCHEMA_VERSION,
         "Expected schema 2: X east, Y north, Z height; reimport or explicitly migrate older files"
     );
-    ensure!(
-        scene.bricks.len() <= ergo_world::MAX_SIMULATION_BRICKS,
-        "Local working copy exceeds 5,000 bricks"
-    );
     scene.geo.validate()?;
     ergo_world::catalog::validate(&scene.bricks)?;
     ergo_world::constraints::validate_joints(&scene.bricks, &scene.joints, &scene.fixed_bricks)?;
@@ -629,7 +625,7 @@ fn main() -> Result<()> {
                     .filter(|v| ["2025-11-25", "2025-06-18", "2024-11-05"].contains(v))
                     .unwrap_or("2025-06-18");
                 Ok(
-                    json!({"protocolVersion":version,"capabilities":{"tools":{"listChanged":false}},"serverInfo":{"name":"ergo-local-wasm-bridge","version":env!("CARGO_PKG_VERSION")},"instructions":format!("Minimize the brick count for a given shape: use the largest suitable standard bricks/plates instead of many small ones while preserving shape, colors, support and connection constraints. Coordinates are X east, Y north, Z height. Editing/rendering execute in WASM. {}",if bridge.common.is_some(){"This is the common S3 world: accepted edits commit automatically with server validation and author attribution. Open an existing construction with open_shared_construction using assembly_id or position_world. The workspace file is only a cache; never treat local JSON edits as shared commits."}else{"Local development mode: publish_construction explicitly publishes through the configured API; only a confirmed result establishes publication."})}),
+                    json!({"protocolVersion":version,"capabilities":{"tools":{"listChanged":false}},"serverInfo":{"name":"ergo-local-wasm-bridge","version":env!("CARGO_PKG_VERSION")},"instructions":format!("{} Coordinates are X east, Y north, Z height. Editing/rendering execute in WASM. {}",ergo_world::mcp::BUILDING_GUIDANCE,if bridge.common.is_some(){"This is the common S3 world: accepted edits commit automatically with server validation and author attribution. Open an existing construction with open_shared_construction using assembly_id or position_world. The workspace file is only a cache; never treat local JSON edits as shared commits."}else{"Local development mode: publish_construction explicitly publishes through the configured API; only a confirmed result establishes publication."})}),
                 )
             }
             "ping" => Ok(json!({})),

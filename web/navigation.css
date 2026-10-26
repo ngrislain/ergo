@@ -8,15 +8,16 @@
 .reference-origin{display:grid;gap:5px;margin:18px 0;font-size:11px;line-height:1.5}
 .reference-origin strong{font-size:11px;font-weight:550;font-variant-numeric:tabular-nums;overflow-wrap:anywhere}
 .reference-origin small{color:var(--muted);font-size:10px}
-.browser .construction-list{display:block;list-style:none;padding:0;margin:12px 0 0;max-height:min(46dvh,420px);overflow-y:auto;overflow-x:hidden;overscroll-behavior:contain;scrollbar-gutter:stable}
+.browser .construction-list{display:block;list-style:none;padding:0;margin:10px 0 0;height:216px;min-height:216px;max-height:216px;overflow-y:auto;overflow-x:hidden;overscroll-behavior:contain;scrollbar-gutter:stable}
 .browser .construction-list li{list-style:none;margin:0;padding:0}
-.browser .construction-list .world-item{width:100%;min-width:0}
-.construction-list-help{margin-top:10px;color:var(--muted);font-size:11px;line-height:1.5}
+.browser .construction-list .world-item{width:100%;min-width:0;padding:7px 8px;gap:8px}
+.browser .construction-list .world-thumbnail{flex:0 0 20px;height:20px;font-size:16px;border-radius:3px}
+.browser .construction-list .world-item>span:nth-child(2){min-width:0}
+.browser .construction-list .world-item strong{display:block;font-size:11px;line-height:20px;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .construction-list-actions{display:flex;flex-wrap:wrap;gap:12px;justify-content:space-between}
 @media(max-width:560px){
   .camera-gps strong{font-size:11px}
   .scene-heading .camera-location{margin-bottom:6px}
-  .browser .construction-list{max-height:24dvh;margin-top:0}
-  .construction-list-help{display:none}
+  .browser .construction-list{height:144px;min-height:144px;max-height:144px;margin-top:0}
   .construction-list-actions .text-button{font-size:10px}
 }

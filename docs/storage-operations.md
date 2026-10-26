@@ -67,7 +67,10 @@ semantically audited native history. The manifest is:
 
 The strings above are placeholders. The command acquires a barrier, checks the
 live expected head and writes an adjacent ready receipt. It waits for the resume
-file to contain the actual target tip, allowing a matching runtime deployment.
+file to contain the actual target tip. Close and verify the hosting gateway before
+signaling it: server startup reads the world and cannot become healthy while the
+barrier is held. Keep traffic closed until installation finishes and the matching
+runtime is ready; the old runtime must not receive writes against the new format.
 The library verifies consecutive parents and the complete retained sequence range,
 builds a new acceptance index, and conditionally installs the head. It then runs
 schema-aware GC and finishes the barrier. Application conversion must verify

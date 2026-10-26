@@ -1459,7 +1459,7 @@ pub fn App() -> impl IntoView {
             <div class="header-actions"><span class="account-name">{move ||ui.user.get()}</span><Show when=move ||ui.google.get()&&!ui.signed_in.get()><a class="button quiet" href="/auth/google">"Sign in with Google"</a></Show><Show when=move ||ui.google.get()&&ui.signed_in.get()><button class="button quiet sign-out" disabled=move ||ui.signing_out.get() aria-busy=move ||ui.signing_out.get().to_string() on:click=move |_|logout(ui)>{move ||if ui.signing_out.get(){"Signing out…"}else{"Sign out"}}</button></Show><button class="icon-button agent-handoff" title="Edit here with an agent" aria-label="Edit here with an agent" disabled=move ||ui.busy.get() on:click=move |_|common::agent_handoff(handle)>"⌘"</button><button class="button primary" disabled=move ||ui.signing_out.get()||ui.busy.get() on:click=move |_|show_dialog("import-dialog")>"＋ Import construction"</button></div>
         </header>
         <main class="workbench">
-            <aside class="left-dock"><ConstructionBrowser/><div class="dock-bottom"><span class="storage-dot"></span>{move ||ui.storage.get()}<p>"Standard parts first · Studio / LDraw"</p></div></aside>
+            <aside class="left-dock"><ConstructionBrowser/><div class="dock-bottom"><span class="storage-dot"></span>{move ||ui.storage.get()}<p>"Standard parts · native Ergo models"</p></div></aside>
             <section id="world-viewport" class="viewport-area" class:is-fullscreen=move ||ui.fullscreen.get() aria-label="3D construction workbench">
                 <div class="scene-heading"><div><LiveLocation/><h1>{move ||ui.current.get().map(|w|w.name).unwrap_or_else(||"Your next construction".into())}</h1><p>{move ||ui.construction_details()}</p></div><span class="snapshot-badge" class:draft=move ||ui.dirty.get()>{move ||ui.scene_label()}</span></div>
                 <canvas node_ref=canvas id="world-canvas" tabindex="0" aria-label=move ||format!("3D brick construction. {} navigation. Drag to look; focus canvas for keyboard controls.",ui.navigation.get().mode.name())
@@ -1809,8 +1809,12 @@ fn ConstructionBrowser() -> impl IntoView {
     let ui = expect_context::<Ui>();
     let handle = expect_context::<Handle>();
     view! {
+        <div class="dock-section world-coordinates"><div class="section-heading"><h2>"World coordinates"</h2><button class="icon-button" title="Go to GPS position" on:click=move |_|show_dialog("location-dialog")>"◎"</button></div>
+            <div class="reference-origin"><span>"Coordinate reference"</span><strong>{move ||ui.current.get().map(|w|format!("{:.7}°, {:.7}°",w.geo.latitude,w.geo.longitude)).unwrap_or_default()}</strong><small>"Fixed origin, not your camera position. X east · Y north · Z up."</small></div>
+            <div class="coordinate-rule"><strong>"1,024 × 1,024 × 1,024"</strong><span>"brick units per storage cell"</span></div><p class="subtle">"Each cell spans 1 arc-second east and north. Cells locate pieces; they do not physically anchor them. Constructions rest on the ground or use explicit ground anchors."</p>
+            <button class="text-button" on:click=move |_|show_dialog("location-dialog")>"Go to a location"<span>"↗"</span></button>
+        </div>
         <div class="dock-section browser"><div class="section-heading"><h2>"Constructions"</h2><span class="count-badge">{move ||if ui.common_world.get().is_some(){ui.common_assemblies.get().len()}else{ui.worlds.get().len()}}</span></div>
-            <p class="subtle">"Your corner of a much bigger world."</p>
             <Show when=move ||ui.common_world.get().is_some()><CommonConstructionList/></Show>
             <div class="world-list">{move ||ui.worlds.get().into_iter().map(|world|{let id=world.id.clone();let model=world.clone();view!{
                 <button class="world-item" class:active=move ||ui.current.get().is_some_and(|w|w.id==id) on:click=move |_|open_world(handle,model.clone())><span class="world-thumbnail">{if world.name.contains("pavilion"){ "⌂" }else{"▦"}}</span><span><strong>{world.name.clone()}</strong><small>{format!("{} bricks",number(world.brick_count))}</small></span><span class="world-more">"›"</span></button>
@@ -1820,11 +1824,6 @@ fn ConstructionBrowser() -> impl IntoView {
                 view!{<button class="world-item" on:click=move |_|open_shared(handle,item.clone())><span class="world-thumbnail">"◎"</span><span><strong>{name}</strong><small>"Navigate shared regions"</small></span><span class="world-more">"›"</span></button>}
             }).collect_view()}</div></Show>
             <Show when=move ||ui.shared_cursor.get().is_some()><button class="text-button" on:click=move |_|more_shared_regions(handle)>"More shared regions"</button></Show>
-        </div>
-        <div class="dock-section"><div class="section-heading"><h2>"World coordinates"</h2><button class="icon-button" title="Go to GPS position" on:click=move |_|show_dialog("location-dialog")>"◎"</button></div>
-            <div class="reference-origin"><span>"Coordinate reference"</span><strong>{move ||ui.current.get().map(|w|format!("{:.7}°, {:.7}°",w.geo.latitude,w.geo.longitude)).unwrap_or_default()}</strong><small>"Fixed origin, not your camera position. X east · Y north · Z up."</small></div>
-            <div class="coordinate-rule"><strong>"1,024 × 1,024 × 1,024"</strong><span>"brick units per storage cell"</span></div><p class="subtle">"Each cell spans 1 arc-second east and north. Cells locate pieces; they do not physically anchor them. Constructions rest on the ground or use explicit ground anchors."</p>
-            <button class="text-button" on:click=move |_|show_dialog("location-dialog")>"Go to a location"<span>"↗"</span></button>
         </div>
         <div class="dock-section"><h2>"Viewport"</h2><label class="toggle-row"><span>"Base grid"</span><input type="checkbox" checked on:change=move |e|with_client(handle,|c|{if let Some(r)=&mut c.renderer{r.grid=event_target_checked(&e);}})/></label>
             <NavigationModes/>
@@ -1848,7 +1847,6 @@ fn CommonConstructionList() -> impl IntoView {
     let ui = expect_context::<Ui>();
     let handle = expect_context::<Handle>();
     view! {
-        <p class="construction-list-help">"Visit constructions at their shared-world positions."</p>
         <ul class="world-list construction-list" aria-label="Constructions in shared world" tabindex="0"
             aria-busy=move ||ui.common_loading.get().to_string()
             on:scroll=move |event| {
@@ -1858,10 +1856,10 @@ fn CommonConstructionList() -> impl IntoView {
             }>
             {move ||ui.common_assemblies.get().into_iter().map(|assembly| {
                 let id=assembly.id;let active=id.clone();
-                let attribute=id.clone();
+                let attribute=id.clone();let name=assembly.name;let title=name.clone();
                 view!{<li><button class="world-item" data-assembly-id=attribute class:active=move ||ui.focused_assembly.get().as_ref()==Some(&active)
-                    disabled=move ||ui.busy.get() on:click=move |_|common::open(handle,id.clone())>
-                    <span class="world-thumbnail" aria-hidden="true">"▦"</span><span><strong>{assembly.name}</strong><small>"View in shared world"</small></span>
+                    title=title disabled=move ||ui.busy.get() on:click=move |_|common::open(handle,id.clone())>
+                    <span class="world-thumbnail" aria-hidden="true">"▦"</span><span><strong>{name}</strong></span>
                 </button></li>}
             }).collect_view()}
         </ul>

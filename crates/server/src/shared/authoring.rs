@@ -33,7 +33,7 @@ impl SharedWorlds {
     ) -> SharedResult<serde_json::Value> {
         let mut ws = self.working(id, actor, revision).await?;
         let rules = ws.rules(assembly).await?;
-        if rules.pieces.len() > self.limits.pieces {
+        if rules.pieces.len() > ws.piece_limit() {
             return Err(SharedError::working_limit("authoring assembly"));
         }
         let mut bricks = Vec::new();
@@ -109,13 +109,13 @@ impl SharedWorlds {
             crate::import::validate_export(&mut request.scene)?;
         }
         ws.model.measurements.normalize_scene(&mut request.scene)?;
-        if request.scene.bricks.len() > self.limits.pieces
+        if request.scene.bricks.len() > ws.piece_limit()
             || canonical_cbor(&request.scene)?.len() > self.limits.bytes
         {
             return Err(SharedError::working_limit("assembly replacement"));
         }
         let original = ws.rules(assembly).await?.as_ref().clone();
-        if original.pieces.len() > self.limits.pieces {
+        if original.pieces.len() > ws.piece_limit() {
             return Err(SharedError::working_limit("authoring assembly"));
         }
         let seeds = original.pieces.values().cloned().collect::<BTreeSet<_>>();

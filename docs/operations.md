@@ -34,12 +34,13 @@ commits/conflicts, public in-world list navigation, pagination, GPS and handoff.
 Workspace/native/package versions match; the site has its own version. Inspect
 the intended diff/status/history, commit and push only the intended files, then
 create a matching `vVERSION` tag. `release.yml` builds/tests matching native/WASM
-bundles, GitHub tarball and server image. A successful source push alone does not
+bundles, a complete tarball artifact and server image. Upload the verified tarball
+and checksum to the matching GitHub Release. A successful source push alone does not
 prove an asset or image was published.
 
 ```sh
 gh run list --repo ngrislain/ergo --workflow release.yml --limit 5
-gh release view v0.5.0 --repo ngrislain/ergo
+gh release view v0.5.1 --repo ngrislain/ergo
 ```
 
 Verify the public tarball version/checksum, consumer install and actual MCP smoke
@@ -50,7 +51,7 @@ After publication, set the public Pages variable and rebuild:
 
 ```sh
 gh variable set ERGO_MCP_PACKAGE --repo ngrislain/ergo \
-  --body 'https://github.com/ngrislain/ergo/releases/download/v0.5.0/ngrislain-ergo-mcp-0.5.0.tgz'
+  --body 'https://github.com/ngrislain/ergo/releases/download/v0.5.1/ngrislain-ergo-mcp-0.5.1.tgz'
 gh workflow run pages.yml --repo ngrislain/ergo --ref main
 ```
 
@@ -81,12 +82,19 @@ do not create duplicate resources instead of restoring existing state.
 3. Stage new immutable objects and new cache-prefix descriptions. Never overwrite
    different bytes under a content hash.
 4. Start `shared-install-history WORLD_ID MANIFEST.json` with the correct private
-   storage environment. It checks the expected source head, fences the world and
+   storage environment, including effective `ERGO_COMMON_WORLD_ID` and
+   `ERGO_WORLD_PREFIX`. It checks the expected source head, fences the world and
    writes its ready receipt.
-5. Deploy the matching verified runtime while the barrier is held; write the
-   target tip into the manifest's resume file to authorize installation.
-6. Verify new head/workspaces, identities, history, native part/raster reads and
-   collection, then retire only the explicit superseded cache-key list.
+5. Close public traffic at the hosting gateway and verify denial on both the
+   custom domain and default container endpoint. Stage the matching verified
+   runtime. Startup reads the world, so it cannot become healthy while fenced.
+   Keep the gateway closed, then write the target tip into the manifest's resume
+   file to authorize installation and collection.
+6. Wait for the installer's completed receipt and released barrier, redeploy if
+   the fenced startup failed, and verify the matching runtime is ready before
+   restoring public traffic. Verify new head/workspaces, identities, history,
+   native part/raster reads and collection, then retire only the explicit
+   superseded cache-key list.
 7. Audit the complete bucket again, save the operator receipt and refresh the
    private configuration backup. Upgrade/reconnect the GitHub MCP client.
 
@@ -107,8 +115,9 @@ target/debug/ergo-server shared-prune WORLD_ID
 ```
 
 Match the requested email to its stable profile ID before changing entitlement;
-verify with the authenticated `get_edit_allowance`. The paid value means unlimited
-pacing and does not bypass physics/authorization. Pruning requires an explicit
+verify with the authenticated `get_edit_allowance`. The paid value enables god
+mode: unlimited pacing and no authoring brick-count cap. It does not bypass
+physics/authorization or byte/request budgets. Pruning requires an explicit
 owner retention policy. Recover pins/barriers only after the former holder and
 all in-flight mutations are settled.
 
