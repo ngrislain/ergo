@@ -8,6 +8,8 @@ updating the relevant current documentation.
   simplification, cache policies and performance studies.
 - [Physical fidelity and solvers](todo/physics.md): measured capacities,
   directional envelopes, general equilibrium, larger islands and destruction.
+  [Measured stud connections](todo/measured-stud-connections.md) records the chosen
+  palace pathway, verified literature and remaining calibration/model gaps.
 - [Editing and navigation](todo/editing.md): gizmos, precision positioning,
   complete contextual CAD editing, history and gameplay triggers.
 - [Assets and imports](todo/assets.md): bulk conversion, catalogue discovery,

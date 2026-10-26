@@ -134,6 +134,28 @@ envelope, not copied from an unrelated single-axis failure test.
 Impulse estimates are timestep/solver-dependent. Their reports disclose solver
 and measurement assumptions; they are not calibrated material-stress predictions.
 
+## Inventory the measurements a construction requires
+
+From a source checkout, the read-only developer helper accepts a native
+construction, a materialized export, or a shared workspace response:
+
+```sh
+cargo run --locked -p ergo-world --example connector_requirements -- construction.ergo.json
+# Optionally compare with an actual operator measurement book:
+cargo run --locked -p ergo-world --example connector_requirements -- construction.ergo.json measurements.json
+```
+
+It normalizes nominal geometry, adds justified inferred stud pairs, and groups
+the exact part-pair/kind/world-horizontal-footprint keys used by the current
+matcher. The output gives connection counts, example piece pairs and missing
+keys. Its `ergo-connector-requirements-1` output is an inventory, not a loadable
+measurement book or a stability certificate. It supplies no capacity values.
+
+Published contact-point friction fits need their corresponding directional
+contact model; they cannot be copied into whole-joint combined force/torque
+fields. Research and the remaining implementation work are recorded in
+[measured stud connections](../todo/measured-stud-connections.md).
+
 ## Admission and client probes
 
 For unanchored assemblies the server first tries nonnegative gravity

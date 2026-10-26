@@ -35,6 +35,7 @@ designs live in `todo/` and are indexed by [TODO.md](../TODO.md).
 - [Rigid-body and static physics](rigid-body-physics.md)
 - [Server acceptance gates](validation-gates.md)
 - [Sourced mass and connector calibration](physical-calibration.md)
+  includes a read-only construction measurement-requirements inventory helper.
 - [Gravity, earthquake and impact probes](solidity-testing.md)
 
 ## Maintain and deploy

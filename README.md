@@ -107,3 +107,6 @@ releases, the public website, deployment and private configuration recovery.
 For a complete construction cache and explicit route, `cargo run -p ergo-client
 --example check_walk -- construction.ergo.json route.json` checks continuous
 walking, floor arrivals and headroom with the viewer's actual movement engine.
+The [connector requirements helper](docs/physical-calibration.md#inventory-the-measurements-a-construction-requires)
+inventories the exact calibration keys a construction needs without supplying
+invented strength values.
