@@ -735,7 +735,7 @@ checksum = "a1731451909bde27714eacba19c2566362a7f35224f52b153d3f42cf60f72472"
 
 [[package]]
 name = "ergo-assets"
-version = "0.4.0"
+version = "0.5.0"
 dependencies = [
  "anyhow",
  "ciborium",
@@ -756,7 +756,7 @@ dependencies = [
 
 [[package]]
 name = "ergo-client"
-version = "0.4.0"
+version = "0.5.0"
 dependencies = [
  "anyhow",
  "console_error_panic_hook",
@@ -771,7 +771,7 @@ dependencies = [
 
 [[package]]
 name = "ergo-mcp"
-version = "0.4.0"
+version = "0.5.0"
 dependencies = [
  "anyhow",
  "axum",
@@ -791,7 +791,7 @@ dependencies = [
 
 [[package]]
 name = "ergo-server"
-version = "0.4.0"
+version = "0.5.0"
 dependencies = [
  "anyhow",
  "async-stream",
@@ -824,7 +824,7 @@ dependencies = [
 
 [[package]]
 name = "ergo-transactions"
-version = "0.4.0"
+version = "0.5.0"
 dependencies = [
  "async-trait",
  "bytes",
@@ -843,7 +843,7 @@ dependencies = [
 
 [[package]]
 name = "ergo-viewer"
-version = "0.4.0"
+version = "0.5.0"
 dependencies = [
  "anyhow",
  "ciborium",
@@ -865,7 +865,7 @@ dependencies = [
 
 [[package]]
 name = "ergo-world"
-version = "0.4.0"
+version = "0.5.0"
 dependencies = [
  "anyhow",
  "ciborium",
@@ -4023,7 +4023,7 @@ checksum = "3ad82d2a33cdc9674dc7465672f271e096168fcdbe0f799d9e6db8c5892679dc"
 
 [[package]]
 name = "xtask"
-version = "0.4.0"
+version = "0.5.0"
 dependencies = [
  "ergo-world",
  "serde_json",

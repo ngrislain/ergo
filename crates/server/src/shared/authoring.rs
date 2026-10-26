@@ -206,7 +206,6 @@ impl SharedWorlds {
         ensure!(!changed.is_empty() || rules_changed, "No shared changes");
         ws.stage_rules(rules)?;
         ws.flush_rules(&BTreeSet::from([assembly.clone()])).await?;
-        ws.flush_blocks().await?;
         ws.reset_dependencies();
         let mut validation_seeds = seeds;
         validation_seeds.extend(before);
@@ -319,6 +318,39 @@ pub(super) struct LocateQuery {
     y: f64,
     #[serde(default)]
     z: f64,
+}
+
+/// A bounded location hint from one current member, not an isolated model export.
+pub(super) async fn location(
+    State(s): State<AppState>,
+    h: HeaderMap,
+    Path((id, assembly)): Path<(String, ContentId)>,
+) -> SharedResult<Json<serde_json::Value>> {
+    let snapshot = snapshot(&s, &id, &h, None).await?;
+    let metadata: Metadata = snapshot
+        .get_limited(&root(2), 64 * 1024)
+        .await?
+        .context("Missing world metadata")?;
+    let member = {
+        let page = snapshot
+            .scan_page(&paged::rule_path(&assembly, 1), None, 1)
+            .await?;
+        let (_, cid) = page
+            .leaves
+            .first()
+            .context("Construction contains no placed pieces")?;
+        let row: paged::MemberRow = snapshot.blob_limited(cid, 64 * 1024).await?;
+        row.piece
+    };
+    let piece: Piece = snapshot
+        .get_limited(&entity_path(3, &member), 64 * 1024)
+        .await?
+        .context("Missing construction member")?;
+    ensure!(piece.assembly == assembly, "Construction member mismatch");
+    Ok(Json(
+        serde_json::json!({"world_id":id,"assembly_id":assembly,"revision":snapshot.id(),
+        "metadata":metadata,"position_world":ergo_world::coordinates::public(piece.geometry.position).to_array()}),
+    ))
 }
 pub(super) async fn locate(
     State(s): State<AppState>,

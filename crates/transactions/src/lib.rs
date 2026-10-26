@@ -58,7 +58,7 @@ use tree::{PresenceVersion, RegionVersion, Tree};
 pub type Result<T> = std::result::Result<T, Error>;
 const FORMAT: u32 = 3;
 fn supported_format(format: u32) -> bool {
-    (1..=FORMAT).contains(&format)
+    format == FORMAT
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -388,40 +388,17 @@ impl Repository {
 
     async fn contains(
         &self,
-        mut current: Snapshot,
+        current: Snapshot,
         candidate: &ContentId,
-        sequence: u64,
+        _sequence: u64,
     ) -> Result<bool> {
-        if let Some(index) = &current.history {
-            return Ok(history::entry(self, index, &history::id_path(candidate))
-                .await?
-                .is_some_and(|e| {
-                    e.revision == *candidate && e.sequence <= current.commit.sequence
-                }));
-        }
-        // Legacy heads do not have a trusted indexed sequence hint.
-        let sequence = if sequence == 0 {
-            match self.load_snapshot(candidate).await {
-                Ok(s) => s.commit.sequence,
-                Err(Error::Store(object_store::Error::NotFound { .. })) => return Ok(false),
-                Err(e) => return Err(e),
-            }
-        } else {
-            sequence
-        };
-        while current.commit.sequence > sequence {
-            let parent = current
-                .commit
-                .parent
-                .as_ref()
-                .ok_or_else(|| Error::Corrupt("missing commit parent".into()))?;
-            let previous = self.load_snapshot(parent).await?;
-            if previous.commit.sequence.checked_add(1) != Some(current.commit.sequence) {
-                return Err(Error::Corrupt("non-consecutive history sequence".into()));
-            }
-            current = previous;
-        }
-        Ok(current.id == *candidate)
+        let index = current
+            .history
+            .as_ref()
+            .ok_or_else(|| Error::Corrupt("Current heads require an acceptance index".into()))?;
+        Ok(history::entry(self, index, &history::id_path(candidate))
+            .await?
+            .is_some_and(|e| e.revision == *candidate && e.sequence <= current.commit.sequence))
     }
 
     /// Create an empty independent serialization domain (branch or shard).
@@ -512,6 +489,11 @@ impl Repository {
             version: result.meta.version.clone(),
         };
         let head: Head = codec::decode(&result.bytes().await?)?;
+        if head.history.is_none() {
+            return Err(Error::Corrupt(
+                "Current heads require an acceptance index".into(),
+            ));
+        }
         if !supported_format(head.format) {
             return Err(Error::Corrupt("unsupported head format".into()));
         }

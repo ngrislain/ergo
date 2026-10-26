@@ -436,7 +436,12 @@ fn main() -> Result<()> {
         .truncate(false)
         .open(path.with_extension("mcp.lock"))?;
     fs2::FileExt::try_lock_exclusive(&lock).context("Working copy is already open")?;
-    let mut scene = if path.exists() {
+    let bound = publisher.is_some()
+        && shared::state_path(&path).exists()
+        && serde_json::from_slice::<shared::Binding>(&fs::read(shared::state_path(&path))?)?
+            .assembly_id
+            .is_some();
+    let mut scene = if path.exists() && !bound {
         ensure!(
             path.metadata()?.len() <= 128 * 1024 * 1024,
             "Working copy exceeds 128 MiB"
@@ -675,10 +680,16 @@ fn main() -> Result<()> {
                                 Ok(json!({"content":[{"type":"text","text":value.to_string()}],"structuredContent":value,"isError":false}))
                             });
                         }
-                        if name == "publish_construction" || name == "get_edit_allowance" {
+                        if name == "publish_construction"
+                            || name == "get_edit_allowance"
+                            || name == "get_user_position"
+                        {
                             let publisher = publisher.as_ref().context("Publishing is not configured. Set ERGO_PUBLISH_URL and ERGO_PUBLISH_TOKEN_FILE (or ERGO_PUBLISH_TOKEN); loopback development can omit the token")?;
                             if name == "get_edit_allowance" {
                                 return Ok(runtime.block_on(publisher.allowance()));
+                            }
+                            if name == "get_user_position" {
+                                return Ok(runtime.block_on(publisher.user_position()));
                             }
                             if let Some(common) = &bridge.common {
                                 return runtime.block_on(async {

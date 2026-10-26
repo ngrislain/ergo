@@ -103,9 +103,8 @@ The head references a parent-linked immutable `Commit` containing:
 
 Octree nodes are branches with eight optional children, packed unary extensions,
 geometry leaves holding payload IDs, or deletion tombstones. Unfenced unary paths
-collapse into one extension; fenced branches remain explicit. Format 3 adds an
-atomic acceptance index to format-2 packed paths, and reads format-1/2 data.
-Older clients correctly reject newer heads rather than interpreting unknown nodes.
+collapse into one extension; fenced branches remain explicit. Current format 3
+requires an atomic acceptance index. Other persisted versions are rejected.
 A geometry leaf occupies its entire region.
 `put` replaces the **whole subtree**, not individual fields inside a geometry;
 `remove` logically deletes that region. Remove a covering leaf before subdividing
@@ -384,8 +383,7 @@ cannot contain its own CID without a hash cycle, so history indexes live in the
 head and point to immutable revision entries. `accepted_snapshot`, `revision_entry`,
 `revisions`, and `was_committed` use direct CID/sequence lookup. Missing pruned
 entries are not accepted receipts; a negative result after retention is not proof
-that an operation never happened. Legacy heads are explicitly upgraded with
-`Maintenance::index_history`, streaming metadata rather than geometry.
+that an operation never happened. No historical-format traversal fallback is used.
 
 `directory_exists` tracks structural presence and replacement generations rather
 than every descendant version. A true directory can contain tombstones; use actual
@@ -397,7 +395,8 @@ exceeded; it is not a world-size limit.
 `Maintenance::rewrite` consumes a stream of record edits, flushes bounded batches,
 and publishes only the final derived-index root. A failed intermediate batch does
 not alter the authoritative head. The source snapshot is valid only inside that
-maintenance job. Shared spatial/rule upgrades use this mechanism. See
+maintenance job. `Maintenance::replace_history` installs a pre-audited current
+history under the same barrier and preserves its complete retained sequence range. See
 [storage operations](storage-operations.md) for commands and the opt-in retention
 API.
 
@@ -443,7 +442,7 @@ those external resources and is not inferred from them.
   exclusive barriers, disk-backed streaming collection, bounded compaction.
 - [`local.rs`](../crates/transactions/src/local.rs): advisory-lock local CAS.
 - [`history.rs`](../crates/transactions/src/history.rs): atomic acceptance indexes,
-  bounded history pages, legacy index upgrades, and retention pruning.
+  bounded history pages, current-history installation, and retention pruning.
 - [`batch.rs`](../crates/transactions/src/batch.rs): compatible member publication
   with one head CAS and individual candidate/error reporting.
 

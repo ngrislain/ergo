@@ -6,7 +6,7 @@ import xml.etree.ElementTree as ET
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 failures = []
-documents = [ROOT / "README.md", ROOT / "TODO.md", ROOT / "AGENTS.md", *sorted((ROOT / "docs").glob("*.md"))]
+documents = [ROOT / "README.md", ROOT / "TODO.md", ROOT / "AGENTS.md", *sorted((ROOT / "docs").rglob("*.md")), *sorted((ROOT / "todo").rglob("*.md"))]
 for document in documents:
     text = document.read_text()
     for link in re.findall(r"!?\[[^\]]*\]\(([^)]+)\)", text):
@@ -17,7 +17,7 @@ for document in documents:
             failures.append(f"{document.relative_to(ROOT)}: missing link {link}")
 
 namespace = {"svg": "http://www.w3.org/2000/svg"}
-figures = sorted((ROOT / "docs/figures").glob("*.svg"))
+figures = sorted((ROOT / "docs/figures").glob("*.svg")) + sorted((ROOT / "todo").rglob("*.svg"))
 for figure in figures:
     try:
         root = ET.parse(figure).getroot()

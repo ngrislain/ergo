@@ -123,7 +123,7 @@ use explicit floating-point/solver tolerances, not exact equality. Defaults are
 
 The result includes the local static certificate, pose changes, velocity/breakage
 diagnostics, and calibration completeness. It does not require many settling
-steps or treat one step as proof against future perturbations. The deployed server
+steps or treat one step as proof against later disturbances. The deployed server
 uses its own numerical tolerances and a **zero-step** static commit certificate;
 local settings cannot override it.
 
@@ -141,7 +141,7 @@ local settings cannot override it.
 Displacement is derived from the same analytic acceleration bound used below.
 Separate X/Y horizontal cases start from the same original model. The input is not a
 Richter/moment magnitude. Converting a source earthquake magnitude into local
-motion requires additional distance/site/ground-motion data and is future work.
+motion is not a supported input: current load cases take explicit local motion/PGA.
 
 `test_visual_appearance` renders from an arbitrary camera or preset directions;
 see [the MCP document](local-construction-mcp.md) for camera arguments.
@@ -214,12 +214,3 @@ The MCP result includes an optional isometric PNG of the post-test construction.
 The original local working copy remains unchanged. Vision feedback complements
 the structured displacement/breakage results; a visually intact model may still
 contain overstressed or uncalibrated connections.
-
-## Next extensions
-
-Recorded accelerograms, multiple horizontal/vertical components, spectral
-matching, randomized load ensembles, rotational excitation, prescribed impulse
-histories, local contact-force visualization, and capacity-aware stress overlays
-are future work. So are material crushing and fragment generation. These must
-retain traceable SI inputs and convergence/experimental validation rather than
-turning “earthquake” into an unqualified binary solidity guarantee.

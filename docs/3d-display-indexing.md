@@ -43,9 +43,8 @@ see [instancing references](references.md#s5-engine-style-instancing-and-pass-re
 Blocks make prototype reuse unusually effective: palette colors/transforms are
 instance attributes, not separate copies of a part's vertices. Render chunks are
 derived from residency, not mechanical assembly boundaries or S3 file boundaries.
-This is a small ordered pass pipeline, not a general frame-graph compiler, voxel
-mesher or GPU-driven virtualized-geometry implementation. Hi-Z occlusion, interior
-face elimination and per-page tree updates remain future work.
+This is a small ordered pass pipeline. Its hierarchy, quality policies and buffer
+reuse are implemented in the modules above.
 
 Interactive views use adaptive detail and camera culling. MCP captures retain
 full source geometry for camera-visible pieces. The tiny homepage illustration
@@ -80,9 +79,8 @@ silently omitting cells inside that distance. A single dense cell can still need
 smaller render pages; an explicit budget failure is reported in that case.
 
 Requests carry a world-generation check, and late results outside the current
-view are discarded from memory. Hysteresis, true request cancellation, and a
-hierarchical persisted catalog remain proposed improvements. The current sparse
-manifest is still scanned to select candidate storage cells.
+view are discarded from memory. The current sparse manifest is scanned to select
+candidate storage cells.
 
 ## Boundary-crossing bricks
 
@@ -137,8 +135,7 @@ $$
 
 This test is applied to octree nodes and their parent-held objects before mesh
 instances are assembled. A radial fog-range test removes additional candidates.
-Camera, viewport, pose, or fog changes invalidate the instance lists. A future
-fully-contained-subtree fast path could avoid repeated plane tests.
+Camera, viewport, pose, or fog changes invalidate the instance lists.
 
 ## Progressive distance detail
 
@@ -151,7 +148,7 @@ $$
 where $H$ is viewport height, $D$ the metric-proportioned bound diameter, $d$ camera
 distance, and $\theta_v$ vertical field of view. The implemented discrete tiers are:
 
-- At least 24 px: detailed supplied/cached LDraw mesh.
+- At least 24 px: detailed supplied/cached Ergo geometry.
 - At least 8 px: simplified parametric mesh for known rectangular catalog parts.
 - At least 2 px: nominal body box for those rectangular parts.
 - Below 2 px: coarse colored bounds aggregated in 8-unit spatial buckets.
@@ -159,13 +156,12 @@ distance, and $\theta_v$ vertical field of view. The implemented discrete tiers 
 The listed thresholds initialize a piece's tier. Subsequent changes use a **12%
 hysteresis band**: refine above 1.12× a boundary and coarsen below 0.88× it.
 Large camera moves can cross several tiers in one update. Nonrectangular/custom
-LDraw parts retain their canonical mesh through the medium tiers, rather than
+parts retain their canonical mesh through the medium tiers, rather than
 substituting a box that changes their silhouette; subpixel aggregates still apply.
 The selected piece keeps detailed geometry; highlighted group members retain at
 least box-level individual display. Full resident geometry remains available for
 picking, and physics never substitutes these render LODs for its body model.
-Fog hides the final distance cutoff. QEM/progressive-mesh streams remain future
-work; see [S3–S4](references.md).
+Fog hides the final distance cutoff.
 
 ## Picking: broad phase, then triangle tests
 
@@ -232,9 +228,7 @@ $$
 $$
 
 The camera uses the same origin. Rebase instance buffers when the target enters
-a new origin cell; do not modify persisted coordinates. A future worker-based
-physics implementation can similarly use local float64 islands while keeping
-global placement separate.
+a new origin cell without modifying persisted coordinates.
 
 ## Three different caches
 
@@ -252,12 +246,3 @@ Content-addressed objects never need in-place invalidation. New content gets a
 new hash; manifests select a new set of hashes. The current service worker does
 not cache sessions, world lists, manifests, or the app shell and does not promise
 full offline operation. Logout clears model caches.
-
-## Scale-out priorities
-
-Measure decode latency, peak resident bytes, index rebuild time, instance upload
-time, triangles, and frame time separately. Then add, in order of observed need:
-per-page trees, worker decoding, smaller render pages, and more
-accurate simplification. Persisting an octree is useful only when the
-saved build time exceeds transfer/versioning costs; raw brick data remains the
-source of truth.

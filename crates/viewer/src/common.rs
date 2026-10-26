@@ -17,7 +17,6 @@ pub(super) struct Binding {
 struct Workspace {
     #[serde(flatten)]
     binding: Binding,
-    scene: WorldExport,
 }
 #[derive(Clone, Deserialize)]
 pub(super) struct Assembly {
@@ -29,46 +28,70 @@ struct Page {
     items: Vec<Assembly>,
     next: Option<String>,
 }
+#[derive(Deserialize)]
+struct Location {
+    world_id: String,
+    assembly_id: String,
+    metadata: SharedMetadata,
+    position_world: [f64; 3],
+}
 
 pub(super) fn refresh(handle: Handle) {
-    let Some(id) = with_client(handle, |c| c.ui.common_world.get_untracked()) else {
-        return;
-    };
-    spawn_local(async move {
-        match json::<Page>(&format!("/api/shared-worlds/{id}/assemblies?limit=32")).await {
-            Ok(page) => with_client(handle, |c| {
-                c.ui.common_assemblies.set(page.items);
-                c.ui.common_more.set(page.next);
-            }),
-            Err(error) => with_client(handle, |c| c.ui.fail(error)),
-        }
-    });
+    load_page(handle, true);
 }
 pub(super) fn more(handle: Handle) {
+    load_page(handle, false);
+}
+fn load_page(handle: Handle, reset: bool) {
     let Some((id, cursor)) = with_client(handle, |c| {
-        Some((
-            c.ui.common_world.get_untracked()?,
-            c.ui.common_more.get_untracked()?,
-        ))
+        if c.ui.common_loading.get_untracked() {
+            return None;
+        }
+        let id = c.ui.common_world.get_untracked()?;
+        let cursor = if reset {
+            None
+        } else {
+            Some(c.ui.common_more.get_untracked()?)
+        };
+        c.ui.common_loading.set(true);
+        Some((id, cursor))
     }) else {
         return;
     };
     spawn_local(async move {
-        let cursor = js_sys::encode_uri_component(&cursor)
-            .as_string()
-            .unwrap_or_default();
-        match json::<Page>(&format!(
-            "/api/shared-worlds/{id}/assemblies?limit=32&after={cursor}"
-        ))
-        .await
-        {
-            Ok(page) => with_client(handle, |c| {
-                c.ui.common_assemblies
-                    .update(|items| items.extend(page.items));
-                c.ui.common_more.set(page.next);
-            }),
-            Err(error) => with_client(handle, |c| c.ui.fail(error)),
+        let mut url = format!("/api/shared-worlds/{id}/assemblies?limit=32");
+        if let Some(cursor) = cursor {
+            url.push_str(&format!(
+                "&after={}",
+                js_sys::encode_uri_component(&cursor)
+                    .as_string()
+                    .unwrap_or_default()
+            ));
         }
+        let result = json::<Page>(&url).await;
+        with_client(handle, |c| {
+            c.ui.common_loading.set(false);
+            if c.ui.common_world.get_untracked().as_deref() != Some(id.as_str()) {
+                return;
+            }
+            match result {
+                Ok(page) => {
+                    if reset {
+                        c.ui.common_assemblies.set(page.items);
+                    } else {
+                        c.ui.common_assemblies.update(|items| {
+                            for item in page.items {
+                                if !items.iter().any(|old| old.id == item.id) {
+                                    items.push(item);
+                                }
+                            }
+                        });
+                    }
+                    c.ui.common_more.set(page.next);
+                }
+                Err(error) => c.ui.fail(error),
+            }
+        });
     });
 }
 pub(super) fn open(handle: Handle, assembly: String) {
@@ -80,23 +103,35 @@ pub(super) fn open(handle: Handle, assembly: String) {
     }
     with_client(handle, |c| c.ui.busy.set(true));
     spawn_local(async move {
-        match json::<Workspace>(&format!(
-            "/api/shared-worlds/{id}/assemblies/{assembly}/workspace"
+        match json::<Location>(&format!(
+            "/api/shared-worlds/{id}/assemblies/{assembly}/location"
         ))
         .await
         {
-            Ok(workspace) => {
-                if let Err(error) = open_draft(handle, workspace.scene) {
-                    with_client(handle, |c| c.ui.fail(error));
+            Ok(location) => {
+                if location.world_id != id || location.assembly_id != assembly {
+                    with_client(handle, |c| c.ui.fail("Wrong shared construction location"));
                     return;
                 }
+                let position =
+                    ergo_world::coordinates::internal(DVec3::from(location.position_world));
+                let coord = BlockCoord::at(position);
+                open_shared(
+                    handle,
+                    SharedLocation {
+                        world: id,
+                        metadata: location.metadata,
+                        coord: Some(coord),
+                    },
+                );
                 with_client(handle, |c| {
-                    c.common_binding = Some(workspace.binding);
-                    c.common_attempt = None;
-                    c.ui.dirty.set(false);
-                    c.ui.editing_shared.set(true);
+                    c.ui.focused_assembly.set(Some(assembly));
+                    if let Some(renderer) = &mut c.renderer {
+                        renderer.set_navigation(NavigationMode::Orbit);
+                        renderer.teleport(position);
+                    }
                     c.ui.message
-                        .set("Editing shared construction · accepted edits commit to S3".into());
+                        .set("Going to construction in the shared world…".into());
                 });
             }
             Err(error) => with_client(handle, |c| {
@@ -196,19 +231,21 @@ pub(super) fn pump(handle: Handle) {
             Ok(read.binding)
         }
         .await;
-        with_client(handle, |c| {
+        let committed = with_client(handle, |c| {
             if c.generation != generation {
-                return;
+                return None;
             }
             c.ui.busy.set(false);
             match result {
                 Ok(binding) => {
+                    let assembly = binding.assembly_id.clone();
                     c.common_binding = Some(binding);
                     c.ui.dirty.set(false);
                     c.ui.editing_shared.set(true);
                     c.ui.message.set(
                         "Committed to the common world in S3 · author attribution recorded".into(),
                     );
+                    Some(assembly)
                 }
                 Err(error) => {
                     c.common_fenced = uncertain;
@@ -217,10 +254,14 @@ pub(super) fn pump(handle: Handle) {
                     if uncertain {
                         c.ui.fail("Shared outcome is uncertain. Reopen/reconcile the construction before further commits; no automatic retry was sent.");
                     }
+                    None
                 }
             }
         });
         refresh(handle);
+        if let Some(assembly) = committed {
+            open(handle, assembly);
+        }
     });
 }
 
@@ -238,7 +279,8 @@ pub(super) fn agent_handoff(handle: Handle) {
             .or_else(|| {
                 let selected = c.ui.selected.get_untracked()?.id;
                 c.shared.as_ref()?.assemblies.get(&selected).cloned()
-            });
+            })
+            .or_else(|| c.ui.focused_assembly.get_untracked());
         (position, assembly)
     });
     let mut url = format!("/login?x={}&y={}&z={}", position.x, position.y, position.z);

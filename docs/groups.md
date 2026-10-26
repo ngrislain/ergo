@@ -12,10 +12,10 @@ physics. Transforming a container updates every descendant piece **once** and
 also updates descendant pivots. Readers do not apply a second hidden parent
 matrix to the already-transformed poses.
 
-The metadata is stored with private manifests and JSON exports. Membership-only
-edits can share unchanged content-addressed brick blocks with prior snapshots.
-Imported LDraw assemblies are currently flattened; preserving their original
-submodel hierarchy automatically is future work.
+Group metadata is stored in paged shared rules and native construction exports.
+Membership-only edits reuse unchanged geometry. Reusable model definitions and
+authoring groups are distinct: source hierarchy is retained when its instances
+match the authoritative piece poses.
 
 ## Rigid transforms and dimensions
 

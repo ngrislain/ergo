@@ -1,77 +1,11 @@
-//! Canonical construction files: LDraw subparts + per-occurrence Ergo metadata.
+//! Native construction files: reusable definitions and per-occurrence metadata.
 //! Runtime/REST scene messages and spatial indexes keep materialized leaf bricks.
 use crate::{WorldExport, assembly::Model, geometry::Mesh, ldraw};
 use anyhow::{Context, Result, ensure};
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 
-pub const FORMAT: &str = "ergo-ldraw-1";
-
-/// The REST/WASM boundary accepts canonical files as well as materialized scenes.
-/// Serialization of WorldExport remains materialized for streaming/local jobs.
-#[derive(Deserialize)]
-pub struct SceneWire {
-    #[serde(default)]
-    format: Option<String>,
-    schema: u32,
-    name: String,
-    geo: crate::GeoReference,
-    #[serde(default)]
-    model: Option<Model>,
-    #[serde(default)]
-    bricks: Option<Vec<crate::Brick>>,
-    #[serde(default)]
-    pieces: Vec<PieceProperties>,
-    meshes: BTreeMap<String, Mesh>,
-    #[serde(default)]
-    joints: Vec<crate::JointSpec>,
-    #[serde(default)]
-    fixed_bricks: Vec<u32>,
-    #[serde(default)]
-    ground: Vec<crate::terrain::GroundBlock>,
-    #[serde(default)]
-    groups: Vec<crate::groups::Group>,
-}
-impl TryFrom<SceneWire> for WorldExport {
-    type Error = anyhow::Error;
-    fn try_from(w: SceneWire) -> Result<Self> {
-        if let Some(format) = w.format {
-            ensure!(
-                w.bricks.is_none(),
-                "Construction cannot contain both model and materialized bricks"
-            );
-            Construction {
-                format,
-                schema: w.schema,
-                name: w.name,
-                geo: w.geo,
-                model: w.model.context("Missing construction model")?,
-                pieces: w.pieces,
-                meshes: w.meshes,
-                joints: w.joints,
-                fixed_bricks: w.fixed_bricks,
-                ground: w.ground,
-                groups: w.groups,
-            }
-            .into_scene()
-        } else {
-            Ok(Self {
-                schema: w.schema,
-                name: w.name,
-                geo: w.geo,
-                bricks: w
-                    .bricks
-                    .context("Missing materialized bricks or explicit construction format")?,
-                meshes: w.meshes,
-                model: w.model,
-                joints: w.joints,
-                fixed_bricks: w.fixed_bricks,
-                ground: w.ground,
-                groups: w.groups,
-            })
-        }
-    }
-}
+pub const FORMAT: &str = "ergo-construction-1";
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct PieceProperties {
@@ -82,6 +16,7 @@ pub struct PieceProperties {
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct Construction {
     pub format: String,
     pub schema: u32,
@@ -167,10 +102,10 @@ impl Construction {
     }
 }
 
-/// Read old schema-2 leaf files as well as new construction envelopes. An unknown
-/// explicit format is an error, never silently interpreted as a legacy file.
+/// Construction files have one explicit envelope. Materialized WorldExport
+/// messages belong to the current REST/WASM protocol, not the file format.
 pub fn decode(bytes: &[u8]) -> Result<WorldExport> {
-    Ok(serde_json::from_slice(bytes)?)
+    serde_json::from_slice::<Construction>(bytes)?.into_scene()
 }
 
 #[cfg(test)]
@@ -247,9 +182,10 @@ mod tests {
         let encoded = serde_json::to_vec(&stored).unwrap();
         let value: serde_json::Value = serde_json::from_slice(&encoded).unwrap();
         assert!(value.get("bricks").is_none());
+        assert_eq!(value["model"]["format"], "ergo-model-1");
         assert_eq!(
-            value["model"]["subparts"]["main.ldr"][1]["matrix"][0][3],
-            100.
+            value["model"]["definitions"]["main.ldr"][1]["transform"][0][3],
+            5.
         );
         let decoded = decode(&encoded).unwrap();
         assert_eq!(decoded.bricks[0].id, 91);
@@ -270,10 +206,10 @@ mod tests {
     }
 
     #[test]
-    fn old_files_load_and_independent_edits_cannot_restore_stale_template_poses() {
+    fn leaf_files_are_rejected_and_edits_cannot_restore_stale_template_poses() {
         let mut scene = construction().into_scene().unwrap();
         let old = serde_json::to_vec(&scene).unwrap();
-        assert_eq!(decode(&old).unwrap().bricks.len(), 2);
+        assert!(decode(&old).is_err());
         scene.bricks[1].translated(DVec3::new(7., 0., 0.));
         let stored = Construction::from(&scene);
         assert_eq!(stored.model.subparts.len(), 1);

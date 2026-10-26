@@ -205,11 +205,7 @@ impl SharedWorlds {
             .await?
             .context("Missing metadata")?;
         if let Some(coord) = advertisement.coord {
-            let path = if metadata.layout >= 2 {
-                spatial::directory(coord)
-            } else {
-                block_path(coord)
-            };
+            let path = spatial::directory(coord);
             if snapshot.value_id(&path).await?.is_none() {
                 return Ok(None);
             }
@@ -389,7 +385,7 @@ impl SharedWorlds {
         )
         .await?;
         let mut after = None;
-        let prefix = root(if metadata.layout >= 2 { 5 } else { 1 });
+        let prefix = root(5);
         loop {
             let page = snapshot
                 .scan_level(&prefix, 65, after.as_ref(), 128)

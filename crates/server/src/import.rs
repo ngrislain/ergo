@@ -91,7 +91,7 @@ pub fn import_ldraw(
     let library = library
         .map(|path| path.canonicalize())
         .transpose()
-        .context("LDRAW_DIR does not exist")?;
+        .context("ERGO_ASSET_LIBRARY_DIR does not exist")?;
     let resolver = |name: &str| -> Option<String> {
         if let Some(text) = doc.files.get(name) {
             return Some(text.clone());
@@ -205,7 +205,7 @@ pub fn validate_export(scene: &mut WorldExport) -> Result<()> {
             "Invalid geometry schema or part ID"
         );
         ensure!(
-            ergo_world::geometry::part_spec(name).is_some() || mesh.quality == "ldraw",
+            ergo_world::geometry::part_spec(name).is_some() || mesh.quality == "source",
             "Non-standard parts require actual LDraw/Studio geometry, not placeholders"
         );
         mesh.physical = None;
@@ -265,7 +265,7 @@ mod tests {
         let imported = import_ldraw(model.as_bytes(), "custom.mpd", None).unwrap();
         assert_eq!(imported.bricks[0].part, "custom.dat");
         assert_eq!(imported.bricks[0].rgb, 0x123456);
-        assert_eq!(imported.meshes["custom.dat"].quality, "ldraw");
+        assert_eq!(imported.meshes["custom.dat"].quality, "source");
         let mut scene = WorldExport {
             schema: ergo_world::SCHEMA_VERSION,
             name: "Measured custom part".into(),

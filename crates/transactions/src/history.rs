@@ -90,9 +90,8 @@ pub(crate) async fn append_many(
     index: Option<&HistoryIndex>,
     entries: &[RevisionEntry],
 ) -> Result<Option<HistoryIndex>> {
-    let Some(index) = index else {
-        return Ok(None);
-    }; // Legacy heads get an explicit, streaming upgrade.
+    let index =
+        index.ok_or_else(|| Error::Corrupt("Current heads require an acceptance index".into()))?;
     let mut tree = Tree::new(repo.clone());
     let mut root = index.root.clone();
     for entry in entries {
@@ -140,22 +139,11 @@ impl Repository {
     ) -> Result<Option<RevisionEntry>> {
         let _pin = self.enter().await?;
         let (tip, _) = self.head(branch).await?;
-        if let Some(index) = &tip.history {
-            return entry(self, index, &id_path(id)).await;
-        }
-        let mut current = tip;
-        loop {
-            if current.id == *id {
-                return Ok(Some(RevisionEntry {
-                    revision: id.clone(),
-                    sequence: current.commit.sequence,
-                }));
-            }
-            let Some(parent) = current.commit.parent else {
-                return Ok(None);
-            };
-            current = self.load_snapshot(&parent).await?;
-        }
+        let index = tip
+            .history
+            .as_ref()
+            .ok_or_else(|| Error::Corrupt("Missing acceptance index".into()))?;
+        entry(self, index, &id_path(id)).await
     }
     /// Most-recent-first, inclusive cursor. Pruned prefixes are never traversed.
     pub async fn revisions(
@@ -169,89 +157,97 @@ impl Repository {
         }
         let _pin = self.enter().await?;
         let (tip, _) = self.head(branch).await?;
-        if let Some(index) = &tip.history {
-            let mut sequence = match cursor {
-                Some(id) => {
-                    entry(self, index, &id_path(id))
-                        .await?
-                        .ok_or(Error::RevisionUnavailable)?
-                        .sequence
-                }
-                None => tip.commit.sequence,
-            };
-            let mut revisions = Vec::new();
-            loop {
-                let e = entry(self, index, &seq_path(sequence))
+        let index = tip
+            .history
+            .as_ref()
+            .ok_or_else(|| Error::Corrupt("Missing acceptance index".into()))?;
+        let mut sequence = match cursor {
+            Some(id) => {
+                entry(self, index, &id_path(id))
                     .await?
-                    .ok_or_else(|| Error::Corrupt("acceptance sequence gap".into()))?;
-                revisions.push(e.revision);
-                if sequence == index.retained_from {
-                    return Ok(RevisionPage {
-                        revisions,
-                        next: None,
-                        retained_from: index.retained_from,
-                    });
-                }
-                sequence -= 1;
-                if revisions.len() == limit {
-                    break;
-                }
+                    .ok_or(Error::RevisionUnavailable)?
+                    .sequence
             }
-            let next = entry(self, index, &seq_path(sequence))
+            None => tip.commit.sequence,
+        };
+        let mut revisions = Vec::new();
+        loop {
+            let e = entry(self, index, &seq_path(sequence))
                 .await?
-                .map(|e| e.revision);
-            Ok(RevisionPage {
-                revisions,
-                next,
-                retained_from: index.retained_from,
-            })
-        } else {
-            let mut current = if let Some(id) = cursor {
-                if !self.contains(tip.clone(), id, 0).await? {
-                    return Err(Error::RevisionUnavailable);
-                }
-                self.load_snapshot(id).await?
-            } else {
-                tip
-            };
-            let mut revisions = Vec::new();
-            loop {
-                revisions.push(current.id);
-                let Some(parent) = current.commit.parent else {
-                    return Ok(RevisionPage {
-                        revisions,
-                        next: None,
-                        retained_from: 0,
-                    });
-                };
-                if revisions.len() == limit {
-                    return Ok(RevisionPage {
-                        revisions,
-                        next: Some(parent),
-                        retained_from: 0,
-                    });
-                }
-                current = self.load_snapshot(&parent).await?;
+                .ok_or_else(|| Error::Corrupt("acceptance sequence gap".into()))?;
+            revisions.push(e.revision);
+            if sequence == index.retained_from {
+                return Ok(RevisionPage {
+                    revisions,
+                    next: None,
+                    retained_from: index.retained_from,
+                });
+            }
+            sequence -= 1;
+            if revisions.len() == limit {
+                break;
             }
         }
+        let next = entry(self, index, &seq_path(sequence))
+            .await?
+            .map(|e| e.revision);
+        Ok(RevisionPage {
+            revisions,
+            next,
+            retained_from: index.retained_from,
+        })
     }
 }
 
 impl Maintenance {
-    /// One-time legacy upgrade. Holds only one commit and one index update in RAM.
-    pub async fn index_history(&mut self, branch: &str) -> Result<()> {
+    /// Install a semantically verified current-format history under the exclusive
+    /// barrier. The application must stage/verify its blob conversion first.
+    /// Revisions are oldest-first; actor/audit preservation is the caller's job.
+    pub async fn replace_history(
+        &mut self,
+        branch: &str,
+        expected: &ContentId,
+        revisions: &[ContentId],
+    ) -> Result<ContentId> {
         self.assert_owner().await?;
         let (tip, version) = self.repo.head(branch).await?;
-        if tip.history.is_some() {
-            return Ok(());
+        if tip.id != *expected || revisions.is_empty() {
+            return Err(Error::Corrupt(
+                "Migration source head changed or history is empty".into(),
+            ));
         }
-        let mut index = Some(HistoryIndex::default());
-        let mut current = Some(tip.id.clone());
-        while let Some(id) = current {
-            let snapshot = self.repo.load_snapshot(&id).await?;
-            index = append(&self.repo, index.as_ref(), &id, snapshot.commit.sequence).await?;
-            current = snapshot.commit.parent;
+        let mut entries = Vec::with_capacity(revisions.len());
+        let mut previous: Option<(ContentId, u64)> = None;
+        for id in revisions {
+            let snapshot = self.repo.load_snapshot(id).await?;
+            if let Some((parent, sequence)) = &previous {
+                if snapshot.commit.parent.as_ref() != Some(parent)
+                    || sequence.checked_add(1) != Some(snapshot.commit.sequence)
+                {
+                    return Err(Error::Corrupt(
+                        "Migration history is not a consecutive parent chain".into(),
+                    ));
+                }
+            }
+            entries.push(RevisionEntry {
+                revision: id.clone(),
+                sequence: snapshot.commit.sequence,
+            });
+            previous = Some((id.clone(), snapshot.commit.sequence));
         }
+        let seed = HistoryIndex {
+            root: None,
+            retained_from: entries[0].sequence,
+        };
+        if entries[0].sequence != tip.retained_from()
+            || entries.last().unwrap().sequence != tip.commit.sequence
+        {
+            return Err(Error::Corrupt(
+                "Migration must preserve the complete retained sequence range".into(),
+            ));
+        }
+        let index = append_many(&self.repo, Some(&seed), &entries).await?;
+        let commit = revisions.last().unwrap().clone();
         self.poisoned = true;
         self.repo
             .backend
@@ -259,7 +255,7 @@ impl Maintenance {
                 &self.repo.head_path(branch)?,
                 canonical_cbor(&Head {
                     format: FORMAT,
-                    commit: tip.id,
+                    commit: commit.clone(),
                     history: index,
                 })?
                 .into(),
@@ -267,7 +263,7 @@ impl Maintenance {
             )
             .await?;
         self.poisoned = false;
-        Ok(())
+        Ok(commit)
     }
     pub async fn read<T: serde::de::DeserializeOwned>(
         &self,
@@ -283,7 +279,6 @@ impl Maintenance {
         if keep_last == 0 {
             return Err(Error::InvalidOptions);
         }
-        self.index_history(branch).await?;
         let (tip, version) = self.repo.head(branch).await?;
         let mut index = tip.history.clone().unwrap();
         let floor = tip

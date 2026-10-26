@@ -49,7 +49,7 @@ impl LocalClientRuntime {
         self.scene
             .meshes
             .get(&p)
-            .is_none_or(|m| m.quality != "ldraw")
+            .is_none_or(|m| m.quality != "source")
     }
     pub fn insert_part(&mut self, asset: &str) -> Result<(), JsValue> {
         let value: Value = serde_json::from_str(asset).map_err(js_error)?;
@@ -379,23 +379,45 @@ impl LocalClientRuntime {
                 Ok(text(feedback))
             }
             "place_submodel" => {
-                let source = args["ldraw"].as_str().context("Missing LDraw document")?;
                 ensure!(
-                    source.len() <= 128 * 1024,
-                    "Inline submodel exceeds 128 KiB"
+                    args.get("model").is_some() != args.get("document").is_some(),
+                    "Supply exactly one native model or imported document"
                 );
-                let document = ergo_world::ldraw::Document::parse(source, "model.ldr")?;
-                let model = ergo_world::assembly::Model::from_document(&document)?;
-                let matrix = args
-                    .get("matrix")
-                    .map(|v| serde_json::from_value(v.clone()))
-                    .transpose()?
+                let document = if let Some(source) = args.get("document") {
+                    let source = source.as_str().context("Expected text model document")?;
+                    ensure!(
+                        source.len() <= 128 * 1024,
+                        "Imported document exceeds 128 KiB"
+                    );
+                    Some(ergo_world::ldraw::Document::parse(source, "model.ldr")?)
+                } else {
+                    None
+                };
+                let model = if let Some(value) = args.get("model") {
+                    ensure!(
+                        serde_json::to_vec(value)?.len() <= 768 * 1024,
+                        "Native model exceeds 768 KiB"
+                    );
+                    serde_json::from_value::<ergo_world::assembly::Model>(value.clone())?
+                } else {
+                    ergo_world::assembly::Model::from_document(document.as_ref().unwrap())?
+                };
+                let colors = document
+                    .as_ref()
+                    .map(|d| d.colors.clone())
                     .unwrap_or_default();
+                let matrix = if let Some(value) = args.get("transform") {
+                    ergo_world::assembly::Transform::from_world(serde_json::from_value(
+                        value.clone(),
+                    )?)?
+                } else {
+                    Default::default()
+                };
                 let color = args
                     .get("color")
                     .map(|v| serde_json::from_value::<u32>(v.clone()))
                     .transpose()?
-                    .unwrap_or(16);
+                    .unwrap_or(71);
                 Ok(text(self.update(|scene| {
                     let mut combined = ergo_world::assembly::Model::for_scene(scene);
                     combined.append(&model, matrix, color)?;
@@ -409,8 +431,8 @@ impl LocalClientRuntime {
                         if !scene.meshes.contains_key(&r.name) {
                             let mut mesh = ergo_world::ldraw::bake_mesh(
                                 &r.name,
-                                &|name| document.files.get(name).cloned(),
-                                &document.colors,
+                                &|name| document.as_ref().and_then(|d| d.files.get(name)).cloned(),
+                                &colors,
                             )
                             .or_else(|error| {
                                 ensure!(
@@ -431,7 +453,7 @@ impl LocalClientRuntime {
                             next_id,
                             r,
                             &scene.meshes[&r.name],
-                            &document.colors,
+                            &colors,
                         );
                         ergo_world::physical::validate_pose(&brick)?;
                         scene.bricks.push(brick);

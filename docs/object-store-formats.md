@@ -1,295 +1,187 @@
-# S3 keys and file formats
+# S3 keys and current file formats
 
-This is the wire-format companion to [the bucket layout and migration record](object-store-layout.md).
-It describes the current implementation, including compatibility formats that the
-single hosted Sandbox no longer creates. S3 keys are prefixes, not directories.
+Paths below are relative to `s3://ergo/ergo/`, except `_ops/ergo/` at bucket root.
+The layout is summarized in [object-store organization](object-store-layout.md).
+Only current persisted formats are supported by the application.
 
-## Namespaces, encodings and coordinates
+## Encoding and version domains
 
-Production uses bucket `ergo`, application prefix `ergo`, and world prefix `world`.
-Thus a key written as `world/refs/main.cbor` below means
-`s3://ergo/ergo/world/refs/main.cbor`. `_ops/ergo/production.env` is an exception:
-it is at bucket root, outside the application prefix.
+- `.json`: UTF-8 JSON. `.cbor`: CBOR, not compressed JSON.
+- `CID`: lowercase 64-hex SHA-256 of the **stored bytes**. A CID is not an access
+  grant. S3 ETags are opaque conditional-write tokens, not content hashes.
+- Transaction objects use RFC 8949 core deterministic CBOR via
+  `crates/transactions/src/codec.rs`: bytewise encoded-key ordering, finite floats
+  and normalized negative zero. Cache CBOR may use ordinary `ciborium` encoding;
+  hashing always uses the actual stored bytes.
+- Public coordinate `schema: 2` is east/north/up construction space. X/Y units are
+  8 mm and Z units are 9.6 mm. Bounds are `{min:[x,y,z],max:[x,y,z]}`.
+- Transaction `format: 3`, spatial `layout: 2`, and the named Ergo model/part/
+  construction formats are independent version domains.
+- Logical octree paths are arrays of octants 0–7 (maximum depth 192), not S3 keys.
+  Sets/ordered sequences encode as arrays; CBOR integer map keys remain integers.
 
-- `.json` files contain UTF-8 JSON; `.cbor` files contain CBOR, not compressed JSON.
-- `CID` means the lowercase, 64-hex-character SHA-256 of the **stored bytes**.
-  A CID is an integrity/content identifier, not authorization or an encryption key.
-  An S3 ETag is an opaque conditional-write token, not a substitute for this hash.
-- Transaction objects use `canonical_cbor` in `crates/transactions/src/codec.rs`:
-  RFC 8949 core deterministic map ordering, finite floats and normalized negative
-  zero. Asset/terrain caches use ordinary `ciborium` serialization. Do not assume
-  re-encoding one with the other preserves its hash.
-- Maps have field names unless otherwise noted; sequences/sets serialize as arrays.
-  `BTreeMap<u32,...>` keys remain integers in CBOR. Optional values are null unless
-  their Serde declaration explicitly omits them. Transaction paths are arrays of
-  octants 0–7, at most 192 entries, not slash-separated S3 keys.
-- Coordinate schema **2** means public/persisted X east, Y north, Z up. Positions
-  use construction units; transforms are flat **column-major 3×3** matrices.
-  Bounds are `{min:[x,y,z],max:[x,y,z]}`. The renderer's Y-up coordinates are not
-  written directly. One block is 1024³ units; the metric conversion is 8, 8, 9.6 mm
-  per public X, Y, Z unit. The separate source-model format uses LDU and -Y up.
-- Transaction `format:3`, application metadata `layout:2`, physical model
-  `algorithm:1`, and geometry `schema:2` are **different version domains**.
+## `world/refs/main.cbor`: Head
 
-## Authoritative world: `world/`
+CBOR `{format:3,commit:CID,history:{root:CID|null,retained_from:u64}}`.
+The acceptance index is required. Its root indexes `{revision,sequence}` records
+by both revision CID and sequence. The current commit is selected with a
+conditional head PUT after every referenced immutable object has been staged.
 
-### `refs/main.cbor` — mutable branch head
+## `world/maintenance.cbor`: Control
 
-CBOR map `{format,commit,history}`. Current `format` is 3; `commit` is the accepted
-Commit CID. `history` is `{root,retained_from}`: an optional acceptance-index root
-CID and the oldest retained sequence number. Legacy heads may have no history.
-Other branches, if explicitly created by library/operator tooling, use
-`refs/<branch>.cbor`; the hosted application uses `main`.
+CBOR `{epoch:u64,exclusive:string|null,pins:[string...]}`. Conditional updates
+coordinate durable non-expiring reader/writer pins and exclusive maintenance.
+Cancelled/uncertain operations remain fenced; only explicit, settled operator
+recovery removes abandoned pins/barriers.
 
-Only the transaction library updates this key, using conditional create/ETag
-compare-and-swap **after** its referenced immutable objects have been written.
-Uploading an object alone does not make it an accepted edit.
+## `world/objects/<CID>.cbor`: typed immutable objects
 
-### `maintenance.cbor` — mutable coordination state
+The filename does not identify a record type. Verify its hash and decode according
+to the reference being followed. The current object families are:
 
-CBOR map `{epoch,exclusive,pins}`: an unsigned epoch, optional exclusive maintenance
-token, and array of durable reader/writer pin IDs. Conditional updates coordinate
-readers, writers, migration and GC. Pins do not expire automatically. A crash can
-leave a pin/barrier behind; it must not be removed while a former holder might
-still publish. See `crates/transactions/src/maintenance.rs`.
+### Transaction layer
 
-### `objects/<CID>.cbor` — immutable mixed record store
+- **Commit:** `{format:3,transaction_id,sequence,parent,base,root,edits,actor,
+  message,metadata,blobs}`. Optional CIDs are null. An edit is
+  `{path,generation,value}`; null value removes a subtree. `root` is materialized
+  accepted state; viewing needs no full-history replay. `metadata` links the audit.
+- **Node:** externally tagged `Branch {generation,children:[8 optional CIDs]}`,
+  `Extension {path,child}`, `Leaf {generation,value}`, or `Deleted {generation}`.
+  Generations are replacement fences. Deleted is a logical tombstone.
+- **RevisionEntry:** `{revision:CID,sequence:u64}`. The head's separate acceptance
+  index avoids a Commit self-hash cycle.
 
-Every transaction node, commit, application record and linked blob uses this
-pattern. **The filename does not identify the record type.** Decode according to
-the reference being followed, not by guessing that every CBOR object is a mesh.
-Verify SHA-256 before decoding; follow the head, tree and schema links below.
+### Application tree paths and records
 
-#### Transaction records
+The leading octant selects a family. Signed block addresses use 64 sign-biased,
+interleaved coordinate bits with octant `x_bit + 2*y_bit + 4*z_bit`. Entity IDs use
+all 256 hash bits, padded by two bits and split into 86 octants.
 
-- **Commit** (`transactions/src/lib.rs`): `{format,transaction_id,sequence,parent,
-  base,root,edits,actor,message,metadata,blobs}`. Parent/base/root/metadata are
-  optional CIDs; `blobs` is an array of additional retained CIDs. Each edit is
-  `{path,generation,value}`; null `value` deletes that subtree. `root` selects the
-  current tree; replaying all historical edits is not necessary to read it.
-  `metadata` links the application audit. Library actor/message strings alone do
-  not authenticate anyone; the REST layer supplies the verified identity.
-- **Tree node** (`transactions/src/tree.rs`): a Serde externally tagged enum:
-  `{"Branch":{"generation":null,"children":[...8 optional CIDs...]}}`,
-  `{"Extension":{"path":[...octants...],"child":CID}}`,
-  `{"Leaf":{"generation":text,"value":CID}}`, or
-  `{"Deleted":{"generation":text}}`. Branch generations are optional replacement
-  fences; a deleted node is a logical tombstone, not an object-deletion request.
-- **Acceptance entry** (`transactions/src/history.rs`): `{revision,sequence}`.
-  The head's history root indexes the same entry by CID and by sequence. The
-  index is outside Commit to avoid a self-hash cycle.
+- **`[0]` Policy:** `{owner,grants,keep_last,authenticated_editing}`. Grants contain
+  `{user,regions}`. Retention is optional; permissions come from this policy and
+  authenticated server identity, not free-form author strings.
+- **`[2]` Metadata:** `{id?,name,geo,model,layout:2}`. Geo is
+  `{latitude,longitude,arcseconds_per_block}`. Model links the frozen physical model.
+  The record contains neither a world-sized piece list nor a global piece counter.
+- **`[3]+entity-ID` Piece:** `{id,assembly,local_id,geometry,mesh,replicas}`. The stable
+  ID is the Birth CID, not this state payload's CID. Geometry is
+  `{part,color,rgb?,position,transform,step}`; its 3×3 matrix is flat column-major
+  public coordinates. Mesh is a world-namespace geometry CID. Replicas are block
+  coordinates containing references to the same piece.
+- **`[1]+block-address` spatial rows:** adaptive local children `0` hold references;
+  children `1/q` descend by octant, up to ten levels. **SpatialRef** is
+  `{coord,piece,bounds}` using render bounds. There is one reference per piece/
+  intersected storage block, not one in every fine cell it crosses.
+- **`[5]+block-address` BlockHeader:** `{coord,paged:true}`. This sparse allocated
+  block directory is not a preallocated world grid.
+- **`[4]+assembly-ID` paged rules:** child `0` is
+  **RulesHeader** `{id,name,meshes,paged:true,source_model?}`; meshes map part IDs
+  to CIDs. Child `1` has `{local_id,piece}` membership rows, child `2` peer-CID
+  adjacency, child `3` endpoint-bound `{a,b,spec}` joints, child `4` boolean anchor
+  markers, child `5` group headers/members and child `6` authored joint specs.
+  Numeric row keys use eleven octants. Group headers are `{id,name,pivot_world}`;
+  members are tagged piece/group records. `shared/paged.rs` defines suffixes.
+- **`[6]+joint-ID` GlobalJoint:** `{id,a,b,spec}` with global birth endpoints.
+  **`[7]+piece-ID`** has incident joint-ID rows. Specs carry public anchors,
+  fixed/revolute kind, optional axis/limits, measured force/torque thresholds and
+  their source. These rows permit bounded cross-assembly dependency discovery.
 
-#### Application tree addresses and leaf payloads
+### Linked blobs
 
-These are **logical octree paths inside the root**, not extra bucket folders.
-The leading octant selects the record family (`shared/address.rs`). A block key
-uses 64 interleaved bits from signed i64 coordinates biased by the sign bit, with
-octant `x_bit + 2*y_bit + 4*z_bit`. An entity key uses the full 256-bit ID padded
-with two leading zero bits and split into 86 octants.
-
-- **`[0]`: Policy.** `{owner,grants,keep_last,authenticated_editing}`. A grant is
-  `{user,regions}`; regions are octree prefixes. `keep_last` is an optional retained
-  revision count. This is the authorization policy, not a client visibility flag.
-- **`[2]`: Metadata.** `{id?,name,geo,model,layout}`. `geo` is
-  `{latitude,longitude,arcseconds_per_block}`; `model` links the frozen physical
-  model. Current layout is 2; absent layout is read as legacy layout 1. There is no
-  world-sized piece list or global piece counter in this record.
-- **`[3] + entity-ID`: Piece.** `{id,assembly,local_id,geometry,mesh,replicas}`.
-  `id` is the stable Birth CID, **not the CID of this mutable-state payload**.
-  `geometry` is `{part,color,rgb?,position,transform,step}`; `mesh` is the mesh CID.
-  `replicas` lists public block coordinates containing spatial references. Moving
-  a piece changes this payload's content hash while keeping its birth ID.
-- **`[1] + block-address`: spatial references.** Current layout 2 uses adaptive
-  local nodes: child `0` holds own references keyed by full piece ID; child `1/q`
-  descends to octant `q`, up to ten local levels. A **SpatialRef** is
-  `{coord,piece,bounds}`. Bounds are full render bounds; one reference is placed
-  per piece/intersected storage block, not in every fine cell it crosses.
-  Legacy layout 1 instead stores **SpatialBlock** `{coord,pieces}` as one leaf.
-- **`[5] + block-address`: allocated-block directory.** **BlockHeader** is
-  `{coord,paged}`. This is a sparse directory for bounded enumeration, not a
-  preallocated world grid. Current `paged` is true.
-- **`[4] + assembly-ID`: paged assembly rules.** Child `0` stores **RulesHeader**
-  `{id,name,meshes,paged,source_model?}`; `meshes` maps part filenames to mesh CIDs.
-  Child `1` has membership rows `{local_id,piece}`. Child `2` has peer-CID adjacency
-  rows, child `3` endpoint-bound joints `{a,b,spec}`, child `4` boolean ground-anchor
-  markers, child `5` group headers/membership, and child `6` authored joint specs.
-  Local numeric row keys use eleven octants; endpoint/group suffixes are defined
-  in `shared/paged.rs`. Group headers are `{id,name,pivot_world}`; members are the
-  tagged piece/group records from `world/src/groups.rs`.
-  Legacy monolithic **Rules** is `{id,name,pieces,meshes,joints,fixed_bricks,
-  groups,source_model?}`. The reader reconstructs equivalent bounded authoring
-  rules from current rows; ordinary edits need not load every assembly member.
-- **`[6] + joint-ID`: cross-assembly GlobalJoint.** `{id,a,b,spec}`; `a` and `b`
-  are stable global piece IDs. **`[7] + piece-ID`** contains incident joint-ID rows.
-  A joint spec carries local endpoints, public anchor and fixed/revolute kind,
-  optional force/torque thresholds and their measurement source. The global
-  endpoints bind the spec to actual pieces (`shared/joints.rs`).
-
-#### Blobs linked by those records
-
-- **Assembly birth:** CBOR array `["assembly-birth-v1",nonce,actor,name]`. Its
-  hash identifies the assembly independently of later names or geometry.
-- **Piece Birth:** `{nonce,created_by,created_by_name?,assembly,initial,mesh}`.
-  `initial` has the same Geometry fields as Piece. Author names are server-resolved
-  display snapshots; permissions use stable actor IDs. This is attribution, not a
-  user's personal digital signature.
-- **Joint birth:** `["joint-birth-v1",nonce,actor,input]`, where input has global
-  `a`, `b`, public anchor and tagged kind. Its hash remains the joint identity.
-- **PhysicalModel:** `{algorithm,measurements,tolerances}`. `measurements` has
-  connector `entries` and optional per-part `parts`; tolerances include position,
-  rotation, force and torque thresholds. These are frozen server-owned records.
-  Their detailed SI fields are in [physical calibration](physical-calibration.md).
+- **Assembly birth:** `["assembly-birth-v1",nonce,actor,name]`. Its hash remains
+  the assembly identity after later renames/edits.
+- **Birth:** `{nonce,created_by,created_by_name?,assembly,initial,mesh}`. Initial is
+  Geometry. Names are server-resolved attribution snapshots; permissions use stable
+  actor IDs. This is not a personal cryptographic signature by a display name.
+- **Joint birth:** `["joint-birth-v1",nonce,actor,input]`; input contains global
+  endpoints, public anchor and kind.
+- **PhysicalModel:** `{algorithm,measurements,tolerances}`. Measurements contain
+  connector entries and optional per-part records. See [calibration](physical-calibration.md)
+  for sourced SI fields; the client cannot override this frozen server-owned model.
 - **Audit:** `{actor,actor_name?,base,policy_hash,model,changed_pieces,
   affected_pieces,watched_regions,validation,loaded_pieces,loaded_cbor_bytes}`.
-  It links policy/model/birth records and records the actual bounded validation
-  domain; validation may be null for non-geometric operations.
-- **Source Model:** `{root,subparts}` from `world/src/assembly.rs`. Each subpart
-  is an array of `{file,color,matrix}` references. Color 16 inherits; `matrix` is
-  **row-major 4×4**, column-vector, affine **LDU/-Y-up**, with last row `[0,0,0,1]`.
-  This is deliberately different from the 3×3 public piece transform. Live Piece
-  records are the accepted geometry authority; source hierarchy is authoring
-  provenance, not permission to resurrect old poses. See [LDraw storage](ldraw-storage.md).
-- **Mesh:** the geometry schema described below. World meshes live in the world
-  object namespace even when the part asset cache also contains that geometry.
+  Validation may be null for non-geometric operations.
+- **Native Model:** `{format:"ergo-model-1",schema:2,root,definitions}`. Instances
+  have typed targets, optional inherited colors and native row-major 4×4 transforms.
+  See [construction format](construction-format.md). Current Piece states remain
+  live geometry authority; source hierarchy cannot restore stale edited poses.
+- **Mesh:** the Ergo geometry record described below. World meshes are retained
+  independently of cache objects. Quality/source annotations and credits are
+  provenance, not a choice of external storage decoder.
 
-GC must trace these schema-defined links as well as tree/history links.
-`shared/retention.rs::blob_links` implements the application tracer. A hash-looking
-string in a free-form comment is not automatically a reference.
+The collector follows typed tree/history links and application blob links in
+`shared/retention.rs`. Hash-looking strings in comments are not implicit links.
 
-## Shared part cache: `assets/` and `objects/`
+## `assets/parts/<part>.json`: Ergo part description
 
-### `assets/ldraw/source/<normalized-name>.json`
+UTF-8 JSON `{format:"ergo-part-1",schema:2,part,mesh_hash,bounds,body_bounds,
+catalog_mass,credits}`. Catalog mass is optional `{kg,source}`. Credits contain
+`{file,source_url,author,license}`. The hash selects **application-namespace**
+`objects/<mesh_hash>.cbor`, not `world/objects/`.
 
-UTF-8 JSON `{text,url}`: complete LDraw source text and provenance location.
-Normalized names may contain safe subpaths such as `s/` or `48/`. File headers
-supply author/license credits; `url` can identify a local library path. These are
-on-demand cache entries, not an assertion that the entire Studio/BrickLink library
-has been uploaded. They currently have no separate schema field or refresh TTL.
+## `objects/<mesh_hash>.cbor`: Ergo Mesh
 
-### `assets/v2/parts/<part>.json`
+CBOR `{schema:2,part,quality,vertices,bounds,body_bounds,credits,physical?}`.
+Vertices are an array of floats, not packed binary: nine values per vertex
+`position.xyz,normal.xyz,color.rgb`, three vertices per triangle. Positions/normals
+use public Z-up coordinates; negative face colors inherit the instance color.
+Render bounds include details/studs; nominal collision body bounds exclude
+decorative studs for known parts. Physical metadata is a sourced measurement,
+not an inference from triangle volume.
 
-UTF-8 JSON `{schema,part,mesh_hash,credits}`. Schema is 2, `part` is the canonical
-LDraw filename (including `.dat`), and `mesh_hash` selects
-**`objects/<mesh_hash>.cbor` in the application namespace**, not `world/objects/`.
-Each credit is `{file,source_url,author,license}`. Tile aliases such as `3068.dat`
-canonicalize to `3068b.dat` before this lookup.
+The description is published after its geometry; cache reads verify hash, schema
+and part identity. Native client LODs and instance lists are derived, not additional
+persisted formats. Source inputs occupy only a bounded transient import cache.
 
-### `objects/<mesh_hash>.cbor` — cached Mesh
+## `ground/rasters/<provider-hash>/<z>/<x>/<y>.cbor`: Ergo raster
 
-CBOR map `{schema,part,quality,vertices,bounds,body_bounds,credits,physical?}` from
-`world/src/geometry.rs`. `vertices` is an array of floats, **not packed binary**:
-each vertex has nine values `position.xyz, normal.xyz, color.rgb`; three vertices
-form a triangle. Positions/normals are public Z-up on the wire. Negative face
-colors inherit the instance color. Bounds include visible studs; nominal body
-bounds exclude decorative studs for known catalog bricks. Optional `physical`
-contains a sourced part measurement, not a measurement inferred from triangle volume.
+CBOR `{format:"ergo-raster-1",fetched_at,etag,modified,media_type,image}`. The
+provider hash is SHA-256 of the XYZ URL template. The image is the original encoded
+PNG/JPEG as a CBOR byte string, not base64 or decoded pixels. Times are Unix seconds;
+ETag/Last-Modified support conditional refresh. The normal freshness interval is
+seven days.
 
-`quality` distinguishes `ldraw`, `parametric`, `proxy`, `body_lod`, and generated
-ground geometry where applicable. The persistent part cache writes baked LDraw
-meshes; fallback results can be returned without becoming a successful baked
-cache index. Render LODs/instance lists are currently derived in the client;
-**there is no persisted multi-LOD asset format or bulk-library completeness guarantee**.
+## `ground/blocks/<signature>/<east>_<north>.cbor`: GroundBlock
 
-The resolver writes the mesh before the index. Both cache layers are active;
-deleting `objects/` breaks retained part indexes. These meshes are not covered
-by the world repository's reachability GC.
+CBOR `{schema:2,coord,bricks,color,sample_rgb,source,attribution,attribution_url,
+generated_at,source_tiles,fallback_reason}`. Public coord is `[east,north,0]` and
+bricks is empty. One palette color covers the virtual baseplate. Sample RGB is an
+optional 24-bit integer. Source/attribution explain the derived color.
 
-## Terrain cache: `ground/`
+The configuration signature covers geographic origin/resolution, provider/template,
+attribution, enabled state, palette and the averaging algorithm. It is not a hash
+of the payload. Successful cells have a seven-day TTL; fallback cells retry after
+60 seconds. A single `color` is required; old color-grid records are not accepted.
 
-### `ground/source/<provider-hash>/<z>/<x>/<y>.cbor`
+## Private account JSON
 
-CBOR **Tile** `{fetched_at,etag,modified,png}`. The provider hash is SHA-256 of the
-URL template, and z/x/y are Web Mercator tile coordinates. `fetched_at` is Unix
-seconds; ETag/Last-Modified values support conditional HTTP refresh.
-Despite its historical name, `png` is a CBOR **byte string containing the original
-encoded PNG or JPEG image**. It is neither base64 nor decoded RGB pixels. Source
-tiles normally remain fresh for seven days. See `assets/src/ground.rs`.
+- **`users/<stable-user-id>.json`:** `{id,name,email,picture,created_at,last_login}`.
+  Picture is an optional URL; times are Unix seconds. The profile remains private.
+- **`user-positions/<actor-hash>.json`:**
+  `{format:"ergo-user-position-1",schema:2,context,updated_at_ms}`. Context contains
+  `{world_id,position_world,view_target_world,navigation,client_session,sequence}`.
+  Camera/target are public construction coordinates; navigation is orbit/fly/walk.
+  The server assigns the timestamp. Conditional writes reject delayed lower
+  sequence numbers from the same browser session. The authenticated GET returns
+  this user's context plus a ground-level point/transform for new-model placement.
+- **`edit-pacing/<actor-hash>.json`:**
+  `{credits,updated,bricks,seconds,reservations}`. Credits are brick-change × seconds
+  units; available changes are credits/seconds, refill adds bricks per second,
+  capped at bricks×seconds. Reservation receipts map IDs to `{bricks,at}`.
+- **`account-plans/<actor-hash>.json`:** `{unlimited:boolean}`. Missing means false.
+  Only the operator sets the plan; unlimited bypasses pacing, not acceptance.
 
-### `ground/blocks/<signature>/<east>_<north>.cbor`
+Actor hashes are SHA-256 of the authenticated ID, not construction IDs. Position
+GET/PUT has no arbitrary user-ID parameter. These records are outside world GC.
 
-CBOR **GroundBlock** `{schema,coord,bricks,color,sample_rgb,source,attribution,
-attribution_url,generated_at,source_tiles,fallback_reason}`. Schema is 2; public
-`coord` is `[east,north,0]`; `bricks` is empty. One palette `color` covers the whole
-virtual baseplate; `sample_rgb` is an optional 24-bit RGB integer. Times are Unix
-seconds. Source tile descriptions/attribution explain where the sampled color
-came from; fallback_reason is null on success.
+## Private operator files
 
-The signature hashes the rounded geographic origin/resolution, provider/template,
-attribution, enabled state, palette and `ground-average-v3` algorithm identifier.
-These filenames are **configuration keys**, not hashes of the CBOR payload.
-Generated cells normally have a seven-day TTL; fallback cells retry after 60 s.
-Legacy records with a `colors` grid are read and averaged to one palette color.
-Terrain caches do not contain authored construction pieces or accepted history.
+`s3://ergo/_ops/ergo/production.env` is plaintext dotenv recovery configuration;
+it may contain secrets. Migration receipts under `_ops/ergo/migrations/*.json`
+record verified heads/counts/checksums and conversion results, without credential
+or profile bodies. They are not runtime scenes.
 
-## Private account records
-
-### `users/<stable-user-id>.json`
-
-UTF-8 JSON User `{id,name,email,picture,created_at,last_login}`. Picture is an
-optional URL; times are Unix seconds. The profile supports sign-in and
-server-resolved display names. It is private, unlike a name copied into public
-birth/audit attribution. Source: `server/src/auth.rs` and `store.rs`.
-
-### `edit-pacing/<actor-hash>.json`
-
-UTF-8 JSON Ledger `{credits,updated,bricks,seconds,reservations}`. The filename is
-SHA-256 of the actor ID, not a construction hash. Credits are integer
-brick-change × seconds units: available changes are `credits/seconds`; refill adds
-`bricks` credits per elapsed second, capped at `bricks*seconds`. Reservations map
-unique receipt IDs to `{bricks,at}`. Conditional writes make concurrent charging
-and reservation refunds safe; this is operational state, not accepted world history.
-
-### `account-plans/<actor-hash>.json`
-
-UTF-8 JSON `{unlimited:boolean}`. An absent file means false. Only the operator
-sets entitlement; it bypasses pacing, not authentication or physical admission.
-This key family is supported even when no such record exists in an inventory.
-Both pacing/plan formats are defined in `shared/pacing.rs`.
-
-## Operator backup: `_ops/ergo/production.env`
-
-Private **plaintext dotenv**, not JSON/CBOR and not an application database.
-It is a recovery copy of deployment configuration and may contain credentials
-and signing secrets. Keep its body/access private. It is outside world GC and
-is not loaded automatically as an application scene. The application has no
-separate S3 session-cookie, OAuth-token or downloaded MCP-token record family;
-those flows use signed tokens/local downloads, not a token database in the bucket.
-
-## Legacy and isolated-development formats
-
-Production cleanup retired these namespaces. Compatibility code and isolated
-fixtures can still use them; their existence in source is not a supported private
-world workflow on the hosted service.
-
-- `shared/<world-UUID>/{refs,objects,maintenance...}`: the same transaction/file
-  formats above under one repository per world. The hosted repository is now
-  `world/`, with one public identity.
-- `shared/_catalog/...`: transaction repositories for user/quad discovery.
-  Advertisement leaf `{world,coord}` references a world and optional block.
-  Single-world configuration skips writing these derived advertisements.
-- `worlds/<owner>/<UUID>/manifest.json`: UTF-8 **WorldManifest** containing
-  `{schema,id,name,source,brick_count,bounds,geo,blocks,geometry,proxy_parts,notes,
-  joints,fixed_bricks,validation,owner,ground,groups,model?}`. Blocks have
-  `{coord,key,brick_count}`; geometry maps part IDs to application-object mesh CIDs.
-  Block objects in `objects/` are `{schema,coord,bricks}` with full serialized
-  Brick records (IDs, part/color/RGB, pose, body/render bounds, step), replicated
-  across intersected cells and deduplicated on read.
-- `_private_catalog/<owner-hash>/...`: the same generic transaction repository
-  format, with Summary leaf `{id,name,owner,brick_count,bounds,geo}`.
-- Historical transaction test/benchmark prefixes contain generic transaction
-  heads/nodes/blobs, not application world roots. No active production data is
-  inferred solely from those names.
-
-Local `.ergo.json`/MPD working copies, `.shared.json` client journals, WASM
-bundles and generated PNGs are **not** automatically S3 objects. The canonical
-construction-file format is documented separately in [LDraw storage](ldraw-storage.md).
-
-## Read/retention rules
-
-To inspect a construction, start at the mutable head, verify/decode its immutable
-Commit, then traverse typed tree leaves and mesh/source-model links. Public read
-APIs expose authorized application data; they do not grant anonymous bucket access.
-Keep the backup, profiles, account records and active cache roots separate from
-world history. Delete world objects only through the coordinated, schema-aware
-collector; filename age, ETag, or absence from the current camera view proves
-neither obsolescence nor unreachability.
+Local working files, client binding journals, generated PNGs and WASM bundles are
+not automatically uploaded to S3. Public world visibility does not grant anonymous
+bucket access. Age, ETag, or absence from a camera view does not prove that an
+object is safe to delete; use coordinated schema-aware collection.

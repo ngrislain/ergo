@@ -33,7 +33,7 @@ def main():
     try:
         engine("run", "--detach", "--pull=never", "--name", name, "--platform", "linux/amd64",
                "--publish", "127.0.0.1::8080", "--env", "ERGO_GROUND_SOURCE=disabled",
-               "--env", "ERGO_ASSET_FETCH=0", *(["--env","ERGO_LEGACY_FIXTURES=1"] if args.browser else []), args.image)
+               "--env", "ERGO_ASSET_FETCH=0", *(["--env","ERGO_ISOLATED_FIXTURES=1"] if args.browser else []), args.image)
         created = True
         address = engine("port", name, "8080/tcp").strip().splitlines()[0]
         url = "http://" + address
@@ -86,7 +86,7 @@ def main():
                 saved = json.load(response)
             with request("/api/worlds/" + saved["id"] + "/export") as response:
                 exported = json.load(response)
-                assert exported["format"] == "ergo-ldraw-1" and len(exported["pieces"]) == 1
+                assert exported["format"] == "ergo-construction-1" and len(exported["pieces"]) == 1
 
         if args.browser:
             root = pathlib.Path(__file__).resolve().parents[1]

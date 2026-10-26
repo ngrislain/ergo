@@ -1,8 +1,68 @@
 //! Operator-only namespace migration/cleanup. No network route exposes these.
 use super::*;
-use futures::TryStreamExt;
 
 impl SharedWorlds {
+    /// Install an already staged and semantically audited current-format history.
+    /// The resume file makes the deployment cutover explicit while the world is
+    /// fenced; cancellation leaves the barrier in place for operator recovery.
+    pub async fn install_history(
+        &self,
+        id: &str,
+        manifest: &std::path::Path,
+    ) -> Result<serde_json::Value> {
+        #[derive(Deserialize)]
+        #[serde(deny_unknown_fields)]
+        struct Request {
+            format: String,
+            expected_head: ContentId,
+            revisions: Vec<ContentId>,
+            resume_file: std::path::PathBuf,
+        }
+        let request: Request = serde_json::from_slice(&std::fs::read(manifest)?)?;
+        anyhow::ensure!(
+            request.format == "ergo-history-install-1" && !request.revisions.is_empty(),
+            "Invalid history installation manifest"
+        );
+        let repo = self.repo(id)?;
+        let mut maintenance = repo.maintenance().await?;
+        if maintenance.branch_revision("main").await? != request.expected_head {
+            maintenance.finish().await?;
+            anyhow::bail!(
+                "The world changed after staging; rebuild the migration before deployment"
+            );
+        }
+        let tip = request.revisions.last().unwrap();
+        std::fs::write(
+            manifest.with_extension("ready.json"),
+            serde_json::to_vec_pretty(&serde_json::json!({
+                "state":"fenced-ready","world_id":id,"expected_head":request.expected_head,"new_head":tip,"maintenance_token":maintenance.token()
+            }))?,
+        )?;
+        loop {
+            if std::fs::read_to_string(&request.resume_file)
+                .is_ok_and(|value| value.trim() == tip.as_str())
+            {
+                break;
+            }
+            tokio::time::sleep(std::time::Duration::from_millis(200)).await;
+        }
+        let revision = maintenance
+            .replace_history("main", &request.expected_head, &request.revisions)
+            .await?;
+        let gc = maintenance
+            .collect_with_options(
+                ergo_transactions::GcOptions {
+                    max_object_bytes: self.limits.bytes,
+                    ..Default::default()
+                },
+                blob_links,
+            )
+            .await?;
+        maintenance.finish().await?;
+        Ok(
+            serde_json::json!({"state":"installed","world_id":id,"revision":revision,"retained_revisions":request.revisions.len(),"gc":gc}),
+        )
+    }
     pub async fn bootstrap_local(&mut self, geo: ergo_world::GeoReference) -> Result<()> {
         self.common_root = Some(self.namespace("world")?);
         let repo = self.common_root.as_ref().unwrap();
@@ -66,117 +126,6 @@ impl SharedWorlds {
         // point to the verified target before old keys can be retired.
         Ok(
             serde_json::json!({"gc":gc,"migration":migration,"source_maintenance_token":maintenance.token()}),
-        )
-    }
-
-    pub async fn cleanup_legacy(&self, id: &str) -> Result<serde_json::Value> {
-        let repo = self.repo(id)?;
-        let expected = if self.store.prefix.is_empty() {
-            "world".into()
-        } else {
-            format!("{}/world", self.store.prefix)
-        };
-        anyhow::ensure!(
-            self.common_root.is_some() && repo.prefix() == expected,
-            "Cleanup requires the migrated world namespace to be active"
-        );
-        let snapshot = repo.checkout("main").await?;
-        let policy: Policy = snapshot
-            .get(&root(0))
-            .await?
-            .context("Missing sandbox policy")?;
-        let revision = snapshot.id().clone();
-        snapshot.close().await?;
-        let mut ws = self.working(id, &policy.owner, &revision).await?;
-        if ws.metadata.name != "Ergo Sandbox" || ws.metadata.id.as_deref() != Some(id) {
-            ws.metadata.name = "Ergo Sandbox".into();
-            ws.metadata.id = Some(id.into());
-            ws.tx.put(&root(2), &ws.metadata).await?;
-            self.prepared(
-                id,
-                &policy.owner,
-                revision,
-                "Name the single Ergo Sandbox".into(),
-                BTreeSet::new(),
-                BTreeSet::new(),
-                None,
-                ws,
-            )
-            .await?
-            .publish_with(self)
-            .await?;
-        } else {
-            drop(ws);
-        }
-        let base = if self.store.prefix.is_empty() {
-            String::new()
-        } else {
-            format!("{}/", self.store.prefix)
-        };
-        let old_shared = format!("{base}shared/");
-        let old_worlds = format!("{base}worlds/");
-        let development = format!("{base}users/development.json");
-        let retired = std::env::var("ERGO_RETIRED_WORLD_IDS")
-            .unwrap_or_default()
-            .split(',')
-            .filter(|id| !id.is_empty())
-            .map(str::to_owned)
-            .collect::<BTreeSet<_>>();
-        // Preflight names before deleting anything. Unknown user constructions
-        // must be inspected/migrated, not silently treated as old demo data.
-        let mut inventory = self.store.backend.list(None);
-        while let Some(object) = inventory.try_next().await? {
-            let key = object.location.as_ref();
-            if let Some(suffix) = key.strip_prefix(&old_shared) {
-                let namespace = suffix.split('/').next().unwrap_or_default();
-                anyhow::ensure!(
-                    namespace == id || namespace == "_catalog" || retired.contains(namespace),
-                    "Unmigrated legacy namespace {namespace}; inspect it before retirement"
-                );
-            }
-            if let Some(suffix) = key.strip_prefix(&old_worlds) {
-                anyhow::ensure!(
-                    suffix.starts_with("examples/"),
-                    "Unmigrated private snapshot {key}; preserve/import it before cleanup"
-                );
-            }
-        }
-        let old_repo = self.namespace(&format!("shared/{id}"))?;
-        let old_head = object_store::path::Path::from(format!("{old_shared}{id}/refs/main.cbor"));
-        if let Ok(source) = self.store.backend.get(&old_head).await {
-            #[derive(Deserialize)]
-            struct SavedHead {
-                commit: ContentId,
-            }
-            let head: SavedHead = crate::store::decode(&source.bytes().await?)?;
-            anyhow::ensure!(
-                old_repo.maintenance_status().await?.exclusive.is_some(),
-                "The old common namespace must remain fenced before retirement"
-            );
-            repo.accepted_snapshot("main", &head.commit)
-                .await?
-                .close()
-                .await?;
-        }
-        let mut objects = self.store.backend.list(None);
-        let mut deleted = 0usize;
-        let mut bytes = 0u64;
-        while let Some(object) = objects.try_next().await? {
-            let key = object.location.as_ref();
-            if key.starts_with(&old_shared)
-                || key.starts_with(&old_worlds)
-                || key.starts_with("ergo-transaction-tests/")
-                || key.starts_with("ergo-transaction-bench/")
-                || key == development
-            {
-                self.store.backend.delete(&object.location).await?;
-                deleted += 1;
-                bytes += object.size;
-            }
-        }
-        repo.checkout("main").await?.close().await?;
-        Ok(
-            serde_json::json!({"active_prefix":repo.prefix(),"deleted_objects":deleted,"deleted_bytes":bytes}),
         )
     }
 }

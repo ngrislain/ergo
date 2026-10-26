@@ -1,134 +1,62 @@
-# Orbit, fly, and walk navigation
+# Navigation, live position and constructions
 
-Navigation changes the local camera, not piece poses or committed model data.
-The full browser app provides a selector in the viewport panel and on mobile.
-The minimal MCP runtime renders requested camera poses without running a
-continuous navigation loop.
+The workbench and shared-world viewer use the same camera/controller. Public
+coordinates are X east, Y north, Z up; navigation has one physical-scale conversion.
 
-## Full-screen exploration
+## Controls
 
-Use **Enter full screen** in the viewport toolbar, or **Shift+F** while the
-canvas is focused. The world fills the screen and Orbit/Fly/Walk selectors,
-movement controls, view tools, and attribution stay available. The canvas is
-focused automatically, so keyboard navigation continues immediately. **Esc** or
-**Exit full screen** restores the workbench without resetting the camera or model.
-Where the browser Fullscreen API is unavailable or denied, the same control uses
-a viewport-filling layout within the browser window. Camera mode and position
-are preserved in both cases; the fullscreen preference is not persisted.
+- **Orbit:** drag to orbit, Shift/right-drag to pan, wheel to change distance.
+- **Fly:** arrows steer; A accelerates, Z slows to a stop; drag looks around.
+  Movement follows the rendered view direction and uses continuous body-volume
+  collision sweeps/sliding, without walk stepping or gravity.
+- **Walk:** up/down move, left/right turn, A/Z adjust speed, Space jumps.
+  Focus the canvas for keys. Walking steps up at most 3 vertical units and jumps
+  up to 12 units with metric gravity, collision/ceiling checks and landing.
+- **F:** fit; **N:** nearest construction; **Shift+F:** full screen; Esc exits.
+  Touch controls expose the same typed navigation actions.
 
-## Orbit
+Eye height is adjustable from 1 to 32 construction units. Unloaded cells block the
+whole moving body rather than allowing passage into unknown geometry.
 
-Drag to orbit around the focus; shift/right-drag pans; the wheel zooms. **F** or
-the fit button focuses the construction. Selecting a piece before returning to
-orbit can use it as the focus. The top-view control returns to orbit mode.
+## Live camera GPS
 
-**Nearest construction**, or **N** with the canvas focused, finds the closest
-construction in the user's accessible construction catalog (including the
-current working copy). Distance is measured from the current camera's geographic
-position to each construction footprint, respecting different geographic origins
-and longitude wrapping. It focuses the current construction or opens the closest
-accessible snapshot or a discovered shared-world region. An unsaved working copy is not replaced by this shortcut;
-save/export it before opening another snapshot. This searches catalog metadata,
-not every piece in an unbounded shared world.
+The viewport displays camera latitude/longitude to seven decimals, public storage
+cell and height Z. It updates from the actual eye, including orbit/pan/fly/walk,
+at roughly four UI updates per second. Height is a construction coordinate, not
+GPS altitude. This needs no device-location permission.
 
-## Fly
+The sidebar's **Coordinate reference** is the fixed geographic origin used for
+conversion. It does not move with the camera. Signed-in position context is saved
+privately in S3 at most once per three seconds while changing, with a best-effort
+keepalive flush on hiding/leaving the page. Per-session sequence numbers prevent
+late requests from overwriting a newer observation from that session.
 
-Focus the canvas. **Left/right arrows turn**, **up/down arrows look up/down**;
-dragging also changes the viewing direction. Hold **A to accelerate** and **Z to
-slow down**, including to a complete stop. Fly starts stopped each time it is
-entered. Once accelerated, the camera continues forward in the viewing direction
-at its selected speed until slowed; arrow keys steer that motion.
+The MCP `get_user_position` tool reads this user's saved camera/target and supplies
+a ground-level `model_transform` for new standing models. Existing edits retain
+their accepted absolute coordinates. See [agent placement](agent-shared-editing.md).
 
-Speed changes by 64 stud-scaled units/s per second of held A/Z, bounded to
-0–2048 units/s. The wheel and on-screen plus/minus controls also adjust speed,
-including from zero. Motion is normalized in metric-proportioned directions so
-vertical movement respects the 9.6/8 unit ratio. Fly continuously sweeps a small
-camera volume against brick body boxes, the Z=0 floor, and unloaded storage cells.
-It stops at surfaces and slides along walls, including thin walls at maximum
-speed; it does not step or apply gravity. The conservative camera box has a
-0.28-stud horizontal radius and metric-equivalent vertical radius. Decorative
-studs and exact mesh holes are not collision geometry.
+## Scrolling construction list
 
-## Walk
+The list pages accepted assemblies in bounded batches. Scrolling near the end
+loads another page; Load more and Refresh list remain explicit controls. Requests
+are coalesced and repeated identities are deduplicated.
 
-Focus the canvas. **Up/down arrows move forward/backward**, **left/right arrows
-turn**, **A/Z increase/decrease walking speed**, and **Space jumps**. Dragging
-also changes the viewing direction. Walking stops when up/down is released;
-turning or changing speed alone does not translate the camera horizontally.
+Clicking a construction asks for one current member's bounded location hint,
+opens that shared region and focuses its resident assembly bounds. The world
+geometry retains neighboring constructions at their actual positions. Browsing
+does not fetch an isolated authoring workspace or publish an edit. The selected
+assembly is included in the agent handoff even without a separately selected brick.
 
-Walking starts at 18 stud-scaled units/s. A/Z changes the selected speed by
-18 units/s per second held, bounded to 0–128 units/s; the wheel and on-screen
-plus/minus controls also adjust it. The selected walking speed survives mode
-changes. Both free modes turn at 1.8 radians/s while an arrow is held and show
-the current speed in the viewport panel. On-screen arrows, A/Z buttons, and the
-walk-mode jump button provide the same controls for touch use.
+## Shared-region boundaries
 
-The default eye height is **4 brick-height units** (38.4 mm), a minifigure-scale
-view, not an assumed 1.7 m human. The UI permits 1–32 units and displays the
-selected height again when returning to Walk mode.
+The browser loads a bounded 3×3×3 storage-cell neighborhood, at most 5,000 pieces
+and 16 MiB of CBOR. It checks the small accepted head every five seconds and
+reloads when its revision or region changes. This navigation set is not a complete
+mechanical domain; direct clipped-fragment simulation is rejected.
 
-### Steps, jumps, and collisions
+A cell locates data. It does not weld a building to the ground and its vertical
+index does not create another floor. Models rest on the Z=0 baseplate or use
+explicit valid ground anchors. All accepted positions are server-validated.
 
-The camera follows the global Z=0 ground and supported brick tops. While grounded,
-walking automatically steps up a ledge of at most **3 vertical units** (28.8 mm),
-provided the whole body has clearance. Taller obstacles require a jump. Auto-step
-is kinematic; it checks the upward head sweep and the raised horizontal motion,
-so a low overhang blocks the step. Airborne motion cannot auto-step up walls.
-
-Press **Space** to launch a ballistic jump whose unobstructed **feet-height peak
-is 12 vertical units above takeoff** (115.2 mm). A ceiling can shorten the jump.
-The controller uses standard gravity, converted to construction units:
-
-- `g = 9.80665 / 0.0096 ≈ 1021.526 units/s²`.
-- `v₀ = √(2 g × 12) ≈ 156.58 units/s` (about 1.503 m/s).
-- `h(t) = v₀ t − ½ g t²`, reaching the peak after about 0.153 s and returning
-  to the takeoff height after about 0.307 s in unobstructed flight.
-
-Constant-gravity integration is analytic, split at the apex, with substeps of at
-most 1/240 s. Horizontal increments are at most 0.1 unit per axis. The body is
-0.56 horizontal units wide and extends 0.25 vertical units above the selected eye
-height. Body-box wall checks allow sliding; swept ceiling checks stop upward
-velocity at contact, and crossed brick tops catch descending feet even on thin
-platforms. Landing cancels downward velocity. Walking off an edge falls under
-the same gravity. A fresh press is required for each jump; holding Space or
-pressing it in midair does not add another impulse.
-
-Known occupied but unloaded cells block the entire body and its vertical sweep
-until their data arrives, rather than allowing passage through unseen pieces.
-The shared implementation is in `crates/client/src/walking.rs`; the renderer
-supplies its resident octree, camera motion, and streaming boundary checks.
-
-This is a navigation controller, not an additional rigid body in the construction
-solver. It does not push bricks, add mass, or participate in commit validation.
-Conservative AABBs remain less capable than a full rigid-body character
-controller, particularly around rapidly moving simulated objects.
-
-## Shared navigation model
-
-`crates/client/src/navigation.rs` defines the modes, typed controls, keyboard
-bindings, pad labels, and movement settings. A single up/down input axis means
-pitch in Fly and forward/backward movement in Walk. Keyboard and on-screen
-buttons update the same set of controls and use the same input conversion.
-
-`Navigation` owns the current mode, each free mode's persistent speed setting,
-and eye height. Throttle and wheel adjustments use the same speed limits. The
-UI displays a read-only `NavigationStatus` snapshot rather than maintaining
-independent mode, speed, or eye-height settings. Desktop/mobile mode selectors
-share one component, as do the movement-pad buttons and their press/release path.
-
-The renderer owns camera pose and drawing, reusing one eye-position conversion
-and one display scale derived from the physical brick-height/stud-pitch ratio.
-The walking scene owns collision queries; the walker owns vertical velocity and
-jump-press state. Both navigation policy and walking logic are ordinary Rust
-modules shared by native regression tests and the browser runtime.
-
-## Streaming and ground
-
-All modes drive the same frustum/fog-bounded streaming. Newly visible empty
-horizontal cells generate their single-color baseplate lazily. Camera movement
-does not preload an infinite world, and changing view mode does not remove
-supports from an active complete-construction physics working set.
-
-Public coordinates remain X east, Y north, Z height. See
-[ground and coordinates](ground-and-coordinates.md) and
-[display indexing](3d-display-indexing.md).
+Implementation: `viewer/src/location.rs`, `presence.rs`, `common.rs`, `app.rs`;
+shared controls/collisions are in `client/src/navigation.rs` and `walking.rs`.

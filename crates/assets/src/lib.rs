@@ -17,21 +17,53 @@ use std::{
 };
 
 pub use ergo_world::geometry::GeometryCredit as Credit;
+pub const PART_FORMAT: &str = "ergo-part-1";
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct PartAsset {
     pub mesh: Mesh,
     pub credits: Vec<Credit>,
     pub cache_hit: bool,
     pub warning: Option<String>,
+    #[serde(default)]
+    pub description: Option<PartDescription>,
 }
-#[derive(Serialize, Deserialize)]
-struct Index {
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct PartDescription {
+    pub format: String,
     schema: u32,
     part: String,
     mesh_hash: String,
+    bounds: ergo_world::Aabb,
+    body_bounds: ergo_world::Aabb,
+    catalog_mass: Option<CatalogMass>,
     credits: Vec<Credit>,
 }
-#[derive(Serialize, Deserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
+struct CatalogMass {
+    kg: f64,
+    source: String,
+}
+impl PartDescription {
+    pub fn from_mesh(mesh: &Mesh, mesh_hash: String) -> Self {
+        Self {
+            format: PART_FORMAT.into(),
+            schema: ergo_world::SCHEMA_VERSION,
+            part: mesh.part.clone(),
+            mesh_hash,
+            bounds: mesh.bounds,
+            body_bounds: mesh.body_bounds,
+            catalog_mass: ergo_world::physical::mass_kg(&mesh.part)
+                .ok()
+                .map(|kg| CatalogMass {
+                    kg,
+                    source: ergo_world::physical::mass_source(&mesh.part),
+                }),
+            credits: mesh.credits.clone(),
+        }
+    }
+}
+#[derive(Clone)]
 struct Source {
     text: String,
     url: String,
@@ -47,10 +79,11 @@ pub struct PartCache {
     fetch: bool,
     gate: Arc<tokio::sync::Mutex<()>>,
     failures: Arc<std::sync::Mutex<HashMap<String, (Instant, String)>>>,
+    sources: Arc<std::sync::Mutex<(usize, BTreeMap<String, Source>)>>,
 }
 impl PartCache {
     pub fn new(store: Arc<dyn ObjectStore>, prefix: String) -> Result<Self> {
-        let local = std::env::var_os("LDRAW_DIR")
+        let local = std::env::var_os("ERGO_ASSET_LIBRARY_DIR")
             .map(PathBuf::from)
             .map(|p| p.canonicalize())
             .transpose()?;
@@ -61,7 +94,7 @@ impl PartCache {
                 .user_agent("Ergo/0.1 LDraw catalog asset resolver")
                 .timeout(Duration::from_secs(12))
                 .build()?,
-            base: std::env::var("LDRAW_BASE_URL")
+            base: std::env::var("ERGO_ASSET_SOURCE_URL")
                 .unwrap_or_else(|_| "https://library.ldraw.org/library/official".into())
                 .trim_end_matches('/')
                 .to_owned(),
@@ -70,6 +103,7 @@ impl PartCache {
                 || std::env::var("ERGO_ASSET_FETCH").is_err(),
             gate: Arc::new(tokio::sync::Mutex::new(())),
             failures: Arc::new(std::sync::Mutex::new(HashMap::new())),
+            sources: Default::default(),
         })
     }
     fn path(&self, key: &str) -> Path {
@@ -97,20 +131,34 @@ impl PartCache {
             "Invalid part {part}"
         );
         let _guard = self.gate.lock().await;
-        let key = format!("assets/v{}/parts/{part}.json", ergo_world::SCHEMA_VERSION);
+        let key = format!("assets/parts/{part}.json");
         if let Some(bytes) = self.get(&key).await? {
-            let record: Index = serde_json::from_slice(&bytes)?;
-            if record.schema == ergo_world::SCHEMA_VERSION
-                && let Some(mesh) = self
-                    .get(&format!("objects/{}.cbor", record.mesh_hash))
-                    .await?
+            let record: PartDescription = serde_json::from_slice(&bytes)?;
+            ensure!(
+                record.format == PART_FORMAT
+                    && record.schema == ergo_world::SCHEMA_VERSION
+                    && record.part == part,
+                "Unsupported Ergo part description"
+            );
+            if let Some(mesh) = self
+                .get(&format!("objects/{}.cbor", record.mesh_hash))
+                .await?
             {
+                ensure!(
+                    hex::encode(Sha256::digest(&mesh)) == record.mesh_hash,
+                    "Ergo geometry hash mismatch"
+                );
                 let mesh: Mesh = ciborium::from_reader(mesh.as_slice())?;
+                ensure!(
+                    mesh.schema == ergo_world::SCHEMA_VERSION && mesh.part == record.part,
+                    "Ergo geometry identity mismatch"
+                );
                 return Ok(PartAsset {
                     mesh,
-                    credits: record.credits,
+                    credits: record.credits.clone(),
                     cache_hit: true,
                     warning: None,
+                    description: Some(record),
                 });
             }
         }
@@ -128,6 +176,7 @@ impl PartCache {
                 credits: Vec::new(),
                 cache_hit: false,
                 warning: Some(message),
+                description: None,
             });
         }
         match self.build(&part).await {
@@ -136,27 +185,20 @@ impl PartCache {
                 ciborium::into_writer(&mesh, &mut data)?;
                 let hash = hex::encode(Sha256::digest(&data));
                 self.put(&format!("objects/{hash}.cbor"), data).await?;
-                self.put(
-                    &key,
-                    serde_json::to_vec(&Index {
-                        schema: ergo_world::SCHEMA_VERSION,
-                        part: part.clone(),
-                        mesh_hash: hash,
-                        credits: credits.clone(),
-                    })?,
-                )
-                .await?;
+                let description = PartDescription::from_mesh(&mesh, hash);
+                self.put(&key, serde_json::to_vec(&description)?).await?;
                 Ok(PartAsset {
                     mesh,
                     credits,
                     cache_hit: false,
                     warning: None,
+                    description: Some(description),
                 })
             }
             Err(e) => {
                 ensure!(
                     ergo_world::geometry::part_spec(&part).is_some(),
-                    "No geometry for {part}: {e:#}. Supply the Studio/LDraw part library with LDRAW_DIR; non-standard parts never use placeholder geometry"
+                    "No geometry for {part}: {e:#}. Supply an asset library with ERGO_ASSET_LIBRARY_DIR; non-standard parts never use placeholder geometry"
                 );
                 let message =
                     format!("{e:#}; using parametric geometry (upstream fetch will be retried)");
@@ -169,6 +211,7 @@ impl PartCache {
                     credits: Vec::new(),
                     cache_hit: false,
                     warning: Some(message),
+                    description: None,
                 })
             }
         }
@@ -227,9 +270,7 @@ impl PartCache {
         Ok((mesh, credits))
     }
     async fn source(&self, name: &str, top: bool) -> Result<(String, String)> {
-        let key = format!("assets/ldraw/source/{name}.json");
-        if let Some(bytes) = self.get(&key).await? {
-            let source: Source = serde_json::from_slice(&bytes)?;
+        if let Some(source) = self.sources.lock().unwrap().1.get(name).cloned() {
             return Ok((source.text, source.url));
         }
         if let Some(root) = &self.local {
@@ -242,14 +283,13 @@ impl PartCache {
                 }
                 if let Ok(text) = std::fs::read_to_string(&path) {
                     let url = format!("LDraw local library: {dir}/{name}");
-                    self.put(
-                        &key,
-                        serde_json::to_vec(&Source {
+                    self.remember(
+                        name,
+                        Source {
                             text: text.clone(),
                             url: url.clone(),
-                        })?,
-                    )
-                    .await?;
+                        },
+                    );
                     return Ok((text, url));
                 }
             }
@@ -289,17 +329,26 @@ impl PartCache {
                 !text.contains("<html"),
                 "Upstream returned HTML instead of LDraw"
             );
-            self.put(
-                &key,
-                serde_json::to_vec(&Source {
+            self.remember(
+                name,
+                Source {
                     text: text.clone(),
                     url: url.clone(),
-                })?,
-            )
-            .await?;
+                },
+            );
             return Ok((text, url));
         }
         anyhow::bail!("LDraw dependency {name} was not found")
+    }
+    fn remember(&self, name: &str, source: Source) {
+        let mut cache = self.sources.lock().unwrap();
+        let bytes = source.text.len() + source.url.len();
+        if cache.0 + bytes > 32 * 1024 * 1024 {
+            cache.0 = 0;
+            cache.1.clear();
+        }
+        cache.0 += bytes;
+        cache.1.insert(name.into(), source);
     }
 }
 
@@ -316,6 +365,7 @@ mod tests {
             fetch: false,
             gate: Arc::new(tokio::sync::Mutex::new(())),
             failures: Arc::new(std::sync::Mutex::new(HashMap::new())),
+            sources: Default::default(),
         }
     }
     #[tokio::test]
@@ -323,15 +373,9 @@ mod tests {
         let store: Arc<dyn ObjectStore> = Arc::new(object_store::memory::InMemory::new());
         let first = cache(store.clone());
         let source=Source{text:"0 Test cube\n0 Author: Test fixture\n0 !LICENSE Test fixture\n4 16 -20 0 -20 20 0 -20 20 0 20 -20 0 20\n4 16 -20 24 -20 -20 24 20 20 24 20 20 24 -20\n4 16 -20 0 -20 -20 24 -20 20 24 -20 20 0 -20\n".into(),url:"http://127.0.0.1:9/parts/3003.dat".into()};
-        first
-            .put(
-                "assets/ldraw/source/3003.dat.json",
-                serde_json::to_vec(&source).unwrap(),
-            )
-            .await
-            .unwrap();
+        first.remember("3003.dat", source);
         let a = first.resolve("3003.dat").await.unwrap();
-        assert_eq!(a.mesh.quality, "ldraw");
+        assert_eq!(a.mesh.quality, "source");
         assert!(!a.cache_hit);
         assert!(!a.mesh.credits.is_empty());
         let second = cache(store);

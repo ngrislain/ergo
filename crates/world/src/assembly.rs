@@ -1,10 +1,12 @@
-//! LDraw-style reusable subfiles. Matrices are row-major, column-vector affine
-//! transforms in LDU, with -Y up. Runtime/indexed bricks are derived leaves.
+//! Reusable Ergo model definitions. The native wire format is in format.rs;
+//! source-import transforms remain an internal adapter for geometry conversion.
 use crate::{Brick, WorldExport, ldraw};
 use anyhow::{Context, Result, ensure};
 use glam::{DMat3, DMat4, DVec3};
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, HashMap};
+mod format;
+pub const FORMAT: &str = format::FORMAT;
 
 #[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(try_from = "[[f64; 4]; 4]", into = "[[f64; 4]; 4]")]
@@ -36,6 +38,9 @@ impl From<Transform> for [[f64; 4]; 4] {
     }
 }
 impl Transform {
+    pub fn from_world(rows: [[f64; 4]; 4]) -> Result<Self> {
+        format::world_transform(rows)
+    }
     pub fn from_pose(matrix: DMat3, position: DVec3) -> Self {
         Self(DMat4::from_cols(
             matrix.x_axis.extend(0.),
@@ -65,7 +70,7 @@ fn current_color() -> u32 {
     16
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug)]
 pub struct Model {
     pub root: String,
     pub subparts: BTreeMap<String, Vec<Reference>>,

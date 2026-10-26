@@ -235,7 +235,7 @@ def main():
         parser.error("Install ergo-mcp or pass --binary target/debug/ergo-mcp")
     mcp = demo.Mcp(binary, workspace, "https://ergosandbox.com", None)
     try:
-        placed = mcp.call("place_submodel", ldraw=text, color=16)["structuredContent"]
+        placed = mcp.call("place_submodel", document=text, color=71)["structuredContent"]
         validation = mcp.call("validate_construction")["structuredContent"]
         counts = Counter()
         for offset in range(0, validation["brick_count"], 200):

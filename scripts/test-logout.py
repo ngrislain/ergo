@@ -26,7 +26,7 @@ with tempfile.TemporaryDirectory(prefix="ergo-logout-") as directory:
     (directory/"data/users/test-user.json").write_text(json.dumps({"id":"test-user","name":"Browser Builder",
         "email":"test@example.test","picture":None,"created_at":1,"last_login":1}))
     env = {k:v for k,v in os.environ.items() if not k.startswith(("ERGO_","GOOGLE_","S3_","AWS_"))}
-    env.update(ERGO_BIND=f"127.0.0.1:{port}",ERGO_PUBLIC_URL=url,ERGO_ASSET_FETCH="0",ERGO_GROUND_SOURCE="disabled",ERGO_LEGACY_FIXTURES="1",
+    env.update(ERGO_BIND=f"127.0.0.1:{port}",ERGO_PUBLIC_URL=url,ERGO_ASSET_FETCH="0",ERGO_GROUND_SOURCE="disabled",ERGO_ISOLATED_FIXTURES="1",
         GOOGLE_CLIENT_ID="local-test",GOOGLE_CLIENT_SECRET="local-test",ERGO_SESSION_SECRET=KEY.decode())
     with tempfile.TemporaryFile() as log:
         server = subprocess.Popen([str(ROOT/"target/debug/ergo-server")],cwd=directory,env=env,stdout=log,stderr=log)

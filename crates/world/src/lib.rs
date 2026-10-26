@@ -16,6 +16,7 @@ pub mod solidity;
 pub mod spatial;
 pub mod storage;
 pub mod terrain;
+pub mod user_position;
 pub mod validation;
 
 use glam::{DMat3, DVec3};
@@ -294,7 +295,6 @@ pub enum JointKind {
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
-#[serde(try_from = "storage::SceneWire")]
 pub struct WorldExport {
     pub schema: u32,
     pub name: String,

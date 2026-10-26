@@ -1,141 +1,66 @@
-# Object-store folders and the single sandbox
+# Object-store organization
 
-The bucket remains private. The application serves public accepted sandbox data;
-making the sandbox viewable never makes credentials, profiles, or the bucket
-itself anonymously readable.
-
-The field-by-field [S3 file-format reference](object-store-formats.md) explains
-the encodings, version domains and reference graph for every key family below.
-
-## Current organization
+The private Scaleway bucket `ergo` contains one authoritative shared world,
+native asset/terrain caches, private account context and operational backups.
+The application serves authorized/public data; the bucket itself is not public.
 
 ```text
 s3://ergo/
-  _ops/ergo/production.env                 private configuration backup
+  _ops/ergo/production.env
+  _ops/ergo/migrations/<migration-id>.json
   ergo/
     world/
-      refs/main.cbor                      the single authoritative head
-      objects/<sha256>.cbor                immutable trees, pieces, models, history
-      maintenance.cbor                    reader/writer/maintenance coordination
-    assets/ldraw/source/...               cached LDraw source and provenance
-    assets/v2/parts/<part>.json            part-to-mesh cache indexes
-    objects/<sha256>.cbor                  meshes referenced by those indexes
-    ground/source/...                     cached imagery tiles
-    ground/blocks/<signature>/...          derived single-color baseplates
-    users/<stable-user-id>.json            private sign-in profiles
-    edit-pacing/<actor-hash>.json          edit allowance/reservation records
-    account-plans/<actor-hash>.json        optional operator-owned entitlement
+      refs/main.cbor
+      maintenance.cbor
+      objects/<sha256>.cbor
+    assets/parts/<part-id>.json
+    objects/<mesh-sha256>.cbor
+    ground/rasters/<provider-hash>/<z>/<x>/<y>.cbor
+    ground/blocks/<signature>/<east>_<north>.cbor
+    users/<user-id>.json
+    user-positions/<actor-hash>.json
+    edit-pacing/<actor-hash>.json
+    account-plans/<actor-hash>.json
 ```
 
-These folders have separate consumers. In particular, **`ergo/objects/` is active**:
-`crates/assets/src/lib.rs` resolves `assets/v2/parts/*.json` indexes to mesh hashes
-there. It is not safe to delete it merely because world objects moved to
-`ergo/world/objects/`. Ground source tiles and generated cells are different cache
-layers, also both used. Cached cells outside the current view are reusable data,
-not alternative worlds. Profiles and pacing are not construction geometry.
+S3 folders are key prefixes, not directories. `S3_PREFIX=ergo` supplies the
+application prefix; `ERGO_WORLD_PREFIX=world` supplies the world repository.
+`ERGO_COMMON_WORLD_ID` identifies the one Sandbox, independently of its prefix.
 
-`world/objects` contains mixed CBOR record types by content hash, not a folder per
-brick/submodel. The root indexes spatial cells and assembly rules. Immutable
-piece births preserve identity/author; accepted audit records carry the stable
-actor ID and server-resolved name. Reusable LDraw source models are linked from
-assembly headers. The reference/retention tracer must follow those schema links.
+## Authority and retention
 
-## Inventory before consolidation
+`world/refs/main.cbor` is the conditional-write acceptance point. Its commit and
+typed tree/blob references select accepted state and retained history. Uploading
+an immutable object does not publish a construction. Use the transaction library
+for head changes and coordinated, schema-aware collection for object deletion.
 
-The complete metadata-only inventory on 2026-10-24 contained **4,174 objects /
-3,283,084 bytes**. No credential/profile bodies were downloaded for that inventory.
-The report is generated at `target/object-store-inventory-20261024.json`.
+World objects include piece births/current states, reusable native model
+definitions, geometry, paged rules/spatial references, policy, frozen physical
+model and audit records. There is no folder per brick and no global piece-count
+object. Hashes name content; logical octree paths index records inside the root.
 
-- `_ops/ergo/`: one private environment backup; retained.
-- `ergo/assets/ldraw/`: 40 cached source records; active.
-- `ergo/assets/v2/`: 10 part indexes and `ergo/objects/`: 10 referenced meshes;
-  active and retained.
-- `ergo/ground/blocks/`: 525 generated cells; `ergo/ground/source/`: 71 source
-  tile records. Active caches; retained.
-- `ergo/users/`: two profiles. The Google profile is active; the historical
-  `development.json` is not a hosted account and is a cleanup candidate.
-- `ergo/edit-pacing/`: one active account ledger; retained.
-- `ergo/shared/fde184c4-222b-4a16-8a1f-c320da8a2f35/`: 1,820 records for the
-  common world, including provisional/unreachable objects. This is the source
-  for migration, not a deletion candidate until the new root is verified.
-- The other three UUID directories under `ergo/shared/` contain 1,179 records
-  for the old private demos. Their constructions have been copied into the common
-  world at distinct positions. They are retired after the single-world rollout.
-- `ergo/shared/_catalog/`: 195 discovery/index records for multiple worlds. The
-  single-world API no longer needs or writes this cross-world discovery catalog.
-- `ergo-transaction-tests/`: 48 historical live-test records;
-  `ergo-transaction-bench/`: 272 benchmark records. They are test artifacts, not
-  application roots, and can be retired once those jobs are stopped.
+## Assets and ground
 
-S3 “folders” are key prefixes, not actual directories. Listing/counting an object
-or comparing an ETag is not proof that a transaction object is unreachable.
+`assets/parts` contains native Ergo descriptions, referring to cached geometry in
+**`ergo/objects`**. This geometry namespace is active and separate from
+**`ergo/world/objects`**. A world retains its authoritative mesh blobs independently
+of the reusable cache. Source imports are converted before persistence; source
+text only occupies a bounded transient import cache.
 
-## Verified rollout and cleanup
+Ground source tiles and derived single-color baseplates are separate cache
+layers. Cached cells are not constructions, alternative worlds or physical anchors.
+World GC does not manage asset, terrain or account namespaces.
 
-The 2026-10-24 rollout is complete. `shared-migrate` retained/copied **1,799
-hash-verified objects / 619,069 bytes** and one branch. Its GC removed **19
-unreachable objects / 3,203 bytes**. After the new root was serving v0.4.0,
-`shared-cleanup-legacy` removed **3,496 legacy/test objects / 1,225,825 bytes**.
-The old `shared/`, transaction-test/benchmark prefixes, old demo worlds and
-development profile are no longer present. No active cache was deleted.
+## Private account context
 
-A post-cleanup metadata snapshot contained **2,608 objects / 2,775,482 bytes**;
-terrain caches had grown during normal viewing between snapshots. Counts are
-snapshots, not fixed limits. The latest inventory refreshes
-`target/object-store-inventory-20261024.json`; the before-summary above records
-the initial scan. The released npm client subsequently committed and read back
-two reversible metadata edits as **Nicolas Grislain**, restoring the original
-group metadata. Anonymous API/browser checks confirmed one available world,
-named **Ergo Sandbox**, with all **88 demo bricks** preserved.
+Profiles support sign-in and display-name attribution. A name copied into a public
+birth/audit is public attribution; the profile/email remains private. Last camera
+positions are private per-user records, exposed only to that authenticated user
+and their delegated MCP. Pacing and unlimited plans are independent account state.
 
-Runtime source: `e570d7b35f2cf0623f0e50e3a7c5c6b5f3b0ac76`,
-[release CI 40122040592](https://github.com/ngrislain/ergo/actions/runs/40122040592).
-Image: `ghcr.io/ngrislain/ergo@sha256:8b961801afb57bbcb0297a84e2280326e53da9e2d753b06d54b71f09cdf88701`.
-The private environment backup was refreshed and verified by checksum, private
-ACL and denied anonymous access.
+`_ops/ergo/production.env` is a private dotenv recovery copy and may contain
+secrets. Migration receipts contain verification/count/hash metadata, not credential
+or profile bodies. Neither is a construction or part of world reachability GC.
 
-## Migration and cleanup procedure
-
-Use the library/operator path rather than manually moving a mutable head:
-
-```sh
-export WORLD_ID=fde184c4-222b-4a16-8a1f-c320da8a2f35
-target/debug/ergo-server shared-migrate "$WORLD_ID" world
-```
-
-This acquires the source maintenance barrier, traces application-defined blob
-links during GC, copies hash-verified immutable objects, and publishes the target
-head **last**. It retains accepted history and stable IDs. Source and target must
-be non-overlapping namespaces on the same backend. The source deliberately stays
-fenced while configuration switches; interrupted/uncertain migrations do not
-silently unlock either side.
-
-Deploy the verified image with `ERGO_COMMON_WORLD_ID=$WORLD_ID` and
-`ERGO_WORLD_PREFIX=world` (OpenTofu `common_world_id` / `world_prefix`). Verify the
-accepted head, bounded region and construction read-backs. Then:
-
-```sh
-ERGO_COMMON_WORLD_ID="$WORLD_ID" ERGO_WORLD_PREFIX=world \
-  ERGO_RETIRED_WORLD_IDS='3121f1fe-a5c3-4425-86b0-3a3c8f6ecf2f,9c2b859b-cb91-410c-957f-c37aeb9abe14,18a73d9d-29e0-4ad6-acde-32ba3b7e71b1' \
-  target/debug/ergo-server shared-cleanup-legacy "$WORLD_ID"
-```
-
-The cleanup refuses to run unless `ergo/world` is active. It names that root
-**Ergo Sandbox**, records the stable sandbox ID, and retires old `shared/` roots,
-old private snapshot manifests, isolated test/benchmark namespaces, and the
-historical development profile. It does not delete caches, the active world,
-Google profiles, the pacing ledger, or `_ops`. Neither operation has a public
-HTTP endpoint. The operator must stop old test jobs/writers before retiring their
-namespaces. CLI reports and the final post-rollout inventory are the evidence of
-what was actually removed, not a promise that every cached object is currently
-visible on screen.
-
-Retired UUIDs are an explicit operator allowlist, not a wildcard. Preflight
-refuses unknown legacy namespaces/private user snapshots, verifies that the old
-common root is fenced, and verifies its accepted head is retained in the target.
-Newly discovered user data must be inspected/migrated before deletion.
-
-Implementation: `crates/server/src/shared/administration.rs`,
-`crates/transactions/src/maintenance.rs`, `crates/assets/src/{lib,ground}.rs`, and
-`crates/server/src/shared/retention.rs`. See [transactional storage](transactional-storage.md)
-for fencing, uncertain outcomes, historical roots and garbage collection.
+See [file formats](object-store-formats.md), [transactional storage](transactional-storage.md)
+and [operations](operations.md) for record fields, maintenance and migration.

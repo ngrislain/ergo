@@ -291,7 +291,7 @@ impl Auth {
                 .context("Expected MCP bearer token")?;
             let grant: McpDelegation = self.verify(token).context("Invalid MCP delegation")?;
             ensure!(
-                ["ergo-mcp-publish-v1", "ergo-mcp-edit-v1"].contains(&grant.purpose.as_str())
+                grant.purpose == "ergo-mcp-edit-v1"
                     && grant.audience == self.public_url
                     && grant.expires > now()
                     && !grant.actor.is_empty(),

@@ -71,11 +71,17 @@ pub struct Metadata {
     pub name: String,
     pub geo: GeoReference,
     pub model: ContentId,
-    #[serde(default = "legacy_layout")]
+    #[serde(deserialize_with = "current_layout")]
     pub layout: u32,
 }
-fn legacy_layout() -> u32 {
-    1
+fn current_layout<'de, D: serde::Deserializer<'de>>(deserializer: D) -> Result<u32, D::Error> {
+    let layout = u32::deserialize(deserializer)?;
+    if layout != 2 {
+        return Err(serde::de::Error::custom(
+            "Only shared spatial layout 2 is supported",
+        ));
+    }
+    Ok(layout)
 }
 #[derive(Clone, Serialize, Deserialize)]
 pub struct PhysicalModel {
@@ -158,12 +164,6 @@ pub struct Piece {
     pub mesh: ContentId,
     pub replicas: BTreeSet<BlockCoord>,
 }
-#[derive(Clone, Serialize, Deserialize)]
-pub struct SpatialBlock {
-    pub coord: BlockCoord,
-    pub pieces: BTreeSet<ContentId>,
-}
-
 /// A bounded authoring assembly's sparse rules, not the global world's graph.
 /// Integer IDs are scoped metadata references; persistent piece IDs are global hashes.
 #[derive(Clone, Serialize, Deserialize)]

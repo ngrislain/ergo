@@ -1,6 +1,6 @@
 {
   "name": "@ngrislain/ergo-mcp",
-  "version": "0.4.0",
+  "version": "0.5.0",
   "private": true,
   "description": "Ergo construction MCP server with bundled native bridge and local WASM runtime",
   "license": "Apache-2.0",
@@ -9,7 +9,7 @@
     "url": "git+https://github.com/ngrislain/ergo.git",
     "directory": "packages/mcp"
   },
-  "homepage": "https://github.com/ngrislain/ergo#local-mcp-editor",
+  "homepage": "https://github.com/ngrislain/ergo#install-the-mcp-client-from-github",
   "bin": {
     "ergo-mcp": "bin/ergo-mcp.cjs"
   },
@@ -23,5 +23,5 @@
     "access": "public",
     "registry": "https://registry.npmjs.org/"
   },
-  "keywords": ["mcp", "ergo", "ldraw", "bricklink", "construction"]
+  "keywords": ["mcp", "ergo", "blocks", "modeling", "construction"]
 }

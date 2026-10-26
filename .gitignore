@@ -10,6 +10,7 @@ __pycache__/
 # Reproducible MCP renderings; keep the model source, not generated screenshots.
 /docs/examples/haussmann-front.png
 /docs/examples/haussmann-street.png
+/docs/examples/haussmann.mpd
 *.mcp.lock
 **/ergo-mcp-token
 **/.terraform/

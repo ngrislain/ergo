@@ -27,7 +27,7 @@ prompt keeps its first construction local until the human requests publication.
 
 Keep the policy pages and agent guide synchronized with authentication,
 permissions, storage, provider, and retention changes. They describe current
-behavior, not promises of future account deletion, billing, or token revocation.
+behavior and the actual authentication/storage guarantees.
 
 ## Build and preview
 
@@ -94,24 +94,22 @@ generated `/llms.txt`. It is a **public build setting**, not a credential. The
 default and current repository variable point to:
 
 ```text
-https://github.com/ngrislain/ergo/releases/download/v0.4.0/ngrislain-ergo-mcp-0.4.0.tgz
+https://github.com/ngrislain/ergo/releases/download/v0.5.0/ngrislain-ergo-mcp-0.5.0.tgz
 ```
 
 For a local override, copy `site/.env.example` to ignored `site/.env`, edit that
 one variable, and rebuild. The production build reads the GitHub repository
-variable with the same name. To switch after npm publication:
+variable with the same name. Update it only after the release asset is verified:
 
 ```sh
 gh variable set ERGO_MCP_PACKAGE --repo ngrislain/ergo \
-  --body '@ngrislain/ergo-mcp@0.4.0'
+  --body 'https://github.com/ngrislain/ergo/releases/download/v0.5.0/ngrislain-ergo-mcp-0.5.0.tgz'
 gh workflow run pages.yml --repo ngrislain/ergo --ref main
 ```
 
-Use the actual published version. The build accepts the project registry spec
-or a public GitHub Release `.tgz` URL; a raw monorepo Git URL is not an installable
-distribution. Source values with embedded credentials are rejected. The MCP
-client launches the installed `ergo-mcp` command, so its configuration does not
-need changing when the installation transport changes.
+Use the actual published GitHub Release `.tgz` URL. A raw monorepo Git URL is not
+an installable distribution. Credential-bearing source values are rejected.
+The configured client launches the installed `ergo-mcp` command.
 
 ## GitHub Pages publication
 

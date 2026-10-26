@@ -21,7 +21,7 @@ with socket.socket() as sock:
     sock.bind(("127.0.0.1",0));port=sock.getsockname()[1]
 url=f"http://127.0.0.1:{port}"
 env={k:v for k,v in os.environ.items() if not k.startswith(("ERGO_","GOOGLE_","S3_","AWS_"))}
-env.update(ERGO_ASSET_FETCH="0",ERGO_GROUND_SOURCE="disabled",ERGO_LEGACY_FIXTURES="1")
+env.update(ERGO_ASSET_FETCH="0",ERGO_GROUND_SOURCE="disabled",ERGO_ISOLATED_FIXTURES="1")
 with tempfile.TemporaryDirectory(prefix="ergo-common-") as directory:
     directory=pathlib.Path(directory)
     (directory/"web").symlink_to(ROOT/"web",target_is_directory=True)
@@ -92,6 +92,13 @@ with tempfile.TemporaryDirectory(prefix="ergo-common-") as directory:
         refreshed=mcp.call("open_shared_construction",assembly_id=assembly)
         assert refreshed["structuredContent"]["brick_count"]==3
         assert mcp.call("list_bricks")["structuredContent"]["total"]==3
+        neighbor=helpers.Mcp(ROOT/"target/debug/ergo-mcp",directory/"neighbor.ergo.json",url,tokens["alice"],directory,env)
+        processes.append(neighbor)
+        assert neighbor.call("place_brick",part="3003",color=2,min_corner=[70,70,0])["structuredContent"]["shared_commit"]["published"]
+        status,location=helpers.http(url+f"/api/shared-worlds/{head['id']}/assemblies/{assembly}/location")
+        assert status==200 and location["assembly_id"]==assembly,location
+        assert location["position_world"]==[9,13,1],location
+        assert "scene" not in location,"Navigation must use a bounded hint, not an isolated authoring export"
         status,redirected=helpers.http(url+"/api/shared-worlds",token=tokens["alice"],body={"name":"No private fork","geo":head["metadata"]["geo"]})
         assert status==409 and "World creation is disabled" in redirected["error"]
         with sync_playwright() as p:
@@ -101,16 +108,58 @@ with tempfile.TemporaryDirectory(prefix="ergo-common-") as directory:
             guest.goto(url)
             expect(guest.locator("h1")).to_have_text("Ergo Sandbox",timeout=30000)
             expect(guest.get_by_role("link",name="Sign in with Google")).to_be_visible()
+            guest.locator(f'[data-assembly-id="{assembly}"]').click(timeout=30000)
+            expect(guest.locator(".status-message")).to_contain_text("Shared-world region loaded",timeout=30000)
+            expect(guest.locator("h1")).to_have_text("Ergo Sandbox")
+            expect(guest.locator(".status-bar")).to_contain_text("4 bricks")
             guest.close()
             context=browser.new_context(viewport={"width":1440,"height":950})
             context.add_cookies([{"name":"ergo_session","value":helpers.signed_session("alice"),"url":url,"httpOnly":True}])
-            page=context.new_page();page.goto(url)
-            page.get_by_role("button",name=re.compile("Agent construction.*Edit shared construction")).click(timeout=30000)
-            page.get_by_role("button",name=re.compile("Groups…")).click(timeout=30000)
-            page.get_by_label("Selected group").select_option(str(group))
-            page.get_by_role("button",name="+X",exact=True).click()
-            expect(page.locator(".status-message")).to_contain_text("Committed to the common world in S3",timeout=30000)
-            page.keyboard.press("Escape")
+            page=context.new_page()
+            # Exercise scrolling pagination without creating fake accepted objects.
+            actual=helpers.http(url+f"/api/shared-worlds/{head['id']}/assemblies?limit=32")[1]
+            copies=[{"id":f"{1000+i:064x}","name":f"Navigation fixture {i}"} for i in range(40)]
+            def list_page(route):
+                following="after=" in route.request.url
+                value={"items":copies[30:] if following else actual["items"]+copies[:30],
+                       "next":None if following else "7/0","revision":actual["revision"]}
+                route.fulfill(status=200,content_type="application/json",body=json.dumps(value))
+            page.route("**/assemblies?*",list_page)
+            requested=[];page.on("request",lambda request:requested.append(request.url))
+            page.goto(url)
+            expect(page.locator(".construction-list .world-item")).to_have_count(32,timeout=30000)
+            panel=page.locator(".construction-list")
+            assert panel.evaluate("el=>el.scrollHeight>el.clientHeight && getComputedStyle(el).overflowY==='auto'")
+            panel.evaluate("el=>el.scrollTop=el.scrollHeight")
+            expect(page.locator(".construction-list .world-item")).to_have_count(42,timeout=15000)
+            panel.evaluate("el=>el.scrollTop=0")
+            page.locator(f'[data-assembly-id="{assembly}"]').click()
+            expect(page.locator(".status-message")).to_contain_text("Shared-world region loaded",timeout=30000)
+            expect(page.locator("h1")).to_have_text("Ergo Sandbox")
+            expect(page.locator(".status-bar")).to_contain_text("4 bricks")
+            assert any(request.endswith("/location") for request in requested)
+            assert not any("/workspace" in request for request in requested),"Browsing must not open an isolated editable scene"
+            gps=page.locator(".camera-gps strong")
+            expect(gps).to_have_attribute("data-latitude",re.compile(r".+"))
+            origin=page.locator(".reference-origin strong").inner_text()
+            before=(gps.get_attribute("data-latitude"),gps.get_attribute("data-longitude"))
+            page.get_by_role("button",name="Walk",exact=True).click()
+            canvas=page.locator("#world-canvas");canvas.focus()
+            page.keyboard.down("ArrowUp")
+            page.wait_for_function("old=>{const e=document.querySelector('.camera-gps strong');return e.dataset.latitude!==old[0]||e.dataset.longitude!==old[1]}",arg=before)
+            page.keyboard.up("ArrowUp")
+            assert page.locator(".reference-origin strong").inner_text()==origin,"The coordinate reference must not follow the camera"
+            page.wait_for_function("()=>{const p=JSON.parse(document.querySelector('#world-canvas').dataset.cameraPosition);const e=document.querySelector('.camera-gps strong');return Math.abs(Number(e.dataset.latitude)-(48.8566+p[1]/(3600*1024)))<1e-10&&Math.abs(Number(e.dataset.longitude)-(2.3522+p[0]/(3600*1024)))<1e-10}")
+            page.evaluate("dispatchEvent(new PageTransitionEvent('pagehide'))")
+            for _ in range(100):
+                status,saved=helpers.http(url+"/api/user-position",token=tokens["alice"])
+                if status==200 and saved["position"] and saved["position"]["context"]["navigation"]=="walk":break
+                time.sleep(.05)
+            else:raise AssertionError("Signed-in camera position was not saved")
+            position=mcp.call("get_user_position")["structuredContent"]
+            assert position["position"]["context"]["world_id"]==head["id"]
+            assert position["ground_position_world"][2]==0 and position["model_transform"][2][3]==0
+            assert bob.call("get_user_position")["structuredContent"]["position"] is None,"Other users' positions must remain private"
             page.get_by_role("button",name="Edit here with an agent").click()
             page.wait_for_url(re.compile(r"/login\?x=.*#connect"))
             configuration=json.loads(page.locator(".connection-code").first.inner_text())
@@ -121,12 +170,9 @@ with tempfile.TemporaryDirectory(prefix="ergo-common-") as directory:
         renamed=mcp.call("publish_construction",name="Shared façade",expected_local_revision=opened["local_revision"])
         assert renamed["structuredContent"]["published"],renamed
         assert renamed["structuredContent"]["pieces"]["1"]==birth
-        cleanup=subprocess.run([str(ROOT/"target/debug/ergo-server"),"shared-cleanup-legacy",head["id"]],
-            cwd=directory,env=server_env,capture_output=True,text=True)
-        assert cleanup.returncode==0,cleanup.stdout+cleanup.stderr
         assert helpers.http(url+f"/api/shared-worlds/{head['id']}")[0]==200
     finally:
         for process in processes:process.close()
         server.send_signal(signal.SIGTERM);server.wait(timeout=10)
         log.close()
-print("Common-world integration passed: public single sandbox, immediate attributed MCP commits, stable IDs, position-based opening, conflict/invalid-edit rollback, live browser commit and context handoff.")
+print("Common-world integration passed: public single sandbox, attributed MCP commits, stable IDs, invalid/conflict rollback, scrolling navigation at actual positions with neighbors, live camera GPS and context handoff.")

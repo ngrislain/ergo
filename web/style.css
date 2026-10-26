@@ -1,4 +1,5 @@
 @import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;450;500;550;600;650;700&family=Manrope:wght@400;500;600;650;700;750;800&display=swap');
+@import url('./navigation.css');
 .brand>img{display:block;flex:none}.landing-hero.login-hero{grid-template-columns:1fr;min-height:0;padding-block:56px}.login-hero .landing-intro{max-width:720px}
 
 :root{--ink:#263e50;--muted:#788894;--blue:#365c75;--line:#e5eaf0;--paper:#fff;--canvas:#dfebf2;--amber:#f1b64b;--panel:#f7f9fb;font-family:'DM Sans',sans-serif;color:var(--ink);font-size:13px;font-synthesis:none}

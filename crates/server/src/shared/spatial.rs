@@ -13,6 +13,7 @@ pub struct SpatialRef {
 #[derive(Clone, Serialize, Deserialize)]
 pub struct BlockHeader {
     pub coord: BlockCoord,
+    #[serde(deserialize_with = "super::paged::current_paged")]
     pub paged: bool,
 }
 pub fn directory(coord: BlockCoord) -> OctreePath {
@@ -216,31 +217,5 @@ impl Working {
             }
         }
         Ok(result)
-    }
-}
-
-impl SharedWorlds {
-    pub async fn upgrade_spatial(&self, id: &str) -> Result<ContentId> {
-        let repo = self.repo(id)?;
-        let mut maintenance = repo.maintenance().await?;
-        let limit = self.limits.bytes;
-        tracing::info!(
-            token = maintenance.token(),
-            "Spatial index upgrade barrier acquired"
-        );
-        let revision=maintenance.rewrite("main",move|source|async_stream::try_stream!{
-            let mut metadata:Metadata=source.get(&root(2)).await?.ok_or_else(||ergo_transactions::Error::Corrupt("missing metadata".into()))?;
-            if metadata.layout==1{
-                yield ergo_transactions::RecordEdit::remove(root(1));
-                let mut after=None;loop{let page=source.scan_page(&root(3),after.as_ref(),128).await?;for(_,cid)in page.leaves{
-                    let piece:Piece=source.blob_limited(&cid,limit).await?;let mesh:ergo_world::geometry::Mesh=source.blob_limited(&piece.mesh,limit).await?;
-                    let bounds=piece.geometry.brick(1,&mesh).map_err(|e|ergo_transactions::Error::Encoding(e.to_string()))?.render_bounds;
-                    for &coord in &piece.replicas{yield ergo_transactions::RecordEdit::put(directory(coord),&BlockHeader{coord,paged:true})?;let(path,row)=record(&piece,coord,bounds);yield ergo_transactions::RecordEdit::put(path,&row)?;}
-                }after=page.next;if after.is_none(){break;}}
-                metadata.layout=2;yield ergo_transactions::RecordEdit::put(root(2),&metadata)?;
-            }
-        }).await?;
-        maintenance.finish().await?;
-        Ok(revision)
     }
 }

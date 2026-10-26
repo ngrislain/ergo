@@ -9,7 +9,7 @@ Windows and Linux musl/Alpine binaries are not included.
 Install the GitHub-hosted bundle with npm (registry publication is currently disabled):
 
 ```sh
-npm install --global 'https://github.com/ngrislain/ergo/releases/download/v0.4.0/ngrislain-ergo-mcp-0.4.0.tgz'
+npm install --global --ignore-scripts 'https://github.com/ngrislain/ergo/releases/download/v0.5.0/ngrislain-ergo-mcp-0.5.0.tgz'
 ergo-mcp --workspace /absolute/path/construction.ergo.json
 ```
 
@@ -52,6 +52,10 @@ ergo-mcp --login
 ```
 
 Publishing retains server authorization, pacing, and measured-physics checks.
+The client uses native Ergo construction/model/part descriptions. `get_user_position`
+reads your private saved camera context and a ground-level transform for model
+creation; `place_submodel` accepts native definitions and public-unit transforms.
+Existing shared constructions stay at their accepted world positions.
 All binaries and browser assets are bundled together at the same release version.
 There are no install/postinstall scripts, optional platform downloads, or
 runtime build steps. Package publication does not deploy the hosted API.

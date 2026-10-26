@@ -3,7 +3,7 @@
 There is one **public Ergo Sandbox**. Anyone can view it; signed-in users can
 edit it, subject to pacing and physical validation. Current MCP clients commit
 accepted edits to that same S3-backed world automatically. A working file is a
-cache, not a private world. Use MCP **v0.4.0 or newer** for this workflow.
+cache, not a private world. Use the current MCP **v0.5.0** for native formats.
 
 ## Start from the viewer's current position
 
@@ -42,7 +42,7 @@ credentials to the agent.
 ## Specify a position explicitly
 
 Positions are `[east,north,height]`, with 8 mm horizontal units and 9.6 mm height
-units. They are **not LDraw LDU**, GPS degrees, or storage-block indices.
+units. They are not GPS degrees or storage-cell indices.
 
 Set `ERGO_POSITION_WORLD` as the JSON string above before starting a new cache,
 or have the agent call this on an already running configured MCP server:
@@ -123,5 +123,5 @@ Use `test_visual_appearance`/`view_construction` with `lighting: "studio"` for
 time-independent inspection. Gravity and earthquake tests are non-mutating
 diagnostics, not permission to bypass the server's certificate or measurements.
 
-See [production examples](mcp-production-examples.md), the
-[Haussmann building exercise](haussmann-mcp.md), and [MCP tools](local-construction-mcp.md).
+See [the native construction format](construction-format.md) and
+[MCP tools](local-construction-mcp.md).

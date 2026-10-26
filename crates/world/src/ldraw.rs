@@ -278,7 +278,7 @@ pub fn bake_mesh(
     Ok(Mesh {
         schema: crate::SCHEMA_VERSION,
         part: part.into(),
-        quality: "ldraw".into(),
+        quality: "source".into(),
         vertices,
         bounds,
         body_bounds: bounds,

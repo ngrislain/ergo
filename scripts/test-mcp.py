@@ -23,7 +23,7 @@ def main():
             [str(pathlib.Path(args.binary).resolve()), "--workspace", str(workspace), "--headless"],
             stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
             text=True,
-            env={**os.environ,"ERGO_ASSET_FETCH":"0","LDRAW_DIR":str(library)},
+            env={**os.environ,"ERGO_ASSET_FETCH":"0","ERGO_ASSET_LIBRARY_DIR":str(library)},
         )
         assert process.stdin is not None and process.stdout is not None and process.stderr is not None
         sequence = 0
@@ -103,7 +103,7 @@ def main():
             assert len(call("get_catalog")["structuredContent"]["catalog"]["colors"]) == 20
             assert len(call("get_catalog", include_extended=True)["structuredContent"]["catalog"]["colors"]) > 300
             custom = call("get_catalog", part="custom-part")
-            assert custom["structuredContent"]["requested_part"]["quality"] == "ldraw", custom
+            assert custom["structuredContent"]["requested_part"]["quality"] == "source", custom
             custom = call("place_brick", part="custom-part", color=47, min_corner=[16, 2, 0])
             assert custom["isError"] is False and custom["structuredContent"]["publication_ready"] is False, custom
             assert "sourced" in custom["structuredContent"]["failure"]
@@ -112,21 +112,27 @@ def main():
                         "1 16 100 0 0 1 0 0 0 1 0 0 0 1 pillar.ldr\n"
                         "0 FILE pillar.ldr\n"
                         "1 16 0 -24 0 1 0 0 0 1 0 0 0 1 3003.dat\n")
-            matrix = [[1, 0, 0, 500], [0, 1, 0, 0], [0, 0, 1, -100], [0, 0, 0, 1]]
-            result = call("place_submodel", ldraw=submodel, matrix=matrix, color=14)
+            matrix = [[1, 0, 0, 25], [0, 1, 0, -5], [0, 0, 1, 0], [0, 0, 0, 1]]
+            result = call("place_submodel", document=submodel, transform=matrix, color=14)
             assert result["isError"] is False, result
             stored = json.loads(workspace.read_text())
-            assert stored["format"] == "ergo-ldraw-1" and "bricks" not in stored
+            assert stored["format"] == "ergo-construction-1" and "bricks" not in stored
             assert len(stored["pieces"]) == 5
-            assert any(name.endswith("pillar.ldr") for name in stored["model"]["subparts"])
+            assert any(name.endswith("pillar.ldr") for name in stored["model"]["definitions"])
             added = call("list_bricks")["structuredContent"]["bricks"][-2:]
             assert [brick["color"] for brick in added] == [14, 14]
             assert [brick["position"][0] for brick in added] == [25, 30]
             before = workspace.read_bytes()
-            assert call("place_submodel", ldraw=submodel, matrix=matrix, color=14)["isError"] is True
+            assert call("place_submodel", document=submodel, transform=matrix, color=14)["isError"] is True
             assert workspace.read_bytes() == before, "Failed submodel placement must roll back"
             matrix[3][0] = 1
-            assert call("place_submodel", ldraw=submodel, matrix=matrix)["isError"] is True
+            assert call("place_submodel", document=submodel, transform=matrix)["isError"] is True
+            native={"format":"ergo-model-1","schema":2,"root":"block","definitions":{"block":[{
+                "target":{"kind":"part","id":"3003.dat"},"color":2,
+                "transform":[[1,0,0,60],[0,1,0,0],[0,0,1,1],[0,0,0,1]]}]}}
+            native_result=call("place_submodel",model=native)
+            assert not native_result.get("isError"),native_result
+            assert call("place_submodel",ldraw=submodel).get("isError"),"Retired protocol argument must not remain accepted"
             assert workspace.exists()
             print("MCP smoke passed: tool discovery, collision rollback, gravity, camera PNGs, earthquakes, reusable LDraw subparts, matrix placement, and canonical storage.")
         finally:

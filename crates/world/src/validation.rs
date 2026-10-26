@@ -181,6 +181,13 @@ fn support_certificate(
     tol: StaticTolerances,
     measurements: &crate::physical::ConnectionMeasurements,
 ) -> Result<()> {
+    // Loose blocks can balance gravity by distributing compression downwards.
+    // This avoids inventing tensile loads in a spanning tree of a multi-support
+    // roof. It is a constructive proof in the same frictionless box model.
+    if joints.is_empty() && fixed.is_empty() && compression_certificate(bricks, tol, measurements)?
+    {
+        return Ok(());
+    }
     use crate::physical::{GRAVITY_M_S2, to_meters};
     let n = bricks.len();
     let index: HashMap<_, _> = bricks.iter().enumerate().map(|(i, b)| (b.id, i)).collect();
@@ -439,6 +446,118 @@ fn support_certificate(
     Ok(())
 }
 
+fn compression_certificate(
+    bricks: &[Brick],
+    tol: StaticTolerances,
+    measurements: &crate::physical::ConnectionMeasurements,
+) -> Result<bool> {
+    use crate::physical::{GRAVITY_M_S2, to_meters};
+    let origin = bricks[0].bounds.center();
+    let tree = Octree::new(bricks.iter().map(|b| b.bounds).collect());
+    let mut loads = Vec::with_capacity(bricks.len());
+    for brick in bricks {
+        let mass = measurements.mass_kg(&brick.part)?;
+        let center = to_meters(brick.bounds.center() - origin);
+        loads.push((mass, DVec2::new(center.x, center.z) * mass));
+    }
+    let mut order: Vec<_> = (0..bricks.len()).collect();
+    order.sort_by(|&a, &b| bricks[b].bounds.min.y.total_cmp(&bricks[a].bounds.min.y));
+    for i in order {
+        let brick = &bricks[i];
+        let (mass, moment) = loads[i];
+        let center = moment / mass;
+        let mut supports = Vec::new();
+        if brick.bounds.min.y.abs() <= tol.position_brick_units {
+            for (x, z) in [
+                (brick.bounds.min.x, brick.bounds.min.z),
+                (brick.bounds.max.x, brick.bounds.min.z),
+                (brick.bounds.max.x, brick.bounds.max.z),
+                (brick.bounds.min.x, brick.bounds.max.z),
+            ] {
+                let p = to_meters(DVec3::new(x, 0., z) - origin);
+                supports.push((DVec2::new(p.x, p.z), None));
+            }
+        } else {
+            for j in tree.query(brick.bounds.expanded(tol.position_brick_units)) {
+                if j == i {
+                    continue;
+                }
+                let lower = &bricks[j];
+                if lower.bounds.min.y >= brick.bounds.min.y
+                    || (lower.bounds.max.y - brick.bounds.min.y).abs() > tol.position_brick_units
+                {
+                    continue;
+                }
+                let lo = brick.bounds.min.max(lower.bounds.min);
+                let hi = brick.bounds.max.min(lower.bounds.max);
+                if hi.x - lo.x <= tol.position_brick_units
+                    || hi.z - lo.z <= tol.position_brick_units
+                {
+                    continue;
+                }
+                for (x, z) in [(lo.x, lo.z), (hi.x, lo.z), (hi.x, hi.z), (lo.x, hi.z)] {
+                    let p = to_meters(DVec3::new(x, brick.bounds.min.y, z) - origin);
+                    supports.push((DVec2::new(p.x, p.z), Some(j)));
+                }
+            }
+        }
+        let hull = convex_hull(supports.iter().map(|(point, _)| *point).collect());
+        if hull.len() < 3 {
+            return Ok(false);
+        }
+        let mut reactions = None;
+        for k in 1..hull.len() - 1 {
+            let [a, b, c] = [hull[0], hull[k], hull[k + 1]];
+            let area = (b - a).perp_dot(c - a);
+            if area <= 1e-15 {
+                continue;
+            }
+            let wa = (b - center).perp_dot(c - center) / area;
+            let wb = (c - center).perp_dot(a - center) / area;
+            let wc = 1. - wa - wb;
+            if [wa, wb, wc].iter().any(|w| *w < -1e-10) {
+                continue;
+            }
+            let weights = [wa.max(0.), wb.max(0.), wc.max(0.)];
+            let sum: f64 = weights.iter().sum();
+            let points = [a, b, c];
+            let residual = points
+                .iter()
+                .zip(weights)
+                .map(|(p, w)| *p * (w / sum))
+                .sum::<DVec2>()
+                - center;
+            if residual.length() * mass * GRAVITY_M_S2 > tol.torque_newton_meters {
+                continue;
+            }
+            reactions = Some(
+                points
+                    .into_iter()
+                    .zip(weights)
+                    .map(|(point, weight)| {
+                        (
+                            point,
+                            weight / sum,
+                            supports.iter().find(|(p, _)| *p == point).unwrap().1,
+                        )
+                    })
+                    .collect::<Vec<_>>(),
+            );
+            break;
+        }
+        let Some(reactions) = reactions else {
+            return Ok(false);
+        };
+        for (point, weight, lower) in reactions {
+            if let Some(j) = lower {
+                loads[j].0 += mass * weight;
+                loads[j].1 += point * (mass * weight);
+            }
+        }
+    }
+    Ok(true)
+}
+
 fn convex_hull(mut points: Vec<DVec2>) -> Vec<DVec2> {
     points.sort_by(|a, b| a.x.total_cmp(&b.x).then(a.y.total_cmp(&b.y)));
     points.dedup();
@@ -489,6 +608,23 @@ mod tests {
             ground: Vec::new(),
             groups: Vec::new(),
             model: None,
+        }
+    }
+
+    #[test]
+    fn loose_multi_pillar_roof_balances_compression_independent_of_piece_order() {
+        let mut demo = Demo::new();
+        for (x, z) in [(0., 0.), (3., 0.), (0., 3.), (3., 3.)] {
+            for h in 0..6 {
+                demo.add("3070b", 19, x, h as f64 / 3., z);
+            }
+        }
+        demo.add("3031", 14, 0., 2., 0.);
+        let mut model = scene(demo);
+        for _ in 0..25 {
+            validate_static(&mut model).unwrap();
+            assert!(model.joints.is_empty());
+            model.bricks.rotate_left(1);
         }
     }
 

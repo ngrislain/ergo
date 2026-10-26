@@ -85,6 +85,17 @@ pub fn open_login(url: Option<String>) -> Result<()> {
 }
 
 impl Publisher {
+    pub async fn user_position(&self) -> Value {
+        match self.request(Method::GET, "/api/user-position", None).await {
+            Ok(value) => {
+                json!({"content":[{"type":"text","text":value.to_string()}],"structuredContent":value,"isError":false})
+            }
+            Err(error) => {
+                let value = json!({"error":format!("{error:#}")});
+                json!({"content":[{"type":"text","text":value.to_string()}],"structuredContent":value,"isError":true})
+            }
+        }
+    }
     pub async fn allowance(&self) -> Value {
         match self
             .request(Method::GET, "/api/shared-worlds/allowance", None)

@@ -367,23 +367,20 @@ async fn streaming_collect(
                 marks.enqueue(root, 3)?;
             }
         } else {
-            marks.enqueue(h.commit, 0)?;
+            return Err(Error::Corrupt(
+                "Current heads require an acceptance index".into(),
+            ));
         }
     }
     while let Some((id, kind)) = marks.next()? {
         let bytes = repo.download(&id, options.max_object_bytes).await?;
         match kind {
-            0 | 5 => {
+            5 => {
                 let c: Commit = decode(&bytes)?;
                 if !crate::supported_format(c.format) {
                     return Err(Error::Corrupt(
                         "unsupported commit during collection".into(),
                     ));
-                }
-                if kind == 0 {
-                    for id in c.parent.into_iter().chain(c.base) {
-                        marks.enqueue(id, 0)?;
-                    }
                 }
                 if let Some(id) = c.root {
                     marks.enqueue(id, 1)?;
@@ -488,6 +485,10 @@ impl RecordEdit {
     }
 }
 impl Maintenance {
+    pub async fn branch_revision(&self, branch: &str) -> Result<ContentId> {
+        self.assert_owner().await?;
+        Ok(self.repo.head(branch).await?.0.id)
+    }
     pub fn token(&self) -> &str {
         &self.token
     }

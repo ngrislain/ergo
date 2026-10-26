@@ -1,178 +1,59 @@
-# Sign-in, agent access, and shared-world edit pacing
+# Sign-in and agent access
 
-## v0.4.0 hosted product
+The Sandbox at https://ergosandbox.com/ is public to view. Editing and private
+account context require sign-in. The project guide at https://www.ergosandbox.com/
+does not receive credentials or proxy the API.
 
-There is one public **Ergo Sandbox**. Guests can view `/` and `/app`; signing in
-is required for attributed edits. The viewer and current MCP client commit
-accepted edits to that same S3-backed world, not private snapshots. The header's
-**Edit here with an agent** handoff includes the current target and selected
-assembly; see [the current/specified-position guide](agent-shared-editing.md).
-The older per-world publication descriptions below apply only to isolated
-compatibility fixtures. Hosted world creation/alternative IDs are rejected.
+## Browser setup
 
-## Landing page and workbench
+`/` and `/app` open the shared-world workbench. `/login#connect` contains Google
+sign-in, token issuance/download and client examples. **Edit here with an agent**
+carries the current view target and selected construction ID to setup; no token
+is embedded in that URL.
 
-The static public guide at **https://www.ergosandbox.com** explains the
-human-to-agent handoff and supplies a machine-readable `/llms.txt`. Its privacy
-and terms pages describe the hosted service. Sign-in, tokens, and the API use
-the separate canonical sandbox origin **https://ergosandbox.com**; the public
-guide never receives credentials. See [website deployment](static-site.md).
+Sign out immediately displays **Signing out…**, disables duplicate clicks and
+clears the session/login cookies before returning to setup. Failures restore the
+control. Sign-out does not revoke an already-issued delegated token.
 
-On the authenticated apex, anonymous `/` visitors see Google sign-in, while
-signed-in users see the viewer. `/app` is also an explicit viewer route.
-`/login` always shows sign-in, MCP setup, token issuance, and direct API examples,
-including the `/login#connect` agent handoff. Signed-in users can inspect their current edit
-allowance, and explicitly generate an access token. The token can be copied or
-downloaded as `ergo-mcp-token`; it is held in page memory, not local/session
-storage. Downloaded token files are operator-managed credentials.
+## Install and delegate
 
-Both the viewer and signed-in `/login` setup page provide **Sign out**.
-The click immediately changes the button to **Signing out…**, marks it busy and
-disables repeat clicks before awaiting the server. Failures restore the control
-and display the error; pending feedback does not falsely claim completion.
-It clears the session and login-state cookies, requests origin cache/storage clearing and
-replaces the current page with `/login`. Logout is idempotent for missing/expired
-sessions, while retaining the same-origin request checks. Session-status responses
-are `no-store`. This signs out of Ergo, not the visitor's Google account; existing
-downloaded MCP delegations keep their documented expiry/key-rotation semantics.
-
-The viewer has one **Import construction** button in the header. It opens the
-shared dialog for Studio `.io`, LDraw `.ldr`/`.mpd`, and Ergo JSON; there is no
-duplicate Studio-only button in the construction sidebar.
-
-The production OpenTofu deployment requires Google credentials. With Google
-unset, the explicitly labeled development account can use the local workbench
-and exercise token issuance without a real Google login.
-The local development root retains the setup page; `/app` opens its viewer.
-
-Shared-world URLs use `/app?shared_world=WORLD_UUID&x=X&y=Y&z=Z`, where X/Y/Z
-are public storage-block coordinates. Google sign-in preserves these links via
-a signed, same-origin `return_to` restricted to `/`, `/login`, and `/app`.
-No token is embedded in these URLs. Private snapshots and examples remain in
-the construction browser; permission-filtered shared-world regions are listed
-separately with paged discovery.
-
-The shared browser view loads a bounded 3×3×3 block region, at most 5,000 pieces
-(or the smaller configured working-set limit), and a 16 MiB CBOR read budget.
-It moves with the camera; the client checks the small head every five seconds
-and reloads geometry only when the region or accepted revision changes. Walk
-navigation treats unqueried cells as unloaded until their region arrives.
-This is not an entire-world export or a complete mechanical assembly: simulation
-and editing of the clipped view are rejected. Shared edits use the authenticated
-MCP/REST workflow; a complete shared-world CAD editor remains future work.
-
-Use [full-screen navigation](navigation.md#full-screen-exploration) to hide the
-surrounding workbench. **Nearest construction** searches accessible private
-construction footprints and currently discovered shared regions using camera
-GPS coordinates. Load additional shared discovery pages with **More shared
-regions**. Discovery hints can be coarse or stale; the actual spatial view is
-read from an authorized accepted world revision. This is not a global exact
-nearest-neighbor index over every piece in an unbounded world.
-
-## MCP setup and browser-assisted sign-in
-
-Build the native bridge and WASM assets using the root README instructions.
-To open this server's sign-in/setup page from the terminal:
+Install the current prebuilt client from its GitHub Release:
 
 ```sh
-target/debug/ergo-mcp --login --publish-url https://ergosandbox.com
+npm install --global --ignore-scripts 'https://github.com/ngrislain/ergo/releases/download/v0.5.0/ngrislain-ergo-mcp-0.5.0.tgz'
+ergo-mcp --login --publish-url https://ergosandbox.com
 ```
 
-This one-time command opens `/login#connect` and exits. Sign in in the browser,
-generate/download the token, then configure its path when starting the MCP
-bridge normally. It does not silently exchange browser cookies or automatically
-install credentials in an agent's configuration.
+Sign in in the human's browser, generate/download the token, and configure only its
+private file path. Do not pass Google or S3 credentials to the agent. The bundle
+includes native/WASM assets; consumers need no Rust build.
 
-```sh
-ERGO_PUBLISH_URL=https://ergosandbox.com \
-ERGO_PUBLISH_TOKEN_FILE=/absolute/path/ergo-mcp-token \
-target/debug/ergo-mcp --workspace /absolute/path/construction.ergo.json
-```
+Tokens are purpose-, origin- and expiry-bound. The UI requests one hour; the API
+allows at most 86,400 seconds capped by the issuing session. The current
+`ergo-mcp-edit-v1` purpose permits shared reads/imports/edits and private own-user
+placement context, subject to authorization. It cannot mint another delegation,
+change grants/retention/account plans or create another hosted world.
 
-The landing page provides the equivalent MCP-client JSON configuration. See
-[MCP tools](local-construction-mcp.md#remote-publication-setup) for publication,
-read-back, conflict, and unknown-outcome semantics.
+Writes require `X-Ergo-Request: 1` and same-origin validation. JSON writes also use
+`Content-Type: application/json`. Read/setup/session responses are no-store.
 
-## Tokens and direct API access
+## Pacing
 
-`POST /api/auth/mcp-token` is session-authenticated and requires
-`X-Ergo-Request: 1`. New tokens delegate shared-world reads, creation, assembly
-imports, and geometry commits. They cannot change sharing/grants, retention,
-account entitlements, or private snapshots. Defaults are one hour, at most
-86400 seconds, capped at the issuing session's expiry. They are purpose- and
-origin-bound and are invalidated by signing-key rotation, not individual logout.
-Older publication-only tokens still work for reads/create/import, but cannot
-perform geometry commits; obtain a new token for editing.
+The default persistent token bucket permits a 5,000-change burst and refills 5,000
+changes per 86,400 seconds. This is neither a midnight reset nor a world-size cap.
+Imports charge their pieces; edits charge their changed/affected domain. Confirmed
+rejections refund reservations; uncertain outcomes retain them until resolution/
+refill and are not automatically repeated.
 
-For example:
+`get_edit_allowance` reports remaining changes or `unlimited:true`. An operator
+can set an account's unlimited plan with `ergo-server user-plan USER_ID paid`.
+Unlimited bypasses pacing, not permissions, physical acceptance or operation budgets.
 
-```sh
-export ERGO_URL=https://ergosandbox.com
-# Set ERGO_TOKEN to the token copied/downloaded after sign-in.
-curl --fail "$ERGO_URL/api/shared-worlds/allowance" \
-  -H "Authorization: Bearer $ERGO_TOKEN"
-curl --fail "$ERGO_URL/api/shared-worlds?quad=&limit=32" \
-  -H "Authorization: Bearer $ERGO_TOKEN"
-```
+## Position context
 
-Writes also send `X-Ergo-Request: 1` and, for JSON, `Content-Type: application/json`.
-Create a collaborative world with
-`POST /api/shared-worlds` and `{name, geo, authenticated_editing: true}`.
-Import a bounded `WorldExport` with `POST /api/shared-worlds/{id}/assemblies`
-and `{base, scene}`; edit existing geometry with
-`POST /api/shared-worlds/{id}/commits`. Keep the returned accepted revision and
-stable piece mapping. See [the REST workflow](concurrent-global-editing.md#rest-workflow)
-for the full paging/commit format.
+The signed-in viewer stores its last camera/target privately. `get_user_position`
+returns the caller's context and ground-level transform; it cannot read another
+user by supplying an ID. No public position catalogue is exposed.
 
-`authenticated_editing: true` permits any signed-in identity to read/edit that
-world, subject to pacing and physical validation. MCP-created worlds default
-to this setting; use `authenticated_editing: false` to create an owner/grant-only
-world. Raw REST creation defaults to owner/grant-only for compatibility. Only
-the owner can toggle the setting through the grants endpoint; current policy is
-validated atomically with publication. Paid status never bypasses permissions.
-
-## Free-user pacing and paid entitlement
-
-Free accounts receive a persistent token bucket with capacity **5,000 changed
-bricks**, refilling by **5,000 changes per 86400 seconds**. This permits an
-initial burst and then continuous refill, approximately one change every
-17.28 seconds when exhausted; it is not a midnight reset or a lifetime/world
-brick-count cap. It applies across worlds for the same authenticated actor.
-
-Configure `ERGO_EDIT_BRICKS_PER_PERIOD` and `ERGO_EDIT_PERIOD_SECONDS`, or the
-OpenTofu inputs `free_bricks_per_period` and `edit_period_seconds`. Normal
-per-operation memory/piece limits and server validation remain independent.
-Import costs one change per imported piece. Geometry commits cost the number
-of explicitly changed/deleted pieces; rules/joint-only commits charge the
-affected piece domain. World creation and permission/retention metadata changes
-do not spend brick-change credits. Invalid drafts rejected before publication
-preparation do not spend credits.
-
-Reservations use conditional object-store updates, so concurrent processes
-cannot overspend one actor's allowance. Confirmed 4xx publication failures
-refund idempotently; uncertain 5xx/cancelled publication outcomes conservatively
-retain reservations and the normal refill continues. No failed request is
-automatically resubmitted. Exhaustion returns HTTP **429**, with `Retry-After`
-and `retry_after_seconds` when a smaller accepted request can refill. A request
-larger than the burst capacity must be split or use an unlimited entitlement.
-
-`GET /api/shared-worlds/allowance`, session `/api/auth/me`, and MCP
-`get_edit_allowance` expose remaining whole changes, capacity, refill period,
-or `unlimited: true` for an unlimited account. These are not permissions to
-publish an invalid or unauthorized construction.
-
-Entitlements are server-owned object-store records, separate from Google profile
-updates and bearer claims. With the **same storage environment as production**,
-an operator can set an account's plan using the account ID shown on the setup page:
-
-```sh
-cargo run -p ergo-server -- user-plan google-USER_ID paid
-cargo run -p ergo-server -- user-plan google-USER_ID free
-```
-
-The paid entitlement bypasses pacing, including after cold starts, while keeping
-all authorization, working-set, and measured-physics checks. A billing provider,
-checkout, and verified payment-webhook synchronization are **not implemented**;
-the entitlement is currently operator-managed. Native/end-to-end tests verify
-persistence, refill, concurrency, rejection, and paid-plan bypass without using
-real Google accounts or payment/S3 resources.
+See [MCP setup](local-construction-mcp.md), [identity](identity-and-ownership.md),
+[navigation](navigation.md) and [agent workflows](agent-shared-editing.md).

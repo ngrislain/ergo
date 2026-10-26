@@ -459,7 +459,6 @@ impl SharedWorlds {
             ws.replace(None, Some(piece)).await?;
         }
         ws.flush_rules(&BTreeSet::from([assembly.clone()])).await?;
-        ws.flush_blocks().await?;
         let affected = ws.discover(&changed).await?;
         let report = ws.validate(&affected).await?;
         self.advertise_blocks(id, ws.metadata.geo, &ws.new_blocks)
@@ -602,7 +601,6 @@ impl SharedWorlds {
             ws.stage_rules(rules)?;
         }
         ws.flush_rules(&assemblies).await?;
-        ws.flush_blocks().await?;
         seeds.extend(before);
         ws.reset_dependencies();
         let affected = ws.discover(&seeds).await?;
@@ -785,6 +783,10 @@ pub fn routes() -> Router<AppState> {
         .route(
             "/api/shared-worlds/{id}/assemblies/{assembly}/workspace",
             get(authoring::workspace).put(authoring::replace),
+        )
+        .route(
+            "/api/shared-worlds/{id}/assemblies/{assembly}/location",
+            get(authoring::location),
         )
         .route(
             "/api/shared-worlds/{id}/assemblies/{assembly}",
@@ -1091,30 +1093,18 @@ async fn block(
     Query(q): Query<RevisionQuery>,
 ) -> SharedResult<Json<serde_json::Value>> {
     let snapshot = snapshot(&s, &id, &h, q.revision.as_ref()).await?;
-    let metadata: Metadata = snapshot.get(&root(2)).await?.context("Missing metadata")?;
     let coord = [x, y, z].into();
-    if metadata.layout >= 2 {
-        Ok(Json(
-            serde_json::to_value(
-                snapshot
-                    .get_limited::<spatial::BlockHeader>(
-                        &spatial::directory(coord),
-                        s.shared.limits.bytes,
-                    )
-                    .await?,
-            )
-            .map_err(anyhow::Error::from)?,
-        ))
-    } else {
-        Ok(Json(
-            serde_json::to_value(
-                snapshot
-                    .get_limited::<SpatialBlock>(&block_path(coord), s.shared.limits.bytes)
-                    .await?,
-            )
-            .map_err(anyhow::Error::from)?,
-        ))
-    }
+    Ok(Json(
+        serde_json::to_value(
+            snapshot
+                .get_limited::<spatial::BlockHeader>(
+                    &spatial::directory(coord),
+                    s.shared.limits.bytes,
+                )
+                .await?,
+        )
+        .map_err(anyhow::Error::from)?,
+    ))
 }
 #[derive(Deserialize)]
 struct PiecePageQuery {
@@ -1131,30 +1121,7 @@ async fn block_pieces(
     let limit = q.limit.unwrap_or(64);
     ensure!((1..=128).contains(&limit), "Page limit must be 1..128");
     let snapshot = snapshot(&s, &id, &h, Some(&q.revision)).await?;
-    let metadata: Metadata = snapshot.get(&root(2)).await?.context("Missing metadata")?;
     let coord = [x, y, z].into();
-    if metadata.layout < 2 {
-        let block: Option<SpatialBlock> = snapshot
-            .get_limited(&block_path(coord), s.shared.limits.bytes)
-            .await?;
-        let after = q
-            .after
-            .as_deref()
-            .map(str::parse::<ContentId>)
-            .transpose()?;
-        let ids: Vec<_> = block
-            .into_iter()
-            .flat_map(|b| b.pieces)
-            .filter(|id| after.as_ref().is_none_or(|a| id > a))
-            .take(limit + 1)
-            .collect();
-        let more = ids.len() > limit;
-        let ids: Vec<_> = ids.into_iter().take(limit).collect();
-        let next = more.then(|| ids.last().unwrap().to_string());
-        return Ok(Json(
-            serde_json::json!({"revision":q.revision,"pieces":ids,"next":next}),
-        ));
-    }
     let after = q
         .after
         .as_deref()
@@ -1199,8 +1166,7 @@ async fn blocks(
         "Block query region is too deep"
     );
     let snapshot = snapshot(&s, &id, &h, Some(&q.revision)).await?;
-    let metadata: Metadata = snapshot.get(&root(2)).await?.context("Missing metadata")?;
-    let mut region = vec![if metadata.layout >= 2 { 5 } else { 1 }];
+    let mut region = vec![5];
     region.extend(local.octants());
     let region = OctreePath::new(region)?;
     let after = q
@@ -1220,7 +1186,7 @@ async fn blocks(
     for (path, _) in page.leaves {
         blocks.push(spatial::BlockHeader {
             coord: spatial::coordinate(&path)?,
-            paged: metadata.layout >= 2,
+            paged: true,
         });
     }
     Ok(Json(BlockPage {

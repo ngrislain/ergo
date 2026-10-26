@@ -54,16 +54,14 @@ impl GroundBlock {
     }
 }
 #[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
 struct GroundWire {
     schema: u32,
     coord: BlockCoord,
     bricks: Vec<Brick>,
-    #[serde(default)]
-    color: Option<u32>,
+    color: u32,
     #[serde(default)]
     sample_rgb: Option<u32>,
-    #[serde(default)]
-    colors: Vec<u32>,
     source: String,
     attribution: String,
     attribution_url: Option<String>,
@@ -74,31 +72,13 @@ struct GroundWire {
 impl TryFrom<GroundWire> for GroundBlock {
     type Error = String;
     fn try_from(w: GroundWire) -> Result<Self, String> {
-        let (color, sample_rgb, source) = if let Some(color) = w.color {
-            (color, w.sample_rgb, w.source)
-        } else {
-            if w.colors.is_empty()
-                || w.colors.len() > 1024
-                || w.colors
-                    .iter()
-                    .any(|c| !COLORS.iter().any(|(code, _)| code == c))
-            {
-                return Err("Missing/invalid baseplate color".into());
-            }
-            let rgb = average_rgb(w.colors.into_iter().map(color_rgb));
-            (
-                nearest_color(rgb),
-                Some(rgb),
-                format!("{} (legacy grid averaged)", w.source),
-            )
-        };
         let block = Self {
             schema: w.schema,
             coord: w.coord,
             bricks: w.bricks,
-            color,
-            sample_rgb,
-            source,
+            color: w.color,
+            sample_rgb: w.sample_rgb,
+            source: w.source,
             attribution: w.attribution,
             attribution_url: w.attribution_url,
             generated_at: w.generated_at,

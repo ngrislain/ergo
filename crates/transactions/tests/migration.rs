@@ -3,6 +3,72 @@ use object_store::ObjectStore;
 use std::sync::Arc;
 
 #[tokio::test]
+async fn current_history_install_is_fenced_validated_and_preserves_state() {
+    let store = Arc::new(object_store::memory::InMemory::new());
+    let repo = Repository::new(store, "world")
+        .unwrap()
+        .with_coordinated_gc();
+    let initial = repo.create("main").await.unwrap();
+    let first = initial.id().clone();
+    initial.close().await.unwrap();
+    let mut tx = repo.begin("main").await.unwrap();
+    tx.put(&"1/2".parse().unwrap(), &42u32).await.unwrap();
+    let old = tx
+        .commit("alice", "shape", CommitOptions::default())
+        .await
+        .unwrap()
+        .snapshot;
+    let expected = old.id().clone();
+    let mut converted = old.commit().clone();
+    old.close().await.unwrap();
+    converted.transaction_id = "format-migration".into();
+    let current = repo.put_blob(&converted).await.unwrap();
+    for _ in 0..100 {
+        if repo.active_pins().await.unwrap().is_empty() {
+            break;
+        }
+        tokio::task::yield_now().await;
+    }
+    let mut maintenance = repo.maintenance().await.unwrap();
+    assert!(
+        maintenance
+            .replace_history("main", &first, &[first.clone(), current.clone()])
+            .await
+            .is_err()
+    );
+    assert!(
+        maintenance
+            .replace_history("main", &expected, &[current.clone(), first.clone()])
+            .await
+            .is_err()
+    );
+    maintenance
+        .replace_history("main", &expected, &[first.clone(), current.clone()])
+        .await
+        .unwrap();
+    assert!(
+        repo.checkout("main").await.is_err(),
+        "Install must retain the barrier until explicitly finished"
+    );
+    maintenance.finish().await.unwrap();
+    let snapshot = repo.checkout("main").await.unwrap();
+    assert_eq!(snapshot.id(), &current);
+    assert_eq!(
+        snapshot.get::<u32>(&"1/2".parse().unwrap()).await.unwrap(),
+        Some(42)
+    );
+    assert_eq!(snapshot.commit().actor, "alice");
+    snapshot.close().await.unwrap();
+    assert!(repo.accepted_snapshot("main", &expected).await.is_err());
+    repo.accepted_snapshot("main", &first)
+        .await
+        .unwrap()
+        .close()
+        .await
+        .unwrap();
+}
+
+#[tokio::test]
 async fn fenced_prefix_migration_preserves_accepted_history_and_keeps_source_closed() {
     let store = Arc::new(object_store::memory::InMemory::new());
     let source = Repository::new(store.clone(), "old")

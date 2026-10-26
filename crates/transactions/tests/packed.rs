@@ -47,82 +47,37 @@ async fn deep_hash_paths_use_packed_edges_and_virtual_region_dependencies() {
 }
 
 #[tokio::test]
-async fn format_one_snapshots_remain_readable_and_legacy_history_can_be_indexed() {
-    let backend = Arc::new(InMemory::new());
-    let repo = Repository::new(backend.clone(), "legacy").unwrap();
-    async fn store(backend: &InMemory, value: impl serde::Serialize) -> ContentId {
-        let bytes = canonical_cbor(&value).unwrap();
+async fn noncurrent_heads_and_commits_are_rejected() {
+    for format in [1, 2] {
+        let backend = Arc::new(InMemory::new());
+        let repo = Repository::new(backend.clone(), "unsupported").unwrap();
+        let snapshot = repo.create("main").await.unwrap();
+        let commit_id = snapshot.id().clone();
+        backend
+            .put(
+                &Path::from("unsupported/refs/main.cbor"),
+                canonical_cbor(&serde_json::json!({
+                    "format":format,"commit":commit_id,"history":{"root":null,"retained_from":0}
+                }))
+                .unwrap()
+                .into(),
+            )
+            .await
+            .unwrap();
+        assert!(repo.checkout("main").await.is_err());
+        let mut old = serde_json::to_value(snapshot.commit()).unwrap();
+        old["format"] = serde_json::json!(format);
+        let bytes = canonical_cbor(&old).unwrap();
         let id = ContentId::of(&bytes);
         backend
             .put(
-                &Path::from(format!("legacy/objects/{id}.cbor")),
+                &Path::from(format!("unsupported/objects/{id}.cbor")),
                 bytes.into(),
             )
             .await
             .unwrap();
-        id
+        assert!(repo.snapshot(&id).await.is_err());
     }
-    let value = store(&backend, 42u32).await;
-    let leaf = store(
-        &backend,
-        serde_json::json!({"Leaf": {"generation":"old", "value":value}}),
-    )
-    .await;
-    let mut children = vec![serde_json::Value::Null; 8];
-    children[3] = serde_json::to_value(leaf).unwrap();
-    let root = store(
-        &backend,
-        serde_json::json!({"Branch": {"generation":null, "children":children}}),
-    )
-    .await;
-    let commit = store(&backend, serde_json::json!({"format":1,"transaction_id":"legacy","sequence":0,"parent":null,"base":null,"root":root,"edits":[],"actor":"old","message":"old"})).await;
-    backend
-        .put(
-            &Path::from("legacy/refs/main.cbor"),
-            canonical_cbor(&serde_json::json!({"format":1,"commit":commit}))
-                .unwrap()
-                .into(),
-        )
-        .await
-        .unwrap();
-    assert_eq!(
-        repo.checkout("main")
-            .await
-            .unwrap()
-            .get::<u32>(&"3".parse().unwrap())
-            .await
-            .unwrap(),
-        Some(42)
-    );
-    let managed = repo.clone().with_coordinated_gc();
-    let mut maintenance = managed.maintenance().await.unwrap();
-    maintenance.index_history("main").await.unwrap();
-    maintenance.finish().await.unwrap();
-    assert_eq!(
-        managed
-            .revision_entry("main", &commit)
-            .await
-            .unwrap()
-            .unwrap()
-            .sequence,
-        0
-    );
-    let mut tx = repo.begin("main").await.unwrap();
-    tx.put(&"4/2/1".parse().unwrap(), &421u32).await.unwrap();
-    let accepted = tx
-        .commit("new", "packed", CommitOptions::default())
-        .await
-        .unwrap();
-    assert_eq!(accepted.snapshot.commit().format, 3);
-    assert_eq!(
-        repo.snapshot(&commit)
-            .await
-            .unwrap()
-            .get::<u32>(&"3".parse().unwrap())
-            .await
-            .unwrap(),
-        Some(42)
-    );
 }
 
 #[tokio::test]

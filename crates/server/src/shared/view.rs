@@ -38,37 +38,26 @@ pub(super) async fn view(
         for dy in -1..=1 {
             for dz in -1..=1 {
                 let coord: BlockCoord = [query.x + dx, query.y + dy, query.z + dz].into();
-                if metadata.layout < 2 {
-                    if let Some(block) = snapshot
-                        .get_limited::<SpatialBlock>(&block_path(coord), remaining)
-                        .await?
-                    {
-                        remaining = remaining.saturating_sub(canonical_cbor(&block)?.len());
-                        ids.extend(block.pieces);
+                let mut after = None;
+                loop {
+                    let page = snapshot
+                        .scan_page(&block_path(coord), after.as_ref(), 128)
+                        .await?;
+                    if !page.leaves.is_empty() && !blocks.contains(&coord) {
                         blocks.push(coord);
                     }
-                } else {
-                    let mut after = None;
-                    loop {
-                        let page = snapshot
-                            .scan_page(&block_path(coord), after.as_ref(), 128)
-                            .await?;
-                        if !page.leaves.is_empty() && !blocks.contains(&coord) {
-                            blocks.push(coord);
+                    for (_, cid) in page.leaves {
+                        let row: spatial::SpatialRef =
+                            snapshot.blob_limited(&cid, remaining).await?;
+                        remaining = remaining.saturating_sub(canonical_cbor(&row)?.len());
+                        ids.insert(row.piece);
+                        if ids.len() > s.shared.limits.pieces.min(5000) {
+                            return Err(SharedError::working_limit("browser view pieces"));
                         }
-                        for (_, cid) in page.leaves {
-                            let row: spatial::SpatialRef =
-                                snapshot.blob_limited(&cid, remaining).await?;
-                            remaining = remaining.saturating_sub(canonical_cbor(&row)?.len());
-                            ids.insert(row.piece);
-                            if ids.len() > s.shared.limits.pieces.min(5000) {
-                                return Err(SharedError::working_limit("browser view pieces"));
-                            }
-                        }
-                        after = page.next;
-                        if after.is_none() {
-                            break;
-                        }
+                    }
+                    after = page.next;
+                    if after.is_none() {
+                        break;
                     }
                 }
                 if ids.len() > s.shared.limits.pieces.min(5000) {

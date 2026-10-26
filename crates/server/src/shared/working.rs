@@ -1,8 +1,4 @@
-use super::{
-    SharedError, SharedResult,
-    address::{block_path, cover, entity_path},
-    model::*,
-};
+use super::{SharedError, SharedResult, address::entity_path, model::*};
 use anyhow::Context;
 use ergo_transactions::{ContentId, OctreePath, Transaction, canonical_cbor};
 use ergo_world::{Aabb, BlockCoord, WorldExport, constraints::INFERRED_JOINT_HALO, geometry::Mesh};
@@ -11,11 +7,6 @@ use std::{
     collections::{BTreeMap, BTreeSet},
     sync::Arc,
 };
-
-struct BlockIndex {
-    tree: ergo_world::spatial::Octree,
-    ids: Vec<ContentId>,
-}
 
 pub struct Working {
     pub tx: Transaction,
@@ -30,10 +21,6 @@ pub struct Working {
     joints: BTreeMap<ContentId, super::paged::BoundJoint>,
     fixed: BTreeSet<ContentId>,
     meshes: BTreeMap<ContentId, Arc<Mesh>>,
-    blocks: BTreeMap<BlockCoord, SpatialBlock>,
-    block_paths: BTreeMap<OctreePath, BlockCoord>,
-    indices: BTreeMap<BlockCoord, BlockIndex>,
-    dirty_blocks: BTreeSet<BlockCoord>,
     pub regions: BTreeSet<OctreePath>,
     pub new_blocks: BTreeSet<BlockCoord>,
     pub loaded_bytes: usize,
@@ -80,10 +67,6 @@ impl Working {
             joints: BTreeMap::new(),
             fixed: BTreeSet::new(),
             meshes: BTreeMap::new(),
-            blocks: BTreeMap::new(),
-            block_paths: BTreeMap::new(),
-            indices: BTreeMap::new(),
-            dirty_blocks: BTreeSet::new(),
             regions: BTreeSet::new(),
             new_blocks: BTreeSet::new(),
             loaded_bytes: 0,
@@ -133,24 +116,16 @@ impl Working {
         if let Some(rules) = self.rules.get(id) {
             return Ok(rules.clone());
         }
-        let rules: Rules = match self
+        let header = self
             .tx
             .get_limited::<super::paged::RulesHeader>(
                 &super::paged::rule_path(id, 0),
                 self.remaining(),
             )
-            .await
-        {
-            Ok(Some(header)) => {
-                self.charge(&header)?;
-                super::paged::reconstruct(self, &header).await?
-            }
-            Ok(None) | Err(ergo_transactions::Error::CoveredByLeaf(_)) => self
-                .read(&entity_path(4, id))
-                .await?
-                .context("Missing assembly rules")?,
-            Err(e) => return Err(e.into()),
-        };
+            .await?
+            .context("Missing paged assembly header")?;
+        self.charge(&header)?;
+        let rules = super::paged::reconstruct(self, &header).await?;
         ensure!(rules.id == *id, "Stored assembly identity mismatch");
         rules.validate()?;
         self.graphs.insert(id.clone(), rules.adjacency()?);
@@ -176,26 +151,15 @@ impl Working {
         if let Some(h) = self.headers.get(id) {
             return Ok(h.clone());
         }
-        let header = match self
+        let header = self
             .tx
             .get_limited::<super::paged::RulesHeader>(
                 &super::paged::rule_path(id, 0),
                 self.remaining(),
             )
-            .await
-        {
-            Ok(Some(h)) => {
-                self.charge(&h)?;
-                h
-            }
-            Ok(None) | Err(ergo_transactions::Error::CoveredByLeaf(_)) => {
-                let r = self.rules(id).await?;
-                let mut h = super::paged::RulesHeader::of(&r);
-                h.paged = false;
-                h
-            }
-            Err(e) => return Err(e.into()),
-        };
+            .await?
+            .context("Missing paged assembly header")?;
+        self.charge(&header)?;
         let header = Arc::new(header);
         self.headers.insert(id.clone(), header.clone());
         Ok(header)
@@ -225,10 +189,7 @@ impl Working {
                 .cloned()
                 .unwrap_or_default());
         }
-        let header = self.assembly(&piece.assembly).await?;
-        if !header.paged {
-            return Box::pin(self.piece_rules(piece)).await;
-        }
+        self.assembly(&piece.assembly).await?;
         let member: super::paged::MemberRow = self
             .read(&super::paged::row(
                 &piece.assembly,
@@ -301,21 +262,6 @@ impl Working {
         let brick = self.brick(piece, 1).await?;
         Ok(ergo_world::partition(&[brick])?.into_keys().collect())
     }
-    async fn block(&mut self, coord: BlockCoord) -> SharedResult<SpatialBlock> {
-        if let Some(block) = self.blocks.get(&coord) {
-            return Ok(block.clone());
-        }
-        let block = self
-            .read(&block_path(coord))
-            .await?
-            .unwrap_or(SpatialBlock {
-                coord,
-                pieces: BTreeSet::new(),
-            });
-        self.blocks.insert(coord, block.clone());
-        self.block_paths.insert(block_path(coord), coord);
-        Ok(block)
-    }
     pub fn permit(&self, actor: &str, piece: &Piece) -> SharedResult<()> {
         if piece
             .replicas
@@ -339,33 +285,7 @@ impl Working {
         if let Some(piece) = &mut new {
             piece.replicas = self.cells(piece).await?;
         }
-        if self.metadata.layout >= 2 {
-            self.replace_spatial(old, new.as_ref()).await?;
-            if let Some(piece) = &new {
-                self.tx.put(&entity_path(3, &id), piece).await?;
-            } else {
-                self.tx.remove(&entity_path(3, &id)).await?;
-            }
-            self.pieces.insert(id, new);
-            return Ok(());
-        }
-        let before = old.map(|p| p.replicas.clone()).unwrap_or_default();
-        let after = new.as_ref().map(|p| p.replicas.clone()).unwrap_or_default();
-        for coord in before.union(&after).copied().collect::<Vec<_>>() {
-            self.indices.remove(&coord);
-            let mut block = self.block(coord).await?;
-            let prior = block.pieces.clone();
-            if after.contains(&coord) {
-                block.pieces.insert(id.clone());
-            } else {
-                block.pieces.remove(&id);
-            }
-            if prior != block.pieces {
-                self.dirty_blocks.insert(coord);
-                self.blocks.insert(coord, block);
-                self.block_paths.insert(block_path(coord), coord);
-            }
-        }
+        self.replace_spatial(old, new.as_ref()).await?;
         if let Some(piece) = &new {
             self.tx.put(&entity_path(3, &id), piece).await?;
         } else {
@@ -378,64 +298,7 @@ impl Working {
         Ok(())
     }
     pub async fn neighbors(&mut self, bounds: Aabb) -> SharedResult<BTreeSet<ContentId>> {
-        if self.metadata.layout >= 2 {
-            return self.spatial_neighbors(bounds).await;
-        }
-        let mut candidates = BTreeSet::new();
-        for region in cover(bounds)? {
-            self.regions.insert(region.clone());
-            let mut after = None;
-            loop {
-                let page = self.tx.scan_page(&region, after.as_ref(), 128).await?;
-                for (path, cid) in page.leaves {
-                    let coord = if let Some(coord) = self.block_paths.get(&path) {
-                        *coord
-                    } else {
-                        let block: SpatialBlock =
-                            self.tx.blob_limited(&cid, self.remaining()).await?;
-                        ensure!(
-                            block_path(block.coord) == path,
-                            "Spatial block path mismatch"
-                        );
-                        self.charge(&block)?;
-                        self.block_paths.insert(path, block.coord);
-                        let coord = block.coord;
-                        self.blocks.insert(coord, block);
-                        coord
-                    };
-                    if !self.indices.contains_key(&coord) {
-                        let mut ids = Vec::new();
-                        let mut boxes = Vec::new();
-                        for id in self.blocks[&coord].pieces.clone() {
-                            if let Some(piece) = self.piece(&id).await? {
-                                boxes.push(self.brick(&piece, 1).await?.bounds);
-                                ids.push(id);
-                            }
-                        }
-                        self.indices.insert(
-                            coord,
-                            BlockIndex {
-                                tree: ergo_world::spatial::Octree::new(boxes),
-                                ids,
-                            },
-                        );
-                    }
-                    let index = &self.indices[&coord];
-                    candidates.extend(
-                        index
-                            .tree
-                            .query(bounds)
-                            .into_iter()
-                            .map(|i| index.ids[i].clone()),
-                    );
-                }
-                after = page.next;
-                if after.is_none() {
-                    break;
-                }
-            }
-        }
-        Ok(candidates)
+        self.spatial_neighbors(bounds).await
     }
     pub async fn discover(
         &mut self,
@@ -549,18 +412,6 @@ impl Working {
     pub async fn flush_rules(&mut self, assemblies: &BTreeSet<ContentId>) -> SharedResult<()> {
         for id in assemblies {
             super::paged::write(&mut self.tx, self.rules[id].as_ref()).await?;
-        }
-        Ok(())
-    }
-    pub async fn flush_blocks(&mut self) -> SharedResult<()> {
-        for coord in std::mem::take(&mut self.dirty_blocks) {
-            let block = self.blocks[&coord].clone();
-            self.charge(&block)?;
-            if block.pieces.is_empty() {
-                self.tx.remove(&block_path(coord)).await?;
-            } else {
-                self.tx.put(&block_path(coord), &block).await?;
-            }
         }
         Ok(())
     }

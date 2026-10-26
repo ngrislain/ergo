@@ -120,7 +120,7 @@ def main():
         (args.documentation_assets/"haussmann.mpd").write_text(text)
     mcp=demo.Mcp(binary,workspace,"https://ergosandbox.com",None)
     try:
-        placed=mcp.call("place_submodel",ldraw=text,color=19)
+        placed=mcp.call("place_submodel",document=text,color=19)
         validation=mcp.call("validate_construction")["structuredContent"]
         report={"brick_count":validation["brick_count"],"validation":validation,"shared_committed":False,
             "interpretation":"Non-destructive architectural proposal. No alternate hosted world and no guessed connector capacities."}

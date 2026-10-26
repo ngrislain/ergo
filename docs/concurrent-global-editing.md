@@ -136,7 +136,7 @@ At world creation, the server captures its measurement book, tolerances, and
 algorithm version in an immutable model object. That CID is in world metadata and
 every audit. Edits use this frozen version, so another deployment's environment
 cannot silently reinterpret unloaded regions under different assumptions.
-Model migration/versioned boundary certificates are future work, not an implicit
+Unloaded-region boundary certificates are not part of an implicit
 whole-world revalidation. A new world can use a new configured model.
 
 ## REST workflow
@@ -248,18 +248,15 @@ The holder and its remote mutation requests must already be stopped/settled.
 Timeouts or age alone do not establish that. A failed/cancelled collector remains
 fenced, preventing an old delete from racing a new writer that reuses the same CID.
 
-## Scaling boundaries and future work
+## Publication boundaries
 
 Each world head is one publication serialization point. The library supports
-independent shard heads; cross-head atomic commits remain future work. Derived
+independent shard heads; a commit is atomic within one head. Derived
 user/geographic catalogs and opt-in group publication are implemented. Packed paths,
 LRU caching, and paging avoid world-sized loads but do not prove a live S3 commit
 rate. Use the repeatable benchmark in
 [transactional storage](transactional-storage.md) against the actual endpoint.
 
-The implemented follow-ups, configuration, and legacy migration commands are in
-[storage operations](storage-operations.md). Full shared-world CAD editing UI,
-native MCP updates of existing assemblies, model migration/boundary certificates,
-and cross-shard atomicity remain future work; shared navigation and publication
-are implemented.
-Hierarchical leases are an optional later extension, not part of current coordination.
+Current configuration, paging, maintenance and history installation are in
+[storage operations](storage-operations.md). MCP updates complete existing
+assemblies in place; browser construction entries navigate within the shared world.

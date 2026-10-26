@@ -1513,89 +1513,16 @@ async fn live_event_stream_rechecks_grants_and_holds_no_persistent_snapshot_pin(
 }
 
 #[tokio::test]
-async fn legacy_layout_upgrades_publish_once_and_preserve_identities_and_old_roots() {
+async fn noncurrent_shared_layouts_are_rejected() {
     let service = service();
-    let (head, imported) = seeded(&service, scene(100.)).await;
-    let repo = service.repo(&head.id).unwrap();
-    let mut ws = service
-        .working(&head.id, "alice", &head.revision)
-        .await
-        .unwrap();
-    let rules = ws.rules(&imported.assembly).await.unwrap();
-    let mut blocks: BTreeMap<ergo_world::BlockCoord, SpatialBlock> = BTreeMap::new();
-    for id in imported.pieces.values() {
-        let p = ws.piece(id).await.unwrap().unwrap();
-        for coord in p.replicas {
-            blocks
-                .entry(coord)
-                .or_insert_with(|| SpatialBlock {
-                    coord,
-                    pieces: BTreeSet::new(),
-                })
-                .pieces
-                .insert(id.clone());
-        }
+    let (head, _) = seeded(&service, scene(100.)).await;
+    let current = serde_json::to_value(&head.metadata).unwrap();
+    for layout in [0, 1, 3] {
+        let mut value = current.clone();
+        value["layout"] = serde_json::json!(layout);
+        assert!(serde_json::from_value::<Metadata>(value).is_err());
     }
-    let mut metadata = ws.metadata.clone();
-    metadata.layout = 1;
-    ws.tx.remove(&root(1)).await.unwrap();
-    for (coord, block) in blocks {
-        ws.tx.put(&block_path(coord), &block).await.unwrap();
-    }
-    ws.tx
-        .remove(&entity_path(4, &imported.assembly))
-        .await
-        .unwrap();
-    ws.tx
-        .put(&entity_path(4, &imported.assembly), rules.as_ref())
-        .await
-        .unwrap();
-    ws.tx.put(&root(2), &metadata).await.unwrap();
-    let old = ws
-        .tx
-        .commit("operator", "legacy fixture", CommitOptions::default())
-        .await
-        .unwrap()
-        .snapshot;
-    let old_id = old.id().clone();
-    old.close().await.unwrap();
-    unpinned(&repo).await;
-    service.upgrade_rules(&head.id).await.unwrap();
-    unpinned(&repo).await;
-    service.upgrade_spatial(&head.id).await.unwrap();
-    let current = service
-        .head(
-            &head.id,
-            &Principal {
-                id: Some("alice".into()),
-            },
-            None,
-        )
-        .await
-        .unwrap();
-    assert_eq!(current.metadata.layout, 2);
-    let id = &imported.pieces[&1];
-    assert_eq!(piece(&service, &head.id, id).await.id, *id);
-    assert_eq!(
-        repo.snapshot(&old_id)
-            .await
-            .unwrap()
-            .get::<Metadata>(&root(2))
-            .await
-            .unwrap()
-            .unwrap()
-            .layout,
-        1
-    );
-    service
-        .prepare(
-            &head.id,
-            "alice",
-            edit(&service, &current, id, glam::DVec3::X).await,
-        )
-        .await
-        .unwrap()
-        .publish()
-        .await
-        .unwrap();
+    let mut missing = current;
+    missing.as_object_mut().unwrap().remove("layout");
+    assert!(serde_json::from_value::<Metadata>(missing).is_err());
 }

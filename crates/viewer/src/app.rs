@@ -1,3 +1,4 @@
+use crate::location::CameraLocation;
 use ergo_client::{
     navigation::{
         Control, DEFAULT_EYE_HEIGHT, MAX_EYE_HEIGHT, MIN_EYE_HEIGHT, NavigationInput,
@@ -26,6 +27,8 @@ use wasm_bindgen_futures::spawn_local;
 type Handle = StoredValue<Rc<RefCell<Client>>, LocalStorage>;
 #[path = "common.rs"]
 mod common;
+#[path = "presence.rs"]
+mod presence;
 
 #[derive(Clone, Deserialize)]
 struct SharedMetadata {
@@ -64,6 +67,8 @@ struct Ui {
     common_world: RwSignal<Option<String>>,
     common_assemblies: RwSignal<Vec<common::Assembly>>,
     common_more: RwSignal<Option<String>>,
+    common_loading: RwSignal<bool>,
+    focused_assembly: RwSignal<Option<String>>,
     editing_shared: RwSignal<bool>,
     worlds: RwSignal<Vec<WorldManifest>>,
     current: RwSignal<Option<WorldManifest>>,
@@ -94,6 +99,7 @@ struct Ui {
     authoring_groups: RwSignal<Vec<ergo_world::groups::Group>>,
     group_selection: RwSignal<Vec<u32>>,
     navigation: RwSignal<NavigationStatus>,
+    camera_location: RwSignal<Option<CameraLocation>>,
     fullscreen: RwSignal<bool>,
     shared_locations: RwSignal<Vec<SharedLocation>>,
     shared_cursor: RwSignal<Option<String>>,
@@ -149,6 +155,8 @@ impl Ui {
             common_world: RwSignal::new(None),
             common_assemblies: RwSignal::new(Vec::new()),
             common_more: RwSignal::new(None),
+            common_loading: RwSignal::new(false),
+            focused_assembly: RwSignal::new(None),
             editing_shared: RwSignal::new(false),
             worlds: RwSignal::new(Vec::new()),
             current: RwSignal::new(None),
@@ -179,6 +187,7 @@ impl Ui {
             authoring_groups: RwSignal::new(Vec::new()),
             group_selection: RwSignal::new(Vec::new()),
             navigation: RwSignal::new(NavigationStatus::default()),
+            camera_location: RwSignal::new(None),
             fullscreen: RwSignal::new(false),
             shared_locations: RwSignal::new(Vec::new()),
             shared_cursor: RwSignal::new(None),
@@ -191,6 +200,7 @@ impl Ui {
 }
 
 struct Client {
+    presence: presence::Presence,
     common_binding: Option<common::Binding>,
     common_attempt: Option<u64>,
     common_fenced: bool,
@@ -223,6 +233,7 @@ struct Client {
 impl Client {
     fn new(ui: Ui) -> Self {
         Self {
+            presence: Default::default(),
             common_binding: None,
             common_attempt: None,
             common_fenced: false,
@@ -539,6 +550,7 @@ fn open_shared(handle: Handle, location: SharedLocation) {
         .unwrap_or_else(|| BlockCoord::from([0, 0, 0]))
         .into();
     with_client(handle, |c| {
+        c.ui.focused_assembly.set(None);
         c.common_binding = None;
         c.common_attempt = None;
         c.common_fenced = false;
@@ -641,6 +653,15 @@ fn request_shared_region(handle: Handle, id: String, coord: [i64; 3], fit_view: 
                         }
                     }
                     let manifest = shared_manifest(&id, &scene, coord, &blocks);
+                    let focus = c.ui.focused_assembly.get_untracked().and_then(|assembly| {
+                        let shared = c.shared.as_ref()?;
+                        scene
+                            .bricks
+                            .iter()
+                            .filter(|brick| shared.assemblies.get(&brick.id) == Some(&assembly))
+                            .map(|brick| brick.render_bounds)
+                            .reduce(ergo_world::Aabb::union)
+                    });
                     c.blocks = blocks;
                     c.known_cells = c.blocks.keys().copied().collect();
                     c.world = Some(manifest.clone());
@@ -651,7 +672,7 @@ fn request_shared_region(handle: Handle, id: String, coord: [i64; 3], fit_view: 
                         renderer.set_meshes(scene.meshes);
                         renderer.set_bricks(scene.bricks);
                         if fit_view {
-                            renderer.fit(manifest.bounds);
+                            renderer.fit(focus.unwrap_or(manifest.bounds));
                         }
                     }
                     c.ready = true;
@@ -807,13 +828,13 @@ fn open_world(handle: Handle, world: WorldManifest) {
             let mut meshes = BTreeMap::new();
             for (part, hash) in &world.geometry {
                 let mut mesh: ergo_world::geometry::Mesh = object(&world.id, hash).await?;
-                if mesh.quality != "ldraw" {
+                if mesh.quality != "source" {
                     #[derive(Deserialize)]
                     struct PartAsset {
                         mesh: ergo_world::geometry::Mesh,
                     }
                     if let Ok(asset) = json::<PartAsset>(&format!("/api/parts/{part}")).await
-                        && asset.mesh.quality == "ldraw"
+                        && asset.mesh.quality == "source"
                     {
                         mesh = asset.mesh;
                     }
@@ -918,6 +939,7 @@ fn open_draft(handle: Handle, scene: WorldExport) -> anyhow::Result<()> {
             }
         }
         c.ui.current.set(Some(world));
+        c.ui.focused_assembly.set(None);
         c.ui.dirty.set(true);
         c.ui.playing.set(false);
         c.ui.busy.set(false);
@@ -1167,6 +1189,7 @@ pub fn App() -> impl IntoView {
     let handle = StoredValue::new_local(Rc::new(RefCell::new(Client::new(ui))));
     provide_context(handle);
     provide_context(ui);
+    presence::install(handle);
     let canvas = NodeRef::<html::Canvas>::new();
     let mounted = StoredValue::new(false);
     let fullscreen_listener =
@@ -1268,6 +1291,10 @@ pub fn App() -> impl IntoView {
                         );
                     }
                     if ticks % 15 == 0 {
+                        let location = CameraLocation::new(geo, r.eye());
+                        if ui.camera_location.get_untracked() != Some(location) {
+                            ui.camera_location.set(Some(location));
+                        }
                         ui.count.set(r.bricks.len());
                         ui.blocks.set(c.blocks.len());
                         ui.gpu.set(r.gpu_bytes);
@@ -1288,6 +1315,7 @@ pub fn App() -> impl IntoView {
             if ticks % 12 == 0 {
                 pump(handle);
                 common::pump(handle);
+                presence::pump(handle);
             }
             if now - measured > 1000.0 {
                 ui.fps
@@ -1433,7 +1461,7 @@ pub fn App() -> impl IntoView {
         <main class="workbench">
             <aside class="left-dock"><ConstructionBrowser/><div class="dock-bottom"><span class="storage-dot"></span>{move ||ui.storage.get()}<p>"Standard parts first · Studio / LDraw"</p></div></aside>
             <section id="world-viewport" class="viewport-area" class:is-fullscreen=move ||ui.fullscreen.get() aria-label="3D construction workbench">
-                <div class="scene-heading"><div><p class="scene-location">"World origin"<span>{move ||ui.current.get().map(|w|format!("{:.4}°, {:.4}°",w.geo.latitude,w.geo.longitude)).unwrap_or_default()}</span></p><h1>{move ||ui.current.get().map(|w|w.name).unwrap_or_else(||"Your next construction".into())}</h1><p>{move ||ui.construction_details()}</p></div><span class="snapshot-badge" class:draft=move ||ui.dirty.get()>{move ||ui.scene_label()}</span></div>
+                <div class="scene-heading"><div><LiveLocation/><h1>{move ||ui.current.get().map(|w|w.name).unwrap_or_else(||"Your next construction".into())}</h1><p>{move ||ui.construction_details()}</p></div><span class="snapshot-badge" class:draft=move ||ui.dirty.get()>{move ||ui.scene_label()}</span></div>
                 <canvas node_ref=canvas id="world-canvas" tabindex="0" aria-label=move ||format!("3D brick construction. {} navigation. Drag to look; focus canvas for keyboard controls.",ui.navigation.get().mode.name())
                     on:contextmenu=move |e|e.prevent_default()
                     on:pointerdown=move |e|with_client(handle,|c|{let x=e.client_x() as f64;let y=e.client_y() as f64;c.pointer=Some((x,y,x,y,e.button(),e.shift_key()));if let Some(r)=&c.renderer{let _=r.canvas.set_pointer_capture(e.pointer_id());}})
@@ -1464,6 +1492,20 @@ pub fn App() -> impl IntoView {
         <footer class="status-bar"><span class="status-message" role="status">{move ||ui.message.get()}</span><span>{move ||format!("{} blocks · {} bricks · {} draw calls · {:.1} MB GPU",ui.blocks.get(),number(ui.count.get()),ui.draws.get(),ui.gpu.get() as f64/1e6)}</span></footer>
         <Show when=move ||!ui.fullscreen.get()><ErrorToast/></Show>
         <ImportDialog/><LocationDialog/><ConstraintDialog/><SolidityDialog/><GroupsDialog/>
+    }
+}
+
+#[component]
+fn LiveLocation() -> impl IntoView {
+    let ui = expect_context::<Ui>();
+    view! {
+        <div class="camera-location" aria-label="Current camera position">
+            <p class="camera-gps"><span>"Camera GPS"</span><strong
+                data-latitude=move ||ui.camera_location.get().map(|p|p.gps[0].to_string())
+                data-longitude=move ||ui.camera_location.get().map(|p|p.gps[1].to_string())
+            >{move ||ui.camera_location.get().map(|p|p.gps_label()).unwrap_or_else(||"Locating view…".into())}</strong></p>
+            <p class="camera-cell"><span>"Cell "<b>{move ||ui.camera_location.get().map(|p|p.cell_label()).unwrap_or_default()}</b></span><span title="Height in construction units, not GPS altitude">{move ||ui.camera_location.get().map(|p|format!("Height Z {:.1}",p.position[2])).unwrap_or_default()}</span></p>
+        </div>
     }
 }
 
@@ -1769,22 +1811,19 @@ fn ConstructionBrowser() -> impl IntoView {
     view! {
         <div class="dock-section browser"><div class="section-heading"><h2>"Constructions"</h2><span class="count-badge">{move ||if ui.common_world.get().is_some(){ui.common_assemblies.get().len()}else{ui.worlds.get().len()}}</span></div>
             <p class="subtle">"Your corner of a much bigger world."</p>
-            <Show when=move ||ui.common_world.get().is_some()><div class="world-list">{move ||ui.common_assemblies.get().into_iter().map(|assembly|{
-                let id=assembly.id;view!{<button class="world-item" disabled=move ||ui.busy.get() on:click=move |_|common::open(handle,id.clone())><span class="world-thumbnail">"▦"</span><span><strong>{assembly.name}</strong><small>"Edit shared construction"</small></span></button>}
-            }).collect_view()}</div></Show>
-            <Show when=move ||ui.common_more.get().is_some()><button class="text-button" on:click=move |_|common::more(handle)>"More constructions"</button></Show>
+            <Show when=move ||ui.common_world.get().is_some()><CommonConstructionList/></Show>
             <div class="world-list">{move ||ui.worlds.get().into_iter().map(|world|{let id=world.id.clone();let model=world.clone();view!{
                 <button class="world-item" class:active=move ||ui.current.get().is_some_and(|w|w.id==id) on:click=move |_|open_world(handle,model.clone())><span class="world-thumbnail">{if world.name.contains("pavilion"){ "⌂" }else{"▦"}}</span><span><strong>{world.name.clone()}</strong><small>{format!("{} bricks",number(world.brick_count))}</small></span><span class="world-more">"›"</span></button>
             }}).collect_view()}</div>
-            <Show when=move ||!ui.shared_locations.get().is_empty()><div class="section-heading shared-world-heading"><h2>{move ||if ui.common_world.get().is_some(){"Ergo Sandbox"}else{"Shared worlds"}}</h2></div><div class="world-list shared-world-list">{move ||ui.shared_locations.get().into_iter().map(|location|(location.world.clone(),location)).collect::<BTreeMap<_,_>>().into_values().map(|location|{
+            <Show when=move ||ui.common_world.get().is_none()&&!ui.shared_locations.get().is_empty()><div class="section-heading shared-world-heading"><h2>"Shared worlds"</h2></div><div class="world-list shared-world-list">{move ||ui.shared_locations.get().into_iter().map(|location|(location.world.clone(),location)).collect::<BTreeMap<_,_>>().into_values().map(|location|{
                 let name=location.metadata.name.clone();let item=location.clone();
                 view!{<button class="world-item" on:click=move |_|open_shared(handle,item.clone())><span class="world-thumbnail">"◎"</span><span><strong>{name}</strong><small>"Navigate shared regions"</small></span><span class="world-more">"›"</span></button>}
             }).collect_view()}</div></Show>
             <Show when=move ||ui.shared_cursor.get().is_some()><button class="text-button" on:click=move |_|more_shared_regions(handle)>"More shared regions"</button></Show>
         </div>
         <div class="dock-section"><div class="section-heading"><h2>"World coordinates"</h2><button class="icon-button" title="Go to GPS position" on:click=move |_|show_dialog("location-dialog")>"◎"</button></div>
-            <div class="origin-diagram"><span class="origin-point"></span><span>"World origin"<small>"X east · Y north · Z up"</small></span><svg viewBox="0 0 72 45" aria-hidden="true"><path d="M5 34L33 18L66 34L38 49ZM33 18V0M5 34V17L33 0L66 17V34M5 17L38 34L66 17M38 34V49" fill="none" stroke="currentColor"/></svg></div>
-            <div class="coordinate-rule"><strong>"1,024 × 1,024 × 1,024"</strong><span>"brick units per block"</span></div><p class="subtle">"Each block spans 1 arc-second east and north. Gravity points to its baseplate."</p>
+            <div class="reference-origin"><span>"Coordinate reference"</span><strong>{move ||ui.current.get().map(|w|format!("{:.7}°, {:.7}°",w.geo.latitude,w.geo.longitude)).unwrap_or_default()}</strong><small>"Fixed origin, not your camera position. X east · Y north · Z up."</small></div>
+            <div class="coordinate-rule"><strong>"1,024 × 1,024 × 1,024"</strong><span>"brick units per storage cell"</span></div><p class="subtle">"Each cell spans 1 arc-second east and north. Cells locate pieces; they do not physically anchor them. Constructions rest on the ground or use explicit ground anchors."</p>
             <button class="text-button" on:click=move |_|show_dialog("location-dialog")>"Go to a location"<span>"↗"</span></button>
         </div>
         <div class="dock-section"><h2>"Viewport"</h2><label class="toggle-row"><span>"Base grid"</span><input type="checkbox" checked on:change=move |e|with_client(handle,|c|{if let Some(r)=&mut c.renderer{r.grid=event_target_checked(&e);}})/></label>
@@ -1800,6 +1839,35 @@ fn ConstructionBrowser() -> impl IntoView {
             <label class="range-label" for="fog-distance">"Viewing distance (fog)"<span>{move ||format!("{:.0} studs",ui.fog.get())}</span></label><input id="fog-distance" type="range" min="200" max="4096" step="100" prop:value=move ||ui.fog.get().to_string() on:input=move |e|{let value=event_target_value(&e).parse::<f64>().unwrap_or(2200.0);ui.fog.set(value);with_client(handle,|c|{if let Some(r)=&mut c.renderer{r.fog_distance=value;r.distance=r.distance.min(value*0.9);r.changed();}});}/>
             <p class="subtle compact">"Visible blocks only · automatic distance LOD"</p>
             <p class="subtle compact">{move ||format!("{} octree nodes · geometry instanced on GPU",ui.nodes.get())}</p>
+        </div>
+    }
+}
+
+#[component]
+fn CommonConstructionList() -> impl IntoView {
+    let ui = expect_context::<Ui>();
+    let handle = expect_context::<Handle>();
+    view! {
+        <p class="construction-list-help">"Visit constructions at their shared-world positions."</p>
+        <ul class="world-list construction-list" aria-label="Constructions in shared world" tabindex="0"
+            aria-busy=move ||ui.common_loading.get().to_string()
+            on:scroll=move |event| {
+                if let Some(element)=event.current_target().and_then(|target|target.dyn_into::<web_sys::HtmlElement>().ok()) {
+                    if element.scroll_height()-element.scroll_top()-element.client_height()<96 {common::more(handle);}
+                }
+            }>
+            {move ||ui.common_assemblies.get().into_iter().map(|assembly| {
+                let id=assembly.id;let active=id.clone();
+                let attribute=id.clone();
+                view!{<li><button class="world-item" data-assembly-id=attribute class:active=move ||ui.focused_assembly.get().as_ref()==Some(&active)
+                    disabled=move ||ui.busy.get() on:click=move |_|common::open(handle,id.clone())>
+                    <span class="world-thumbnail" aria-hidden="true">"▦"</span><span><strong>{assembly.name}</strong><small>"View in shared world"</small></span>
+                </button></li>}
+            }).collect_view()}
+        </ul>
+        <div class="construction-list-actions">
+            <button class="text-button" disabled=move ||ui.common_loading.get() on:click=move |_|common::refresh(handle)>"Refresh list"</button>
+            <Show when=move ||ui.common_more.get().is_some()><button class="text-button" disabled=move ||ui.common_loading.get() on:click=move |_|common::more(handle)>"Load more"</button></Show>
         </div>
     }
 }

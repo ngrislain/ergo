@@ -1,251 +1,56 @@
-# Prebuilt server image and npm MCP distribution
+# Client and server distributions
 
-## v0.4.0 single-sandbox release
+## Supported client source
 
-The current client uses the one public sandbox: accepted production mutations
-commit automatically; local files are caches. Install the complete GitHub Release
-asset with npm while registry publication is disabled:
-`https://github.com/ngrislain/ergo/releases/download/v0.4.0/ngrislain-ergo-mcp-0.4.0.tgz`.
-The historical v0.3.x examples below describe older distribution baselines, not
-alternative hosted worlds. See [shared editing](agent-shared-editing.md).
-
-The complete GitHub tarball was published and installed through its public URL;
-consumer `--version` and real MCP browser tests passed. SHA-256:
-`1fb769d167ab2d2d5c9f0dcfaccadd372f64890202c73a1efb5977fd7f7a284f`.
-
-Tag builds still assemble and verify all four native platforms. npm publication
-also requires repository variable `ERGO_NPM_PUBLISH=true`; it is currently false
-while the account is unavailable. The GitHub tarball/image release does not need
-an npm publish. Set that variable only when registry publication is intended.
-
-## Status and release channels
-
-The repository now contains versioned distribution assembly and GitHub Actions
-automation for:
-
-- **API/web image:** `ghcr.io/ngrislain/ergo:VERSION` (Linux/AMD64), also tagged
-  `latest` after a stable tagged release. Opt-in manual image publications use
-  separate `sha-SHORTSHA-RUN_ID-ATTEMPT` tags and report the deployment digest.
-- **MCP package:** `@ngrislain/ergo-mcp@VERSION` on the public npm registry, with
-  the native bridge and minimal browser/WASM runtime bundled together.
-
-The first distribution release is **v0.3.1**. A source tag or the presence of the
-workflow is not evidence that either registry contains the version: confirm each
-publication job separately. npm needs scope/publisher authorization, and GHCR
-must have suitable package visibility. Existing tags such as v0.3.0 are not
-moved; each release uses a new matching source/package tag.
-
-The API/web server is deployed at **https://ergosandbox.com** using the public
-digest-pinned image from
-[image-only CI run 40054724995](https://github.com/ngrislain/ergo/actions/runs/40054724995).
-See the [deployment record](scaleway-deployment.md#current-deployment) for its
-source revision, image digest, DNS/TLS status, and private configuration backup.
-Stable version tags and npm publication follow the separate release checks above.
-
-## Use a published server image
-
-After successful publication and public package visibility:
+The current prebuilt client is the GitHub Release tarball:
 
 ```sh
-podman pull ghcr.io/ngrislain/ergo:0.3.1
-python3 scripts/test-container.py --image ghcr.io/ngrislain/ergo:0.3.1
+npm install --global --ignore-scripts 'https://github.com/ngrislain/ergo/releases/download/v0.5.0/ngrislain-ergo-mcp-0.5.0.tgz'
+ergo-mcp --version
 ```
 
-Use that published tag (or a pinned digest) as the OpenTofu `image` value. The
-image still requires the production S3, Google SSO, public origin, and persistent
-session-signing configuration from [Scaleway deployment](scaleway-deployment.md).
-Pulling the image does not create cloud resources or configure authentication.
+It bundles native bridges for macOS/Linux ARM64/x64 and their matching WASM client.
+Consumers need Node20+ and Chrome/Chromium, not Rust. Supported baselines are
+macOS13+ and Linux glibc2.36+; Windows/musl are not advertised platforms.
 
-Scaleway supports public external registries, including GHCR. **Private external
-registries are not supported**, so set the GitHub container package's visibility
-to public before using it directly with Scaleway. GitHub can initially create a
-package as private even when the linked repository is public. If the image must
-remain private, copy the same version into an accessible Scaleway registry with
-Podman pull/tag/push; a Rust rebuild is unnecessary.
+The launcher chooses OS/architecture, verifies bundle/native versions/checksums
+and locates packaged runtime assets. It handles browser login, origin overrides,
+headless/manual attachment and token-free local proposals. Authenticated shared
+editing defaults to the canonical apex service. Local files are caches when bound.
 
-The canonical image source is GitHub Packages; the built image includes source,
-revision, and version labels. Public consumers do not need a GitHub token to pull
-a public image. The workflow uses only its repository `GITHUB_TOKEN` with
-`packages: write` to publish it.
+## Release automation
 
-## Use the published npm package
+`release.yml` validates workspace/npm/tag consistency, builds the four native
+targets and WASM assets, assembles/tests the tarball, publishes a GitHub Release
+asset and the server image. The source package alone is not the assembled bundle.
+The assembled package contains the native/runtime files, license and distribution
+manifest. Platform checks prevent accidentally packaging a host-only binary.
 
-The v0.3.1 prebuilt package is published as a public
-[GitHub Release asset](https://github.com/ngrislain/ergo/releases/tag/v0.3.1).
-It can be installed with npm immediately:
+The consumer check installs the assembled package outside the checkout and exercises
+real MCP discovery, local WASM editing and images. `scripts/test-distribution.py`
+checks release boundaries; `scripts/test-npm-package.py` checks an actual bundle.
 
-```sh
-export ERGO_MCP_PACKAGE='https://github.com/ngrislain/ergo/releases/download/v0.3.1/ngrislain-ergo-mcp-0.3.1.tgz'
-npm install --global "$ERGO_MCP_PACKAGE"
-ERGO_PUBLISH_URL=https://ergosandbox.com \
-ERGO_PUBLISH_TOKEN_FILE=/absolute/path/ergo-mcp-token \
-ergo-mcp --workspace /absolute/path/construction.ergo.json
-```
+## Server image
 
-Node.js 20+ and an installed browser are required; consumers do not need Rust,
-Cargo, or wasm-bindgen. `ERGO_MCP_PACKAGE` can later select the published npm
-registry spec instead of the GitHub download. The public guide uses the same
-name as its repository/build environment variable; see [website setup](static-site.md).
+`ghcr.io/ngrislain/ergo` contains the API and generated workbench assets, runs
+non-root and supports clean SIGTERM. Production pins an immutable verified
+Linux/AMD64 digest in the existing Scaleway configuration. The image smoke checks
+startup, API/data flow and shutdown.
 
-After npm-registry publication, the short registry command is also available:
+### Build and publish in GitHub Actions
 
-```sh
-npx -y @ngrislain/ergo-mcp@0.3.1 --workspace /absolute/path/construction.ergo.json
-npx -y @ngrislain/ergo-mcp@0.3.1 --login
-```
+A `vVERSION` tag runs the complete release. `workflow_dispatch` with
+`publish_container=true` runs the image-only path using GitHub's built-in registry
+credentials. Verify image publication/visibility before deployment. See
+[operations](operations.md) and [Scaleway deployment](scaleway-deployment.md).
 
-Or install globally with `npm install -g @ngrislain/ergo-mcp@0.3.1` and use
-`ergo-mcp` normally. Pin a version in an agent's configuration:
+## Version boundaries
 
-```json
-{
-  "mcpServers": {
-    "ergo": {
-      "command": "npx",
-      "args": ["-y", "@ngrislain/ergo-mcp@0.3.1", "--workspace", "/absolute/path/construction.ergo.json"],
-      "env": {
-        "ERGO_PUBLISH_TOKEN_FILE": "/absolute/path/ergo-mcp-token"
-      }
-    }
-  }
-}
-```
+The current client/server use Ergo construction/model/part descriptions and
+current indexed/paged storage. Format readers do not guess older layouts. A
+coordinated storage migration and matching client upgrade accompany a breaking
+format change. Bound caches reload authoritative state; they are not data roots.
 
-Node.js **20+** and an installed browser are needed. Rust/Cargo/wasm-bindgen are
-not needed on a consumer's computer. The package contains four native binaries:
-macOS ARM64/Intel (13+), and Linux ARM64/x64 (glibc 2.36+). Linux binaries are built
-in Debian Bookworm, rather than assuming a newer GitHub runner libc. Windows and
-musl/Alpine are not advertised as supported. Headless rendering still requires
-Google Chrome or `ERGO_CHROME_BIN`; the package does not install a browser.
-
-One npm tarball deliberately contains all four native binaries plus one copy of
-the minimal web runtime, avoiding platform downloads and install hooks. The
-wrapper selects the correct binary, preserves the caller's working directory,
-arguments, environment and MCP stdio, and sets the packaged `ERGO_WEB_DIR` unless
-the operator explicitly overrides it. JSON-RPC remains the native bridge's stdout;
-launcher errors go to stderr. `--version` reports the package version.
-
-The npm launcher defaults login and authenticated publishing to
-**https://ergosandbox.com**. `--publish-url` takes precedence over
-`ERGO_PUBLISH_URL`, which overrides the hosted default. Supplying a publication
-token through its environment variable or token-file option enables this default
-for the native bridge. Without credentials, local editing remains available and
-startup makes no hosted-server request. `--login` opens the hosted sign-in/token
-setup; save the downloaded token and configure its path before publishing. This
-default configures the client; it does not deploy or verify the hosted service.
-
-Only the minimal `mcp.html`, JS/WASM runtime, launcher, native binaries, license,
-README, and distribution manifest are packaged. The private source template is
-**not** a publishable standalone npm package. No S3/Google credentials, workspaces,
-local data, full Leptos application, or `.env` files are included. Physical-data,
-publication-permission, and edit-pacing requirements are unchanged.
-
-## Maintainer release automation
-
-[`.github/workflows/release.yml`](../.github/workflows/release.yml) runs on `v*`
-tag pushes or a manual dispatch. **Manual dispatch defaults to build/test only.**
-Setting its boolean `publish_container` input to `true` instead runs only the
-version checks and API image build/smoke-test/publication. This image-only path
-uses the repository's `GITHUB_TOKEN`, skips the native/npm build matrix, and never
-publishes npm or updates versioned/`latest` image tags. A tag push must exactly
-match Cargo and npm stable semver versions.
-
-The workflow:
-
-1. Validates the tag/source/package versions.
-2. Builds the pinned minimal WASM runtime and four native binaries on matching
-   Linux/macOS runners. Each native artifact is executed with `--help`, checked
-   for the correct ELF/Mach-O architecture, and given a version/checksum manifest.
-3. Rejects missing, mixed-version, wrong-architecture, or changed artifacts;
-   assembles the complete npm package; installs its real tarball offline with
-   `--ignore-scripts`; checks stdio/startup outside the checkout; and runs real
-   browser/WASM MCP edits and PNG tests on Linux/x64.
-4. Publishes the npm tarball with provenance on a matching release tag only when
-   `ERGO_NPM_PUBLISH=true`; otherwise the verified artifact can be released on GitHub.
-5. Independently builds/smoke-tests the API image with Podman and publishes the
-   versioned/latest image to GHCR on a matching release tag.
-
-To publish a server image from CI before the next tagged release, first push the
-workflow changes to the default branch, then run:
-
-```sh
-gh workflow run release.yml --repo ngrislain/ergo --ref main -f publish_container=true
-gh run list --repo ngrislain/ergo --workflow release.yml --limit 5
-gh run watch RUN_ID --repo ngrislain/ergo --exit-status
-```
-
-Use the new run's ID for `RUN_ID`. A successful image publication writes its
-run-specific tag and digest-pinned `ghcr.io/ngrislain/ergo@sha256:...` reference
-to the workflow summary. Use that digest for the Scaleway `image` variable and
-make the GHCR package public before deployment. See the
-[deployment guide](scaleway-deployment.md) for the DNS and managed-TLS bootstrap.
-
-The npm and image publication jobs are independent: a green image publication
-does not imply the npm job succeeded. Inspect both before announcing a release.
-The workflow does not apply OpenTofu or deploy Scaleway resources. Standard
-GitHub-hosted macOS/Linux runners build the release; secrets are not available
-to untrusted pull-request publication jobs.
-
-### One-time npm setup
-
-Confirm ownership of the intended `@ngrislain` npm scope. Configure a trusted
-publisher for `@ngrislain/ergo-mcp` on npmjs.com:
-
-- GitHub owner/user: `ngrislain`
-- Repository: `ergo`
-- Workflow filename: `release.yml`
-- No environment name, unless the workflow is deliberately changed to use one
-- Allow direct `npm publish` for this publisher
-
-The job uses Node 24 / npm 11 with `id-token: write` and `--provenance`. First
-publication/bootstrap may need the maintainer's npm login or a granular publish
-token stored as repository secret **`NPM_TOKEN`**; the workflow supports that
-bootstrap path. Configure trusted publishing and remove an unnecessary bootstrap
-token afterward. Tokens are not checked into this repository or embedded in npm
-artifacts. Published npm versions are immutable; bump all version files rather
-than republishing the same version.
-
-For a local bootstrap, use `npm login --auth-type=web` and complete the browser
-and security-key prompts. npm stores that login in its user configuration
-(`~/.npmrc` by default); do not duplicate it in the application's `.env` or the
-Scaleway `.tfvars`. Once the trusted publisher is configured, GitHub Actions uses
-short-lived OIDC credentials and needs no `NPM_TOKEN` repository secret. GHCR
-publishing uses GitHub's automatically supplied `GITHUB_TOKEN`, so it also needs
-no locally stored publishing secret.
-
-### Local assembly and checks
-
-`scripts/package-mcp.py` provides `version`, `native`, `web`, and `npm` commands.
-Artifacts live in an ignored `target/` directory. `--allow-partial` permits a
-host-only local test bundle but marks it `private: true`, preventing publication.
-A complete release requires every native platform. Each output directory must
-be new; the assembler never deletes an existing directory.
-
-For an Apple Silicon local test after `cargo build --release -p ergo-mcp` and
-`cargo xtask build-web` (use `darwin-x64` on Intel, or the matching Linux key):
-
-```sh
-python3 scripts/package-mcp.py native --platform darwin-arm64 \
-  --binary target/release/ergo-mcp --output target/npm-check/artifacts/native-darwin-arm64
-python3 scripts/package-mcp.py web --output target/npm-check/artifacts/web-runtime
-python3 scripts/package-mcp.py npm --artifacts target/npm-check/artifacts \
-  --output target/npm-check/npm --allow-partial
-python3 scripts/test-npm-package.py --package-dir target/npm-check/npm --browser
-node --test packages/mcp/test/*.test.cjs
-python3 scripts/test-distribution.py
-```
-
-The complete four-platform native matrix, WASM assembly, offline npm install/MCP
-browser checks, and API image smoke test passed in
-[release validation run 40018268135](https://github.com/ngrislain/ergo/actions/runs/40018268135).
-That manual run did not publish registries. The npm hosted-server default was
-subsequently assembled from the same checksummed native/WASM artifacts and
-verified locally with the actual macOS ARM64 runtime, offline installation,
-browser login/URL overrides, and MCP/WASM editing/rendering outside the checkout.
-Tagged npm publication still requires the separate maintainer setup above. The
-current server image was published by the later image-only CI run recorded above;
-the ordinary source-build workflow remains supported.
-
-References: [npm trusted publishing](https://docs.npmjs.com/trusted-publishers),
-[GitHub container publishing](https://docs.github.com/en/actions/tutorials/publish-packages/publish-docker-images),
-[Scaleway external registries](https://www.scaleway.com/en/docs/serverless-containers/how-to/deploy-container/#deploy-from-an-external-container-registry).
+`ERGO_MCP_PACKAGE` is the public website's installation-source setting. Production
+uses the GitHub asset; npm-registry publication is disabled. Never embed a token,
+S3 credentials or a credential-bearing URL in the package configuration.

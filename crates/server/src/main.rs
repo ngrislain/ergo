@@ -1,6 +1,7 @@
 mod auth;
 mod catalog;
 mod import;
+mod positions;
 mod shared;
 mod store;
 
@@ -63,6 +64,9 @@ impl IntoResponse for ApiError {
 #[derive(Serialize)]
 struct Config {
     version: &'static str,
+    construction_format: &'static str,
+    model_format: &'static str,
+    part_format: &'static str,
     common_world: Option<String>,
     storage: String,
     geo: GeoReference,
@@ -75,6 +79,9 @@ struct Config {
 async fn config(State(s): State<AppState>) -> Json<Config> {
     Json(Config {
         version: env!("CARGO_PKG_VERSION"),
+        construction_format: ergo_world::storage::FORMAT,
+        model_format: ergo_world::assembly::FORMAT,
+        part_format: ergo_assets::PART_FORMAT,
         common_world: s.shared.common_world.clone(),
         storage: s.store.kind,
         geo: s.geo,
@@ -302,14 +309,14 @@ async fn upload(
     // Exact supplied meshes remain pinned. Missing/parametric catalog parts are
     // resolved once through the persistent local/S3 asset cache before placement.
     for part in scene.meshes.keys().cloned().collect::<Vec<_>>() {
-        if scene.meshes[&part].quality != "ldraw" {
+        if scene.meshes[&part].quality != "source" {
             let asset = s.parts.resolve(&part).await?;
             if let Some(warning) = asset.warning
                 && notes.len() < 32
             {
                 notes.push(format!("{part}: {warning}"));
             }
-            if asset.mesh.quality == "ldraw" {
+            if asset.mesh.quality == "source" {
                 scene.meshes.insert(part, asset.mesh);
             }
         }
@@ -414,6 +421,20 @@ async fn main() -> Result<()> {
         let shared = shared::SharedWorlds::from_env(store.clone())?;
         let repo = shared.repo(&id)?;
         match command.as_str() {
+            "shared-install-history" => {
+                let path = args
+                    .next()
+                    .context("Usage: ergo-server shared-install-history WORLD_ID MANIFEST.json")?;
+                anyhow::ensure!(args.next().is_none(), "Unexpected argument");
+                println!(
+                    "{}",
+                    serde_json::to_string_pretty(
+                        &shared
+                            .install_history(&id, std::path::Path::new(&path))
+                            .await?
+                    )?
+                );
+            }
             "shared-migrate" => {
                 let target = args
                     .next()
@@ -422,13 +443,6 @@ async fn main() -> Result<()> {
                 println!(
                     "{}",
                     serde_json::to_string_pretty(&shared.migrate_namespace(&id, &target).await?)?
-                );
-            }
-            "shared-cleanup-legacy" => {
-                anyhow::ensure!(args.next().is_none(), "Unexpected argument");
-                println!(
-                    "{}",
-                    serde_json::to_string_pretty(&shared.cleanup_legacy(&id).await?)?
                 );
             }
             "shared-gc" => {
@@ -461,23 +475,9 @@ async fn main() -> Result<()> {
                     serde_json::to_string_pretty(&shared.prune(&id).await?)?
                 );
             }
-            "shared-index-history" => {
-                anyhow::ensure!(args.next().is_none(), "Unexpected argument");
-                let mut maintenance = repo.maintenance().await?;
-                maintenance.index_history("main").await?;
-                maintenance.finish().await?;
-            }
             "shared-rebuild-catalog" => {
                 anyhow::ensure!(args.next().is_none(), "Unexpected argument");
                 shared.rebuild_catalog(&id).await?;
-            }
-            "shared-upgrade-rules" => {
-                anyhow::ensure!(args.next().is_none(), "Unexpected argument");
-                println!("{}", shared.upgrade_rules(&id).await?);
-            }
-            "shared-upgrade-spatial" => {
-                anyhow::ensure!(args.next().is_none(), "Unexpected argument");
-                println!("{}", shared.upgrade_spatial(&id).await?);
             }
             "shared-compact" => {
                 let region: ergo_transactions::OctreePath = args
@@ -544,13 +544,13 @@ async fn main() -> Result<()> {
             .unwrap_or(1.0),
     };
     geo.validate()?;
-    let legacy = env::var("ERGO_LEGACY_FIXTURES").as_deref() == Ok("1");
+    let isolated = env::var("ERGO_ISOLATED_FIXTURES").as_deref() == Ok("1");
     anyhow::ensure!(
-        !legacy || store.kind == "Local object store",
-        "Legacy fixtures are only supported in disposable local test stores"
+        !isolated || store.kind == "Local object store",
+        "Isolated fixtures are only supported in disposable local test stores"
     );
     let mut shared = shared::SharedWorlds::from_env(store.clone())?;
-    if shared.common_world.is_none() && !legacy {
+    if shared.common_world.is_none() && !isolated {
         anyhow::ensure!(
             !auth.google && store.kind == "Local object store",
             "Configure ERGO_COMMON_WORLD_ID for the hosted Ergo Sandbox"
@@ -579,7 +579,7 @@ async fn main() -> Result<()> {
             "Configured sandbox ID does not match the stored namespace"
         );
     }
-    if legacy
+    if isolated
         && shared.common_world.is_none()
         && store.kind == "Local object store"
         && store
@@ -617,7 +617,7 @@ async fn main() -> Result<()> {
         shared,
         store,
         geo,
-        library: env::var_os("LDRAW_DIR").map(PathBuf::from),
+        library: env::var_os("ERGO_ASSET_LIBRARY_DIR").map(PathBuf::from),
         auth,
         parts,
         ground,
@@ -625,6 +625,10 @@ async fn main() -> Result<()> {
     let app = Router::new()
         .merge(shared::routes())
         .route("/api/config", get(config))
+        .route(
+            "/api/user-position",
+            get(positions::get).put(positions::put),
+        )
         .route(
             "/api/catalog",
             get(|| async { Json(ergo_world::catalog::catalog()) }),

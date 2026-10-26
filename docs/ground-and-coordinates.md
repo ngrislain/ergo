@@ -5,9 +5,8 @@
 ## Public world and internal kernel
 
 Schema 2 files and REST/MCP interfaces use **X east, Y north, Z height**.
-The explicitly named `model` field in [LDraw-aligned construction files](ldraw-storage.md)
-is the exception: its homogeneous reference matrices use native LDraw LDU/-Y-up
-coordinates. Bounds, joints, groups, meshes and geography retain the public convention.
+The `model` field in [Ergo construction files](construction-format.md) uses the
+same public axes and brick units in its row-major homogeneous transforms.
 The renderer/physics kernel uses X east, Y up, Z south. The conversion is the
 proper rotation:
 
@@ -21,8 +20,7 @@ The determinant is +1, so winding, normals, chiral geometry, and positive rotati
 angles are preserved. Bounds transform their minimum/maximum correctly rather
 than independently treating them as arbitrary direction vectors.
 `crates/world/src/coordinates.rs` is the interchange boundary; Rust kernel types
-retain the internal convention. Schema-1 Y-up objects are preserved but rejected
-or excluded from current listings rather than silently reinterpreted.
+retain the internal convention. Unsupported coordinate schemas are rejected.
 
 ## Cells and geographic location
 
@@ -53,7 +51,7 @@ as a movable brick. Its plate-body top is at Z=$-0.01$ brick-height units
 is Z=0, so placed piece bases have height zero without z-fighting the display.
 
 The surface has one stud per horizontal construction unit, so a full plate has
-1024×1024 stud positions. Nearby visible studs use an instanced 12-sided cylinder
+1024×1024 stud positions. Nearby visible studs use instanced cylinders
 (4.8 mm diameter, 1.6 mm high). The renderer considers at most a 193×193 local
 grid, then frustum/distance culls it. Near cylinders use 16 sides and distant
 cylinders use 8. Geometric height blends over a wide band into derivative-filtered
@@ -62,7 +60,7 @@ Farther studs use derivative-filtered shader
 relief that fades when subpixel; a million separate meshes are never allocated.
 Studs are decorative and do not change the flat navigation/physics support plane.
 
-A part's LDraw reference origin can be above its base. For example, a brick placed
+A part's reference origin can be above its base. For example, a brick placed
 with minimum-corner Z=0 can have reference-origin Z=1. `bounds.min.z` is its base
 height; the inspector displays both concepts.
 
@@ -109,7 +107,7 @@ c^*=\arg\min_{c\in P}
 \|\operatorname{Lab}(\bar{\mathbf c})-\operatorname{Lab}(c)\|_2.
 $$
 
-The record stores `color` (one LDraw code) and `sample_rgb` (the average), not a
+The record stores `color` (one palette code) and `sample_rgb` (the average), not a
 per-stud texture. Lighting, fog, and the optional debug grid can vary rendered
 pixels; they do not add material colors to the baseplate. The display palette is
 defined in `catalog.rs` / `color_rgb`; RGB swatches are not spectral measurements.

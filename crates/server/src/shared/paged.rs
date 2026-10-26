@@ -35,9 +35,21 @@ pub struct RulesHeader {
     pub id: ContentId,
     pub name: String,
     pub meshes: BTreeMap<String, ContentId>,
+    #[serde(deserialize_with = "current_paged")]
     pub paged: bool,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub source_model: Option<ContentId>,
+}
+pub(super) fn current_paged<'de, D: serde::Deserializer<'de>>(
+    deserializer: D,
+) -> std::result::Result<bool, D::Error> {
+    let paged = bool::deserialize(deserializer)?;
+    if !paged {
+        return Err(serde::de::Error::custom(
+            "Only paged shared records are supported",
+        ));
+    }
+    Ok(paged)
 }
 impl RulesHeader {
     pub fn of(r: &Rules) -> Self {
@@ -95,29 +107,6 @@ fn record_edits(
         for(i,spec)in rules.joints.iter().enumerate(){yield Edit::put(row(&rules.id,6,i as u64),spec)?;let joint=BoundJoint{a:rules.pieces[&spec.a].clone(),b:rules.pieces[&spec.b].clone(),spec:spec.clone()};for endpoint in[spec.a,spec.b]{yield Edit::put(append(&row(&rules.id,3,u64::from(endpoint)),&number(i as u64)),&joint)?;}}
         for &local in &rules.fixed_bricks{yield Edit::put(row(&rules.id,4,u64::from(local)),&true)?;}
         for g in &rules.groups{let base=row(&rules.id,5,u64::from(g.id));yield Edit::put(base.child(0)?,&GroupHeader{id:g.id,name:g.name.clone(),pivot_world:g.pivot_world})?;for member in &g.members{let(kind,id)=match member{Member::Piece{id}=>(0,*id),Member::Group{id}=>(1,*id)};yield Edit::put(append(&base.child(1)?.child(kind)?,&number(u64::from(id))),member)?;}}
-    }
-}
-
-impl SharedWorlds {
-    pub async fn upgrade_rules(&self, id: &str) -> Result<ContentId> {
-        use futures::TryStreamExt;
-        let repo = self.repo(id)?;
-        let mut maintenance = repo.maintenance().await?;
-        let limit = self.limits.bytes;
-        tracing::info!(
-            token = maintenance.token(),
-            "Assembly page upgrade barrier acquired"
-        );
-        let revision=maintenance.rewrite("main",move|source|async_stream::try_stream!{
-            let mut after=None;loop{let page=source.scan_level(&root(4),87,after.as_ref(),64).await?;
-                for(path,_)in page.leaves{let rules:Rules=match source.get_limited(&path,limit).await{Ok(Some(r))=>r,Ok(None)|Err(ergo_transactions::Error::NotLeaf(_))=>continue,Err(e)=>Err(e)?};
-                    rules.validate().map_err(|e|ergo_transactions::Error::Encoding(e.to_string()))?;
-                    let stream=record_edits(&rules);futures::pin_mut!(stream);while let Some(edit)=stream.try_next().await?{yield edit;}
-                }after=page.next;if after.is_none(){break;}
-            }
-        }).await?;
-        maintenance.finish().await?;
-        Ok(revision)
     }
 }
 

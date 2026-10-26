@@ -25,12 +25,15 @@ fn now() -> u64 {
 }
 
 #[derive(Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 struct Tile {
+    format: String,
     fetched_at: u64,
     etag: Option<String>,
     modified: Option<String>,
+    media_type: String,
     #[serde(with = "serde_bytes")]
-    png: Vec<u8>,
+    image: Vec<u8>,
 }
 #[derive(Clone)]
 pub struct GroundCache {
@@ -235,7 +238,7 @@ impl GroundCache {
     }
     async fn tile(&self, zoom: u32, x: u32, y: u32) -> Result<Vec<u8>> {
         let provider = hex::encode(Sha256::digest(&self.template));
-        let key = format!("ground/source/{provider}/{zoom}/{x}/{y}.cbor");
+        let key = format!("ground/rasters/{provider}/{zoom}/{x}/{y}.cbor");
         if let Some((_, reason)) = self
             .failures
             .lock()
@@ -251,10 +254,17 @@ impl GroundCache {
             .await?
             .map(|data| ciborium::from_reader(data.as_slice()))
             .transpose()?;
+        if let Some(tile) = &old {
+            ensure!(
+                tile.format == "ergo-raster-1"
+                    && ["image/png", "image/jpeg"].contains(&tile.media_type.as_str()),
+                "Unsupported Ergo raster description"
+            );
+        }
         if let Some(tile) = &old
             && now().saturating_sub(tile.fetched_at) < TTL
         {
-            return Ok(tile.png.clone());
+            return Ok(tile.image.clone());
         }
         let url = self
             .template
@@ -308,17 +318,24 @@ impl GroundCache {
             }
             decode(&png)?;
             Ok(Tile {
+                format: "ergo-raster-1".into(),
                 fetched_at: now(),
                 etag,
                 modified,
-                png,
+                media_type: if png.starts_with(b"\x89PNG") {
+                    "image/png"
+                } else {
+                    "image/jpeg"
+                }
+                .into(),
+                image: png,
             })
         }
         .await;
         match result {
             Ok(tile) => {
                 self.put(&key, &tile).await?;
-                Ok(tile.png)
+                Ok(tile.image)
             }
             Err(e) => {
                 let mut failures = self.failures.lock().unwrap();
@@ -473,15 +490,17 @@ mod tests {
             }
         }
         for (x, y) in cells.keys() {
-            let key = format!("ground/source/{provider}/{zoom}/{x}/{y}.cbor");
+            let key = format!("ground/rasters/{provider}/{zoom}/{x}/{y}.cbor");
             service
                 .put(
                     &key,
                     &Tile {
+                        format: "ergo-raster-1".into(),
                         fetched_at: now(),
                         etag: None,
                         modified: None,
-                        png: png(),
+                        media_type: "image/png".into(),
+                        image: png(),
                     },
                 )
                 .await

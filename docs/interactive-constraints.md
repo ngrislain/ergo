@@ -65,7 +65,7 @@ two. Optional limits impose $\theta_{min}\le\theta\le\theta_{max}$. A motor
 can request angular velocity or position, subject to torque limits.
 
 The recommendations contain basic bricks, plates, and tiles; wheel/axle and other
-Studio/LDraw meshes resolve on demand when their source is available. Revolute
+catalog meshes resolve on demand when their source is available. Revolute
 constraints are supported, but geometry alone does not provide a connector model
 or sourced physical data. Their collision boxes may
 be a poor approximation to the wheel bore or tire, so explicitly connected pairs
@@ -73,17 +73,15 @@ can disable mutual collision while still colliding with other objects.
 
 ## Reference coordinates and transformed anchors
 
-Studio/LDraw uses 20 LDraw units per stud and 24 per brick height, with a different
-axis convention. The geometry conversion is:
+Native positions use public east/north/up construction units. For metric rotation
+$R$, construction translation $\mathbf t$ and the physical unit conversion:
 
 $$
-C_{public}=\begin{pmatrix}1/20&0&0\\0&0&1/20\\0&-1/24&0\end{pmatrix}.
+D=\operatorname{diag}(0.008,0.008,0.0096).
 $$
 
-For an LDraw rotation/transform $R$ and translation $\mathbf{t}$:
-
 $$
-A_{world}=C_{public}RC_{public}^{-1},\qquad \mathbf{p}_{world}=C_{public}\mathbf{t}.
+A_{world}=D^{-1}RD,\qquad \mathbf p_{world}=\mathbf t.
 $$
 
 Because construction axes have different scales, $A_{world}$ need not be a
@@ -161,35 +159,6 @@ compliant temporary drag joint gives a more controllable interaction. Large
 mass ratios, long chains, closed loops, or highly overconstrained mechanisms may
 need additional solver iterations and compliance.
 
-## Position-based optimization: a future editor solver
-
-For precise CAD-like positioning, a quasi-static constrained optimization may be
-more intuitive than running gravity during every drag. For pose vector
-$\mathbf{q}$, target $\mathbf{t}$, and previous pose $\mathbf{q}_0$:
-
-$$
-\min_{\mathbf{q}}\quad
-\tfrac12\|h(\mathbf{q})-\mathbf{t}\|_W^2+
-\tfrac\alpha2\|\mathbf{q}-\mathbf{q}_0\|^2
-$$
-
-subject to:
-
-$$
-C_{joint}(\mathbf{q})=0,\qquad
-g_{contact}(\mathbf{q})\ge0,\qquad
-\theta_{min}\le\theta\le\theta_{max}.
-$$
-
-The regularizer chooses a nearby solution when the mechanism has multiple valid
-poses. Linearize locally, solve sparse increments with an active set or a
-compliant position-based method, and limit steps to preserve collision safety.
-The objective is nonconvex: there may be multiple solutions or none. Report an
-unreachable target rather than silently breaking a joint.
-
-This optimization is a proposed precision-editing layer. The implemented initial
-interaction uses fixed-group nudges and Rapier's dynamic constraint solve.
-
 ## Undo, isolation, and publication
 
 The loaded immutable snapshot and working copy are conceptually distinct. The
@@ -203,11 +172,7 @@ After manipulation:
 2. Capture solved poses and current unbroken constraints.
 3. Export or keep the working copy, including an unstable experimental state.
 4. On save, let the server recompute bounds and run the overlap/stability gate.
-5. Publish a new immutable snapshot only if validation passes.
-
-Future collaborative editing should record commands against a base revision,
-detect conflicting changes to the same connected island, and revalidate on the
-server. Shared editing cannot rely on one browser's transient solver state.
+5. Commit to the shared Sandbox only after server acceptance and read-back.
 
 ## Nested authoring groups
 

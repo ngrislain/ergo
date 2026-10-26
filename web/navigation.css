@@ -1,0 +1,22 @@
+/* Position and construction navigation share the workbench's type/palette. */
+.scene-heading>div:first-child{min-width:0}
+.camera-location{margin-bottom:10px;max-width:100%;font-variant-numeric:tabular-nums}
+.camera-gps{display:flex;flex-wrap:wrap;align-items:baseline;gap:3px 10px;font-size:10px;line-height:1.5;color:#607887}
+.camera-gps strong{font-size:12px;font-weight:550;color:#365c75;overflow-wrap:anywhere}
+.camera-cell{display:flex;flex-wrap:wrap;gap:3px 14px;margin-top:3px;font-size:10px;line-height:1.5;color:#607887}
+.camera-cell b{font-weight:500}
+.reference-origin{display:grid;gap:5px;margin:18px 0;font-size:11px;line-height:1.5}
+.reference-origin strong{font-size:11px;font-weight:550;font-variant-numeric:tabular-nums;overflow-wrap:anywhere}
+.reference-origin small{color:var(--muted);font-size:10px}
+.browser .construction-list{display:block;list-style:none;padding:0;margin:12px 0 0;max-height:min(46dvh,420px);overflow-y:auto;overflow-x:hidden;overscroll-behavior:contain;scrollbar-gutter:stable}
+.browser .construction-list li{list-style:none;margin:0;padding:0}
+.browser .construction-list .world-item{width:100%;min-width:0}
+.construction-list-help{margin-top:10px;color:var(--muted);font-size:11px;line-height:1.5}
+.construction-list-actions{display:flex;flex-wrap:wrap;gap:12px;justify-content:space-between}
+@media(max-width:560px){
+  .camera-gps strong{font-size:11px}
+  .scene-heading .camera-location{margin-bottom:6px}
+  .browser .construction-list{max-height:24dvh;margin-top:0}
+  .construction-list-help{display:none}
+  .construction-list-actions .text-button{font-size:10px}
+}

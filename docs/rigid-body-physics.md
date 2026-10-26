@@ -6,7 +6,7 @@ Each brick has a nominal body bounding box. Decorative studs are rendered but ar
 excluded from catalog body boxes: interlocking studs would otherwise look like
 illegal penetration. A box is not a faithful collision shape for cavities,
 Technic holes, clips, or bevels. The preferred basic-brick catalog keeps that
-approximation manageable. Other Studio/LDraw geometry can be imported, but
+approximation manageable. Other geometry can be imported, but
 publication requires operator-owned mass/nominal-bound records and applicable
 connector measurements; a more detailed visual mesh does not make its box exact.
 
@@ -29,8 +29,7 @@ $5\times10^{11}$ candidate pairs, before any actual collision calculation.
 
 Broad-phase indexing rejects spatially separated pairs. Static imports use the
 resident/world octree. The dynamic engine, Rapier, maintains its own broad and
-narrow phases with temporal coherence. Suitable future alternatives include a
-dynamic AABB tree, sweep-and-prune, or a spatial hash for fairly uniform bricks.
+narrow phases with temporal coherence.
 
 For AABBs $A$ and $B$, define overlap along each axis:
 
@@ -194,19 +193,16 @@ must be compressive and have their center of pressure inside the shared patch.
 Grounded authored fixtures can supply a foundation reaction. Residual wrench must
 be within the configured numerical tolerances.
 
-This is a constructive sufficient certificate, not a search over every possible
-reaction distribution. A safe configuration may be conservatively rejected when
-this particular forest/distribution cannot certify it. Mere graph reachability
-to the floor is not sufficient. The general sparse feasibility extension is:
+For loose, unanchored blocks, a separate constructive path processes bodies from
+top to bottom. Each body's own gravity and loads received from above are balanced
+by nonnegative barycentric reactions inside its horizontal support patches. Loads
+are passed to supporting bodies; grounded bodies balance their own weight rather
+than receiving zero reaction merely because a spanning tree selected other ground
+vertices. The certificate is independent of piece ordering and needs no dynamic
+simulation or guessed contact tension.
 
-$$
-A\mathbf{f}+\mathbf{w}=0,
-\qquad \mathbf{f}\in\mathcal{K}_{contact},
-\qquad \mathbf{f}_{joint}\in\mathcal{K}_{capacity}.
-$$
-
-That general optimization is proposed; the implemented gate uses the lightweight
-constructive certificate and does not depend on the dynamics engine.
+These are sufficient constructive certificates; an uncertified arrangement is
+rejected. Mere graph reachability to the floor is not sufficient.
 
 ### Numerical tolerances and short client probes
 
@@ -223,25 +219,9 @@ settable. Defaults are $10^{-3}$ construction units and $10^{-4}$ radians for th
 probe's pose comparison. A short probe reports equilibrium within stated
 floating-point/solver tolerances, not exact equality or indefinite robustness.
 Earthquake and impact tests remain separate, longer, client-only load cases.
-See [solidity tests](solidity-testing.md) and [P1–P4](references.md).
+See [solidity tests](solidity-testing.md) and [solver references](references.md).
 
-## Scaling physics beyond the initial sandbox
-
-Display residency is not a valid physics domain: removing an offscreen supporting
-brick can create a false collapse. The initial sandbox loads the complete
-construction and freezes its streaming set. Large-world simulation needs:
-
-- Mechanical-island discovery using joint edges and relevant contact dependencies.
-- Explicit fixed boundary bodies or complete halo supports at the domain boundary.
-- Sleeping stable islands and waking only edited or impacted regions.
-- Collapsing unbreakable fixed components into compound rigid bodies.
-- A multi-level broad phase: region, island, body, then shape.
-- Worker execution and bounded communication of changed poses to the renderer.
-
-Do not weld together a revolute mechanism. Also, sleeping is a performance state,
-not evidence that an imported construction is stable.
-
-## Future real-time dynamic destruction
+## Client connector failure
 
 The snapshot stores connection identity separately from spatial contact. Optional
 `break_force` thresholds allow a first breakable-joint experiment:
@@ -251,15 +231,7 @@ F_{estimated}\approx\frac{\|\boldsymbol\lambda_{linear}\|}{\Delta t}.
 $$
 
 This is a timestep/solver-dependent impulse-derived estimate, not a calibrated
-material stress. Force and torque thresholds are implemented; future models need directional envelopes, accumulated damage,
-fatigue/energy, and connector-specific failure modes.
-
-When a bond breaks, remove its graph edge, recompute affected rigid components,
-split compound colliders if necessary, and conserve component linear/angular
-momentum. Wake newly detached components and let contacts plus gravity determine
-their motion. A simple union-find supports merging but cannot delete an edge;
-use an affected-component traversal or a dynamic-connectivity structure for
-fracture.
+material stress. Force and torque thresholds are implemented.
 
 The force threshold is supplemented by an analogous torque threshold. Missing
 capacity data is disclosed in a local sandbox and blocks ordinary publication.

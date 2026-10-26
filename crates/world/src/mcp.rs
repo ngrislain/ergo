@@ -35,12 +35,13 @@ pub fn tools() -> Value {
     );
     allowance["annotations"]["openWorldHint"] = json!(true);
     json!({"tools":[
-        tool("get_catalog","Minimize brick count for a given shape: prefer the largest suitable standard bricks/plates over many small ones, preserving shape, colors, support and connection constraints. Any resolvable Studio/LDraw .dat part can be placed by ID. Set include_extended for all colors, or part to resolve geometry. Measured physics is required for publication.",json!({"include_extended":{"type":"boolean"},"part":{"type":"string"}}),&[],true),
+        tool("get_catalog","Minimize brick count for a given shape: prefer the largest suitable standard bricks/plates over many small ones, preserving shape, colors, support and connection constraints. Resolve Ergo part descriptions by catalog ID. Set include_extended for all colors, or part to resolve geometry. Measured physics is required for publication.",json!({"include_extended":{"type":"boolean"},"part":{"type":"string"}}),&[],true),
+        tool("get_user_position","Read the authenticated user's last private S3-backed camera position, view target and ground-level model transform. For a new standing construction, pass model_transform to place_submodel as transform. This does not move existing constructions.",json!({}),&[],true),
         tool("open_shared_construction","Load an authoritative editable assembly from the common S3 world, by assembly_id or by nearest construction in a bounded search around public position_world [east,north,height]. Use the viewer's agent handoff for its current position. Subsequent accepted edits commit to the same assembly automatically; local files are caches.",json!({"assembly_id":{"type":"string"},"position_world":vec}),&[],true),
         tool("list_bricks","List IDs, poses, bounds, and sourced masses.",json!({"offset":{"type":"integer","minimum":0},"limit":{"type":"integer","minimum":1,"maximum":200}}),&[],true),
         tool("inspect_brick","Inspect a brick, metric dimensions, mass provenance, contacts, and constraints.",json!({"id":int}),&["id"],true),
         tool("place_brick","Place a supported part by minimum corner [east,north,height]. Reject overlap atomically; return client stability feedback.",json!({"part":{"type":"string"},"color":{"type":"integer"},"min_corner":vec,"quarter_turns":{"type":"integer"}}),&["part","color","min_corner"],false),
-        tool("place_submodel","Instantiate inline LDraw/MPD subparts using an optional row-major 4x4 affine matrix in LDraw units (-Y up, 20 LDU/stud). Nested type-1 references and color 16 inheritance are preserved in construction files. Existing/resolved, catalog, or embedded geometry is required. Physical poses, floor and overlaps are checked atomically; scaling/shearing real bricks is rejected.",json!({"ldraw":{"type":"string"},"matrix":matrix,"color":{"type":"integer","minimum":0}}),&["ldraw"],false),
+        tool("place_submodel","Place a native Ergo model with reusable definitions, or convert an inline imported document at the boundary. Supply exactly one of model or document. The optional row-major 4x4 transform uses public east/north/up construction units. Resolve nonstandard parts with get_catalog first. Placement checks metric dimensions, floor and overlaps atomically.",json!({"model":{"type":"object"},"document":{"type":"string"},"transform":matrix,"color":{"type":"integer","minimum":0}}),&[],false),
         tool("move_brick","Move the selected fixed-connected group with collision checks.",json!({"id":int,"delta":vec}),&["id","delta"],false),
         tool("remove_bricks","Remove parts/incident joints and report lost support.",json!({"ids":{"type":"array","items":int,"minItems":1,"maxItems":5000}}),&["ids"],false),
         tool("connect_bricks","Add/replace a fixed or revolute constraint. Coordinates/axis use X east, Y north, Z up; limits are radians.",json!({"a":int,"b":int,"anchor":vec,"kind":{"type":"string","enum":["fixed","revolute"]},"axis":vec,"limits":{"type":"array","items":{"type":"number"},"minItems":2,"maxItems":2}}),&["a","b","anchor"],false),
@@ -86,7 +87,7 @@ pub fn validate_input(value: &Value, schema: &Value, path: &str) -> Result<()> {
             let object = value
                 .as_object()
                 .with_context(|| format!("{path} must be an object"))?;
-            let properties = schema["properties"].as_object().context("Invalid schema")?;
+            let properties = schema.get("properties").and_then(Value::as_object);
             if let Some(keys) = schema.get("required").and_then(Value::as_array) {
                 for key in keys {
                     ensure!(
@@ -96,10 +97,17 @@ pub fn validate_input(value: &Value, schema: &Value, path: &str) -> Result<()> {
                 }
             }
             for (key, v) in object {
-                let s = properties
-                    .get(key)
-                    .with_context(|| format!("Unsupported argument {path}.{key}"))?;
-                validate_input(v, s, &format!("{path}.{key}"))?;
+                if let Some(s) = properties.and_then(|p| p.get(key)) {
+                    validate_input(v, s, &format!("{path}.{key}"))?;
+                } else {
+                    match schema.get("additionalProperties") {
+                        Some(Value::Bool(false)) => {
+                            anyhow::bail!("Unsupported argument {path}.{key}")
+                        }
+                        Some(s) if s.is_object() => validate_input(v, s, &format!("{path}.{key}"))?,
+                        _ => {}
+                    }
+                }
             }
         }
         Some("array") => {

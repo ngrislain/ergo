@@ -116,7 +116,7 @@ with one final head CAS. Live readers see the final group state; intermediate
 member states remain accessible through retained indexed history. Conflicting
 members fail independently. Each uncertain member receives its own candidate CID,
 not some other request's success. See
-[group publication](storage-operations.md#optional-group-publication-and-benchmarks).
+[group publication](storage-operations.md#events-and-grouped-publication).
 
 Cache TTLs, ground imagery retention, and source-asset cache expiry do not dictate
 accepted shared-world history. Bucket-wide age expiry on content-addressed objects
