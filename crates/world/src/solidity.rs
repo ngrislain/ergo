@@ -98,6 +98,75 @@ pub fn earthquake_with_acceleration_bound(
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(default)]
+pub struct SmallEarthquake {
+    pub peak_acceleration_g: f64,
+    pub duration_s: f64,
+    pub interval_s: f64,
+    pub seed: u64,
+    pub position_tolerance: f64,
+    pub rotation_tolerance_radians: f64,
+}
+impl Default for SmallEarthquake {
+    fn default() -> Self {
+        Self {
+            peak_acceleration_g: 0.01,
+            duration_s: 3.,
+            interval_s: 0.1,
+            seed: 42,
+            position_tolerance: 0.01,
+            rotation_tolerance_radians: 0.01,
+        }
+    }
+}
+impl SmallEarthquake {
+    pub fn validate(&self) -> Result<()> {
+        ensure!(
+            self.peak_acceleration_g.is_finite()
+                && (0.0001..=0.05).contains(&self.peak_acceleration_g),
+            "Small-shake acceleration must be 0.0001–0.05 g"
+        );
+        ensure!(
+            self.duration_s.is_finite()
+                && (0.1..=5.).contains(&self.duration_s)
+                && self.interval_s.is_finite()
+                && (0.02..=1.).contains(&self.interval_s),
+            "Invalid shake duration/interval"
+        );
+        ensure!(
+            self.position_tolerance.is_finite()
+                && (1e-6..=0.1).contains(&self.position_tolerance)
+                && self.rotation_tolerance_radians.is_finite()
+                && (1e-6..=0.1).contains(&self.rotation_tolerance_radians),
+            "Invalid shake pose tolerances"
+        );
+        Ok(())
+    }
+    pub fn acceleration(&self, time: f64) -> DVec3 {
+        if time < 0. || time >= self.duration_s {
+            return DVec3::ZERO;
+        }
+        fn mixed(mut n: u64) -> f64 {
+            n = n.wrapping_add(0x9e3779b97f4a7c15);
+            n = (n ^ (n >> 30)).wrapping_mul(0xbf58476d1ce4e5b9);
+            n = (n ^ (n >> 27)).wrapping_mul(0x94d049bb133111eb);
+            ((n ^ (n >> 31)) >> 11) as f64 / (1u64 << 53) as f64
+        }
+        let index = (time / self.interval_s).floor() as u64;
+        let phase = mixed(self.seed.wrapping_add(index.wrapping_mul(2))) * std::f64::consts::TAU;
+        let radius = mixed(
+            self.seed
+                .wrapping_add(index.wrapping_mul(2))
+                .wrapping_add(1),
+        )
+        .sqrt()
+            * self.peak_acceleration_g
+            * crate::physical::GRAVITY_M_S2;
+        DVec3::new(phase.cos() * radius, 0., phase.sin() * radius)
+    }
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct FallingObject {
     pub mass_kg: f64,
     #[serde(with = "crate::coordinates::vec3")]
@@ -134,6 +203,7 @@ impl FallingObject {
 pub enum LoadCase {
     Gravity(crate::physical::GravityProbeSettings),
     Earthquake(Earthquake),
+    SmallEarthquake(SmallEarthquake),
     FallingObject(FallingObject),
 }
 
@@ -148,9 +218,23 @@ pub struct SolidityReport {
     pub residual_angular_speed_rad_s: f64,
     pub survived_declared_case: bool,
     pub connector_capacities_complete: bool,
+    pub omitted_inferred_connections: usize,
+    pub unmeasured_connections: usize,
     pub shake_acceleration_bound_m_s2: Option<f64>,
     pub dropped_potential_energy_j: Option<f64>,
     pub limitations: Vec<String>,
+    pub unstable_pieces: Vec<UnstablePiece>,
+}
+
+#[derive(Clone, Debug, Serialize)]
+pub struct UnstablePiece {
+    #[serde(flatten)]
+    pub motion: crate::physics::PieceMotion,
+    pub peak_displacement_native: f64,
+    pub peak_displacement_m: f64,
+    pub peak_rotation_radians: f64,
+    pub nearby_piece_ids: Vec<u32>,
+    pub first_moved_at_s: f64,
 }
 
 pub fn test(
@@ -190,6 +274,14 @@ pub fn test(
                 None,
             )
         }
+        LoadCase::SmallEarthquake(case) => {
+            case.validate()?;
+            (
+                case.duration_s + 2.,
+                Some(case.peak_acceleration_g * crate::physical::GRAVITY_M_S2),
+                None,
+            )
+        }
         LoadCase::FallingObject(case) => {
             simulation.falling_object(case)?;
             (
@@ -204,18 +296,65 @@ pub fn test(
         LoadCase::Gravity(settings) => settings.steps as usize,
         _ => (duration / TIMESTEP).ceil() as usize,
     };
-    for _ in 0..step_count {
+    let (drift_limit, rotation_limit) = match &case {
+        LoadCase::Gravity(settings) => (
+            settings.position_tolerance,
+            settings.rotation_tolerance_radians.to_degrees(),
+        ),
+        LoadCase::SmallEarthquake(settings) => (
+            settings.position_tolerance,
+            settings.rotation_tolerance_radians.to_degrees(),
+        ),
+        _ => (0.1, 1.),
+    };
+    let mut motion_peaks = vec![(0.0_f64, 0.0_f64, 0.0_f64); scene.bricks.len()];
+    let mut first_motion = vec![None; scene.bricks.len()];
+    for step in 0..step_count {
+        if let LoadCase::SmallEarthquake(case) = &case {
+            simulation.set_horizontal_acceleration(case.acceleration(step as f64 * TIMESTEP))?;
+        }
         simulation.step();
         peak = peak.max(simulation.max_displacement_m());
+        for (index, (maximum, motion)) in motion_peaks
+            .iter_mut()
+            .zip(simulation.piece_motions())
+            .enumerate()
+        {
+            maximum.0 = maximum.0.max(motion.displacement_world.length());
+            maximum.1 = maximum.1.max(motion.displacement_m);
+            maximum.2 = maximum.2.max(motion.rotation_radians);
+            if first_motion[index].is_none()
+                && (maximum.0 > drift_limit || maximum.2.to_degrees() > rotation_limit)
+            {
+                first_motion[index] = Some((step + 1) as f64 * TIMESTEP);
+            }
+        }
     }
     let stats = simulation.stats();
     let broken = simulation.broken_count();
     let speed = simulation.max_speed();
-    let calibrated = scene.joints.iter().all(|j| {
-        j.break_force.is_some()
-            && j.break_torque.is_some()
-            && j.strength_source.as_ref().is_some_and(|s| !s.is_empty())
-    });
+    let supplied_pairs: std::collections::HashSet<_> = scene
+        .joints
+        .iter()
+        .map(|j| (j.a.min(j.b), j.a.max(j.b)))
+        .collect();
+    let omitted_inferred_connections = crate::constraints::inferred_joints(&scene.bricks)
+        .iter()
+        .filter(|j| !supplied_pairs.contains(&(j.a.min(j.b), j.a.max(j.b))))
+        .count();
+    let unmeasured_connections = scene
+        .joints
+        .iter()
+        .filter(|j| {
+            !j.break_force.is_some_and(|f| f.is_finite() && f > 0.)
+                || !j.break_torque.is_some_and(|t| t.is_finite() && t > 0.)
+                || !j
+                    .strength_source
+                    .as_ref()
+                    .is_some_and(|s| !s.trim().is_empty())
+        })
+        .count();
+    let calibrated = omitted_inferred_connections == 0 && unmeasured_connections == 0;
     let final_bricks = simulation.bricks();
     let rotation = scene
         .bricks
@@ -229,27 +368,53 @@ pub fn test(
                 .to_degrees()
         })
         .fold(0.0, f64::max);
-    let (drift_limit, rotation_limit) = match &case {
-        LoadCase::Gravity(settings) => (
-            settings.position_tolerance,
-            settings.rotation_tolerance_radians.to_degrees(),
-        ),
-        _ => (0.1, 1.0),
-    };
+    let tree = crate::spatial::Octree::new(scene.bricks.iter().map(|b| b.bounds).collect());
+    let mut unstable_pieces = simulation
+        .piece_motions()
+        .zip(motion_peaks)
+        .enumerate()
+        .filter_map(|(index, (motion, maximum))| {
+            (maximum.0 > drift_limit || maximum.2.to_degrees() > rotation_limit).then(|| {
+                let nearby_piece_ids = tree
+                    .query(scene.bricks[index].bounds.expanded(0.05))
+                    .into_iter()
+                    .filter_map(|j| (j != index).then_some(scene.bricks[j].id))
+                    .collect();
+                UnstablePiece {
+                    motion,
+                    peak_displacement_native: maximum.0,
+                    peak_displacement_m: maximum.1,
+                    peak_rotation_radians: maximum.2,
+                    nearby_piece_ids,
+                    first_moved_at_s: first_motion[index].unwrap(),
+                }
+            })
+        })
+        .collect::<Vec<_>>();
+    unstable_pieces.sort_by(|a, b| {
+        a.first_moved_at_s
+            .total_cmp(&b.first_moved_at_s)
+            .then(a.motion.id.cmp(&b.motion.id))
+    });
     let survived = broken == 0
         && stats.max_displacement <= drift_limit
         && rotation <= rotation_limit
         && stats.penetrating_pairs == 0
+        && unstable_pieces.is_empty()
         && (matches!(case, LoadCase::Gravity(_)) || speed < 0.03);
     let report=SolidityReport {
-        case,statistics:stats,peak_displacement_m:peak,final_rotation_max_degrees:rotation,
+        case,statistics:stats,peak_displacement_m:peak,final_rotation_max_degrees:rotation,unstable_pieces,
         broken_connections:broken,residual_linear_speed_m_s:simulation.max_linear_speed_m_s(),
         residual_angular_speed_rad_s:simulation.max_angular_speed_rad_s(),
         survived_declared_case:survived,connector_capacities_complete:calibrated,
+        omitted_inferred_connections,unmeasured_connections,
         shake_acceleration_bound_m_s2:accel,dropped_potential_energy_j:energy,
         limitations:vec![
             "A bounded load-case test is not proof against arbitrary earthquakes or impacts.".into(),
             "Collision boxes and box inertia approximate hollow geometry; friction is assumed.".into(),
+            "Iterative contact-solver error can destabilize tall loose stacks; check numerical convergence before attributing failure to the construction.".into(),
+            if omitted_inferred_connections > 0 {"Inferred stud connections were omitted: this is an unbonded contact diagnostic, not a test of the assembled stud-clutch model."}
+            else {"All geometrically inferred stud pairs are represented; see unmeasured_connections for missing capacities."}.into(),
             if calibrated {"Capacity thresholds are impulse-derived; validate their timestep dependence against experiments."}
             else {"Connector capacities are missing: idealized-joint results are diagnostic, not calibrated strength certification."}.into(),
         ],
@@ -260,6 +425,94 @@ pub fn test(
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn small_random_acceleration_is_seeded_horizontal_and_bounded() {
+        let case = SmallEarthquake::default();
+        case.validate().unwrap();
+        let mut changed = case.clone();
+        changed.seed += 1;
+        assert_ne!(case.acceleration(0.2), changed.acceleration(0.2));
+        for i in 0..600 {
+            let t = i as f64 / 120.;
+            let a = case.acceleration(t);
+            assert_eq!(a, case.acceleration(t));
+            assert_eq!(a.y, 0.);
+            assert!(a.length() <= case.peak_acceleration_g * crate::physical::GRAVITY_M_S2 + 1e-12);
+        }
+        assert_eq!(case.acceleration(case.duration_s), DVec3::ZERO);
+    }
+    #[test]
+    fn omitted_stud_connections_are_not_vacuously_calibrated() {
+        let mut d = crate::demo::Demo::new();
+        d.add("3003", 19, 2., 0., 2.);
+        d.add("3003", 19, 2., 1., 2.);
+        let mut scene = WorldExport {
+            schema: crate::SCHEMA_VERSION,
+            name: "stud stack".into(),
+            geo: Default::default(),
+            bricks: d.bricks,
+            meshes: d.meshes,
+            joints: vec![],
+            fixed_bricks: vec![],
+            ground: vec![],
+            groups: vec![],
+            model: None,
+        };
+        let (_, _, omitted) = test(&scene, LoadCase::Gravity(Default::default())).unwrap();
+        assert_eq!(omitted.omitted_inferred_connections, 1);
+        assert!(!omitted.connector_capacities_complete);
+        scene.joints = crate::constraints::inferred_joints(&scene.bricks);
+        let (_, _, unmeasured) = test(&scene, LoadCase::Gravity(Default::default())).unwrap();
+        assert_eq!(unmeasured.omitted_inferred_connections, 0);
+        assert_eq!(unmeasured.unmeasured_connections, 1);
+        assert!(!unmeasured.connector_capacities_complete);
+    }
+    #[test]
+    fn tilted_loose_roof_tips_and_identifies_its_piece() {
+        let mut d = crate::demo::Demo::new();
+        d.add("3031", 14, 0., 0., 0.);
+        let b = &mut d.bricks[0];
+        let local = d.meshes[&b.part].body_bounds;
+        b.transform =
+            crate::physical::world_transform(glam::DMat3::from_rotation_z(25f64.to_radians()));
+        let rotated = local.transformed(b.transform, DVec3::ZERO);
+        b.position = DVec3::new(2., -rotated.min.y, 2.);
+        b.bounds = local.transformed(b.transform, b.position);
+        b.render_bounds = d.meshes[&b.part]
+            .bounds
+            .transformed(b.transform, b.position);
+        let scene = WorldExport {
+            schema: crate::SCHEMA_VERSION,
+            name: "loose roof".into(),
+            geo: Default::default(),
+            bricks: d.bricks,
+            meshes: d.meshes,
+            joints: vec![],
+            fixed_bricks: vec![],
+            ground: vec![],
+            groups: vec![],
+            model: None,
+        };
+        let (bodies, _, report) = test(
+            &scene,
+            LoadCase::SmallEarthquake(SmallEarthquake::default()),
+        )
+        .unwrap();
+        assert!(!report.survived_declared_case);
+        assert!(report.final_rotation_max_degrees > 10., "{report:?}");
+        assert_eq!(report.unstable_pieces[0].motion.id, 1);
+        assert_eq!(report.unstable_pieces[0].motion.part, "3031.dat");
+        assert_ne!(bodies[0].transform, scene.bricks[0].transform);
+        let (_, _, repeat) = test(
+            &scene,
+            LoadCase::SmallEarthquake(SmallEarthquake::default()),
+        )
+        .unwrap();
+        assert_eq!(
+            serde_json::to_value(&report).unwrap(),
+            serde_json::to_value(&repeat).unwrap()
+        );
+    }
     #[test]
     fn gravity_probe_is_one_step_by_default_and_tolerance_is_explicit() {
         for (height, expected) in [(0.0, true), (5.0, false)] {

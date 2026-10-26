@@ -60,6 +60,8 @@ def main():
             assert result["structuredContent"]["static_under_current_joint_model"] is False
             result = call("test_stability_by_gravity", steps=1)
             assert result["structuredContent"]["report"]["survived_declared_case"] is False
+            moving=result['structuredContent']['unstable_pieces']
+            assert any(piece['id']==2 and piece['part']=='3003.dat' for piece in moving),result
             # A test must not settle/mutate the working copy itself.
             floating = call("list_bricks")["structuredContent"]["bricks"][1]
             assert floating["position"][2] == 9
@@ -74,6 +76,17 @@ def main():
             call("undo")
             result = call("test_stability_by_gravity", steps=1)
             assert result["structuredContent"]["calibrated_stability_verified"] is True
+            small=call('test_small_earthquake_stability',duration_s=.25,interval_s=.05,seed=17,include_images=False)['structuredContent']
+            assert small['settings']['seed']==17 and small['working_copy_changed'] is False
+            assert small['gravity']['unstable_pieces']==[] and small['shake']['unstable_pieces']==[],small
+            contact=call('test_small_earthquake_stability',duration_s=.1,connection_model='contacts_only',include_images=False)['structuredContent']
+            assert contact['calibrated_stability_verified'] is False and 'Contact-only' in contact['calibration_issue'],contact
+            call('place_brick',part='3003',color=19,min_corner=[2,2,1])
+            contact=call('test_small_earthquake_stability',duration_s=.1,connection_model='contacts_only',include_images=False)['structuredContent']
+            assert contact['gravity']['omitted_inferred_connections']==1 and contact['calibrated_stability_verified'] is False,contact
+            measured=call('test_small_earthquake_stability',duration_s=.1,include_images=False)['structuredContent']
+            assert measured['gravity']['unmeasured_connections']==1 and measured['calibrated_stability_verified'] is False,measured
+            call('undo')
             result = call("test_stability_by_earthquake", peak_ground_acceleration_g=0.1,
                           frequency_hz=4, duration_s=0.5, include_images=False)
             report = result["structuredContent"]

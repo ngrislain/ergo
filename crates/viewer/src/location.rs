@@ -2,6 +2,14 @@
 use ergo_world::{BlockCoord, GeoReference, coordinates};
 use glam::DVec3;
 
+/// Heading-relative compass: internal -Z is geographic north. Pitch does not
+/// change this plan-view bearing, including in walk/fly navigation.
+pub fn north_arrow_degrees(eye: DVec3, target: DVec3) -> Option<f64> {
+    let forward = target - eye;
+    (forward.is_finite() && forward.x.hypot(forward.z) > 1e-12)
+        .then(|| -forward.x.atan2(-forward.z).to_degrees())
+}
+
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct CameraLocation {
     pub gps: [f64; 2],
@@ -33,6 +41,22 @@ impl CameraLocation {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn compass_tracks_cardinal_headings_and_ignores_pitch() {
+        for (forward, angle) in [
+            (DVec3::NEG_Z, 0.),
+            (DVec3::X, -90.),
+            (DVec3::Z, -180.),
+            (DVec3::NEG_X, 90.),
+        ] {
+            assert!((north_arrow_degrees(DVec3::ZERO, forward).unwrap() - angle).abs() < 1e-10);
+            assert!(
+                (north_arrow_degrees(DVec3::ZERO, forward + DVec3::Y * 8.).unwrap() - angle).abs()
+                    < 1e-10
+            );
+        }
+        assert_eq!(north_arrow_degrees(DVec3::ZERO, DVec3::Y), None);
+    }
     #[test]
     fn camera_motion_changes_gps_without_moving_the_reference() {
         let geo = GeoReference::default();

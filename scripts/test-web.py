@@ -194,9 +194,23 @@ def main():
         expect(viewport).to_have_class(re.compile(r"is-fullscreen"))
         page.wait_for_function("() => document.fullscreenElement?.id === 'world-viewport'")
         assert page.evaluate("() => {const r=document.querySelector('#world-viewport').getBoundingClientRect();return r.x===0&&r.y===0&&Math.abs(r.width-innerWidth)<1&&Math.abs(r.height-innerHeight)<1;}")
+        assert page.evaluate("""() => {
+            const nav=document.querySelector('.scene-heading .mobile-navigation').getBoundingClientRect();
+            const title=document.querySelector('.scene-heading h1').getBoundingClientRect();
+            const gps=document.querySelector('.camera-location').getBoundingClientRect();
+            const tools=document.querySelector('.view-tools').getBoundingClientRect();
+            const heading=document.querySelector('.scene-heading').getBoundingClientRect();
+            return nav.top>=title.bottom && nav.top>=gps.bottom && tools.left>=heading.right;
+        }"""),"Fullscreen controls must not cover the location/title or one another"
         viewport.get_by_role("button", name="Walk", exact=True).click()
         expect(canvas).to_be_focused()
         expect(canvas).to_have_attribute("data-navigation", "walk")
+        angle=float(page.locator('.north-pointer').get_attribute('data-angle'))
+        page.keyboard.down('ArrowRight')
+        try:page.wait_for_function("old=>Math.abs(Number(document.querySelector('.north-pointer').dataset.angle)-old)>2",arg=angle)
+        finally:page.keyboard.up('ArrowRight')
+        expect(page.locator('.canvas-focus-status')).to_be_visible()
+        assert canvas.evaluate("el=>{const s=getComputedStyle(el);return s.outlineStyle!=='auto' && parseFloat(s.outlineWidth)<=1}")
         page.get_by_role("button", name="Exit full screen", exact=True).click()
         expect(viewport).not_to_have_class(re.compile(r"is-fullscreen"))
         expect(canvas).to_have_attribute("data-navigation", "walk")
@@ -273,6 +287,10 @@ def main():
         snapshots = page.request.get(args.url + "/api/worlds").json()
         saved = next(world for world in snapshots if world["name"] == "Browser smoke construction")
         scene = page.request.get(args.url + "/api/worlds/" + saved["id"] + "/export").json()
+        preview=page.request.post(args.url+'/api/import',headers={'X-Ergo-Request':'1'},
+            multipart={'file':{'name':'construction.ergo.json','mimeType':'application/json','buffer':json.dumps(scene).encode()}})
+        assert preview.status==200,preview.text()
+        scene=preview.json()['scene']
         auth = {"Authorization":"Bearer " + token,"X-Ergo-Request":"1"}
         response = page.request.post(args.url + "/api/shared-worlds", headers=auth,
                                      data={"name":"Browser shared world","geo":scene["geo"],"authenticated_editing":True})

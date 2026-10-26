@@ -6,6 +6,7 @@ pub mod demo;
 pub mod geometry;
 pub mod groups;
 pub mod illustration;
+pub mod interference;
 pub mod ldraw;
 pub mod mcp;
 pub mod physical;

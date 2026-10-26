@@ -40,7 +40,7 @@ resource "scaleway_container" "api" {
     concurrent_requests_threshold = 10
   }
 
-  environment_variables = merge({ ERGO_GROUND_SOURCE = "satellite" }, var.extra_environment_variables, local.sandbox_environment, {
+  environment_variables = merge({ ERGO_GROUND_SOURCE = "osm" }, var.extra_environment_variables, local.sandbox_environment, {
     ERGO_BIND                   = "0.0.0.0:8080"
     ERGO_PUBLIC_URL             = local.public_url
     S3_BUCKET                   = data.scaleway_object_bucket.ergo.name

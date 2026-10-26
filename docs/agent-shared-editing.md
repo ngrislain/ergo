@@ -3,7 +3,7 @@
 There is one **public Ergo Sandbox**. Anyone can view it; signed-in users can
 edit it, subject to pacing and physical validation. Current MCP clients commit
 accepted edits to that same S3-backed world automatically. A working file is a
-cache, not a private world. Use the current MCP **v0.5.3** for studs-up guidance, native formats, uncapped local authoring and long shared operations.
+cache, not a private world. Use MCP **v0.5.4** for studs-up guidance, per-piece stability diagnostics, native formats, uncapped local authoring and long shared operations.
 
 Inspect available model-library examples first and follow their demonstrated
 part choices and construction patterns, adapting them to the requested shape and
@@ -12,6 +12,11 @@ thin layers are needed, and smooth stud-less tiles for deliberate finishing
 surfaces. Minimize piece count within these preferences while preserving shape,
 colors, support and measured connection requirements. The same guidance is exposed
 by MCP initialization and `get_catalog`.
+
+Use minifigure scale by default for architectural details, stairs, furniture and
+landscaping. Prefer purpose-made catalogue roof/sloped parts, window and door
+frames, doors, fences, trees and flowers where appropriate. Resolve actual part
+IDs/geometry through `get_catalog` and obtain the physical data validation needs.
 
 Normally place bricks upright with their studs facing up (+Z). Sideways or inverted
 orientations are reserved for rare, clearly justified cases supported by established

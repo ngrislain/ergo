@@ -98,15 +98,26 @@ The test reports:
 - Peak displacement in meters sampled at every physics step.
 - Final maximum displacement in construction units and orientation change in degrees.
 - Broken connection count, deep penetration count, and remaining motion.
-- Whether all joints have force/torque thresholds and source information.
+- Whether all supplied joints have force/torque thresholds and source information,
+  and whether geometrically inferred stud pairs were omitted.
 - The shake acceleration bound or nominal dropped-object potential energy.
 - Model limitations and the exact load-case parameters.
 
-“Survived the declared case” currently means no broken connections, final position
-drift under 0.1 construction units, final rotation under 1°, no deep penetration,
-and sufficiently small residual motion after settling. These thresholds are
-acceptance criteria, not a calibrated building-code standard. Peak transient
-movement is reported separately and may be larger than final drift.
+For the displacement-waveform and impact cases, “survived the declared case” means
+no broken connections, peak position drift under 0.1 construction units, peak
+rotation under 1°, no deep penetration at the end, and sufficiently small residual
+motion after settling. Gravity and small random shakes use their explicit pose
+tolerances instead. These thresholds are acceptance criteria, not a calibrated
+building-code standard. Peak transient movement counts even if a piece returns.
+
+`omitted_inferred_connections` counts stud pairs absent from the supplied scene;
+`unmeasured_connections` counts supplied joints missing a positive force/torque
+limit or source. Either makes `connector_capacities_complete:false`. In
+particular, an empty exported joint array does not automatically mean complete
+calibration when the geometry contains mating studs. A contact-only failure is
+not proof that the corresponding stud-connected construction fails. Tall loose
+stacks can also suffer iterative contact-solver error: verify convergence before
+using a failed run to justify destructive cleanup or a real-world failure claim.
 
 ## Web and MCP workflows
 
@@ -214,3 +225,27 @@ The MCP result includes an optional isometric PNG of the post-test construction.
 The original local working copy remains unchanged. Vision feedback complements
 the structured displacement/breakage results; a visually intact model may still
 contain overstressed or uncalibrated connections.
+
+## Small seeded random earthquake
+
+`test_small_earthquake_stability` adds a bounded two-dimensional horizontal
+acceleration vector to gravity in the fixed-floor reference frame. The default
+bound is 0.01 g; a deterministic SplitMix64-derived sequence chooses a direction
+and disk-bounded magnitude every 0.1 s for three seconds, followed by two seconds
+of gravity-only settling. The seed, interval, bound, duration and pose tolerances
+are returned, so a failure can be replayed exactly.
+
+The run also includes a separate one-second gravity baseline. Each report lists
+`unstable_pieces`: local piece ID, catalogue part, initial/current public position,
+motion vector, peak native/metric displacement, peak rotation, first-motion time
+and nearby piece IDs. Peaks are checked during the run, so a piece that moves and returns is still
+reported. Optional post-test PNGs colour those pieces red. This is a bounded
+model test with disclosed calibration/friction/collider assumptions, not a
+universal earthquake guarantee. Complete mechanical domains are required.
+
+`connection_model:"measured"` is the default: inferred stud connections are added
+and missing measurements are disclosed; unmeasured joints are idealized
+diagnostics. `connection_model:"contacts_only"` removes joints explicitly and
+always discloses that clutch strength is not certified. Neither setting upgrades
+missing part provenance to a calibrated result. These tests are client
+diagnostics; authoritative publication still uses its independent static gate.

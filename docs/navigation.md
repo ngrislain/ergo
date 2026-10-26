@@ -66,6 +66,12 @@ shared controls/collisions are in `client/src/navigation.rs` and `walking.rs`.
 
 ## Checking a walking route
 
+The compass rotates geographic north relative to the current camera heading in
+orbit, fly and walk modes. Fullscreen/mobile navigation buttons flow below the
+location/title; view tools occupy a separate right-hand column. Keyboard focus
+uses a neutral thin indicator and an explicit focus label, with scroll-preserving
+canvas focus.
+
 `cargo run --locked -p ergo-client --example check_walk -- CONSTRUCTION ROUTE.json`
 loads a complete native construction and runs `walking::Walker` at 120 Hz, with
 gravity/stepping and no jumping or teleporting between checkpoints. It fails on

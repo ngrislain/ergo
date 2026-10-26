@@ -111,6 +111,12 @@ pub fn validate_static_with_measurements(
     crate::groups::validate(&scene.bricks, &scene.groups)?;
     for brick in &scene.bricks {
         crate::physical::validate_pose(brick)?;
+        ensure!(
+            crate::interference::axis_aligned(brick),
+            "Cannot certify tilted brick {} ({}): the static contact certificate requires axis-aligned body faces; run an oriented gravity/perturbation test",
+            brick.id,
+            brick.part
+        );
     }
     constraints::validate_joints(&scene.bricks, &scene.joints, &scene.fixed_bricks)?;
     validate_ground_anchors_with_tolerances(&scene.bricks, &scene.fixed_bricks, tolerances)?;
@@ -136,6 +142,11 @@ pub fn validate_static_with_measurements(
                 overlap.min_element()
             );
         }
+    }
+    if let Some(error) =
+        crate::interference::first_stud_collision(&scene.bricks, tolerances.position_brick_units)
+    {
+        anyhow::bail!(error);
     }
     let pairs: HashSet<_> = scene
         .joints

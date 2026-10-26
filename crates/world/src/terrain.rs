@@ -150,9 +150,67 @@ pub fn nearest_color(rgb: u32) -> u32 {
         .0
 }
 
+pub const TERRAIN_COLORS: &[u32] = &[1, 2, 288, 71, 72, 14, 15, 70, 19, 28];
+pub fn nearest_terrain_color(rgb: u32) -> u32 {
+    let sample = lab(rgb);
+    *TERRAIN_COLORS
+        .iter()
+        .min_by(|a, b| {
+            let distance = |code: u32| {
+                let p = lab(color_rgb(code));
+                (0..3).map(|i| (p[i] - sample[i]).powi(2)).sum::<f64>()
+            };
+            distance(**a).total_cmp(&distance(**b))
+        })
+        .unwrap()
+}
+/// OSM Carto raster colours, classified before averaging so water is not turned
+/// grey by nearby labels/coastlines. This is map-colour sampling, not a claimed
+/// global vector land-cover dataset.
+pub fn map_terrain_color(rgb: u32) -> u32 {
+    let r = ((rgb >> 16) & 255) as i32;
+    let g = ((rgb >> 8) & 255) as i32;
+    let b = (rgb & 255) as i32;
+    if b - r >= 25 && g - r >= 12 {
+        return 1;
+    }
+    if g - r >= 12 && g - b >= 10 {
+        return if g < 125 { 288 } else { 2 };
+    }
+    if (r >= 210 && g >= 225 && b >= 225 && b - r >= 8 && b - r < 25)
+        || (r >= 248 && g >= 248 && b >= 248)
+    {
+        return 15;
+    }
+    if r - g < 18 && (r - b).abs() < 18 && r < 218 {
+        return if r < 115 { 72 } else { 71 };
+    }
+    if r > 215 && r - b > 35 && g >= r - 25 {
+        return 14;
+    }
+    if r > g + 8 && g > b + 12 && r < 215 {
+        return 70;
+    }
+    19
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn map_water_and_land_use_the_requested_palette() {
+        assert_eq!(map_terrain_color(0xaad3df), 1);
+        assert_eq!(map_terrain_color(0xadd19e), 2);
+        assert_eq!(map_terrain_color(0xddecec), 15);
+        assert_eq!(map_terrain_color(0x999999), 71);
+        assert_eq!(map_terrain_color(0xf5e9c6), 14);
+        assert_eq!(map_terrain_color(0xc6b89e), 70);
+        assert_eq!(map_terrain_color(0xf2efe9), 19);
+        for rgb in (0..=0xffffff).step_by(997) {
+            assert!(TERRAIN_COLORS.contains(&map_terrain_color(rgb)));
+            assert!(TERRAIN_COLORS.contains(&nearest_terrain_color(rgb)));
+        }
+    }
     #[test]
     fn palette_projection_preserves_every_enabled_color() {
         for &(c, _) in COLORS {

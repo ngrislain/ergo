@@ -100,6 +100,7 @@ struct Ui {
     group_selection: RwSignal<Vec<u32>>,
     navigation: RwSignal<NavigationStatus>,
     camera_location: RwSignal<Option<CameraLocation>>,
+    north_angle: RwSignal<f64>,
     fullscreen: RwSignal<bool>,
     shared_locations: RwSignal<Vec<SharedLocation>>,
     shared_cursor: RwSignal<Option<String>>,
@@ -188,6 +189,7 @@ impl Ui {
             group_selection: RwSignal::new(Vec::new()),
             navigation: RwSignal::new(NavigationStatus::default()),
             camera_location: RwSignal::new(None),
+            north_angle: RwSignal::new(0.),
             fullscreen: RwSignal::new(false),
             shared_locations: RwSignal::new(Vec::new()),
             shared_cursor: RwSignal::new(None),
@@ -1293,6 +1295,11 @@ pub fn App() -> impl IntoView {
                         );
                     }
                     if ticks % 15 == 0 {
+                        if let Some(angle) = crate::location::north_arrow_degrees(r.eye(), r.target)
+                            && ui.north_angle.get_untracked() != angle
+                        {
+                            ui.north_angle.set(angle);
+                        }
                         let location = CameraLocation::new(geo, r.eye());
                         if ui.camera_location.get_untracked() != Some(location) {
                             ui.camera_location.set(Some(location));
@@ -1463,7 +1470,7 @@ pub fn App() -> impl IntoView {
         <main class="workbench">
             <aside class="left-dock"><ConstructionBrowser/><div class="dock-bottom"><span class="storage-dot"></span>{move ||ui.storage.get()}<p>"Standard parts · native Ergo models"</p></div></aside>
             <section id="world-viewport" class="viewport-area" class:is-fullscreen=move ||ui.fullscreen.get() aria-label="3D construction workbench">
-                <div class="scene-heading"><div><LiveLocation/><h1>{move ||ui.current.get().map(|w|w.name).unwrap_or_else(||"Your next construction".into())}</h1><p>{move ||ui.construction_details()}</p></div><span class="snapshot-badge" class:draft=move ||ui.dirty.get()>{move ||ui.scene_label()}</span></div>
+                <div class="scene-heading"><div><LiveLocation/><h1>{move ||ui.current.get().map(|w|w.name).unwrap_or_else(||"Your next construction".into())}</h1><p>{move ||ui.construction_details()}</p><NavigationModes mobile=true/><span class="canvas-focus-status">"Keyboard navigation active"</span></div><span class="snapshot-badge" class:draft=move ||ui.dirty.get()>{move ||ui.scene_label()}</span></div>
                 <canvas node_ref=canvas id="world-canvas" tabindex="0" aria-label=move ||format!("3D brick construction. {} navigation. Drag to look; focus canvas for keyboard controls.",ui.navigation.get().mode.name())
                     on:contextmenu=move |e|e.prevent_default()
                     on:pointerdown=move |e|with_client(handle,|c|{let x=e.client_x() as f64;let y=e.client_y() as f64;c.pointer=Some((x,y,x,y,e.button(),e.shift_key()));if let Some(r)=&c.renderer{let _=r.canvas.set_pointer_capture(e.pointer_id());}})
@@ -1481,9 +1488,8 @@ pub fn App() -> impl IntoView {
                 ></canvas>
                 <div class="view-tools"><button title="Fit construction (F)" aria-label="Fit construction" on:click=move |_|fit(handle)>"⊡"</button><button title="Zoom in / faster" aria-label="Zoom in" on:click=move |_|with_client(handle,|c|{if let Some(r)=&mut c.renderer{r.zoom(-180.0);}})>"＋"</button><button title="Zoom out / slower" aria-label="Zoom out" on:click=move |_|with_client(handle,|c|{if let Some(r)=&mut c.renderer{r.zoom(180.0);}})>"−"</button><button title="Top view" aria-label="Top view" on:click=move |_|with_client(handle,|c|{if let Some(r)=&mut c.renderer{r.set_navigation(NavigationMode::Orbit);r.pitch=1.55;r.changed();}})>"⌑"</button><button title="Full screen (Shift+F; Esc to exit)" aria-label=move ||if ui.fullscreen.get(){"Exit full screen"}else{"Enter full screen"} aria-pressed=move ||ui.fullscreen.get().to_string() on:click=move |_|toggle_fullscreen(ui)>"⛶"</button></div>
                 <button class="nearest-construction" title="Go to nearest construction (N)" aria-label="Nearest construction" on:click=move |_|nearest_construction(handle)>"⌖ Nearest construction"</button>
-                <NavigationModes mobile=true/>
                 <Show when=move ||ui.navigation.get().mode!=NavigationMode::Orbit><MovementPad/></Show>
-                <div class="north-marker"><span>"N"</span><svg viewBox="0 0 40 40" aria-hidden="true"><path d="M20 3 L29 33 L20 27 L11 33 Z" fill="#334b61"/><path d="M20 3 L20 27 L11 33 Z" fill="#8c9faf"/></svg></div>
+                <div class="north-marker" role="img" aria-label="Geographic north relative to camera heading"><div class="north-pointer" data-angle=move ||ui.north_angle.get().to_string() style:transform=move ||format!("rotate({}deg)",ui.north_angle.get())><span>"N"</span><svg viewBox="0 0 40 40" aria-hidden="true"><path d="M20 3 L29 33 L20 27 L11 33 Z" fill="#334b61"/><path d="M20 3 L20 27 L11 33 Z" fill="#8c9faf"/></svg></div></div>
                 <div class="viewport-footer"><span>{move ||ui.navigation.get().mode.instructions()}</span><span class="render-badge">"WebGL2"<b>{move ||format!("{} fps",ui.fps.get())}</b></span></div>
                 <div class="map-attribution" title=move ||ui.ground_status.get()><Show when=move ||ui.ground_attribution.get().is_some() fallback=move ||view!{<span>"Ground: palette fallback"</span>}><a target="_blank" rel="noopener noreferrer" href=move ||ui.ground_attribution.get().map(|(_,url)|url).unwrap_or_default()>{move ||ui.ground_attribution.get().map(|(label,_)|label).unwrap_or_default()}</a></Show></div>
                 <Show when=move ||ui.busy.get()><div class="loading-pill" role="status"><span class="spinner"></span>"Loading construction…"</div></Show>
@@ -1684,7 +1690,9 @@ fn focus_world_canvas() {
         .and_then(|d| d.get_element_by_id("world-canvas"))
         .and_then(|e| e.dyn_into::<web_sys::HtmlElement>().ok())
     {
-        let _ = canvas.focus();
+        let options = web_sys::FocusOptions::new();
+        options.set_prevent_scroll(true);
+        let _ = canvas.focus_with_options(&options);
     }
 }
 fn toggle_fullscreen(ui: Ui) {

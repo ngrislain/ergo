@@ -612,6 +612,11 @@ async fn rule_edits_register_group_dependencies_and_world_model_is_frozen() {
 async fn all_geometry_can_be_deleted_without_a_minimum_or_world_size_counter() {
     let service = service();
     let (head, imported) = seeded(&service, scene(100.0)).await;
+    let (app, headers) = http(&service);
+    let url = format!("/api/shared-worlds/{}/assemblies?limit=1", head.id);
+    let (status, before) = json(&app, "GET", &url, &headers, None).await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(before["items"].as_array().unwrap().len(), 1);
     let request = CommitRequest {
         joints: Vec::new(),
         base: head.revision,
@@ -656,6 +661,9 @@ async fn all_geometry_can_be_deleted_without_a_minimum_or_world_size_counter() {
             .await
             .is_ok()
     );
+    let (status, after) = json(&app, "GET", &url, &headers, None).await;
+    assert_eq!(status, StatusCode::OK);
+    assert!(after["items"].as_array().unwrap().is_empty());
 }
 
 #[tokio::test]

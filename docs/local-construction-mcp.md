@@ -7,7 +7,7 @@ shared Sandbox. The bridge never grants itself acceptance or direct agent S3 acc
 ## Install and configure
 
 ```sh
-npm install --global --ignore-scripts 'https://github.com/ngrislain/ergo/releases/download/v0.5.3/ngrislain-ergo-mcp-0.5.3.tgz'
+npm install --global --ignore-scripts 'https://github.com/ngrislain/ergo/releases/download/v0.5.4/ngrislain-ergo-mcp-0.5.4.tgz'
 ergo-mcp --login --publish-url https://ergosandbox.com
 ```
 
@@ -49,13 +49,16 @@ expire and are origin/purpose-bound. They are not S3 credentials.
 - `get_edit_allowance` returns pacing capacity/refill and the authoring piece limit;
   god mode reports `unlimited:true`, `god_mode:true`, `authoring_piece_limit:null`.
 - MCP initialization, `get_catalog` discovery and its returned `building_guidance`
-  share one part-choice policy: inspect available model-library examples first,
+  share one part-choice policy: use minifigure scale by default and inspect available model-library examples first,
   follow their demonstrated part choices/construction patterns and retain applicable
   source attribution; prefer common standard studded bricks over plates, normally
   upright with their studs facing up (+Z). Reserve sideways or inverted orientations
   for rare, clearly justified cases supported by established library building techniques.
   House/palace storeys use nine brick courses (27 plate-height units, or 9 current
   native Z units of room height), with floor slabs added separately;
+  prefer purpose-made catalogue roof/sloped parts, windows, doors/frames, fences,
+  trees and flowers for architectural/landscape details, resolving actual part IDs,
+  geometry and required physical data;
   use plates sparingly for thinner layers, and smooth stud-less tiles for deliberate
   finishing surfaces. Within those preferences use the largest suitable parts,
   preserving shape, colors, support and physically valid connections. Stagger
@@ -69,6 +72,17 @@ expire and are origin/purpose-bound. They are not S3 credentials.
   resolves native Ergo part descriptions by ID.
 - `list_bricks` and `inspect_brick` expose actual IDs, poses, bounds, sourced
   masses and contact/constraint metadata.
+
+Gravity reports include `unstable_pieces` with exact IDs/parts, initial/current
+positions, displacement/rotation peaks and nearby piece IDs. Use those IDs for
+targeted repairs. `test_small_earthquake_stability` compares a one-second gravity
+baseline with gravity plus seeded, bounded random horizontal acceleration. Defaults
+are 0.01 g, three seconds of shaking, two seconds settling, 0.1-second intervals
+and seed42. It reports both cases and calibration separately; optional images
+highlight moving pieces red. Neither test changes/publishes the working copy.
+`calibrated_stability_verified` requires complete connector calibration as well
+as passing the stated model/tolerances; an idealized diagnostic pass is not a
+measured clutch-strength guarantee.
 
 Positions are public east/north/up construction units, not GPS degrees or cell
 indices. New models can pass the saved `model_transform` to `place_submodel`.

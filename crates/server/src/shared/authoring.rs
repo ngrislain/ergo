@@ -302,7 +302,10 @@ pub(super) async fn list(
             .get_limited::<paged::RulesHeader>(&path.child(0)?, s.shared.limits.bytes)
             .await?
         {
-            items.push(header);
+            let members = snapshot.scan_page(&path.child(1)?, None, 1).await?;
+            if !members.leaves.is_empty() {
+                items.push(header);
+            }
         }
     }
     Ok(Json(

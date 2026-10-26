@@ -15,6 +15,17 @@
 .browser .construction-list .world-item>span:nth-child(2){min-width:0}
 .browser .construction-list .world-item strong{display:block;font-size:11px;line-height:20px;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .construction-list-actions{display:flex;flex-wrap:wrap;gap:12px;justify-content:space-between}
+.viewport-area .scene-heading{right:84px}
+.viewport-area .scene-heading>div .mobile-navigation{position:static;inset:auto;transform:none;margin-top:12px;max-width:100%;flex-wrap:wrap;pointer-events:auto}
+.viewport-area .view-tools{left:auto;right:20px;top:20px;transform:none}
+#world-canvas:focus{outline:none}
+#world-canvas:focus-visible{outline:1px solid #52647380;outline-offset:-2px}
+.canvas-focus-status{display:none;font-size:10px;line-height:1.4;color:#526473;margin-top:7px}
+.viewport-area:has(#world-canvas:focus-visible) .canvas-focus-status{display:block}
+.viewport-area .north-marker{right:20px;bottom:112px;width:48px;height:48px}
+.viewport-area .north-marker .north-pointer{position:relative;width:40px;height:40px;transform-origin:center}
+.viewport-area .north-marker .north-pointer span{position:absolute;top:-11px;left:50%;transform:translateX(-50%)}
+.viewport-area .north-marker .north-pointer svg{width:40px;height:40px}
 @media(max-width:560px){
   .camera-gps strong{font-size:11px}
   .scene-heading .camera-location{margin-bottom:6px}

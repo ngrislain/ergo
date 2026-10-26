@@ -733,6 +733,7 @@ fn main() -> Result<()> {
                                         "test_solidity",
                                         "test_stability_by_gravity",
                                         "test_stability_by_earthquake",
+                                        "test_small_earthquake_stability",
                                         "test_moderate_earthquake_stability"
                                     ]
                                     .contains(&name),

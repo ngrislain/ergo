@@ -73,8 +73,8 @@ The browser requests ground cells only as they enter the current frustum and
 finite fog range. The server:
 
 1. Checks the generated-cell cache in local storage or S3.
-2. On a miss/needed refresh, samples imagery covering that geographic footprint.
-3. Averages the samples, selects one enabled palette color, and stores the result.
+2. On a miss/needed refresh, samples map pixels covering that geographic footprint.
+3. Classifies OSM map samples, selects their dominant natural terrain colour, and stores it.
 4. Returns an empty construction cell (`bricks: []`) plus its single-color
    baseplate, source, timestamp, and attribution metadata.
 
@@ -88,7 +88,16 @@ The browser only preloads retained ground metadata matching the current
 imagery therefore refreshes the live view instead of reusing an old cartographic
 snapshot color. MCP captures continue to use explicitly retained metadata offline.
 
-## Average first, then project to the palette
+## Natural map palette
+
+The default OSM source classifies each sample before aggregation: map water
+colours become standard LEGO blue; land uses green/dark green, light/dark grey,
+yellow, white, brown and beige/tan. The dominant class supplies the cell's one
+material colour. This is raster map-colour classification, not a claimed vector
+land-cover dataset. The average sampled RGB remains provenance metadata.
+
+For the optional satellite/custom imagery path, average first and choose the
+nearest CIELAB swatch from that same restricted natural palette.
 
 The server samples a 32×32 grid across the footprint, not a multicolor print.
 Convert source sRGB channels to linear light, compute their mean, and encode that
@@ -99,8 +108,8 @@ $$
 \operatorname{linear}(\mathbf c_n).
 $$
 
-The single material code minimizes Euclidean CIELAB difference over the enabled
-palette $P$:
+In the optional imagery path, the material code minimizes Euclidean CIELAB
+difference over the natural terrain palette $P$:
 
 $$
 c^*=\arg\min_{c\in P}
@@ -114,13 +123,12 @@ defined in `catalog.rs` / `color_rgb`; RGB swatches are not spectral measurement
 
 ## Map sources and projection
 
-The default `ERGO_GROUND_SOURCE=satellite` uses **Esri World Imagery**, a
-satellite/aerial photograph service, with provider attribution. The sampled
-photograph footprint determines the one standard baseplate color; it is not a
+The default `ERGO_GROUND_SOURCE=osm` uses **OpenStreetMap Carto**, with visible
+OSM contributor attribution. `satellite` optionally selects Esri World Imagery.
+The sampled footprint determines one standard baseplate colour; it is not a
 printed image. `ERGO_MAP_TILE_URL` supports alternative XYZ **PNG or JPEG**
 imagery with `{z}`, `{x}`, and `{y}` placeholders and 256×256 tiles. Set matching
-provider attribution when changing the source. `ERGO_GROUND_SOURCE=osm` explicitly
-selects OpenStreetMap cartography; `disabled` uses the labeled palette fallback.
+provider attribution when changing the source. `disabled` uses the labeled palette fallback.
 
 Web Mercator addresses source pixels with:
 

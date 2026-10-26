@@ -4,7 +4,9 @@
 use anyhow::{Context, Result, ensure};
 use ergo_world::{
     BLOCK_SIZE, GeoReference,
-    terrain::{GroundBlock, SAMPLE_GRID_SIZE, average_rgb, nearest_color},
+    terrain::{
+        GroundBlock, SAMPLE_GRID_SIZE, average_rgb, map_terrain_color, nearest_terrain_color,
+    },
 };
 use futures::StreamExt;
 use object_store::{ObjectStore, path::Path};
@@ -45,6 +47,7 @@ pub struct GroundCache {
     attribution: String,
     attribution_url: String,
     enabled: bool,
+    map_colours: bool,
     gate: Arc<tokio::sync::Mutex<()>>,
     failures: Arc<std::sync::Mutex<HashMap<String, (Instant, String)>>>,
 }
@@ -56,7 +59,7 @@ impl GroundCache {
         self.enabled
     }
     pub fn new(store: Arc<dyn ObjectStore>, prefix: String) -> Result<Self> {
-        let source = std::env::var("ERGO_GROUND_SOURCE").unwrap_or_else(|_| "satellite".into());
+        let source = std::env::var("ERGO_GROUND_SOURCE").unwrap_or_else(|_| "osm".into());
         ensure!(
             ["satellite", "osm", "disabled"].contains(&source.as_str()),
             "ERGO_GROUND_SOURCE must be satellite, osm, or disabled"
@@ -86,6 +89,7 @@ impl GroundCache {
             attribution_url: std::env::var("ERGO_MAP_ATTRIBUTION_URL")
                 .unwrap_or_else(|_| if satellite {"https://www.arcgis.com/home/item.html?id=10df2279f9684e4a9f6a7f08febac2a9".into()}else{"https://www.openstreetmap.org/copyright".into()}),
             enabled: source!="disabled",
+            map_colours:source=="osm",
             gate: Arc::new(tokio::sync::Mutex::new(())),
             failures: Arc::new(std::sync::Mutex::new(HashMap::new())),
         })
@@ -149,12 +153,12 @@ impl GroundCache {
             x.unsigned_abs() < 1_000_000_000 && y.unsigned_abs() < 1_000_000_000,
             "Ground cell out of range"
         );
-        let palette: Vec<_> = ergo_world::catalog::COLORS
+        let palette: Vec<_> = ergo_world::terrain::TERRAIN_COLORS
             .iter()
-            .map(|(code, _)| (*code, ergo_world::color_rgb(*code)))
+            .map(|code| (*code, ergo_world::color_rgb(*code)))
             .collect();
         let signature = hex::encode(Sha256::digest(format!(
-            "{:.12}:{:.12}:{:.12}:{}:{}:{}:{}:{}:ground-average-v3:{palette:?}",
+            "{:.12}:{:.12}:{:.12}:{}:{}:{}:{}:{}:ground-natural-map-v4:{palette:?}",
             geo.latitude,
             geo.longitude,
             geo.arcseconds_per_block,
@@ -213,18 +217,35 @@ impl GroundCache {
             decoded.insert((tx, ty), decode(&bytes)?);
             sources.push(format!("{}: z{zoom}/{tx}/{ty}", self.provider));
         }
-        let rgb = average_rgb(locations.into_iter().map(|(tx, ty, px, py)| {
-            let (width, height, bytes) = &decoded[&(tx, ty)];
-            let index = ((py.min(*height - 1) * width + px.min(*width - 1)) * 3) as usize;
-            ((bytes[index] as u32) << 16)
-                | ((bytes[index + 1] as u32) << 8)
-                | bytes[index + 2] as u32
-        }));
+        let samples: Vec<_> = locations
+            .into_iter()
+            .map(|(tx, ty, px, py)| {
+                let (width, height, bytes) = &decoded[&(tx, ty)];
+                let index = ((py.min(*height - 1) * width + px.min(*width - 1)) * 3) as usize;
+                ((bytes[index] as u32) << 16)
+                    | ((bytes[index + 1] as u32) << 8)
+                    | bytes[index + 2] as u32
+            })
+            .collect();
+        let rgb = average_rgb(samples.iter().copied());
+        let color = if self.map_colours {
+            let mut counts = BTreeMap::<u32, usize>::new();
+            for sample in samples {
+                *counts.entry(map_terrain_color(sample)).or_default() += 1;
+            }
+            counts
+                .into_iter()
+                .max_by_key(|(_, count)| *count)
+                .unwrap()
+                .0
+        } else {
+            nearest_terrain_color(rgb)
+        };
         let block = GroundBlock {
             schema: ergo_world::SCHEMA_VERSION,
             coord: ergo_world::BlockCoord::from([x, y, 0]),
             bricks: Vec::new(),
-            color: nearest_color(rgb),
+            color,
             sample_rgb: Some(rgb),
             source: self.provider.clone(),
             attribution: self.attribution.clone(),
@@ -451,6 +472,7 @@ mod tests {
             attribution: "Test fixture".into(),
             attribution_url: "https://example.invalid/credits".into(),
             enabled: true,
+            map_colours: false,
             gate: Arc::new(tokio::sync::Mutex::new(())),
             failures: Arc::new(std::sync::Mutex::new(HashMap::new())),
         }
@@ -461,7 +483,7 @@ mod tests {
             let mut encoder = png::Encoder::new(&mut bytes, 256, 256);
             encoder.set_color(png::ColorType::Rgb);
             encoder.set_depth(png::BitDepth::Eight);
-            let rgb = ergo_world::color_rgb(4);
+            let rgb = ergo_world::color_rgb(2);
             let pixel = [(rgb >> 16) as u8, (rgb >> 8) as u8, rgb as u8];
             let data = pixel.repeat(256 * 256);
             let mut writer = encoder.write_header().unwrap();
@@ -510,7 +532,7 @@ mod tests {
         let a = service.block(geo, 0, 0).await;
         assert!(a.fallback_reason.is_none(), "{:?}", a.fallback_reason);
         assert!(a.bricks.is_empty());
-        assert_eq!(a.color, 4);
+        assert_eq!(a.color, 2);
         assert_eq!(<[i64; 3]>::from(a.coord), [0, 0, 0]);
         for key in keys {
             store.delete(&service.path(&key)).await.unwrap();

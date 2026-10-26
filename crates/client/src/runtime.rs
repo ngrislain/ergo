@@ -649,8 +649,69 @@ impl LocalClientRuntime {
                 )?;
                 let stable = certified && report.survived_declared_case;
                 Ok(text(
-                    json!({"settings":settings,"stable_within_tolerance":stable,"static_certificate":certificate.as_ref().ok(),"static_certificate_issue":certificate.err().map(|e|e.to_string()),"report":report,"calibrated_stability_verified":stable&&report.connector_capacities_complete&&issue.is_none(),"calibration_issue":issue,"working_copy_changed":false,"execution":"local-wasm-client","interpretation":"Short gravity equilibrium probe with explicit numeric tolerances; robustness is assessed separately by disturbance tests."}),
+                    json!({"settings":settings,"stable_within_tolerance":stable,"static_certificate":certificate.as_ref().ok(),"static_certificate_issue":certificate.err().map(|e|e.to_string()),"unstable_pieces":report.unstable_pieces,"report":report,"calibrated_stability_verified":stable&&report.connector_capacities_complete&&issue.is_none(),"calibration_issue":issue,"working_copy_changed":false,"execution":"local-wasm-client","interpretation":"Short gravity equilibrium probe with explicit numeric tolerances; robustness is assessed separately by disturbance tests."}),
                 ))
+            }
+            "test_small_earthquake_stability" => {
+                let (mut scene, mut issue) = self.prepared();
+                let contacts_only = args["connection_model"] == "contacts_only";
+                if contacts_only {
+                    scene.joints.clear();
+                    issue=Some(match issue {
+                        Some(reason)=>format!("{reason}; contact-only diagnostic excludes joint constraints and does not certify stud-clutch strength"),
+                        None=>"Contact-only diagnostic: joint constraints excluded; stud-clutch strength is not certified".into(),
+                    });
+                }
+                let mut static_scene = scene.clone();
+                let certificate = ergo_world::validation::validate_static_with_measurements(
+                    &mut static_scene,
+                    Default::default(),
+                    &self.measurements,
+                );
+                let settings: ergo_world::solidity::SmallEarthquake =
+                    serde_json::from_value(args.clone())?;
+                settings.validate()?;
+                let (_, _, gravity) = ergo_world::solidity::test(
+                    &scene,
+                    ergo_world::solidity::LoadCase::Gravity(
+                        ergo_world::physical::GravityProbeSettings {
+                            steps: 120,
+                            ..Default::default()
+                        },
+                    ),
+                )?;
+                let (bricks, _, shake) = ergo_world::solidity::test(
+                    &scene,
+                    ergo_world::solidity::LoadCase::SmallEarthquake(settings.clone()),
+                )?;
+                let passed = certificate.is_ok()
+                    && gravity.survived_declared_case
+                    && shake.survived_declared_case;
+                let calibrated = issue.is_none()
+                    && gravity.connector_capacities_complete
+                    && shake.connector_capacities_complete;
+                let summary = json!({"settings":settings,"connection_model":if contacts_only{"contacts_only"}else{"measured"},"gravity":gravity,"shake":shake,"static_certificate_issue":certificate.err().map(|error|error.to_string()),"stable_under_declared_model":passed,
+                    "calibrated_stability_verified":passed&&calibrated,"calibration_issue":issue,"working_copy_changed":false,
+                    "execution":"local-wasm-client","next_action":if !calibrated{"Resolve missing measurements/omitted connections and check solver convergence before classifying a physical failure; inspect unstable_pieces for the diagnostic motion."}else if passed{"Inspect stated model and numerical limits before claiming stability."}else{"Inspect unstable_pieces IDs, parts and nearby_piece_ids; check solver convergence, repair confirmed defects and rerun the same seed."}});
+                let mut content = vec![json!({"type":"text","text":summary.to_string()})];
+                if args["include_images"].as_bool().unwrap_or(false) {
+                    let moving: HashSet<_> = shake
+                        .unstable_pieces
+                        .iter()
+                        .map(|p| p.motion.id)
+                        .chain(gravity.unstable_pieces.iter().map(|p| p.motion.id))
+                        .collect();
+                    let mut image = scene;
+                    image.bricks = bricks;
+                    for brick in &mut image.bricks {
+                        if moving.contains(&brick.id) {
+                            brick.rgb = 0xff3b30;
+                        }
+                    }
+                    content.push(json!({"type":"text","text":"Post-test geometry: unstable piece IDs are highlighted red."}));
+                    content.push(self.capture(&image, "isometric", &json!({}))?);
+                }
+                Ok(json!({"content":content,"structuredContent":summary,"isError":false}))
             }
             "test_stability_by_earthquake" => self.quake(
                 args.get("peak_ground_acceleration_g")

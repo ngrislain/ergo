@@ -11,7 +11,7 @@ use anyhow::{Context, Result, ensure};
 use glam::{DMat3, DVec3};
 use rapier3d_f64::{na, parry::query, prelude::*};
 use serde::Serialize;
-use std::collections::{BTreeMap, HashMap, HashSet};
+use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 
 pub use crate::MAX_SIMULATION_BRICKS;
 pub const TIMESTEP: f64 = 1.0 / 120.0;
@@ -49,6 +49,9 @@ pub struct Simulation {
     joint_handles: Vec<ImpulseJointHandle>,
     ground_bodies: Vec<(RigidBodyHandle, DVec3)>,
     earthquake: Option<crate::solidity::Earthquake>,
+    body_bounds: BTreeMap<String, Aabb>,
+    render_bounds: BTreeMap<String, Aabb>,
+    horizontal_acceleration_m_s2: DVec3,
 }
 
 #[derive(Clone, Default, Debug, Serialize)]
@@ -61,6 +64,20 @@ pub struct SimulationStats {
     pub penetrating_pairs: usize,
     pub elapsed: f64,
     pub max_displacement: f64,
+}
+
+#[derive(Clone, Debug, Serialize)]
+pub struct PieceMotion {
+    pub id: u32,
+    pub part: String,
+    #[serde(with = "crate::coordinates::vec3")]
+    pub initial_position_world: DVec3,
+    #[serde(with = "crate::coordinates::vec3")]
+    pub position_world: DVec3,
+    #[serde(with = "crate::coordinates::vec3")]
+    pub displacement_world: DVec3,
+    pub displacement_m: f64,
+    pub rotation_radians: f64,
 }
 
 pub fn inferred_joints(bricks: &[Brick]) -> Vec<JointSpec> {
@@ -178,8 +195,13 @@ impl Simulation {
             joint_handles: Vec::new(),
             ground_bodies: Vec::new(),
             earthquake: None,
+            body_bounds: BTreeMap::new(),
+            render_bounds: BTreeMap::new(),
+            horizontal_acceleration_m_s2: DVec3::ZERO,
         };
-        let mut floors = HashSet::new();
+        // Collider insertion order affects the iterative solver. Seeded probes
+        // must not inherit a process-random HashSet iteration order.
+        let mut floors = BTreeSet::new();
         for brick in bricks {
             let _mesh = meshes
                 .get(&brick.part)
@@ -196,13 +218,31 @@ impl Simulation {
                     .linear_damping(0.15)
                     .angular_damping(0.25),
             );
-            // Use the analytic cuboid shape, not GJK on an eight-point hull.
-            // Exact face-touching boxes then have a valid contact normal at
-            // initialization, which is essential for one-step gravity probes.
-            let half = to_meters(brick.bounds.size() * 0.5);
-            let offset = to_meters(brick.bounds.center() - brick.position);
+            let local = _mesh
+                .physical
+                .as_ref()
+                .map(|record| record.body_bounds)
+                .or_else(|| {
+                    crate::geometry::part_spec(&brick.part)
+                        .map(|_| crate::geometry::fallback_mesh(&brick.part).body_bounds)
+                })
+                .unwrap_or(_mesh.body_bounds);
+            s.body_bounds.insert(brick.part.clone(), local);
+            s.render_bounds.insert(brick.part.clone(), _mesh.bounds);
+            let half = to_meters(local.size() * 0.5);
+            let offset = to_meters(brick.transform * local.center());
+            let mut rotation = crate::physical::metric_transform(brick.transform);
+            // Reflecting a centred cuboid does not change its volume. Keep the
+            // reflected centre above, and use a proper quaternion for its axes.
+            if rotation.determinant() < 0. {
+                rotation.x_axis = -rotation.x_axis;
+            }
+            let rotation = na::UnitQuaternion::from_matrix(&na::Matrix3::from_column_slice(
+                &rotation.to_cols_array(),
+            ));
             let collider = ColliderBuilder::cuboid(half.x, half.y, half.z)
                 .translation(vector(offset))
+                .rotation(rotation.scaled_axis())
                 .mass(
                     _mesh
                         .physical
@@ -458,13 +498,13 @@ impl Simulation {
             body.apply_impulse(acceleration * body.mass() * TIMESTEP, true);
         }
         let gravity = Vector::new(
-            0.0,
+            self.horizontal_acceleration_m_s2.x,
             if self.gravity {
                 -crate::physical::GRAVITY_M_S2
             } else {
                 0.0
             },
-            0.0,
+            self.horizontal_acceleration_m_s2.z,
         );
         self.pipeline.step(
             &gravity,
@@ -482,9 +522,10 @@ impl Simulation {
             &(),
         );
         let broken: Vec<_> = self
-            .breakable
+            .joint_handles
             .iter()
-            .filter_map(|(&handle, &(force, torque))| {
+            .filter_map(|&handle| {
+                let &(force, torque) = self.breakable.get(&handle)?;
                 self.joints
                     .get(handle)
                     .filter(|joint| {
@@ -504,6 +545,32 @@ impl Simulation {
         self.elapsed += TIMESTEP;
     }
 
+    pub fn set_horizontal_acceleration(&mut self, acceleration: DVec3) -> Result<()> {
+        ensure!(
+            acceleration.is_finite()
+                && acceleration.y.abs() < 1e-12
+                && acceleration.length() <= 2. * crate::physical::GRAVITY_M_S2,
+            "Invalid horizontal acceleration"
+        );
+        self.horizontal_acceleration_m_s2 = acceleration;
+        Ok(())
+    }
+    pub fn piece_motions(&self) -> impl Iterator<Item = PieceMotion> + '_ {
+        self.originals.iter().map(|original| {
+            let body = &self.bodies[self.handles[&original.id]];
+            let position = to_world(dvec(body.translation()));
+            let displacement = position - original.position;
+            PieceMotion {
+                id: original.id,
+                part: original.part.clone(),
+                initial_position_world: original.position,
+                position_world: position,
+                displacement_world: displacement,
+                displacement_m: to_meters(displacement).length(),
+                rotation_radians: body.rotation().angle(),
+            }
+        })
+    }
     pub fn bricks(&self) -> Vec<Brick> {
         self.originals
             .iter()
@@ -517,9 +584,9 @@ impl Simulation {
                 let mut brick = original.clone();
                 brick.transform = delta * original.transform;
                 brick.position = position;
-                let offset = position - delta * original.position;
-                brick.bounds = original.bounds.transformed(delta, offset);
-                brick.render_bounds = original.render_bounds.transformed(delta, offset);
+                brick.bounds = self.body_bounds[&brick.part].transformed(brick.transform, position);
+                brick.render_bounds =
+                    self.render_bounds[&brick.part].transformed(brick.transform, position);
                 brick
             })
             .collect()

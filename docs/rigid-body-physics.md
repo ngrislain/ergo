@@ -10,10 +10,11 @@ approximation manageable. Other geometry can be imported, but
 publication requires operator-owned mass/nominal-bound records and applicable
 connector measurements; a more detailed visual mesh does not make its box exact.
 
-Initial world-axis body AABBs become analytic cuboid colliders. During simulation they
-rotate with their bodies. Thus imported rotations may have conservative initial
-boxes, and false collisions are possible. This is an intentional approximation,
-not exact mesh collision.
+Dynamic colliders use nominal local body dimensions, transformed centres and the
+actual metric-space orientation. They rotate with their bodies; a tilted plate
+is not replaced by its larger world-axis bounding box. The box still approximates
+hollow or bevelled geometry and is not exact mesh collision. Static support
+certificates currently require axis-aligned nominal body faces.
 
 Public coordinates are X east, Y north, Z up; gravity points along $-Z$.
 Horizontal cells have $1024\times1024$ baseplates below the global Z=0 floor.
@@ -76,6 +77,11 @@ The solver uses SI dimensions, sourced per-part catalog masses, and gravity
 9.80665 m/s². Inertia remains a box approximation. Friction is currently assumed;
 connector capacities require operator-supplied measurements. These values are
 not inferred from the visual mesh; see [physical calibration](physical-calibration.md).
+The iterative solver can introduce significant error in tall unbonded stacks.
+A failed dynamic run needs numerical-convergence checks before attributing its
+motion to a real construction defect; changing a solver setting is not connector
+calibration. Ground colliders and broken-joint removals use deterministic order
+so a seeded probe does not inherit process-random hash iteration order.
 
 ## Why a sparse Hamiltonian model is not required
 
@@ -209,6 +215,18 @@ connector-calibration requirements.
 These are sufficient constructive certificates; an uncertified arrangement is
 rejected. Mere graph reachability to the floor is not sufficient.
 
+Static admission currently requires axis-aligned body faces (including rigid
+quarter-turns). A tilted body's world AABB cannot establish a real contact patch,
+so tilted poses are rejected by this certificate until an oriented-contact proof
+is implemented. Viewing and dynamic probing retain rigid tilted poses. Dynamic
+cuboids use nominal local dimensions and actual metric orientation, never the
+world AABB as a replacement shape.
+
+Catalogue stud volumes are also checked against neighbouring solid bodies.
+Penetration is permitted only at a registered underside cavity with a compatible
+orientation/lattice. A floor stud entering a sideways beam or stair support is
+rejected even when the two nominal body boxes only touch.
+
 ### Numerical tolerances and short client probes
 
 Defaults are $10^{-4}$ construction units for geometry, $10^{-4}$ radians for
@@ -239,7 +257,9 @@ This is a timestep/solver-dependent impulse-derived estimate, not a calibrated
 material stress. Force and torque thresholds are implemented.
 
 The force threshold is supplemented by an analogous torque threshold. Missing
-capacity data is disclosed in a local sandbox and blocks ordinary publication.
+capacity data is disclosed in a local sandbox and blocks publication when the
+static certificate needs joint strength. A zero-joint-wrench compression proof
+does not establish clutch strength or dynamic robustness.
 
 Destruction occurs in the transient sandbox. The result can be saved only after
 it has settled, is overlap-free, and passes the same server-side validation gate.
