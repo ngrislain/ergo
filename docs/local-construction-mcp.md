@@ -7,7 +7,7 @@ shared Sandbox. The bridge never grants itself acceptance or direct agent S3 acc
 ## Install and configure
 
 ```sh
-npm install --global --ignore-scripts 'https://github.com/ngrislain/ergo/releases/download/v0.5.4/ngrislain-ergo-mcp-0.5.4.tgz'
+npm install --global --ignore-scripts 'https://github.com/ngrislain/ergo/releases/download/v0.5.5/ngrislain-ergo-mcp-0.5.5.tgz'
 ergo-mcp --login --publish-url https://ergosandbox.com
 ```
 
@@ -31,7 +31,7 @@ opens the minimal client. Quit/restart the MCP client after configuration/token 
         "ERGO_PUBLISH_TOKEN_FILE":"/absolute/private/path/ergo-mcp-token"
       },
       "enabled":true,
-      "timeout":900000
+      "timeout":2100000
     }
   }
 }
@@ -83,6 +83,19 @@ highlight moving pieces red. Neither test changes/publishes the working copy.
 `calibrated_stability_verified` requires complete connector calibration as well
 as passing the stated model/tolerances; an idealized diagnostic pass is not a
 measured clutch-strength guarantee.
+
+The local example generator `scripts/build-world-models.py` records the small-shake
+result before `--publish` and withholds example publication unless gravity/shake
+survival and connector calibration pass. This additional recipe check does not
+replace the server's independent static gate or establish solver convergence.
+An explicit `--estimated-connectors` instead runs the disclosed ballpark model
+and requires `stable_under_declared_estimates` for that example workflow. It also
+runs without `--publish` for local preflight. It is not measured calibration and
+cannot bypass a server certificate that requires measured joint strength.
+
+For the MCP small-shake tool, `connection_model:"estimated"` returns the estimate
+profile, engagement-based thresholds and unsupported pairs. Results expose
+estimated connections separately; `calibrated_stability_verified` stays false.
 
 Positions are public east/north/up construction units, not GPS degrees or cell
 indices. New models can pass the saved `model_transform` to `place_submodel`.
@@ -142,8 +155,8 @@ base revision and pending state, not a credential. Bound caches reload server
 authority instead of interpreting stale local file formats.
 
 Each publication/read-back HTTP request has a 300-second deadline; a complete
-WASM/MCP job allows 720 seconds so local work and both remote phases can finish.
-Configure the host MCP execution timeout to at least 900,000 ms. A timeout is not
+WASM/MCP job allows 1,800 seconds for refined dynamics, local work and both remote phases.
+Configure the host MCP execution timeout to at least 2,100,000 ms. A timeout is not
 proof of rejection: reconcile the authoritative assembly/receipt before any new
 attempt. No publication request is automatically retried.
 
@@ -151,7 +164,8 @@ Native models are limited to 768KiB inline, imported text to128KiB. Local editin
 has no 5,000-piece cap; dynamics simulations remain limited to5,000 bodies.
 Shared operations normally budget5,000 identities/128MiB; god-mode authoring
 removes the identity-count cap. External dependencies prevent pretending a clipped local
-simulation is complete. Missing joint measurements never become guessed strength.
+simulation is complete. Explicit ballpark diagnostics never acquire measured
+calibration status or override the server's measurement requirements.
 
 Source: `crates/world/src/mcp.rs`, `crates/mcp/src/`, `crates/client/src/runtime.rs`
 and `web/mcp.html`. See [agent workflow](agent-shared-editing.md).

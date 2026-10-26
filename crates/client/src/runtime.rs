@@ -655,6 +655,20 @@ impl LocalClientRuntime {
             "test_small_earthquake_stability" => {
                 let (mut scene, mut issue) = self.prepared();
                 let contacts_only = args["connection_model"] == "contacts_only";
+                let estimated = args["connection_model"] == "estimated";
+                let estimate_model = if estimated {
+                    let report = ergo_world::estimates::apply_stud_estimates(
+                        &scene.bricks,
+                        &mut scene.joints,
+                    );
+                    issue = Some(format!(
+                        "Explicit ballpark connector estimates, not measured calibration; {} unsupported joint pairs",
+                        report.unsupported_piece_pairs.len()
+                    ));
+                    Some(report)
+                } else {
+                    None
+                };
                 if contacts_only {
                     scene.joints.clear();
                     issue=Some(match issue {
@@ -676,7 +690,8 @@ impl LocalClientRuntime {
                     ergo_world::solidity::LoadCase::Gravity(
                         ergo_world::physical::GravityProbeSettings {
                             steps: 120,
-                            ..Default::default()
+                            position_tolerance: settings.position_tolerance,
+                            rotation_tolerance_radians: settings.rotation_tolerance_radians,
                         },
                     ),
                 )?;
@@ -690,9 +705,14 @@ impl LocalClientRuntime {
                 let calibrated = issue.is_none()
                     && gravity.connector_capacities_complete
                     && shake.connector_capacities_complete;
-                let summary = json!({"settings":settings,"connection_model":if contacts_only{"contacts_only"}else{"measured"},"gravity":gravity,"shake":shake,"static_certificate_issue":certificate.err().map(|error|error.to_string()),"stable_under_declared_model":passed,
+                let estimated_complete = estimate_model
+                    .as_ref()
+                    .is_some_and(|e| e.unsupported_piece_pairs.is_empty())
+                    && gravity.omitted_inferred_connections == 0
+                    && gravity.unmeasured_connections == 0;
+                let summary = json!({"settings":settings,"connection_model":if estimated{"estimated"}else if contacts_only{"contacts_only"}else{"measured"},"estimate_model":estimate_model,"gravity":gravity,"shake":shake,"static_certificate_issue":certificate.err().map(|error|error.to_string()),"stable_under_declared_model":passed,"stable_under_declared_estimates":estimated&&estimated_complete&&passed,
                     "calibrated_stability_verified":passed&&calibrated,"calibration_issue":issue,"working_copy_changed":false,
-                    "execution":"local-wasm-client","next_action":if !calibrated{"Resolve missing measurements/omitted connections and check solver convergence before classifying a physical failure; inspect unstable_pieces for the diagnostic motion."}else if passed{"Inspect stated model and numerical limits before claiming stability."}else{"Inspect unstable_pieces IDs, parts and nearby_piece_ids; check solver convergence, repair confirmed defects and rerun the same seed."}});
+                    "execution":"local-wasm-client","next_action":if estimated{"Treat survival as conditional on the disclosed ballpark assumptions, not measured strength; inspect unsupported pairs and moving IDs, and check solver convergence."}else if !calibrated{"Resolve missing measurements/omitted connections and check solver convergence before classifying a physical failure; inspect unstable_pieces for the diagnostic motion."}else if passed{"Inspect stated model and numerical limits before claiming stability."}else{"Inspect unstable_pieces IDs, parts and nearby_piece_ids; check solver convergence, repair confirmed defects and rerun the same seed."}});
                 let mut content = vec![json!({"type":"text","text":summary.to_string()})];
                 if args["include_images"].as_bool().unwrap_or(false) {
                     let moving: HashSet<_> = shake

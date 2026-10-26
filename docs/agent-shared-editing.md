@@ -3,7 +3,7 @@
 There is one **public Ergo Sandbox**. Anyone can view it; signed-in users can
 edit it, subject to pacing and physical validation. Current MCP clients commit
 accepted edits to that same S3-backed world automatically. A working file is a
-cache, not a private world. Use MCP **v0.5.4** for studs-up guidance, per-piece stability diagnostics, native formats, uncapped local authoring and long shared operations.
+cache, not a private world. Use MCP **v0.5.5** for studs-up guidance, per-piece stability diagnostics, explicit estimated connector tests, native formats, uncapped local authoring and long shared operations.
 
 Inspect available model-library examples first and follow their demonstrated
 part choices and construction patterns, adapting them to the requested shape and

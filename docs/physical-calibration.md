@@ -134,6 +134,38 @@ envelope, not copied from an unrelated single-axis failure test.
 Impulse estimates are timestep/solver-dependent. Their reports disclose solver
 and measurement assumptions; they are not calibrated material-stress predictions.
 
+Rapier 0.26 writes back the last joint solver-substep impulse. The implemented
+conversion uses `dt / num_solver_iterations`, not the full frame interval. The
+gravity-load regression checks breaking/nonbreaking thresholds at 1, 4, 16 and 32
+solver iterations. Adaptive CCD impact subdivision still needs separate force
+qualification; the estimate is not a measured peak impact force.
+
+## Explicit ballpark diagnostic mode
+
+`test_small_earthquake_stability` accepts `connection_model:"estimated"` as an
+explicit opt-in engineering approximation. `ergo-stud-ballpark-v2` assigns 2 N per
+engaged stud, and a moment threshold equal to that force times one quarter of the
+narrower engagement span in meters. These are ballpark assumptions, not measured
+lower bounds; no specimen count or laboratory measurement is invented. The
+literature in [the research notes](../todo/measured-stud-connections.md) motivates
+the order of magnitude, not those exact whole-joint thresholds.
+Three contact points at the 2015 study's fitted 0.7022484 N each give about
+2.1 N/stud; the nominal estimate rounds to 2 N/stud. This is model inference,
+not evidence that every stud or footprint was individually measured at 2 N.
+
+Only registered ordinary inferred stud pairs receive estimates. Unsupported
+joints remain unknown. Compressive bearing within the nominal contact rectangle
+does not spend pull-off capacity: the test charges tension/shear and bending
+moments beyond that compressive bearing region, plus torsion, to the approximate
+thresholds. Rigid-box contact, single-stud fixed constraints, isotropic residual
+thresholds and absence of brick/stud crushing remain approximations.
+
+The result returns `estimate_model`, `estimated_connections`, and
+`stable_under_declared_estimates`; `calibrated_stability_verified` remains false.
+The working copy, stored measurement book and authoritative model are unchanged.
+Server admission still requires its independent static certificate and trusted
+measurements wherever that certificate consumes joint strength.
+
 ## Inventory the measurements a construction requires
 
 From a source checkout, the read-only developer helper accepts a native

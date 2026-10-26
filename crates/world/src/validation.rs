@@ -54,10 +54,23 @@ pub struct ValidationReport {
     /// joint strength; the method distinguishes contact-only and anchored proofs.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub joint_strength_required: Option<bool>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub compression_issue: Option<CompressionIssue>,
     #[serde(default)]
     pub physical_calibration: String,
     #[serde(default)]
     pub tolerances: StaticTolerances,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct CompressionIssue {
+    pub brick_id: u32,
+    pub part: String,
+    pub reason: String,
+    /// Accumulated-load horizontal centre projected onto this brick's bearing plane.
+    #[serde(with = "crate::coordinates::vec3")]
+    pub loaded_center_world: DVec3,
+    pub support_polygon_world: Vec<[f64; 3]>,
 }
 
 pub fn validate_ground_anchors(bricks: &[Brick], fixed: &[u32]) -> Result<()> {
@@ -161,8 +174,12 @@ pub fn validate_static_with_measurements(
     scene.joints.extend(inferred);
     // A constructive contact-only proof is also valid when studs/joints exist:
     // all joint wrenches can be zero. It assumes no unknown clutch capacity.
-    let contact_only = scene.fixed_bricks.is_empty()
-        && compression_certificate(&scene.bricks, tolerances, measurements)?;
+    let compression_issue = if scene.fixed_bricks.is_empty() {
+        compression_issue(&scene.bricks, tolerances, measurements)?
+    } else {
+        None
+    };
+    let contact_only = scene.fixed_bricks.is_empty() && compression_issue.is_none();
     let report = ValidationReport {
         collision_model: "nominal body bounding boxes; visual studs excluded".into(),
         method: if contact_only {
@@ -175,6 +192,7 @@ pub fn validate_static_with_measurements(
         checked_bricks: scene.bricks.len(),
         max_displacement: 0.0,
         joint_strength_required: Some(!contact_only && !scene.joints.is_empty()),
+        compression_issue,
         physical_calibration:
             "Metric dimensions and catalog masses; check connector calibration separately".into(),
         tolerances,
@@ -478,7 +496,19 @@ fn compression_certificate(
     tol: StaticTolerances,
     measurements: &crate::physical::ConnectionMeasurements,
 ) -> Result<bool> {
+    Ok(compression_issue(bricks, tol, measurements)?.is_none())
+}
+
+pub fn compression_issue(
+    bricks: &[Brick],
+    tol: StaticTolerances,
+    measurements: &crate::physical::ConnectionMeasurements,
+) -> Result<Option<CompressionIssue>> {
     use crate::physical::{GRAVITY_M_S2, to_meters};
+    ensure!(
+        !bricks.is_empty(),
+        "Compression analysis needs at least one brick"
+    );
     let origin = bricks[0].bounds.center();
     let tree = Octree::new(bricks.iter().map(|b| b.bounds).collect());
     let mut loads = Vec::with_capacity(bricks.len());
@@ -529,8 +559,31 @@ fn compression_certificate(
             }
         }
         let hull = convex_hull(supports.iter().map(|(point, _)| *point).collect());
+        let issue = |reason: &str| CompressionIssue {
+            brick_id: brick.id,
+            part: brick.part.clone(),
+            reason: reason.into(),
+            loaded_center_world: DVec3::new(
+                origin.x + center.x / 0.008,
+                brick.bounds.min.y,
+                origin.z + center.y / 0.008,
+            ),
+            support_polygon_world: hull
+                .iter()
+                .map(|p| {
+                    crate::coordinates::public(DVec3::new(
+                        origin.x + p.x / 0.008,
+                        brick.bounds.min.y,
+                        origin.z + p.y / 0.008,
+                    ))
+                    .to_array()
+                })
+                .collect(),
+        };
         if hull.len() < 3 {
-            return Ok(false);
+            return Ok(Some(issue(
+                "No two-dimensional bearing patch under the loaded brick",
+            )));
         }
         let mut reactions = None;
         for k in 1..hull.len() - 1 {
@@ -573,7 +626,9 @@ fn compression_certificate(
             break;
         }
         let Some(reactions) = reactions else {
-            return Ok(false);
+            return Ok(Some(issue(
+                "No admissible compressive reactions balance the accumulated load",
+            )));
         };
         for (point, weight, lower) in reactions {
             if let Some(j) = lower {
@@ -582,7 +637,7 @@ fn compression_certificate(
             }
         }
     }
-    Ok(true)
+    Ok(None)
 }
 
 fn convex_hull(mut points: Vec<DVec2>) -> Vec<DVec2> {

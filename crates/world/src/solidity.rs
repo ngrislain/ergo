@@ -214,12 +214,17 @@ pub struct SolidityReport {
     pub peak_displacement_m: f64,
     pub final_rotation_max_degrees: f64,
     pub broken_connections: usize,
+    pub connection_breaks: Vec<crate::physics::ConnectionBreak>,
     pub residual_linear_speed_m_s: f64,
     pub residual_angular_speed_rad_s: f64,
+    pub settling_window_s: f64,
+    pub settling_linear_rate_m_s: f64,
+    pub settling_angular_rate_rad_s: f64,
     pub survived_declared_case: bool,
     pub connector_capacities_complete: bool,
     pub omitted_inferred_connections: usize,
     pub unmeasured_connections: usize,
+    pub estimated_connections: usize,
     pub shake_acceleration_bound_m_s2: Option<f64>,
     pub dropped_potential_energy_j: Option<f64>,
     pub limitations: Vec<String>,
@@ -309,7 +314,12 @@ pub fn test(
     };
     let mut motion_peaks = vec![(0.0_f64, 0.0_f64, 0.0_f64); scene.bricks.len()];
     let mut first_motion = vec![None; scene.bricks.len()];
+    let settling_steps = ((0.25 / TIMESTEP).round() as usize).max(1).min(step_count);
+    let mut settling_reference = None;
     for step in 0..step_count {
+        if step == step_count - settling_steps {
+            settling_reference = Some(simulation.bricks());
+        }
         if let LoadCase::SmallEarthquake(case) = &case {
             simulation.set_horizontal_acceleration(case.acceleration(step as f64 * TIMESTEP))?;
         }
@@ -354,8 +364,25 @@ pub fn test(
                     .is_some_and(|s| !s.trim().is_empty())
         })
         .count();
-    let calibrated = omitted_inferred_connections == 0 && unmeasured_connections == 0;
+    let estimated_connections = scene
+        .joints
+        .iter()
+        .filter(|j| {
+            j.strength_source
+                .as_ref()
+                .is_some_and(|s| s.starts_with("estimate:"))
+        })
+        .count();
+    let calibrated = omitted_inferred_connections == 0
+        && unmeasured_connections == 0
+        && estimated_connections == 0;
     let final_bricks = simulation.bricks();
+    let settling_window_s = settling_steps as f64 * TIMESTEP;
+    let (settling_linear_rate_m_s, settling_angular_rate_rad_s) = settling_rates(
+        &settling_reference.unwrap(),
+        &final_bricks,
+        settling_window_s,
+    );
     let rotation = scene
         .bricks
         .iter()
@@ -396,18 +423,27 @@ pub fn test(
             .total_cmp(&b.first_moved_at_s)
             .then(a.motion.id.cmp(&b.motion.id))
     });
+    // Instantaneous solver velocities contain micro-jitter even when every pose
+    // stays bounded. The small-shake settling criterion uses a disclosed final
+    // quarter-second net rate; transient peak pose limits still apply throughout.
+    let settling_speed = if matches!(case, LoadCase::SmallEarthquake(_)) {
+        (settling_linear_rate_m_s / crate::physical::STUD_PITCH_M).max(settling_angular_rate_rad_s)
+    } else {
+        speed
+    };
     let survived = broken == 0
         && stats.max_displacement <= drift_limit
         && rotation <= rotation_limit
         && stats.penetrating_pairs == 0
         && unstable_pieces.is_empty()
-        && (matches!(case, LoadCase::Gravity(_)) || speed < 0.03);
+        && (matches!(case, LoadCase::Gravity(_)) || settling_speed < 0.03);
     let report=SolidityReport {
         case,statistics:stats,peak_displacement_m:peak,final_rotation_max_degrees:rotation,unstable_pieces,
-        broken_connections:broken,residual_linear_speed_m_s:simulation.max_linear_speed_m_s(),
+        broken_connections:broken,connection_breaks:simulation.break_events().to_vec(),residual_linear_speed_m_s:simulation.max_linear_speed_m_s(),
         residual_angular_speed_rad_s:simulation.max_angular_speed_rad_s(),
+        settling_window_s,settling_linear_rate_m_s,settling_angular_rate_rad_s,
         survived_declared_case:survived,connector_capacities_complete:calibrated,
-        omitted_inferred_connections,unmeasured_connections,
+        omitted_inferred_connections,unmeasured_connections,estimated_connections,
         shake_acceleration_bound_m_s2:accel,dropped_potential_energy_j:energy,
         limitations:vec![
             "A bounded load-case test is not proof against arbitrary earthquakes or impacts.".into(),
@@ -415,11 +451,30 @@ pub fn test(
             "Iterative contact-solver error can destabilize tall loose stacks; check numerical convergence before attributing failure to the construction.".into(),
             if omitted_inferred_connections > 0 {"Inferred stud connections were omitted: this is an unbonded contact diagnostic, not a test of the assembled stud-clutch model."}
             else {"All geometrically inferred stud pairs are represented; see unmeasured_connections for missing capacities."}.into(),
-            if calibrated {"Capacity thresholds are impulse-derived; validate their timestep dependence against experiments."}
+            if estimated_connections > 0 {"Connector thresholds include explicit ballpark estimates, not measured capacities; survival is conditional on those assumptions."}
+            else if calibrated {"Capacity thresholds are impulse-derived; validate their timestep dependence against experiments."}
             else {"Connector capacities are missing: idealized-joint results are diagnostic, not calibrated strength certification."}.into(),
         ],
     };
     Ok((final_bricks, simulation.current_joints(), report))
+}
+
+fn settling_rates(before: &[Brick], after: &[Brick], duration: f64) -> (f64, f64) {
+    before
+        .iter()
+        .zip(after)
+        .map(|(a, b)| {
+            let translation =
+                crate::physical::to_meters(b.position - a.position).length() / duration;
+            let rotation = crate::physical::metric_transform(b.transform * a.transform.inverse());
+            let angle = (((rotation.x_axis.x + rotation.y_axis.y + rotation.z_axis.z - 1.) * 0.5)
+                .clamp(-1., 1.))
+            .acos();
+            (translation, angle / duration)
+        })
+        .fold((0f64, 0f64), |(v, w), (next_v, next_w)| {
+            (v.max(next_v), w.max(next_w))
+        })
 }
 
 #[cfg(test)]
@@ -440,6 +495,20 @@ mod tests {
             assert!(a.length() <= case.peak_acceleration_g * crate::physical::GRAVITY_M_S2 + 1e-12);
         }
         assert_eq!(case.acceleration(case.duration_s), DVec3::ZERO);
+    }
+    #[test]
+    fn settling_rates_detect_translation_and_changes_of_rotation_axis() {
+        let mut d = crate::demo::Demo::new();
+        d.add("3003", 19, 2., 0., 2.);
+        let mut before = d.bricks;
+        let mut after = before.clone();
+        after[0].position += DVec3::X;
+        let (linear, angular) = settling_rates(&before, &after, 0.25);
+        assert!((linear - 0.032).abs() < 1e-12);
+        assert_eq!(angular, 0.);
+        before[0].transform = crate::physical::world_transform(glam::DMat3::from_rotation_x(0.5));
+        after[0].transform = crate::physical::world_transform(glam::DMat3::from_rotation_y(0.5));
+        assert!(settling_rates(&before, &after, 0.25).1 > 1.);
     }
     #[test]
     fn omitted_stud_connections_are_not_vacuously_calibrated() {

@@ -98,10 +98,16 @@ The test reports:
 - Peak displacement in meters sampled at every physics step.
 - Final maximum displacement in construction units and orientation change in degrees.
 - Broken connection count, deep penetration count, and remaining motion.
+- `connection_breaks`: endpoint IDs, first failing step time, evaluated force and
+  torque demands, thresholds and strength provenance, for targeted repairs.
 - Whether all supplied joints have force/torque thresholds and source information,
   and whether geometrically inferred stud pairs were omitted.
 - The shake acceleration bound or nominal dropped-object potential energy.
 - Model limitations and the exact load-case parameters.
+- `statistics.numerical`: timestep, solver substeps/PGS iterations, numerical
+  contact regularization and permitted linear solver error, for reproducibility.
+- `settling_window_s` and net linear/angular pose rates over the last quarter
+  second, alongside the unfiltered instantaneous residual speeds.
 
 For the displacement-waveform and impact cases, “survived the declared case” means
 no broken connections, peak position drift under 0.1 construction units, peak
@@ -112,7 +118,9 @@ building-code standard. Peak transient movement counts even if a piece returns.
 
 `omitted_inferred_connections` counts stud pairs absent from the supplied scene;
 `unmeasured_connections` counts supplied joints missing a positive force/torque
-limit or source. Either makes `connector_capacities_complete:false`. In
+limit or source; `estimated_connections` separately identifies explicitly assumed
+thresholds. Any omitted, unmeasured or estimated connection makes
+`connector_capacities_complete:false`. In
 particular, an empty exported joint array does not automatically mean complete
 calibration when the geometry contains mating studs. A contact-only failure is
 not proof that the corresponding stud-connected construction fails. Tall loose
@@ -228,6 +236,14 @@ contain overstressed or uncalibrated connections.
 
 ## Small seeded random earthquake
 
+The settling criterion for this case uses the net pose rate over the last 0.25 s
+(under 0.03 horizontal stud units/s and 0.03 rad/s), rather than unfiltered
+instantaneous solver velocities. This avoids classifying bounded numerical
+micro-jitter as continued collapse. All transient pose peaks still must stay
+within the declared tolerances, so averaging does not excuse a larger excursion.
+Instantaneous speeds remain in the report for inspection. Other load cases retain
+their existing residual-speed criterion.
+
 `test_small_earthquake_stability` adds a bounded two-dimensional horizontal
 acceleration vector to gravity in the fixed-floor reference frame. The default
 bound is 0.01 g; a deterministic SplitMix64-derived sequence chooses a direction
@@ -235,7 +251,10 @@ and disk-bounded magnitude every 0.1 s for three seconds, followed by two second
 of gravity-only settling. The seed, interval, bound, duration and pose tolerances
 are returned, so a failure can be replayed exactly.
 
-The run also includes a separate one-second gravity baseline. Each report lists
+The run also includes a separate one-second gravity baseline using the same
+declared position/rotation tolerances as the shake, so comparison does not
+silently apply different acceptance thresholds. The separate gravity-only tool
+retains its own explicit settings and defaults. Each report lists
 `unstable_pieces`: local piece ID, catalogue part, initial/current public position,
 motion vector, peak native/metric displacement, peak rotation, first-motion time
 and nearby piece IDs. Peaks are checked during the run, so a piece that moves and returns is still
@@ -249,3 +268,8 @@ diagnostics. `connection_model:"contacts_only"` removes joints explicitly and
 always discloses that clutch strength is not certified. Neither setting upgrades
 missing part provenance to a calibrated result. These tests are client
 diagnostics; authoritative publication still uses its independent static gate.
+
+`connection_model:"estimated"` is a separate explicit ballpark mode. It reports
+the exact `ergo-stud-ballpark-v2` force and torque assumptions and unsupported
+piece pairs, and never labels estimated survival as measured calibration. See
+[the approximation and compressive-bearing rule](physical-calibration.md#explicit-ballpark-diagnostic-mode).

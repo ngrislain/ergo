@@ -86,6 +86,10 @@ def main():
             assert contact['gravity']['omitted_inferred_connections']==1 and contact['calibrated_stability_verified'] is False,contact
             measured=call('test_small_earthquake_stability',duration_s=.1,include_images=False)['structuredContent']
             assert measured['gravity']['unmeasured_connections']==1 and measured['calibrated_stability_verified'] is False,measured
+            estimated=call('test_small_earthquake_stability',duration_s=.1,connection_model='estimated',include_images=False)['structuredContent']
+            assert estimated['estimate_model']['measured'] is False and estimated['gravity']['estimated_connections']==1,estimated
+            assert estimated['calibrated_stability_verified'] is False,estimated
+            assert estimated['stable_under_declared_estimates'] is True,estimated
             call('undo')
             result = call("test_stability_by_earthquake", peak_ground_acceleration_g=0.1,
                           frequency_hz=4, duration_s=0.5, include_images=False)

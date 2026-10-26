@@ -28,7 +28,7 @@ The prebuilt bundle includes native binaries and WASM assets; consumers need
 Node.js 20+ and Chrome/Chromium, not Rust.
 
 ```sh
-npm install --global --ignore-scripts 'https://github.com/ngrislain/ergo/releases/download/v0.5.4/ngrislain-ergo-mcp-0.5.4.tgz'
+npm install --global --ignore-scripts 'https://github.com/ngrislain/ergo/releases/download/v0.5.5/ngrislain-ergo-mcp-0.5.5.tgz'
 ergo-mcp --login --publish-url https://ergosandbox.com
 ```
 
@@ -75,7 +75,8 @@ The simulator uses sourced masses and SI gravity with box collision/inertia
 approximations. Loose blocks need a compressive static support certificate;
 certificates relying on physical joints need server-owned measured capacities.
 A contact-only gravity proof may instead use zero joint wrench, without assuming
-any clutch strength. Forces are not guessed.
+any clutch strength. Authoritative acceptance does not invent measured forces;
+explicit local ballpark diagnostics report their estimated assumptions separately.
 Dynamic simulations are bounded to 5,000 pieces; the world has no aggregate
 piece-count limit. God-mode accounts have no authoring brick-count cap; physical
 acceptance and byte/request budgets still apply.

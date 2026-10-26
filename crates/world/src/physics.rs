@@ -46,6 +46,8 @@ pub struct Simulation {
     pub gravity: bool,
     pub inferred_count: usize,
     breakable: HashMap<ImpulseJointHandle, (Option<f64>, Option<f64>)>,
+    estimated_bearings: HashMap<ImpulseJointHandle, crate::estimates::StudBearing>,
+    break_events: Vec<ConnectionBreak>,
     joint_handles: Vec<ImpulseJointHandle>,
     ground_bodies: Vec<(RigidBodyHandle, DVec3)>,
     earthquake: Option<crate::solidity::Earthquake>,
@@ -64,6 +66,17 @@ pub struct SimulationStats {
     pub penetrating_pairs: usize,
     pub elapsed: f64,
     pub max_displacement: f64,
+    pub numerical: NumericalSettings,
+}
+
+#[derive(Clone, Default, Debug, Serialize)]
+pub struct NumericalSettings {
+    pub timestep_s: f64,
+    pub solver_substeps: usize,
+    pub internal_pgs_iterations: usize,
+    pub contact_natural_frequency_hz: f64,
+    pub contact_damping_ratio: f64,
+    pub allowed_linear_error_m: f64,
 }
 
 #[derive(Clone, Debug, Serialize)]
@@ -78,6 +91,18 @@ pub struct PieceMotion {
     pub displacement_world: DVec3,
     pub displacement_m: f64,
     pub rotation_radians: f64,
+}
+
+#[derive(Clone, Debug, Serialize)]
+pub struct ConnectionBreak {
+    pub a: u32,
+    pub b: u32,
+    pub at_s: f64,
+    pub force_demand_n: f64,
+    pub torque_demand_nm: f64,
+    pub force_limit_n: Option<f64>,
+    pub torque_limit_nm: Option<f64>,
+    pub strength_source: Option<String>,
 }
 
 pub fn inferred_joints(bricks: &[Brick]) -> Vec<JointSpec> {
@@ -176,10 +201,10 @@ impl Simulation {
                 dt: TIMESTEP,
                 length_unit: 0.008,
                 normalized_allowed_linear_error: 1e-5,
-                contact_natural_frequency: 300.0,
+                contact_natural_frequency: 1200.0,
                 contact_damping_ratio: 1.0,
-                num_solver_iterations: 16.try_into().unwrap(),
-                num_internal_pgs_iterations: 2,
+                num_solver_iterations: 32.try_into().unwrap(),
+                num_internal_pgs_iterations: 16,
                 max_ccd_substeps: 4,
                 ..Default::default()
             },
@@ -192,6 +217,8 @@ impl Simulation {
             gravity: true,
             inferred_count: 0,
             breakable: HashMap::new(),
+            estimated_bearings: HashMap::new(),
+            break_events: Vec::new(),
             joint_handles: Vec::new(),
             ground_bodies: Vec::new(),
             earthquake: None,
@@ -349,6 +376,18 @@ impl Simulation {
         if spec.break_force.is_some() || spec.break_torque.is_some() {
             self.breakable
                 .insert(handle, (spec.break_force, spec.break_torque));
+            if spec
+                .strength_source
+                .as_ref()
+                .is_some_and(|s| s == crate::estimates::SOURCE_PREFIX)
+            {
+                let a = self.originals.iter().find(|b| b.id == spec.a).unwrap();
+                let b = self.originals.iter().find(|b| b.id == spec.b).unwrap();
+                self.estimated_bearings.insert(
+                    handle,
+                    crate::estimates::StudBearing::new(a, b, spec.anchor),
+                );
+            }
         }
         self.joint_handles.push(handle);
         Ok(())
@@ -450,6 +489,9 @@ impl Simulation {
     pub fn broken_count(&self) -> usize {
         self.joint_specs.len() - self.joints.len()
     }
+    pub fn break_events(&self) -> &[ConnectionBreak] {
+        &self.break_events
+    }
 
     pub fn current_joints(&self) -> Vec<JointSpec> {
         self.joint_specs
@@ -521,26 +563,56 @@ impl Simulation {
             &(),
             &(),
         );
+        // Rapier 0.26 rebuilds joint constraints at each solver substep and
+        // writes back the last substep's impulse, not their full-frame sum.
+        // Bodies here have no per-body additional solver iterations.
+        let joint_impulse_dt =
+            self.parameters.dt / self.parameters.num_solver_iterations.get() as f64;
         let broken: Vec<_> = self
             .joint_handles
             .iter()
-            .filter_map(|&handle| {
+            .enumerate()
+            .filter_map(|(index, &handle)| {
                 let &(force, torque) = self.breakable.get(&handle)?;
-                self.joints
-                    .get(handle)
-                    .filter(|joint| {
-                        force.is_some_and(|limit| {
-                            joint.impulses.fixed_rows::<3>(0).norm() / TIMESTEP > limit
-                        }) || torque.is_some_and(|limit| {
-                            joint.impulses.fixed_rows::<3>(3).norm() / TIMESTEP > limit
-                        })
+                self.joints.get(handle).and_then(|joint| {
+                    let linear =
+                        DVec3::new(joint.impulses[0], joint.impulses[1], joint.impulses[2])
+                            / joint_impulse_dt;
+                    let angular =
+                        DVec3::new(joint.impulses[3], joint.impulses[4], joint.impulses[5])
+                            / joint_impulse_dt;
+                    let (linear, angular) = self
+                        .estimated_bearings
+                        .get(&handle)
+                        .map_or((linear.length(), angular.length()), |bearing| {
+                            bearing.demands(linear, angular)
+                        });
+                    (force.is_some_and(|limit| linear > limit)
+                        || torque.is_some_and(|limit| angular > limit))
+                    .then(|| {
+                        let spec = &self.joint_specs[index];
+                        (
+                            handle,
+                            ConnectionBreak {
+                                a: spec.a,
+                                b: spec.b,
+                                at_s: self.elapsed + TIMESTEP,
+                                force_demand_n: linear,
+                                torque_demand_nm: angular,
+                                force_limit_n: force,
+                                torque_limit_nm: torque,
+                                strength_source: spec.strength_source.clone(),
+                            },
+                        )
                     })
-                    .map(|_| handle)
+                })
             })
             .collect();
-        for handle in broken {
+        for (handle, event) in broken {
+            self.break_events.push(event);
             self.joints.remove(handle, true);
             self.breakable.remove(&handle);
+            self.estimated_bearings.remove(&handle);
         }
         self.elapsed += TIMESTEP;
     }
@@ -598,6 +670,14 @@ impl Simulation {
             joints: self.joint_specs.len(),
             inferred_joints: self.inferred_count,
             elapsed: self.elapsed,
+            numerical: NumericalSettings {
+                timestep_s: self.parameters.dt,
+                solver_substeps: self.parameters.num_solver_iterations.get(),
+                internal_pgs_iterations: self.parameters.num_internal_pgs_iterations,
+                contact_natural_frequency_hz: self.parameters.contact_natural_frequency,
+                contact_damping_ratio: self.parameters.contact_damping_ratio,
+                allowed_linear_error_m: self.parameters.allowed_linear_error(),
+            },
             ..Default::default()
         };
         for original in &self.originals {
@@ -748,6 +828,35 @@ mod tests {
         }
         assert_eq!(sim.broken_count(), 1);
         assert!(sim.current_joints().is_empty());
+    }
+
+    #[test]
+    fn joint_force_threshold_uses_si_load_at_each_solver_iteration_count() {
+        for (iterations, capacity_factor) in [1, 4, 16, 32]
+            .into_iter()
+            .flat_map(|n| [0.5, 2.].map(|factor| (n, factor)))
+        {
+            let mut d = Demo::new();
+            let a = d.add("3003", 19, 2., 0., 2.);
+            d.add("3003", 19, 2., 1., 2.);
+            let mut joints = inferred_joints(&d.bricks);
+            let weight =
+                crate::physical::mass_kg("3003.dat").unwrap() * crate::physical::GRAVITY_M_S2;
+            joints[0].break_force = Some(weight * capacity_factor);
+            joints[0].strength_source =
+                Some("synthetic units regression, not connector calibration".into());
+            let mut simulation =
+                Simulation::new(&d.bricks, &d.meshes, &joints, &[a], false).unwrap();
+            simulation.parameters.num_solver_iterations = iterations.try_into().unwrap();
+            for _ in 0..4 {
+                simulation.step();
+            }
+            assert_eq!(
+                simulation.broken_count(),
+                usize::from(capacity_factor < 1.),
+                "solver iterations={iterations}, capacity_factor={capacity_factor}"
+            );
+        }
     }
 
     #[test]

@@ -1,8 +1,11 @@
 # Measured stud-connection pathway
 
-The selected direction is measured stud connections, not an unbonded contact-only
-replacement palace. This file records research and unfinished work; it does not
-change the deployed physical model or install new connector capacities.
+The initial selected direction was measured stud connections. After reviewing
+the missing pairwise data, the operator requested ballpark estimates instead.
+The explicit local [estimated diagnostic mode](../docs/physical-calibration.md#explicit-ballpark-diagnostic-mode)
+implements those disclosed engineering assumptions; it does not supply measured
+calibration or alter the authoritative world's frozen measurement book. This file
+records literature and remaining work toward genuinely measured connections.
 
 ## Verified literature
 

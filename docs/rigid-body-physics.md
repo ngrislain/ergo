@@ -211,6 +211,10 @@ Reports mark this with `joint_strength_required:false`; no unmeasured clutch
 capacity is used. When a certificate needs bond forces/torques instead, the server
 still requires and checks its measurement book. Dynamic probes retain their
 connector-calibration requirements.
+When the constructive compression path fails, `compression_issue` identifies the
+piece, its accumulated-load projection and bearing polygon. This explains the
+failed sufficient certificate; it does not prove every possible load allocation
+or calibrated joint model would fail.
 
 These are sufficient constructive certificates; an uncertified arrangement is
 rejected. Mere graph reachability to the floor is not sufficient.
@@ -255,6 +259,9 @@ $$
 
 This is a timestep/solver-dependent impulse-derived estimate, not a calibrated
 material stress. Force and torque thresholds are implemented.
+For Rapier 0.26 joint impulses, $\Delta t$ is the solver substep interval
+`dt / num_solver_iterations`; dividing by the full frame would understate a
+steady joint load. CCD impact subdivision remains a separate qualification limit.
 
 The force threshold is supplemented by an analogous torque threshold. Missing
 capacity data is disclosed in a local sandbox and blocks publication when the
