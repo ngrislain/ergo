@@ -3,7 +3,7 @@
 There is one **public Ergo Sandbox**. Anyone can view it; signed-in users can
 edit it, subject to pacing and physical validation. Current MCP clients commit
 accepted edits to that same S3-backed world automatically. A working file is a
-cache, not a private world. Use MCP **v0.5.6** for sourced building techniques,
+cache, not a private world. Use MCP **v0.5.7** for sourced building techniques,
 coherent grid snapping, proper-isometry checks, per-piece stability diagnostics,
 explicit estimated connector tests and long shared operations.
 
@@ -161,6 +161,11 @@ usernames or a personal cryptographic signature.
   Assemblies with external mechanical dependencies
   do not claim a complete isolated client simulation; server validation still
   follows the full affected dependency closure.
+
+Interdependent multi-assembly rebuilds can use the authenticated atomic REST
+batch-replacement route described in the [shared protocol](concurrent-global-editing.md#rest-workflow).
+It preserves assembly identities and validates one final state; the MCP tools
+continue to target one opened assembly at a time.
 
 Use `test_visual_appearance`/`view_construction` with `lighting: "studio"` for
 time-independent inspection. Gravity and earthquake tests are non-mutating

@@ -6,8 +6,8 @@
 requests, explicit region grants, stable content-derived identities, spatial
 paging, immutable audit records, and server-owned static validation. Coordination
 is **optimistic**, without region leases. Private `/api/worlds` snapshots and the
-local MCP working copy are separate workflows. The browser UI and MCP tools do
-not yet expose shared-world authoring controls.
+local MCP working copy are separate workflows. The browser and MCP edit the
+configured common world; their working copies are caches of accepted state.
 
 **There is no aggregate world-size, piece-count, or block-reference limit.** A
 world may grow to the capacity of its object store. No head contains a flat list
@@ -144,19 +144,22 @@ whole-world revalidation. A new world can use a new configured model.
 
 ## REST workflow
 
-All routes below require a signed-in identity; writes also require the same-origin
-request header. Public coordinates remain X east, Y north, Z up.
+The common world permits public browsing; authoring workspaces require a signed-in
+identity. Writes require that identity and the same-origin request header.
+Public coordinates remain X east, Y north, Z up.
 
 MCP/API clients can use a short-lived user delegation issued by `/api/auth/mcp-token`
 for shared-world reads, creation, assembly imports, and geometry commits. It cannot
 change grants, retention, or account plans. `publish_construction` uses the routes below and
 confirms the accepted revision/assembly by read-back; it never accesses S3
-directly. See [MCP setup and outcome handling](local-construction-mcp.md#remote-publication-setup).
+directly. See [MCP setup and outcome handling](local-construction-mcp.md#publication-and-recovery).
 
-- `POST /api/shared-worlds`: `{name, geo}` creates an empty world and returns its
+- `POST /api/shared-worlds`: disabled when the common world is configured. In the
+  general-purpose library/development workflow, `{name, geo}` creates a world and returns its
   UUID, revision, policy, and small metadata. It does not require seed geometry.
   Add `authenticated_editing: true` to allow all signed-in users to edit it;
-  absent/false retains owner/region-grant access. MCP-created worlds default true.
+  absent/false retains owner/region-grant access. Production MCP cannot create
+  additional worlds.
 - `POST /api/shared-worlds/{id}/assemblies`: `{base, scene}` imports a bounded
   `WorldExport` batch using the world's geographic origin. Returns its stable
   assembly ID, import-local → global piece mapping, accepted revision, and audit.
@@ -181,6 +184,23 @@ directly. See [MCP setup and outcome handling](local-construction-mcp.md#remote-
   responses are immutable-cacheable; the current-version URL requires revalidation.
 - `GET /api/shared-worlds/{id}/assemblies/{assembly}?revision=CID`: small paged-rule
   header; `/pages?revision=CID&kind=1&limit=64` reads bounded membership/rule rows.
+- `GET /api/shared-worlds/{id}/assemblies/{assembly}/workspace?revision=CID`:
+  bounded complete authoring scene, with `external_dependencies` disclosed.
+- `PUT /api/shared-worlds/{id}/assemblies/{assembly}/workspace`: `{base, scene}`
+  replaces one assembly, retaining its identity and the birth IDs of retained
+  local piece numbers. Added occurrences receive new birth identities.
+- `PUT /api/shared-worlds/{id}/assemblies/workspaces`:
+  `{base, assemblies:[{assembly_id, scene}, ...]}` atomically replaces 1–32 distinct
+  existing assemblies. Old dependencies are discovered before staging any member;
+  all final scenes/rules and both dependency closures are checked before one
+  publication. Invalid members reject the whole batch, with no intermediate head.
+  The response has one `accepted` receipt/audit and an `assemblies` array of
+  `{assembly_id, pieces}` local-to-global mappings. Input pieces and encoded bytes
+  share aggregate operation budgets; this is not 32 independent budget allowances.
+  Permissions, pacing, frozen measurements, ground registration and proper
+  isometry checks still apply. Existing cross-assembly joint references cannot be
+  left dangling. MCP still edits one opened assembly at a time; the batch route
+  is an authenticated REST workflow for interdependent replacements.
 - `POST /api/shared-worlds/{id}/commits`: `{base, pieces, rules, joints, message}`. Each
   piece edit contains `{id, geometry, mesh}`; null geometry deletes the piece.
   A new geometry preserves the birth ID; optional mesh selects an uploaded,
@@ -201,7 +221,7 @@ directly. See [MCP setup and outcome handling](local-construction-mcp.md#remote-
 Point routes default to the current revision. For consistent multi-object reads,
 obtain the head once and use that revision for every page, piece, and mesh request.
 Format-3 acceptance indexes verify historical membership without an ancestry walk.
-Legacy unindexed heads retain a compatibility walk until `shared-index-history`.
+Only the current shared storage layout is supported.
 Pruned/unaccepted revisions return HTTP 410. See [operations](storage-operations.md).
 
 Useful status codes are 401 (no identity), 403 (no grant/origin header), 409

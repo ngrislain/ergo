@@ -28,7 +28,7 @@ The prebuilt bundle includes native binaries and WASM assets; consumers need
 Node.js 20+ and Chrome/Chromium, not Rust.
 
 ```sh
-npm install --global --ignore-scripts 'https://github.com/ngrislain/ergo/releases/download/v0.5.6/ngrislain-ergo-mcp-0.5.6.tgz'
+npm install --global --ignore-scripts 'https://github.com/ngrislain/ergo/releases/download/v0.5.7/ngrislain-ergo-mcp-0.5.7.tgz'
 ergo-mcp --login --publish-url https://ergosandbox.com
 ```
 

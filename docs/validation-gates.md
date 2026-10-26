@@ -33,6 +33,12 @@ validator and applies required measurements before writing the manifest. Interna
 read-only fixture examples are explicitly marked as idealized; ordinary user
 publication cannot inherit that exemption.
 
+Single and batch assembly replacements share
+[`replace_assemblies`](../crates/server/src/shared/authoring.rs). A batch discovers
+all old dependencies first, stages every member, validates the complete final
+affected domain and publishes one receipt. It does not validate or expose partial
+intermediate assemblies. See the [REST workflow](concurrent-global-editing.md#rest-workflow).
+
 Immutable blobs can be staged before validation; acceptance of the world head is
 the commit boundary. See [concurrent editing](concurrent-global-editing.md) for
 dependency closure, spatial phantom protection, and optimistic publication.

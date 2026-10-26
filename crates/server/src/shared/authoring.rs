@@ -1,4 +1,4 @@
-//! Bounded authoring of one assembly in the authoritative shared world.
+//! Bounded authoring of assemblies in the authoritative shared world.
 //! Replacements preserve creation identities and publish as one validated CAS.
 use super::*;
 use ergo_world::{SCHEMA_VERSION, WorldExport};
@@ -7,6 +7,27 @@ use ergo_world::{SCHEMA_VERSION, WorldExport};
 pub struct ReplaceRequest {
     pub base: ContentId,
     pub scene: WorldExport,
+}
+
+#[derive(Deserialize)]
+pub struct AssemblyReplacement {
+    pub assembly_id: ContentId,
+    pub scene: WorldExport,
+}
+#[derive(Deserialize)]
+pub struct BatchReplaceRequest {
+    pub base: ContentId,
+    pub assemblies: Vec<AssemblyReplacement>,
+}
+#[derive(Serialize)]
+pub struct ReplacedAssembly {
+    pub assembly_id: ContentId,
+    pub pieces: BTreeMap<u32, ContentId>,
+}
+#[derive(Serialize)]
+pub struct BatchReplaced {
+    pub accepted: Accepted,
+    pub assemblies: Vec<ReplacedAssembly>,
 }
 
 impl SharedWorlds {
@@ -85,134 +106,205 @@ impl SharedWorlds {
         id: &str,
         actor: &str,
         assembly: &ContentId,
-        mut request: ReplaceRequest,
+        request: ReplaceRequest,
     ) -> SharedResult<Imported> {
+        let result = self
+            .replace_assemblies(
+                id,
+                actor,
+                BatchReplaceRequest {
+                    base: request.base,
+                    assemblies: vec![AssemblyReplacement {
+                        assembly_id: assembly.clone(),
+                        scene: request.scene,
+                    }],
+                },
+            )
+            .await?;
+        Ok(Imported {
+            accepted: result.accepted,
+            assembly: assembly.clone(),
+            pieces: result
+                .assemblies
+                .into_iter()
+                .next()
+                .context("Missing replacement result")?
+                .pieces,
+        })
+    }
+
+    pub async fn replace_assemblies(
+        &self,
+        id: &str,
+        actor: &str,
+        mut request: BatchReplaceRequest,
+    ) -> SharedResult<BatchReplaced> {
         self.destination(id)?;
         ensure!(
-            !request.scene.name.trim().is_empty() && request.scene.name.chars().count() <= 120,
-            "Construction name must contain 1–120 characters"
+            !request.assemblies.is_empty() && request.assemblies.len() <= 32,
+            "Replace 1–32 assemblies in one request"
+        );
+        let assemblies = request
+            .assemblies
+            .iter()
+            .map(|a| a.assembly_id.clone())
+            .collect::<BTreeSet<_>>();
+        ensure!(
+            assemblies.len() == request.assemblies.len(),
+            "Duplicate assembly replacement"
         );
         let mut ws = self.working(id, actor, &request.base).await?;
-        ensure!(
-            canonical_cbor(&request.scene.geo)? == canonical_cbor(&ws.metadata.geo)?,
-            "Wrong geographic origin"
-        );
-        if request.scene.bricks.is_empty() {
+        let mut input_bytes = 0usize;
+        let mut input_pieces = 0usize;
+        let mut old_pieces = 0usize;
+        let mut originals = Vec::new();
+        let mut seeds = BTreeSet::new();
+        for replacement in &mut request.assemblies {
+            let scene = &mut replacement.scene;
             ensure!(
-                request.scene.schema == SCHEMA_VERSION
-                    && request.scene.joints.is_empty()
-                    && request.scene.fixed_bricks.is_empty(),
-                "Empty assembly has dangling metadata"
+                !scene.name.trim().is_empty() && scene.name.chars().count() <= 120,
+                "Construction name must contain 1–120 characters"
             );
-            ergo_world::groups::validate(&request.scene.bricks, &request.scene.groups)?;
-        } else {
-            crate::import::validate_export(&mut request.scene)?;
-        }
-        ws.model.measurements.normalize_scene(&mut request.scene)?;
-        if let Some(model) = &request.scene.model {
-            model.validate_isometries()?;
-        }
-        if request.scene.bricks.len() > ws.piece_limit()
-            || canonical_cbor(&request.scene)?.len() > self.limits.bytes
-        {
-            return Err(SharedError::working_limit("assembly replacement"));
-        }
-        let original = ws.rules(assembly).await?.as_ref().clone();
-        if original.pieces.len() > ws.piece_limit() {
-            return Err(SharedError::working_limit("authoring assembly"));
-        }
-        let seeds = original.pieces.values().cloned().collect::<BTreeSet<_>>();
-        let before = ws.discover(&seeds).await?;
-        let mut old = BTreeMap::new();
-        for (&local, global) in &original.pieces {
-            let piece = ws.piece(global).await?.ok_or_else(SharedError::missing)?;
             ensure!(
-                piece.assembly == *assembly && piece.local_id == local,
-                "Assembly mapping mismatch"
+                canonical_cbor(&scene.geo)? == canonical_cbor(&ws.metadata.geo)?,
+                "Wrong geographic origin"
             );
-            ws.permit(actor, &piece)?;
-            old.insert(local, piece);
-        }
-        let mut meshes = BTreeMap::new();
-        for (name, mesh) in &request.scene.meshes {
-            meshes.insert(name.clone(), ws.tx.stage_blob(mesh)?);
-        }
-        let mut pieces = BTreeMap::new();
-        let mut changed = BTreeSet::new();
-        let author_name = self.actor_name(actor).await?;
-        for brick in &request.scene.bricks {
-            ensure!(!pieces.contains_key(&brick.id), "Duplicate local piece ID");
-            let mesh = meshes
-                .get(&brick.part)
-                .context("Missing part mesh")?
-                .clone();
-            let geometry = Geometry::of(brick);
-            let previous = old.remove(&brick.id);
-            let mut piece = if let Some(previous) = &previous {
-                previous.clone()
+            if scene.bricks.is_empty() {
+                ensure!(
+                    scene.schema == SCHEMA_VERSION
+                        && scene.joints.is_empty()
+                        && scene.fixed_bricks.is_empty(),
+                    "Empty assembly has dangling metadata"
+                );
+                ergo_world::groups::validate(&scene.bricks, &scene.groups)?;
             } else {
-                let birth = Birth {
-                    nonce: uuid::Uuid::new_v4().to_string(),
-                    created_by: actor.into(),
-                    created_by_name: author_name.clone(),
-                    assembly: assembly.clone(),
-                    initial: geometry.clone(),
-                    mesh: mesh.clone(),
+                crate::import::validate_export(scene)?;
+            }
+            ws.model.measurements.normalize_scene(scene)?;
+            if let Some(model) = &scene.model {
+                model.validate_isometries()?;
+            }
+            input_bytes += canonical_cbor(scene)?.len();
+            input_pieces += scene.bricks.len();
+            let original = ws.rules(&replacement.assembly_id).await?.as_ref().clone();
+            old_pieces += original.pieces.len();
+            if input_bytes > self.limits.bytes
+                || input_pieces > ws.piece_limit()
+                || old_pieces > ws.piece_limit()
+            {
+                return Err(SharedError::working_limit("assembly replacement batch"));
+            }
+            seeds.extend(original.pieces.values().cloned());
+            originals.push(original);
+        }
+        // Discover every old dependency before staging any replacement. Only
+        // the final multi-assembly state is validated and published.
+        let before = ws.discover(&seeds).await?;
+        let mut changed = BTreeSet::new();
+        let mut results = Vec::new();
+        let mut rules_changed = false;
+        let author_name = self.actor_name(actor).await?;
+        for (replacement, original) in request.assemblies.into_iter().zip(originals) {
+            let AssemblyReplacement {
+                assembly_id: assembly,
+                scene,
+            } = replacement;
+            let mut old = BTreeMap::new();
+            for (&local, global) in &original.pieces {
+                let piece = ws.piece(global).await?.ok_or_else(SharedError::missing)?;
+                ensure!(
+                    piece.assembly == assembly && piece.local_id == local,
+                    "Assembly mapping mismatch"
+                );
+                ws.permit(actor, &piece)?;
+                old.insert(local, piece);
+            }
+            let mut meshes = BTreeMap::new();
+            for (name, mesh) in &scene.meshes {
+                meshes.insert(name.clone(), ws.tx.stage_blob(mesh)?);
+            }
+            let mut pieces = BTreeMap::new();
+            for brick in &scene.bricks {
+                ensure!(
+                    brick.id > 0 && !pieces.contains_key(&brick.id),
+                    "Duplicate or zero local piece ID"
+                );
+                let mesh = meshes
+                    .get(&brick.part)
+                    .context("Missing part mesh")?
+                    .clone();
+                let geometry = Geometry::of(brick);
+                let previous = old.remove(&brick.id);
+                let mut piece = if let Some(previous) = &previous {
+                    previous.clone()
+                } else {
+                    let birth = Birth {
+                        nonce: uuid::Uuid::new_v4().to_string(),
+                        created_by: actor.into(),
+                        created_by_name: author_name.clone(),
+                        assembly: assembly.clone(),
+                        initial: geometry.clone(),
+                        mesh: mesh.clone(),
+                    };
+                    Piece {
+                        id: ws.tx.stage_blob(&birth)?,
+                        assembly: assembly.clone(),
+                        local_id: brick.id,
+                        geometry: geometry.clone(),
+                        mesh: mesh.clone(),
+                        replicas: BTreeSet::new(),
+                    }
                 };
-                Piece {
-                    id: ws.tx.stage_blob(&birth)?,
-                    assembly: assembly.clone(),
-                    local_id: brick.id,
-                    geometry: geometry.clone(),
-                    mesh: mesh.clone(),
-                    replicas: BTreeSet::new(),
+                piece.geometry = geometry;
+                piece.mesh = mesh;
+                pieces.insert(brick.id, piece.id.clone());
+                if let Some(old) = &previous {
+                    if canonical_cbor(&old.geometry)? == canonical_cbor(&piece.geometry)?
+                        && old.mesh == piece.mesh
+                    {
+                        continue;
+                    }
                 }
+                piece.replicas = ws.cells(&piece).await?;
+                ws.permit(actor, &piece)?;
+                if let Some(previous) = &previous {
+                    ws.swept(previous, &piece).await?;
+                }
+                changed.insert(piece.id.clone());
+                ws.replace(previous.as_ref(), Some(piece)).await?;
+            }
+            for previous in old.values() {
+                ws.no_external(&previous.id).await?;
+                changed.insert(previous.id.clone());
+                ws.replace(Some(previous), None).await?;
+            }
+            let source_model = Some(
+                ws.tx
+                    .stage_blob(&ergo_world::assembly::Model::for_scene(&scene))?,
+            );
+            let rules = Rules {
+                id: assembly.clone(),
+                name: scene.name,
+                pieces: pieces.clone(),
+                meshes,
+                joints: scene.joints,
+                fixed_bricks: scene.fixed_bricks,
+                groups: scene.groups,
+                source_model,
             };
-            piece.geometry = geometry;
-            piece.mesh = mesh;
-            pieces.insert(brick.id, piece.id.clone());
-            if let Some(old) = &previous {
-                if canonical_cbor(&old.geometry)? == canonical_cbor(&piece.geometry)?
-                    && old.mesh == piece.mesh
-                {
-                    continue;
-                }
-            }
-            piece.replicas = ws.cells(&piece).await?;
-            ws.permit(actor, &piece)?;
-            if let Some(previous) = &previous {
-                ws.swept(previous, &piece).await?;
-            }
-            changed.insert(piece.id.clone());
-            ws.replace(previous.as_ref(), Some(piece)).await?;
+            rules_changed |= canonical_cbor(&original)? != canonical_cbor(&rules)?;
+            ws.stage_rules(rules)?;
+            seeds.extend(pieces.values().cloned());
+            results.push(ReplacedAssembly {
+                assembly_id: assembly,
+                pieces,
+            });
         }
-        for previous in old.values() {
-            ws.no_external(&previous.id).await?;
-            changed.insert(previous.id.clone());
-            ws.replace(Some(previous), None).await?;
-        }
-        let source_model = Some(
-            ws.tx
-                .stage_blob(&ergo_world::assembly::Model::for_scene(&request.scene))?,
-        );
-        let rules = Rules {
-            id: assembly.clone(),
-            name: request.scene.name.clone(),
-            pieces: pieces.clone(),
-            meshes,
-            joints: request.scene.joints,
-            fixed_bricks: request.scene.fixed_bricks,
-            groups: request.scene.groups,
-            source_model,
-        };
-        let rules_changed = canonical_cbor(&original)? != canonical_cbor(&rules)?;
         ensure!(!changed.is_empty() || rules_changed, "No shared changes");
-        ws.stage_rules(rules)?;
-        ws.flush_rules(&BTreeSet::from([assembly.clone()])).await?;
+        ws.flush_rules(&assemblies).await?;
         ws.reset_dependencies();
         let mut validation_seeds = seeds;
         validation_seeds.extend(before);
-        validation_seeds.extend(pieces.values().cloned());
         let affected = ws.discover(&validation_seeds).await?;
         let report = ws.validate(&affected).await?;
         self.advertise_blocks(id, ws.metadata.geo, &ws.new_blocks)
@@ -222,7 +314,12 @@ impl SharedWorlds {
                 id,
                 actor,
                 request.base,
-                "Edit shared construction".into(),
+                if results.len() == 1 {
+                    "Edit shared construction"
+                } else {
+                    "Replace shared constructions atomically"
+                }
+                .into(),
                 changed,
                 affected,
                 report,
@@ -230,10 +327,9 @@ impl SharedWorlds {
             )
             .await?;
         let accepted = prepared.publish_with(self).await?;
-        Ok(Imported {
+        Ok(BatchReplaced {
             accepted,
-            assembly: assembly.clone(),
-            pieces,
+            assemblies: results,
         })
     }
 }
@@ -270,6 +366,19 @@ pub(super) async fn replace(
     Ok(Json(
         s.shared
             .replace_assembly(&id, &editor(&s, &h)?, &assembly, body)
+            .await?,
+    ))
+}
+
+pub(super) async fn replace_batch(
+    State(s): State<AppState>,
+    h: HeaderMap,
+    Path(id): Path<String>,
+    Json(body): Json<BatchReplaceRequest>,
+) -> SharedResult<Json<BatchReplaced>> {
+    Ok(Json(
+        s.shared
+            .replace_assemblies(&id, &editor(&s, &h)?, body)
             .await?,
     ))
 }

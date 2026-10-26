@@ -792,6 +792,10 @@ pub fn routes() -> Router<AppState> {
             get(authoring::workspace).put(authoring::replace),
         )
         .route(
+            "/api/shared-worlds/{id}/assemblies/workspaces",
+            put(authoring::replace_batch),
+        )
+        .route(
             "/api/shared-worlds/{id}/assemblies/{assembly}/location",
             get(authoring::location),
         )

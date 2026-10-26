@@ -533,6 +533,200 @@ async fn bounded_assembly_replacement_preserves_ids_and_is_atomic() {
 }
 
 #[tokio::test]
+async fn batch_replacement_swaps_assemblies_and_adds_pieces_in_one_validated_commit() {
+    let service = service();
+    let (head, first) = seeded(&service, scene(0.)).await;
+    let second = service
+        .import(
+            &head.id,
+            "alice",
+            ImportRequest {
+                base: head.revision,
+                scene: scene(10.),
+            },
+        )
+        .await
+        .unwrap();
+    let base = second.accepted.revision.clone();
+    // Either individual swap overlaps the other accepted construction.
+    assert!(
+        service
+            .replace_assembly(
+                &head.id,
+                "alice",
+                &first.assembly,
+                authoring::ReplaceRequest {
+                    base: base.clone(),
+                    scene: scene(10.)
+                }
+            )
+            .await
+            .is_err()
+    );
+    let (app, headers) = http(&service);
+    let mut larger = scene(10.);
+    let mut extra = ergo_world::demo::Demo::new();
+    extra.add("3003", 14, 50., 0., 100.);
+    extra.bricks[0].id = 3;
+    larger.bricks.extend(extra.bricks);
+    let path = format!("/api/shared-worlds/{}/assemblies/workspaces", head.id);
+    // An invalid final member must not publish even the valid first member.
+    let (status, _) = json(
+        &app,
+        "PUT",
+        &path,
+        &headers,
+        Some(serde_json::json!({
+            "base":base,"assemblies":[
+                {"assembly_id":first.assembly,"scene":larger},
+                {"assembly_id":second.assembly,"scene":scene(0.2)}
+            ]
+        })),
+    )
+    .await;
+    assert!(!status.is_success());
+    assert_eq!(
+        service
+            .head(
+                &head.id,
+                &Principal {
+                    id: Some("alice".into())
+                },
+                None
+            )
+            .await
+            .unwrap()
+            .revision,
+        base
+    );
+    let (status, response) = json(
+        &app,
+        "PUT",
+        &path,
+        &headers,
+        Some(serde_json::json!({
+            "base":base,"assemblies":[
+                {"assembly_id":first.assembly,"scene":larger},
+                {"assembly_id":second.assembly,"scene":scene(0.)}
+            ]
+        })),
+    )
+    .await;
+    assert!(status.is_success(), "{response:?}");
+    let accepted: ContentId =
+        serde_json::from_value(response["accepted"]["revision"].clone()).unwrap();
+    assert_ne!(accepted, base);
+    assert_eq!(
+        response["assemblies"][0]["pieces"]["1"],
+        serde_json::json!(first.pieces[&1])
+    );
+    assert_eq!(
+        response["assemblies"][1]["pieces"]["1"],
+        serde_json::json!(second.pieces[&1])
+    );
+    assert_eq!(
+        response["assemblies"][0]["pieces"]
+            .as_object()
+            .unwrap()
+            .len(),
+        3
+    );
+    for (assembly, expected) in [(&first.assembly, larger), (&second.assembly, scene(0.))] {
+        let workspace = service
+            .authoring_scene(&head.id, "alice", assembly, &accepted)
+            .await
+            .unwrap();
+        let actual: WorldExport = serde_json::from_value(workspace["scene"].clone()).unwrap();
+        assert_eq!(actual.bricks.len(), expected.bricks.len());
+        for (actual, expected) in actual.bricks.iter().zip(&expected.bricks) {
+            assert_eq!(actual.position, expected.position);
+        }
+        assert!(actual.model.as_ref().unwrap().matches(&actual.bricks));
+    }
+    // The batch is one history transition, with one combined audit.
+    assert_eq!(
+        response["accepted"]["audit"]["base"],
+        serde_json::json!(base)
+    );
+    assert_eq!(
+        response["accepted"]["audit"]["changed_pieces"]
+            .as_array()
+            .unwrap()
+            .len(),
+        5
+    );
+}
+
+#[tokio::test]
+async fn batch_replacement_rejects_duplicate_identities_and_aggregate_budgets() {
+    let mut service = service();
+    let (head, first) = seeded(&service, scene(0.)).await;
+    let second = service
+        .import(
+            &head.id,
+            "alice",
+            ImportRequest {
+                base: head.revision,
+                scene: scene(10.),
+            },
+        )
+        .await
+        .unwrap();
+    let base = second.accepted.revision;
+    let replacement = || authoring::AssemblyReplacement {
+        assembly_id: first.assembly.clone(),
+        scene: scene(20.),
+    };
+    let duplicate = service
+        .replace_assemblies(
+            &head.id,
+            "alice",
+            authoring::BatchReplaceRequest {
+                base: base.clone(),
+                assemblies: vec![replacement(), replacement()],
+            },
+        )
+        .await
+        .err()
+        .unwrap();
+    assert!(duplicate.message.contains("Duplicate assembly"));
+    service.limits.pieces = 3;
+    assert!(
+        service
+            .replace_assemblies(
+                &head.id,
+                "alice",
+                authoring::BatchReplaceRequest {
+                    base: base.clone(),
+                    assemblies: vec![
+                        replacement(),
+                        authoring::AssemblyReplacement {
+                            assembly_id: second.assembly,
+                            scene: scene(30.)
+                        }
+                    ],
+                }
+            )
+            .await
+            .is_err()
+    );
+    assert_eq!(
+        service
+            .head(
+                &head.id,
+                &Principal {
+                    id: Some("alice".into())
+                },
+                None
+            )
+            .await
+            .unwrap()
+            .revision,
+        base
+    );
+}
+
+#[tokio::test]
 async fn browser_views_are_authenticated_bounded_and_preserve_mesh_variants() {
     let mut service = service();
     let (head, _) = seeded(&service, scene(100.)).await;
