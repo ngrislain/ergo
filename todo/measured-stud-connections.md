@@ -58,5 +58,6 @@ records literature and remaining work toward genuinely measured connections.
    their measurement book. New data must not silently rewrite historical model
    meaning or acquire an existing world's authority from an untrusted client.
 
-The replacement palace remains unpublished until its selected model and required
-data are implemented and its results are reproducible within their stated scope.
+Publication after an explicit estimated-model preflight does not complete this
+measured-calibration pathway. Genuinely measured strength claims still require
+the applicable data, directional model and validation described above.

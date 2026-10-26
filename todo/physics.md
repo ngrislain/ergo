@@ -32,9 +32,10 @@ The interaction form and exponent require measurements; this is not a shipped mo
 - Recorded accelerograms, vertical/multi-axis/rotational excitation, spectral
   matching, randomized ensembles and parameter/convergence studies.
 - Qualify tall unbonded stacks against analytic equilibrium and refined solver
-  settings. The current bounded dynamics solver can numerically collapse a
-  thirty-course loose stack that remains near equilibrium with a substantially
-  more expensive constraint solve. Do not use those unqualified failures for
+  settings. An earlier bounded dynamics profile numerically collapsed a
+  thirty-course loose stack that remained near equilibrium with a substantially
+  more expensive constraint solve. Refined profiles still need independent
+  loose-stack qualification. Do not use unqualified failures for
   destructive cleanup or infer measured clutch strength from an empty joint set.
 - Ground-motion models only with traceable region/distance/site inputs; magnitude
   is not local PGA. Impact energy alone does not specify peak force.
