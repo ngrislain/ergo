@@ -244,7 +244,7 @@ pub fn brick_from_reference(
             .unwrap_or_else(|| color_rgb(r.color)),
         position,
         transform,
-        bounds: mesh.body_bounds.transformed(transform, position),
+        bounds: crate::placement::body_bounds(mesh).transformed(transform, position),
         render_bounds: mesh.bounds.transformed(transform, position),
         step: 0,
     }

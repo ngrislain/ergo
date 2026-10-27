@@ -169,6 +169,7 @@ with tempfile.TemporaryDirectory(prefix="ergo-common-") as directory:
             page.route("**/assemblies?*",list_page)
             requested=[];page.on("request",lambda request:requested.append(request.url))
             page.goto(url)
+            expect(page.get_by_role('button',name='Sign out',exact=True)).to_be_visible(timeout=30000)
             expect(page.locator(".construction-list .world-item")).to_have_count(32,timeout=30000)
             panel=page.locator(".construction-list")
             assert panel.evaluate("el=>el.scrollHeight>el.clientHeight && getComputedStyle(el).overflowY==='auto'")
@@ -201,7 +202,7 @@ with tempfile.TemporaryDirectory(prefix="ergo-common-") as directory:
             for _ in range(100):
                 status,saved=helpers.http(url+"/api/user-position",token=tokens["alice"])
                 if status==200 and saved["position"] and saved["position"]["context"]["navigation"]=="walk":break
-                time.sleep(.05)
+                page.wait_for_timeout(50)
             else:raise AssertionError("Signed-in camera position was not saved")
             position=mcp.call("get_user_position")["structuredContent"]
             assert position["position"]["context"]["world_id"]==head["id"]

@@ -249,10 +249,7 @@ impl Simulation {
                 .physical
                 .as_ref()
                 .map(|record| record.body_bounds)
-                .or_else(|| {
-                    crate::geometry::part_spec(&brick.part)
-                        .map(|_| crate::geometry::fallback_mesh(&brick.part).body_bounds)
-                })
+                .or_else(|| crate::geometry::nominal_body_bounds(&brick.part))
                 .unwrap_or(_mesh.body_bounds);
             s.body_bounds.insert(brick.part.clone(), local);
             s.render_bounds.insert(brick.part.clone(), _mesh.bounds);

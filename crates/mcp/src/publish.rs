@@ -7,6 +7,8 @@ use serde::Deserialize;
 use serde_json::{Value, json};
 use std::{env, path::PathBuf, time::Duration};
 
+const MAX_RESPONSE_BYTES: usize = 128 * 1024 * 1024;
+
 #[derive(Clone)]
 pub struct Publisher {
     base: Url,
@@ -198,11 +200,17 @@ impl Publisher {
         }
         let mut response = request.send().await.map_err(|e| e.without_url())?;
         let status = response.status();
+        ensure!(
+            response
+                .content_length()
+                .is_none_or(|length| length <= MAX_RESPONSE_BYTES as u64),
+            "Publication response exceeds 128 MiB"
+        );
         let mut bytes = Vec::new();
         while let Some(chunk) = response.chunk().await.map_err(|e| e.without_url())? {
             ensure!(
-                bytes.len() + chunk.len() <= 8 * 1024 * 1024,
-                "Publication response exceeds 8 MiB"
+                bytes.len() + chunk.len() <= MAX_RESPONSE_BYTES,
+                "Publication response exceeds 128 MiB"
             );
             bytes.extend_from_slice(&chunk);
         }
@@ -412,6 +420,42 @@ mod tests {
     use std::sync::{Arc, Mutex};
 
     const WORLD: &str = "12345678-1234-4234-8234-123456789abc";
+    #[test]
+    fn complete_workspace_reads_allow_large_scenes_but_remain_byte_bounded() {
+        tokio::runtime::Runtime::new().unwrap().block_on(async {
+            let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+            let address = listener.local_addr().unwrap();
+            let app = Router::new()
+                .route(
+                    "/workspace",
+                    axum::routing::get(|| async {
+                        Json(json!({"scene_payload":"x".repeat(9 * 1024 * 1024)}))
+                    }),
+                )
+                .route(
+                    "/oversized",
+                    axum::routing::get(|| async { vec![0u8; MAX_RESPONSE_BYTES + 1] }),
+                );
+            let server = tokio::spawn(async move {
+                axum::serve(listener, app).await.unwrap();
+            });
+            let publisher = Publisher::new(&format!("http://{address}"), None).unwrap();
+            let read = publisher
+                .request(Method::GET, "/workspace", None)
+                .await
+                .unwrap();
+            assert_eq!(
+                read["scene_payload"].as_str().unwrap().len(),
+                9 * 1024 * 1024
+            );
+            let error = publisher
+                .request(Method::GET, "/oversized", None)
+                .await
+                .unwrap_err();
+            assert!(error.to_string().contains("response exceeds 128 MiB"));
+            server.abort();
+        });
+    }
     #[derive(Clone)]
     struct Mock {
         mode: &'static str,

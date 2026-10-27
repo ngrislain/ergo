@@ -7,7 +7,7 @@ shared Sandbox. The bridge never grants itself acceptance or direct agent S3 acc
 ## Install and configure
 
 ```sh
-npm install --global --ignore-scripts 'https://github.com/ngrislain/ergo/releases/download/v0.5.10/ngrislain-ergo-mcp-0.5.10.tgz'
+npm install --global --ignore-scripts 'https://github.com/ngrislain/ergo/releases/download/v0.5.11/ngrislain-ergo-mcp-0.5.11.tgz'
 ergo-mcp --login --publish-url https://ergosandbox.com
 ```
 
@@ -103,6 +103,17 @@ indices. New models can pass the saved `model_transform` to `place_submodel`.
 Existing construction edits preserve their absolute accepted positions.
 
 ## Native construction and editing
+
+Native publication requests and complete-assembly read-back responses are bounded
+to 128 MiB each. The response cap also applies while streaming when no length is
+declared. An accepted write whose read-back fails must be reconciled by reopening
+its recorded assembly; never repeat the placement merely because read-back failed.
+
+For a resolved part, `get_catalog` includes render `bounds`, nominal `body_bounds`,
+mass/source, source credits and collision-model limitations. Use nominal body
+datums for CAD placement rather than inferring them from decorative studs or
+source-mesh extrema. Specialty catalogue profiles provide geometry interfaces
+and average masses, not calibrated joint strength; see [part profiles](part-catalog.md#physical-and-material-limits).
 
 Grow an opened construction through small self-supporting published edits,
 preserving its assembly identity. Publication performs authoritative validation;

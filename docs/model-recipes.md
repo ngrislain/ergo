@@ -1,8 +1,21 @@
 # Walkable monument recipes
 
-Developer recipes live in `scripts/build/`. They generate nominal standard-size
-parts, consult `get_building_techniques`, and preflight through the real local MCP.
-They do not publish implicitly. Choose fresh output directories to preserve prior
+## District construction in progress
+
+`scripts/build/district.py` authors through the real stdio MCP client. Its durable
+`target/district-mcp/progress.json` records stable assembly IDs and each attempted
+`place_submodel` publication; unknown outcomes require reconciliation before retry.
+It uses publication's authoritative validation without a duplicate diagnostics gate.
+The eleven-site layout surrounds the existing cell-19 tower. The recipe implements
+foundations, ten nine-course structural storeys with the accepted tower's open
+switchback stairs, and supported roof decks. `--through roof --publish` grows the
+same assemblies in supported stages. Specialty facades, stepped extensions and
+street details remain subsequent stages, not claimed completed work. Consult
+actual accepted receipts for publication progress and published storey counts.
+
+The standalone monument drivers below live in `scripts/build/`. They generate
+nominal standard-size parts, consult `get_building_techniques`, and preflight through
+the real local MCP. They do not publish implicitly. Choose fresh output directories to preserve prior
 checks and publication journals.
 
 ## Pyramid

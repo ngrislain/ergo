@@ -99,7 +99,7 @@ impl SharedWorlds {
             format!("{}/{}", self.store.prefix, relative.trim_matches('/'))
         };
         Ok(Repository::new(self.store.backend.clone(), &prefix)?
-            .with_cache_capacity(64 * 1024 * 1024)
+            .with_cache_capacity(256 * 1024 * 1024)
             .with_coordinated_gc())
     }
     pub async fn migrate_namespace(&self, id: &str, target: &str) -> Result<serde_json::Value> {

@@ -301,11 +301,15 @@ overwritten or deleted by an edit.
 - `with_cache_capacity(bytes)` enables a verified-object byte-budgeted LRU shared
   by repository clones and child namespaces. Cache keys include the namespace;
   heads and coordination state are never cached. `cache_stats` reports residency,
-  hits, misses, and evictions. The server uses a 64 MiB shared budget.
+  hits, misses, and evictions. Each server repository cache uses a 256 MiB budget.
   Concurrent immutable reads of the same namespace/object share one verified
   download; failures remain retryable. Acknowledged uploads populate the LRU,
   but an LRU hit never skips a subsequent upload, preserving orphan/GC safety.
   Explicit uncached verification still bypasses the cache and read-coalescing gates.
+  `Snapshot::scan_page_prefetched` optionally looks ahead two immutable-node levels
+  with eight concurrent GETs, a 64 KiB node bound and two-second speculative
+  timeout. It never follows application-value links; required traversal still
+  verifies/decodes nodes normally. Transaction predicate registration is unchanged.
 - Nodes are also cached within a transaction; staged values and serialization
   buffers remain in memory. There is no whole-process heap quota, streaming CBOR
   encoder, or automatic chunker. `scan` is an unbounded compatibility convenience;

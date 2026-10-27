@@ -723,6 +723,19 @@ impl Snapshot {
             .scan_page(self.commit.root.as_ref(), path, after, limit)
             .await
     }
+    /// Ordered pinned-snapshot paging with bounded immutable-node lookahead.
+    /// Values are not prefetched; mutable heads and transaction predicates are unchanged.
+    pub async fn scan_page_prefetched(
+        &self,
+        path: &OctreePath,
+        after: Option<&OctreePath>,
+        limit: usize,
+    ) -> Result<ScanPage> {
+        Tree::new(self.repo.clone())
+            .with_read_prefetch()
+            .scan_page(self.commit.root.as_ref(), path, after, limit)
+            .await
+    }
 }
 
 pub struct Transaction {

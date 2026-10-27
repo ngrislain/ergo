@@ -38,6 +38,23 @@ pub const PARTS: &[(&str, &str)] = &[
     ("3069b.dat", "Tile 1 × 2"),
     ("3068b.dat", "Tile 2 × 2"),
     ("2431.dat", "Tile 1 × 4"),
+    ("60594.dat", "Window frame 1 × 4 × 3"),
+    ("60592.dat", "Window frame 1 × 2 × 2"),
+    ("3037.dat", "Slope 45° 2 × 4"),
+    ("3039.dat", "Slope 45° 2 × 2"),
+    ("3633.dat", "Lattice fence 1 × 4 × 1"),
+    ("3062b.dat", "Round brick 1 × 1, hollow stud"),
+    ("3941.dat", "Round brick 2 × 2"),
+    ("87081.dat", "Round brick 4 × 4"),
+    ("2039.dat", "Lamppost 2 × 2 × 7"),
+    ("4073.dat", "Round plate 1 × 1"),
+    ("4740.dat", "Inverted dish 2 × 2"),
+    ("87580.dat", "Centre-stud plate 2 × 2"),
+    ("970c00.dat", "Minifigure hips and legs"),
+    ("76382p00.dat", "Minifigure torso, arms and yellow hands"),
+    ("3626a.dat", "Minifigure head, solid stud"),
+    ("3626ap01.dat", "Minifigure head, classic grin"),
+    ("4624c01.dat", "Wheel rim with tyre assembly"),
 ];
 
 pub const COLORS: &[(u32, &str)] = &[
@@ -190,7 +207,7 @@ pub fn catalog() -> Catalog {
                     }),
             )
             .collect(),
-        part_resolution: "Any resolvable LDraw/Studio .dat ID; listed parts are recommendations, not an allowlist. Non-standard parts require real geometry and sourced physical measurements for publication.",
+        part_resolution: "Any resolvable LDraw/Studio .dat ID; listed parts are recommendations, not an allowlist. Profiled specialty parts require genuine source geometry and use sourced catalogue masses with explicit nominal collision/interface proxies, not calibrated clutch strength. Other non-standard parts require frozen sourced physical records for publication.",
     }
 }
 

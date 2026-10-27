@@ -163,7 +163,8 @@ pub struct Relation {
 }
 
 /// Broad-phase contacts are deliberately not called physical attachment. Only
-/// upright, unscaled catalog parts with coincident stud lattices infer a connection.
+/// upright, unscaled catalogue parts with registered interfaces infer a connection.
+/// Inferred catalogue factory clips still have no assumed strength.
 pub fn relation(a: &Brick, b: &Brick) -> Option<Relation> {
     let overlap = a.bounds.max.min(b.bounds.max) - a.bounds.min.max(b.bounds.min);
     let eps = 0.002;
@@ -172,6 +173,7 @@ pub fn relation(a: &Brick, b: &Brick) -> Option<Relation> {
         return None;
     }
     let mut inferred = false;
+    let mut factory_clip = false;
     if overlap.y.abs() < eps && overlap.x > 0.05 && overlap.z > 0.05 {
         let (lower, upper) = if a.position.y < b.position.y {
             (a, b)
@@ -195,11 +197,41 @@ pub fn relation(a: &Brick, b: &Brick) -> Option<Relation> {
             .iter()
             .all(|v| (v - v.round()).abs() < eps);
             inferred = lo.studs && upright(a) && upright(b) && aligned;
+        } else if crate::interference::axis_aligned(lower)
+            && crate::interference::axis_aligned(upper)
+            && (lower.transform.y_axis - DVec3::Y).length() < 1e-5
+            && (upper.transform.y_axis - DVec3::Y).length() < 1e-5
+        {
+            if let Some(grid) = crate::interference::receiving_grid(&upper.part) {
+                inferred = crate::interference::top_studs(&lower.part)
+                    .into_iter()
+                    .any(|stud| {
+                        let point = upper.transform.inverse()
+                            * (lower.position + lower.transform * stud - upper.position);
+                        let u = point.x - grid.first[0];
+                        let v = point.z - grid.first[1];
+                        (point.y - grid.bottom).abs() < eps
+                            && (u - u.round()).abs() < eps
+                            && (v - v.round()).abs() < eps
+                            && u >= -eps
+                            && u <= f64::from(grid.width - 1) + eps
+                            && v >= -eps
+                            && v <= f64::from(grid.depth - 1) + eps
+                    });
+            }
+            factory_clip = ((lower.part == "970c00.dat" && upper.part == "76382p00.dat")
+                || (lower.part == "76382p00.dat"
+                    && ["3626a.dat", "3626ap01.dat"].contains(&upper.part.as_str())))
+                && (lower.position.x - upper.position.x).abs() < eps
+                && (lower.position.z - upper.position.z).abs() < eps;
+            inferred |= factory_clip;
         }
     }
     Some(Relation {
         brick_id: b.id,
-        kind: if inferred {
+        kind: if factory_clip {
+            "factory clip connection"
+        } else if inferred {
             "stud connection"
         } else {
             "bounding-box contact"

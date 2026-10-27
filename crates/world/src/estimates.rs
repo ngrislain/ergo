@@ -79,6 +79,8 @@ pub fn apply_stud_estimates(bricks: &[Brick], joints: &mut [JointSpec]) -> StudE
         if matches!(joint.kind, JointKind::Fixed)
             && eligible.contains(&pair)
             && let (Some(a), Some(b)) = (index.get(&joint.a), index.get(&joint.b))
+            && crate::geometry::part_spec(&a.part).is_some()
+            && crate::geometry::part_spec(&b.part).is_some()
         {
             let overlap = a.bounds.max.min(b.bounds.max) - a.bounds.min.max(b.bounds.min);
             let [width, depth] = [overlap.x.round(), overlap.z.round()];

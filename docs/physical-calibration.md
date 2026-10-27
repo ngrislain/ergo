@@ -60,6 +60,14 @@ not sourced material measurements, and are disclosed as such in validation repor
 
 ## Connection strength must be measured
 
+Additional source-only catalogue parts are described in
+[part profiles](part-catalog.md#physical-and-material-limits). Their masses and
+nominal datum/interface records are distinct from connector calibration. Collision
+boxes are approximations; figure core proxies omit rendered appendages and factory
+units do not model internal joints. Known rectangular catalogue behavior is
+unchanged. A new inferred interface still needs measured capacities whenever its
+force/torque is consumed; adding a mass/bounds profile supplies no clutch strength.
+
 There is no universal “LEGO joint strength” that can safely be inferred from a
 part name or its visual mesh. Relevant variables include part pair, engagement
 footprint, molding/material, age/wear, connection direction, assembly history,

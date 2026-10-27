@@ -17,10 +17,7 @@ pub fn body_bounds(mesh: &Mesh) -> Aabb {
     mesh.physical
         .as_ref()
         .map(|p| p.body_bounds)
-        .or_else(|| {
-            crate::geometry::part_spec(&mesh.part)
-                .map(|_| crate::geometry::fallback_mesh(&mesh.part).body_bounds)
-        })
+        .or_else(|| crate::geometry::nominal_body_bounds(&mesh.part))
         .unwrap_or(mesh.body_bounds)
 }
 

@@ -77,9 +77,13 @@ These read packets can be discarded without losing constructions.
 
 ## Fewer storage round trips
 
-Spatial-reference and piece reads use ordered batches with at most eight reads
+Spatial-reference and piece reads use ordered batches with at most 32 reads
 in flight. Immutable-object reads sharing a namespace/key coalesce into one
-verified download. Acknowledged immutable uploads populate the existing 64 MiB
+verified download. Read-only spatial pages use two-level node lookahead with at
+most eight node GETs in flight and a 64 KiB speculative-node limit. Speculation
+does not fetch application values or change page order/cursors; speculative
+failures fall back to normal required reads. The transaction/predicate path is
+unchanged. Acknowledged immutable uploads populate the server's 256 MiB
 verified-object LRU, avoiding a download immediately after writing the bytes.
 Mutable heads and explicit uncached CAS verification remain uncached. Uploads
 are never skipped based on an LRU hit, preserving GC/orphan safety.

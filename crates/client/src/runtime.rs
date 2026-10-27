@@ -328,7 +328,12 @@ impl LocalClientRuntime {
                     ergo_world::catalog::preferred_catalog()
                 };
                 let part = args["part"].as_str().map(canonical);
-                let asset = part.as_ref().and_then(|p|self.scene.meshes.get(p)).map(|m|json!({"part":m.part,"quality":m.quality,"bounds":m.bounds,"mass_kg":self.measurements.mass_kg(&m.part).ok()}));
+                let asset = part.as_ref().and_then(|p|self.scene.meshes.get(p)).map(|m| {
+                    let record=self.measurements.parts.iter().find(|p|p.part==m.part);
+                    let mass=self.measurements.mass_kg(&m.part).ok();
+                    let source=record.map(|p|p.source.clone()).or_else(||mass.map(|_|ergo_world::physical::mass_source(&m.part)));
+                    json!({"part":m.part,"quality":m.quality,"bounds":m.bounds,"body_bounds":record.map(|p|p.body_bounds).unwrap_or_else(||ergo_world::placement::body_bounds(m)),"mass_kg":mass,"mass_source":source,"credits":m.credits,"body_model":if record.is_some(){"operator-provided nominal body box; connector calibration is separate"}else if m.part=="76382p00.dat" {"nominal torso core; rendered arms/hands and connector protrusions are outside this collision proxy"} else {"nominal body box and registered connector-grid proxy; not exact hollow/curved geometry or calibrated clutch strength"}})
+                });
                 Ok(text(
                     json!({"catalog":catalog,"requested_part":asset,"building_guidance":ergo_world::mcp::BUILDING_GUIDANCE,"units":{"position":"X east, Y north, Z up; X/Y 8 mm, Z 9.6 mm","force":"N","torque":"N m","mass":"kg"},"execution":"local-wasm-client"}),
                 ))

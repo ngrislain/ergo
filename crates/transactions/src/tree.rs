@@ -50,6 +50,7 @@ pub(crate) struct Tree {
     nodes: BTreeMap<ContentId, Node>,
     pending: BTreeMap<ContentId, Bytes>,
     uploaded: BTreeSet<ContentId>,
+    read_prefetch: bool,
 }
 impl Tree {
     pub fn absorb(&mut self, other: Tree) {
@@ -85,6 +86,51 @@ impl Tree {
             nodes: BTreeMap::new(),
             pending: BTreeMap::new(),
             uploaded: BTreeSet::new(),
+            read_prefetch: false,
+        }
+    }
+    pub fn with_read_prefetch(mut self) -> Self {
+        self.read_prefetch = true;
+        self
+    }
+    async fn prefetch_nodes(&self, ids: Vec<ContentId>) {
+        if self.repo.cache_stats().capacity_bytes == 0 {
+            return;
+        }
+        // Read only two immutable node levels, never application payloads.
+        // Failed/oversized speculative reads are misses, not page failures.
+        let mut frontier = ids;
+        for _ in 0..2 {
+            let repo = self.repo.clone();
+            let loaded: Vec<_> = stream::iter(frontier)
+                .map(|id| {
+                    let repo = repo.clone();
+                    async move {
+                        tokio::time::timeout(
+                            std::time::Duration::from_secs(2),
+                            repo.object_limited(&id, 64 * 1024),
+                        )
+                        .await
+                        .ok()
+                        .and_then(Result::ok)
+                    }
+                })
+                .buffered(8)
+                .collect()
+                .await;
+            frontier = loaded
+                .into_iter()
+                .flatten()
+                .filter_map(|bytes| decode::<Node>(&bytes).ok())
+                .flat_map(|node| match node {
+                    Node::Extension { child, .. } => vec![child],
+                    Node::Branch { children, .. } => children.into_iter().flatten().collect(),
+                    _ => vec![],
+                })
+                .collect();
+            if frontier.is_empty() {
+                break;
+            }
         }
     }
     pub fn stage<T: Serialize>(&mut self, value: &T) -> Result<ContentId> {
@@ -319,6 +365,10 @@ impl Tree {
                     child,
                 } => stack.push((Self::descend(&path, &suffix)?, child)),
                 Node::Branch { children, .. } => {
+                    if self.read_prefetch {
+                        self.prefetch_nodes(children.iter().flatten().cloned().collect())
+                            .await;
+                    }
                     for (q, child) in children.into_iter().enumerate().rev() {
                         if let Some(child) = child {
                             stack.push((path.child(q as u8)?, child));

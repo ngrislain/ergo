@@ -133,7 +133,7 @@ impl PartCache {
         let _guard = self.gate.lock().await;
         let key = format!("assets/parts/{part}.json");
         if let Some(bytes) = self.get(&key).await? {
-            let record: PartDescription = serde_json::from_slice(&bytes)?;
+            let mut record: PartDescription = serde_json::from_slice(&bytes)?;
             ensure!(
                 record.format == PART_FORMAT
                     && record.schema == ergo_world::SCHEMA_VERSION
@@ -148,11 +148,28 @@ impl PartCache {
                     hex::encode(Sha256::digest(&mesh)) == record.mesh_hash,
                     "Ergo geometry hash mismatch"
                 );
-                let mesh: Mesh = ciborium::from_reader(mesh.as_slice())?;
+                let mut mesh: Mesh = ciborium::from_reader(mesh.as_slice())?;
                 ensure!(
                     mesh.schema == ergo_world::SCHEMA_VERSION && mesh.part == record.part,
                     "Ergo geometry identity mismatch"
                 );
+                // Upgrade derived descriptions created before a catalogue
+                // profile existed. Keep genuine vertices/credits unchanged;
+                // publish new native geometry bytes before its description.
+                if let Some(profile) = ergo_world::part_profiles::profile(&part) {
+                    if mesh.body_bounds.min != profile.bounds.min
+                        || mesh.body_bounds.max != profile.bounds.max
+                        || record.catalog_mass.is_none()
+                    {
+                        mesh.body_bounds = profile.bounds;
+                        let mut data = Vec::new();
+                        ciborium::into_writer(&mesh, &mut data)?;
+                        let hash = hex::encode(Sha256::digest(&data));
+                        self.put(&format!("objects/{hash}.cbor"), data).await?;
+                        record = PartDescription::from_mesh(&mesh, hash);
+                        self.put(&key, serde_json::to_vec(&record)?).await?;
+                    }
+                }
                 return Ok(PartAsset {
                     mesh,
                     credits: record.credits.clone(),
@@ -264,7 +281,8 @@ impl PartCache {
             );
             mesh.body_bounds = nominal.body_bounds;
         } else {
-            mesh.body_bounds = mesh.bounds;
+            mesh.body_bounds =
+                ergo_world::geometry::nominal_body_bounds(part).unwrap_or(mesh.bounds);
         }
         mesh.credits = credits.clone();
         Ok((mesh, credits))
@@ -355,6 +373,51 @@ impl PartCache {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[tokio::test]
+    async fn legacy_specialty_cache_upgrades_nominal_bounds_and_mass_without_changing_vertices() {
+        let store: Arc<dyn ObjectStore> = Arc::new(object_store::memory::InMemory::new());
+        let resolver = cache(store.clone());
+        let raw_bounds = ergo_world::Aabb::new(
+            glam::DVec3::new(-2., -3., -0.5),
+            glam::DVec3::new(2., 1. / 6., 0.5),
+        );
+        let mut old = ergo_world::geometry::body_mesh("60594.dat", raw_bounds);
+        old.quality = "synthetic source fixture".into();
+        let mut bytes = Vec::new();
+        ciborium::into_writer(&old, &mut bytes).unwrap();
+        let hash = hex::encode(Sha256::digest(&bytes));
+        let mut description = PartDescription::from_mesh(&old, hash.clone());
+        description.catalog_mass = None;
+        store
+            .put(&Path::from(format!("objects/{hash}.cbor")), bytes.into())
+            .await
+            .unwrap();
+        store
+            .put(
+                &Path::from("assets/parts/60594.dat.json"),
+                serde_json::to_vec(&description).unwrap().into(),
+            )
+            .await
+            .unwrap();
+        let upgraded = resolver.resolve("60594.dat").await.unwrap();
+        assert!(upgraded.cache_hit);
+        assert_eq!(upgraded.mesh.vertices, old.vertices);
+        assert_eq!(upgraded.mesh.body_bounds.max.y, 0.);
+        let updated = upgraded.description.unwrap();
+        assert!((updated.catalog_mass.unwrap().kg - 0.00185).abs() < 1e-12);
+        assert_ne!(updated.mesh_hash, hash);
+        assert!(
+            resolver
+                .get(&format!("objects/{}.cbor", updated.mesh_hash))
+                .await
+                .unwrap()
+                .is_some()
+        );
+        assert!(
+            resolver.resolve("3037.dat").await.is_err(),
+            "A missing source slope must not become a rectangular substitute"
+        );
+    }
     fn cache(store: Arc<dyn ObjectStore>) -> PartCache {
         PartCache {
             store,

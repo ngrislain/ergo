@@ -9,6 +9,22 @@ PARTS={"3070b":(1,1,1/3),"3069b":(2,1,1/3),"3068b":(2,2,1/3),"2431":(4,1,1/3),
          "3795":(6,2,1/3),"3710":(4,1,1/3),"3034":(8,2,1/3),"3832":(10,2,1/3),"4282":(16,2,1/3),"3023":(2,1,1/3),"3666":(6,1,1/3),"3009":(6,1,1)}
 
 
+SPECIAL_BOUNDS={}
+SPECIAL_RENDER_BOUNDS={}
+
+
+def register_catalog_part(part,description):
+    """Use actual MCP-resolved nominal datums; never infer them from studs."""
+    part=part.removesuffix('.dat')
+    if description.get('quality') in ['proxy','parametric'] and part not in PARTS:
+        raise ValueError('A genuine catalogue asset is required for '+part)
+    bounds=description['body_bounds']
+    if not all(math.isfinite(v) for edge in ['min','max'] for v in bounds[edge]):raise ValueError('Invalid catalogue bounds')
+    if not all(a<b for a,b in zip(bounds['min'],bounds['max'])):raise ValueError('Empty catalogue body')
+    SPECIAL_BOUNDS[part]=bounds
+    SPECIAL_RENDER_BOUNDS[part]=description['bounds']
+
+
 def snap_origin(origin):
     def nearest(value):
         if not math.isfinite(value):raise ValueError('Placement coordinates must be finite')
@@ -46,9 +62,13 @@ def metric_matrix(rotation):
 
 
 def local_bounds(part,rotation):
-    w,d,h=PARTS[part];a=metric_matrix(rotation)
+    a=metric_matrix(rotation)
+    if part in SPECIAL_BOUNDS:
+        bounds=SPECIAL_BOUNDS[part];lo,hi=bounds['min'],bounds['max']
+    else:
+        w,d,h=PARTS[part];lo,hi=[-w/2,-d/2,-h],[w/2,d/2,0]
     corners=[[sum(a[i][j]*p[j] for j in range(3)) for i in range(3)]
-             for p in itertools.product([-w/2,w/2],[-d/2,d/2],[-h,0])]
+             for p in itertools.product(*zip(lo,hi))]
     return ([min(p[i] for p in corners) for i in range(3)],
             [max(p[i] for p in corners) for i in range(3)])
 
@@ -68,9 +88,13 @@ def bounds(model):
             target=value['target']
             if target['kind']=='definition':walk(target['id'],matrix)
             else:
-                part=target['id'].removesuffix('.dat');w,d,h=PARTS[part]
-                top=0 if part in ['3070b','3069b','3068b','2431'] else 1/6
-                for p in itertools.product([-w/2,w/2],[-d/2,d/2],[-h,top],[1]):
+                part=target['id'].removesuffix('.dat')
+                if part in SPECIAL_RENDER_BOUNDS:
+                    rendered=SPECIAL_RENDER_BOUNDS[part];lo,hi=rendered['min'],rendered['max']
+                else:
+                    w,d,h=PARTS[part];top=0 if part in ['3070b','3069b','3068b','2431'] else 1/6
+                    lo,hi=[-w/2,-d/2,-h],[w/2,d/2,top]
+                for p in itertools.product(*zip(lo,hi),[1]):
                     points.append([sum(matrix[i][j]*p[j] for j in range(4)) for i in range(3)])
     walk(model['root'],[[int(i==j) for j in range(4)] for i in range(4)])
     return ([min(p[i] for p in points) for i in range(3)],[max(p[i] for p in points) for i in range(3)])

@@ -11,6 +11,7 @@ pub mod illustration;
 pub mod interference;
 pub mod ldraw;
 pub mod mcp;
+pub mod part_profiles;
 pub mod physical;
 #[cfg(feature = "simulation")]
 pub mod physics;

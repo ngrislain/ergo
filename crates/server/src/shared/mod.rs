@@ -160,7 +160,7 @@ impl SharedWorlds {
             common_root: None,
             pacing: pacing::Pacing::disabled(store.clone()),
             root: Repository::new(store.backend.clone(), &prefix)?
-                .with_cache_capacity(64 * 1024 * 1024)
+                .with_cache_capacity(256 * 1024 * 1024)
                 .with_coordinated_gc(),
             store,
             limits: Limits::default(),

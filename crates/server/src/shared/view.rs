@@ -293,7 +293,7 @@ async fn build(
                 let mut after = None;
                 loop {
                     let page = snapshot
-                        .scan_page(&block_path(coord), after.as_ref(), 128)
+                        .scan_page_prefetched(&block_path(coord), after.as_ref(), 128)
                         .await?;
                     if !page.leaves.is_empty() && !blocks.contains(&coord) {
                         blocks.push(coord);
@@ -305,7 +305,7 @@ async fn build(
                                 .blob_limited::<spatial::SpatialRef>(&cid, limit)
                                 .await
                         })
-                        .buffered(8);
+                        .buffered(32);
                     while let Some(row) = rows.try_next().await? {
                         remaining = remaining
                             .checked_sub(canonical_cbor(&row)?.len())
@@ -338,7 +338,7 @@ async fn build(
                 .await?
                 .context("Missing viewed piece")
         })
-        .buffered(8);
+        .buffered(32);
     let mut index = 0;
     while let Some(piece) = pieces.try_next().await? {
         remaining = remaining

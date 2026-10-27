@@ -1,5 +1,21 @@
 # Changelog
 
+## v0.5.11
+
+- Add bounded two-level immutable-node prefetch for ordered dense-region scans,
+  32-way bounded spatial/piece reads and a 256 MiB verified-object cache budget.
+- Allow bounded 128 MiB MCP assembly read-back responses, fixing failed confirmation
+  after an already accepted large assembly edit.
+- Add source-only catalogue profiles for genuine frames, slopes, fences, round
+  parts, lights, factory figures and wheel/tyre units. Retain geometry credits,
+  catalogue mass provenance and explicit nominal-proxy limitations.
+- Expose nominal body bounds/provenance through MCP, check registered specialty
+  interfaces, and keep their unknown connector strengths uncalibrated.
+- Upgrade older derived asset descriptions without changing visual vertices.
+- Add journalled incremental district authoring through real MCP tools and exact
+  read-only reconciliation of uncertain outcomes. District decoration remains work
+  in progress; accepted receipts record the actual published stages.
+
 ## v0.5.10
 
 - Give read-only browser regions independent budgets, defaulting to 50,000 pieces

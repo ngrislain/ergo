@@ -24,6 +24,9 @@ struct FaultStore {
     head_updates: AtomicUsize,
     object_reads: AtomicUsize,
     delayed_reads: AtomicBool,
+    active_reads: AtomicUsize,
+    peak_reads: AtomicUsize,
+    read_objects: std::sync::Mutex<Vec<String>>,
 }
 impl fmt::Display for FaultStore {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -95,8 +98,14 @@ impl ObjectStore for FaultStore {
     async fn get_opts(&self, p: &Path, o: GetOptions) -> object_store::Result<GetResult> {
         if p.as_ref().contains("/objects/") {
             self.object_reads.fetch_add(1, Ordering::SeqCst);
+            self.read_objects.lock().unwrap().push(p.to_string());
             if self.delayed_reads.load(Ordering::SeqCst) {
+                let active = self.active_reads.fetch_add(1, Ordering::SeqCst) + 1;
+                self.peak_reads.fetch_max(active, Ordering::SeqCst);
                 tokio::task::yield_now().await;
+                let result = self.inner.get_opts(p, o).await;
+                self.active_reads.fetch_sub(1, Ordering::SeqCst);
+                return result;
             }
         }
         self.inner.get_opts(p, o).await
@@ -122,6 +131,50 @@ impl ObjectStore for FaultStore {
     }
     async fn copy_if_not_exists(&self, a: &Path, b: &Path) -> object_store::Result<()> {
         self.inner.copy_if_not_exists(a, b).await
+    }
+}
+
+#[tokio::test]
+async fn prefetched_snapshot_pages_are_ordered_parallel_and_never_follow_value_links() {
+    let store = Arc::new(FaultStore::default());
+    let writer = Repository::new(store.clone(), "prefetch").unwrap();
+    writer.create("main").await.unwrap();
+    let mut transaction = writer.begin("main").await.unwrap();
+    let region = ergo_transactions::OctreePath::new(vec![3]).unwrap();
+    let mut values = Vec::new();
+    for index in 0..64u32 {
+        let path = region
+            .child((index / 8) as u8)
+            .unwrap()
+            .child((index % 8) as u8)
+            .unwrap();
+        values.push(transaction.put(&path, &index).await.unwrap());
+    }
+    transaction
+        .commit("test", "prefetch fixture", Default::default())
+        .await
+        .unwrap();
+    let reader = Repository::new(store.clone(), "prefetch")
+        .unwrap()
+        .with_cache_capacity(1024 * 1024);
+    let snapshot = reader.checkout("main").await.unwrap();
+    store.read_objects.lock().unwrap().clear();
+    store.delayed_reads.store(true, Ordering::SeqCst);
+    store.peak_reads.store(0, Ordering::SeqCst);
+    let fast = snapshot
+        .scan_page_prefetched(&region, None, 17)
+        .await
+        .unwrap();
+    assert!(store.peak_reads.load(Ordering::SeqCst) > 1);
+    let ordinary = snapshot.scan_page(&region, None, 17).await.unwrap();
+    assert_eq!(fast.leaves, ordinary.leaves);
+    assert_eq!(fast.next, ordinary.next);
+    let reads = store.read_objects.lock().unwrap();
+    for value in values {
+        assert!(
+            !reads.contains(&format!("prefetch/objects/{value}.cbor")),
+            "Node lookahead must never read application payloads"
+        );
     }
 }
 

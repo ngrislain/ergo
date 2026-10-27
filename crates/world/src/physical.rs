@@ -93,6 +93,9 @@ pub fn validate_pose(brick: &Brick) -> Result<()> {
 /// BrickLink item-info weights, retrieved 2026-10-17. Tile aliases map to the
 /// unsuffixed BrickLink catalog IDs. Mold/color variation is not modeled.
 pub fn mass_kg(part: &str) -> Result<f64> {
+    if let Some(profile) = crate::part_profiles::profile(part) {
+        return Ok(profile.grams / 1000.);
+    }
     let grams = match part {
         "3005.dat" => 0.44,
         "3004.dat" => 0.83,
@@ -133,6 +136,9 @@ pub fn mass_kg(part: &str) -> Result<f64> {
     Ok(grams / 1000.0)
 }
 pub fn mass_source(part: &str) -> String {
+    if let Some(profile) = crate::part_profiles::profile(part) {
+        return profile.source;
+    }
     let id = part.trim_end_matches(".dat");
     let id = match id {
         "3070b" => "3070",
@@ -224,13 +230,15 @@ impl ConnectionMeasurements {
             mesh.physical = self.parts.iter().find(|p| p.part == mesh.part).cloned();
             if let Some(record) = &mesh.physical {
                 mesh.body_bounds = record.body_bounds;
+            } else if let Some(bounds) = crate::geometry::nominal_body_bounds(&mesh.part) {
+                mesh.body_bounds = bounds;
             }
         }
         for brick in &mut scene.bricks {
             let bounds = if let Some(record) = self.parts.iter().find(|p| p.part == brick.part) {
                 record.body_bounds
-            } else if crate::geometry::part_spec(&brick.part).is_some() {
-                crate::geometry::fallback_mesh(&brick.part).body_bounds
+            } else if let Some(bounds) = crate::geometry::nominal_body_bounds(&brick.part) {
+                bounds
             } else {
                 anyhow::bail!(
                     "No sourced mass and nominal body bounds for {}. Add a sourced parts record to ERGO_CONNECTION_MEASUREMENTS",

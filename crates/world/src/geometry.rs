@@ -134,6 +134,21 @@ pub fn fallback_mesh(part: &str) -> Mesh {
     mesh
 }
 
+/// Trusted nominal collision/support box, independent of visual source extrema.
+pub fn nominal_body_bounds(part: &str) -> Option<Aabb> {
+    if let Some(spec) = part_spec(part) {
+        return Some(Aabb::new(
+            DVec3::new(
+                -f64::from(spec.width) / 2.,
+                -spec.height,
+                -f64::from(spec.depth) / 2.,
+            ),
+            DVec3::new(f64::from(spec.width) / 2., 0., f64::from(spec.depth) / 2.),
+        ));
+    }
+    crate::part_profiles::profile(part).map(|profile| profile.bounds)
+}
+
 pub fn ground_mesh() -> Mesh {
     let body = Aabb::new(DVec3::new(-0.5, -1.0, -0.5), DVec3::new(0.5, 0.0, 0.5));
     let mut vertices = Vec::new();
