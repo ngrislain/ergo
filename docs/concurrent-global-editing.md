@@ -184,6 +184,16 @@ directly. See [MCP setup and outcome handling](local-construction-mcp.md#publica
   responses are immutable-cacheable; the current-version URL requires revalidation.
 - `GET /api/shared-worlds/{id}/assemblies/{assembly}?revision=CID`: small paged-rule
   header; `/pages?revision=CID&kind=1&limit=64` reads bounded membership/rule rows.
+- `GET /api/shared-worlds/{id}/assemblies`: bounded header pages include exact
+  stored piece counts and immutable creation attribution/time where recorded.
+  Old births recover the actual creator without inventing a timestamp; legacy
+  count recovery is bounded to 5,000 membership rows per assembly. Browser sort
+  applies to loaded header pages, not a global geometry scan.
+- `GET /api/shared-worlds/{id}/assemblies/{assembly}/export?format=ldraw|ergo`:
+  complete revision-consistent construction attachment, with normal read
+  permissions. MPD embeds resolved part geometry and uses standard LDraw units;
+  native JSON retains Ergo-specific metadata. Optional `revision` selects an
+  accepted revision, also returned in `X-Ergo-Revision`.
 - `GET /api/shared-worlds/{id}/assemblies/{assembly}/workspace?revision=CID`:
   bounded complete authoring scene, with `external_dependencies` disclosed.
 - `PUT /api/shared-worlds/{id}/assemblies/{assembly}/workspace`: `{base, scene}`

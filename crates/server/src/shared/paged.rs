@@ -34,6 +34,10 @@ pub fn row(id: &ContentId, kind: u8, n: u64) -> OctreePath {
 pub struct RulesHeader {
     pub id: ContentId,
     pub name: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub creation: Option<Creation>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub piece_count: Option<usize>,
     pub meshes: BTreeMap<String, ContentId>,
     #[serde(deserialize_with = "current_paged")]
     pub paged: bool,
@@ -56,6 +60,8 @@ impl RulesHeader {
         Self {
             id: r.id.clone(),
             name: r.name.clone(),
+            creation: r.creation.clone(),
+            piece_count: Some(r.pieces.len()),
             meshes: r.meshes.clone(),
             paged: true,
             source_model: r.source_model.clone(),
@@ -185,6 +191,7 @@ pub(super) async fn reconstruct(
     Ok(Rules {
         id: header.id.clone(),
         name: header.name.clone(),
+        creation: header.creation.clone(),
         pieces,
         meshes: header.meshes.clone(),
         joints,

@@ -1869,7 +1869,16 @@ fn ConstructionBrowser() -> impl IntoView {
 fn CommonConstructionList() -> impl IntoView {
     let ui = expect_context::<Ui>();
     let handle = expect_context::<Handle>();
+    let sort = RwSignal::new("name".to_owned());
+    let descending = RwSignal::new(false);
+    let export_format = RwSignal::new("ldraw".to_owned());
     view! {
+        <div class="construction-sort"><label for="construction-sort">"Sort"</label>
+            <select id="construction-sort" aria-label="Sort constructions" on:change=move |e|{let key=event_target_value(&e);descending.set(key=="date"||key=="size");sort.set(key);}>
+                <option value="name">"Name"</option><option value="author">"Author"</option><option value="date">"Date"</option><option value="size">"Size"</option>
+            </select><button class="icon-button" aria-label="Reverse construction sort order" title=move ||if descending.get(){"Descending"}else{"Ascending"} on:click=move |_|descending.update(|v|*v=!*v)>{move ||if descending.get(){"↓"}else{"↑"}}</button>
+        </div>
+        <Show when=move ||ui.common_more.get().is_some()><small class="construction-sort-scope">"Sorts loaded constructions"</small></Show>
         <ul class="world-list construction-list" aria-label="Constructions in shared world" tabindex="0"
             aria-busy=move ||ui.common_loading.get().to_string()
             on:scroll=move |event| {
@@ -1877,18 +1886,22 @@ fn CommonConstructionList() -> impl IntoView {
                     if element.scroll_height()-element.scroll_top()-element.client_height()<96 {common::more(handle);}
                 }
             }>
-            {move ||ui.common_assemblies.get().into_iter().map(|assembly| {
+            {move ||{let mut items=ui.common_assemblies.get();common::sort(&mut items,&sort.get(),descending.get());items.into_iter().map(|assembly| {
+                let author=assembly.author().to_owned();let date=assembly.date();let size=assembly.piece_count.map(number).unwrap_or_else(||"—".into());
                 let id=assembly.id;let active=id.clone();
                 let attribute=id.clone();let name=assembly.name;let title=name.clone();
                 view!{<li><button class="world-item" data-assembly-id=attribute class:active=move ||ui.focused_assembly.get().as_ref()==Some(&active)
                     title=title disabled=move ||ui.busy.get() on:click=move |_|common::open(handle,id.clone())>
-                    <span class="world-thumbnail" aria-hidden="true">"▦"</span><span><strong>{name}</strong></span>
+                    <span class="world-thumbnail" aria-hidden="true">"▦"</span><span class="construction-summary"><strong>{name}</strong><small class="construction-author" title=author.clone()>{author.clone()}</small><time class="construction-date">{date}</time></span><small class="construction-size" title="Piece count">{size}</small>
                 </button></li>}
-            }).collect_view()}
+            }).collect_view()}}
         </ul>
         <div class="construction-list-actions">
             <button class="text-button" disabled=move ||ui.common_loading.get() on:click=move |_|common::refresh(handle)>"Refresh list"</button>
             <Show when=move ||ui.common_more.get().is_some()><button class="text-button" disabled=move ||ui.common_loading.get() on:click=move |_|common::more(handle)>"Load more"</button></Show>
+        </div>
+        <div class="construction-export"><select aria-label="Construction export format" on:change=move |e|export_format.set(event_target_value(&e))><option value="ldraw">"LDraw / MPD"</option><option value="ergo">"Ergo JSON"</option></select>
+            <button class="text-button" disabled=move ||ui.focused_assembly.get().is_none() on:click=move |_|common::download(handle,&export_format.get_untracked())>"Download construction"</button>
         </div>
     }
 }
@@ -1927,6 +1940,7 @@ fn SimulationControls() -> impl IntoView {
             <button class="button quiet full group-button" on:click=move |_|show_dialog("groups-dialog")>{move ||format!("Groups… ({})",ui.authoring_groups.get().len())}</button>
             <button class="button full save-button" disabled=move ||ui.busy.get()||!ui.dirty.get() on:click=move |_|save(handle)>{move ||if ui.common_world.get().is_some(){"Commit to common world"}else{"Validate & save snapshot"}}</button>
             <button class="text-button" on:click=move |_|export_scene(handle)>"Export workspace JSON"<span>"↓"</span></button>
+            <button class="text-button" on:click=move |_|export_scene_format(handle,true)>"Export workspace MPD"<span>"↓"</span></button>
         </div>
     }
 }
@@ -2030,10 +2044,17 @@ fn save(handle: Handle) {
 }
 
 fn export_scene(handle: Handle) {
+    export_scene_format(handle, false);
+}
+fn export_scene_format(handle: Handle, standard: bool) {
     act(handle, |c| {
         c.freeze_simulation();
         let scene = c.scene()?;
-        let text = serde_json::to_string_pretty(&ergo_world::storage::Construction::from(&scene))?;
+        let text = if standard {
+            ergo_world::exchange::mpd(&scene)?
+        } else {
+            serde_json::to_string_pretty(&ergo_world::storage::Construction::from(&scene))?
+        };
         let parts = js_sys::Array::new();
         parts.push(&JsValue::from_str(&text));
         let blob = web_sys::Blob::new_with_str_sequence(&parts)
@@ -2047,7 +2068,11 @@ fn export_scene(handle: Handle) {
             .dyn_into::<web_sys::HtmlAnchorElement>()
             .unwrap();
         a.set_href(&url);
-        a.set_download("construction.ergo.json");
+        a.set_download(if standard {
+            "construction.mpd"
+        } else {
+            "construction.ergo.json"
+        });
         a.click();
         web_sys::Url::revoke_object_url(&url).ok();
         Ok(())

@@ -17,6 +17,8 @@ pub const PARTS: &[(&str, &str)] = &[
     ("3001.dat", "Brick 2 × 4"),
     ("2456.dat", "Brick 2 × 6"),
     ("3007.dat", "Brick 2 × 8"),
+    ("4201.dat", "Brick 8 × 8"),
+    ("4204.dat", "Brick 8 × 16"),
     ("3024.dat", "Plate 1 × 1"),
     ("3023.dat", "Plate 1 × 2"),
     ("3710.dat", "Plate 1 × 4"),

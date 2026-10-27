@@ -107,6 +107,14 @@ Interdependent rebuilds can PUT /api/shared-worlds/{id}/assemblies/workspaces wi
 operation budgets. Retained local piece numbers keep their birth identities.
 MCP tools continue to edit one opened assembly at a time.
 
+Complete constructions also download through GET
+/api/shared-worlds/{id}/assemblies/{assembly}/export?format=ldraw (self-contained
+standard MPD) or format=ergo (native JSON). Optional revision selects an accepted
+state. Use this rather than mistaking a visible-region fragment for an assembly.
+The browser list shows creator, recorded UTC creation time and size and sorts
+loaded rows by name, author, time or size. Historical unrecorded dates remain
+unavailable; they are not inferred from edit or migration dates.
+
 Authoritative docs:
 https://github.com/ngrislain/ergo/blob/main/docs/local-construction-mcp.md
 https://github.com/ngrislain/ergo/blob/main/docs/concurrent-global-editing.md#rest-workflow

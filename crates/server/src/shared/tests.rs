@@ -259,6 +259,187 @@ async fn accepted_changes_use_server_profile_name_and_retain_the_source_model() 
     assert_eq!(source.references().unwrap().len(), 2);
     snapshot.close().await.unwrap();
 }
+
+#[tokio::test]
+async fn construction_metadata_survives_replacement_and_downloads_export_the_whole_assembly() {
+    use axum::{
+        body::{Body, to_bytes},
+        http::Request,
+    };
+    use tower::ServiceExt;
+    let mut service = service();
+    service
+        .store
+        .put_user(&crate::auth::User {
+            id: "alice".into(),
+            name: "Alice Builder".into(),
+            email: "alice@example.test".into(),
+            picture: None,
+            created_at: 1,
+            last_login: 1,
+        })
+        .await
+        .unwrap();
+    let (head, imported) = seeded(&service, scene(10.)).await;
+    let (app, headers) = http(&service);
+    let path = format!("/api/shared-worlds/{}", head.id);
+    let (_, listing) = json(&app, "GET", &format!("{path}/assemblies"), &headers, None).await;
+    let first = &listing["items"][0];
+    assert_eq!(first["created_by"], "alice");
+    assert_eq!(first["created_by_name"], "Alice Builder");
+    assert_eq!(first["piece_count"], 2);
+    assert!(first["created_at"].as_u64().unwrap() > 0);
+    let mut renamed = scene(10.);
+    renamed.name = "Renamed construction".into();
+    let replaced = service
+        .replace_assembly(
+            &head.id,
+            "alice",
+            &imported.assembly,
+            authoring::ReplaceRequest {
+                base: head.revision,
+                scene: renamed,
+            },
+        )
+        .await
+        .unwrap();
+    let (app, headers) = http(&service);
+    let (_, listing) = json(&app, "GET", &format!("{path}/assemblies"), &headers, None).await;
+    assert_eq!(listing["items"][0]["creation"], first["creation"]);
+    service.limits.pieces = 1;
+    let (app, headers) = http(&service);
+    let (status, _) = json(
+        &app,
+        "GET",
+        &format!("{path}/assemblies/{}/workspace", imported.assembly),
+        &headers,
+        None,
+    )
+    .await;
+    assert_eq!(
+        status,
+        StatusCode::PAYLOAD_TOO_LARGE,
+        "Authoring must retain its own count limit"
+    );
+    for format in ["ldraw", "ergo"] {
+        let mut request = Request::get(format!(
+            "{path}/assemblies/{}/export?format={format}&revision={}",
+            imported.assembly, replaced.accepted.revision
+        ))
+        .body(Body::empty())
+        .unwrap();
+        request.headers_mut().extend(headers.clone());
+        let response = app.clone().oneshot(request).await.unwrap();
+        assert_eq!(response.status(), StatusCode::OK);
+        assert_eq!(
+            response.headers()["x-ergo-revision"],
+            replaced.accepted.revision.to_string()
+        );
+        assert!(
+            response.headers()["content-disposition"]
+                .to_str()
+                .unwrap()
+                .contains("attachment")
+        );
+        let bytes = to_bytes(response.into_body(), 16 * 1024 * 1024)
+            .await
+            .unwrap();
+        if format == "ldraw" {
+            let text = std::str::from_utf8(&bytes).unwrap();
+            let document = ergo_world::ldraw::Document::parse(text, "download.mpd").unwrap();
+            let refs = ergo_world::assembly::Model::from_document(&document)
+                .unwrap()
+                .references()
+                .unwrap();
+            assert_eq!(
+                refs.len(),
+                2,
+                "Export must include the member over ten cells away"
+            );
+            assert!(
+                text.contains("0 FILE 3003.dat"),
+                "Export must embed its part geometry"
+            );
+        } else {
+            assert_eq!(ergo_world::storage::decode(&bytes).unwrap().bricks.len(), 2);
+        }
+    }
+}
+
+#[tokio::test]
+async fn construction_download_preserves_per_instance_geometry_variants() {
+    use axum::{
+        body::{Body, to_bytes},
+        http::Request,
+    };
+    use tower::ServiceExt;
+    let service = service();
+    let (head, imported) = seeded(&service, scene(10.)).await;
+    let original = piece(&service, &head.id, &imported.pieces[&1]).await;
+    let mut alternate = scene(50.);
+    alternate.bricks.truncate(1);
+    for mesh in alternate.meshes.values_mut() {
+        mesh.quality = "fixture geometry variant".into();
+        for vertex in mesh.vertices.chunks_exact_mut(9) {
+            vertex[0] *= 0.99;
+        }
+    }
+    let alternate = service
+        .import(
+            &head.id,
+            "alice",
+            ImportRequest {
+                base: head.revision,
+                scene: alternate,
+            },
+        )
+        .await
+        .unwrap();
+    let variant = piece(&service, &head.id, &alternate.pieces[&1]).await.mesh;
+    let accepted = service
+        .prepare(
+            &head.id,
+            "alice",
+            CommitRequest {
+                base: alternate.accepted.revision,
+                pieces: vec![PieceEdit {
+                    id: original.id,
+                    geometry: Some(original.geometry),
+                    mesh: Some(variant),
+                }],
+                rules: vec![],
+                joints: vec![],
+                message: "Use a second geometry variant".into(),
+            },
+        )
+        .await
+        .unwrap()
+        .publish()
+        .await
+        .unwrap();
+    let (app, headers) = http(&service);
+    let mut request = Request::get(format!(
+        "/api/shared-worlds/{}/assemblies/{}/export?format=ldraw&revision={}",
+        head.id, imported.assembly, accepted.revision
+    ))
+    .body(Body::empty())
+    .unwrap();
+    request.headers_mut().extend(headers);
+    let response = app.oneshot(request).await.unwrap();
+    assert_eq!(response.status(), StatusCode::OK);
+    let bytes = to_bytes(response.into_body(), 16 * 1024 * 1024)
+        .await
+        .unwrap();
+    let text = std::str::from_utf8(&bytes).unwrap();
+    let document = ergo_world::ldraw::Document::parse(text, "variants.mpd").unwrap();
+    let refs = ergo_world::assembly::Model::from_document(&document)
+        .unwrap()
+        .references()
+        .unwrap();
+    assert_eq!(refs.len(), 2);
+    assert_ne!(refs[0].name, refs[1].name);
+    assert!(text.contains("export geometry variant of 3003.dat"));
+}
 async fn seeded(service: &SharedWorlds, initial: WorldExport) -> (Head, Imported) {
     let head = service
         .create(

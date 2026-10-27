@@ -8,6 +8,10 @@ license.workspace = true
 default = []
 simulation = ["dep:rapier3d-f64"]
 
+[[example]]
+name = "check_stability"
+required-features = ["simulation"]
+
 [dependencies]
 serde.workspace = true
 glam.workspace = true

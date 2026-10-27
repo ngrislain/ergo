@@ -1,5 +1,5 @@
 export const DEFAULT_MCP_PACKAGE =
-  "https://github.com/ngrislain/ergo/releases/download/v0.5.7/ngrislain-ergo-mcp-0.5.7.tgz";
+  "https://github.com/ngrislain/ergo/releases/download/v0.5.8/ngrislain-ergo-mcp-0.5.8.tgz";
 
 export function packageSource(value = "") {
   const spec = value.trim() || DEFAULT_MCP_PACKAGE;

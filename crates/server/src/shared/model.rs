@@ -166,12 +166,23 @@ pub struct Piece {
     pub mesh: ContentId,
     pub replicas: BTreeSet<BlockCoord>,
 }
-/// A bounded authoring assembly's sparse rules, not the global world's graph.
-/// Integer IDs are scoped metadata references; persistent piece IDs are global hashes.
+/// Server-owned creation attribution, retained across later edits.
+#[derive(Clone, Serialize, Deserialize)]
+pub struct Creation {
+    pub created_by: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub created_by_name: Option<String>,
+    /// Server-recorded Unix milliseconds. Absent on historical construction births.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub created_at: Option<u64>,
+}
+/// A bounded assembly's sparse rules; scoped local IDs map to global births.
 #[derive(Clone, Serialize, Deserialize)]
 pub struct Rules {
     pub id: ContentId,
     pub name: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub creation: Option<Creation>,
     pub pieces: BTreeMap<u32, ContentId>,
     pub meshes: BTreeMap<String, ContentId>,
     pub joints: Vec<JointSpec>,

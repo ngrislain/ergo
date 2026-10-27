@@ -52,13 +52,48 @@ impl SharedWorlds {
         assembly: &ContentId,
         revision: &ContentId,
     ) -> SharedResult<serde_json::Value> {
-        let mut ws = self.working(id, actor, revision).await?;
+        self.read_assembly(id, actor, assembly, revision, false)
+            .await
+    }
+
+    async fn read_assembly(
+        &self,
+        id: &str,
+        actor: &str,
+        assembly: &ContentId,
+        revision: &ContentId,
+        export_only: bool,
+    ) -> SharedResult<serde_json::Value> {
+        let mut ws = if export_only {
+            // Geometry interchange is read-only, not an authoring or dynamics
+            // operation. Retain authorization/byte limits without a body cap or
+            // unnecessary traversal into neighboring mechanical dependencies.
+            let (repo, _, _) = self
+                .authorized(
+                    id,
+                    &Principal {
+                        id: Some(actor.into()),
+                    },
+                )
+                .await?;
+            Working::new(
+                repo.begin_at("main", revision).await?,
+                Limits {
+                    pieces: usize::MAX,
+                    bytes: self.limits.bytes,
+                },
+            )
+            .await?
+        } else {
+            self.working(id, actor, revision).await?
+        };
         let rules = ws.rules(assembly).await?;
         if rules.pieces.len() > ws.piece_limit() {
             return Err(SharedError::working_limit("authoring assembly"));
         }
         let mut bricks = Vec::new();
         let mut meshes = BTreeMap::new();
+        let mut export_aliases = false;
         for (&local, global) in &rules.pieces {
             let piece = ws.piece(global).await?.ok_or_else(SharedError::missing)?;
             ensure!(
@@ -66,16 +101,44 @@ impl SharedWorlds {
                 "Assembly mapping mismatch"
             );
             let mesh = ws.mesh(&piece.mesh).await?;
-            if let Some(previous) = meshes.insert(mesh.part.clone(), mesh.as_ref().clone()) {
-                ensure!(
-                    canonical_cbor(&previous)? == canonical_cbor(mesh.as_ref())?,
-                    "Assembly contains incompatible meshes for one part ID"
-                );
+            let mut brick = piece.geometry.brick(local, mesh.as_ref())?;
+            if let Some(previous) = meshes.get(&mesh.part) {
+                if canonical_cbor(previous)? != canonical_cbor(mesh.as_ref())? {
+                    ensure!(
+                        export_only,
+                        "Assembly contains incompatible meshes for one part ID"
+                    );
+                    let alias = format!(
+                        "{}-ergo-{}.dat",
+                        mesh.part.trim_end_matches(".dat"),
+                        piece.mesh
+                    );
+                    let mut variant = mesh.as_ref().clone();
+                    variant.part = alias.clone();
+                    variant.quality = format!(
+                        "{}; export geometry variant of {}",
+                        variant.quality, mesh.part
+                    );
+                    meshes.insert(alias.clone(), variant);
+                    brick.part = alias;
+                    export_aliases = true;
+                }
+            } else {
+                meshes.insert(mesh.part.clone(), mesh.as_ref().clone());
             }
-            bricks.push(piece.geometry.brick(local, mesh.as_ref())?);
+            bricks.push(brick);
         }
         let ids = rules.pieces.values().cloned().collect::<BTreeSet<_>>();
-        let domain = ws.discover(&ids).await?;
+        let external = if export_only {
+            None
+        } else {
+            Some(
+                ws.discover(&ids)
+                    .await?
+                    .iter()
+                    .any(|cid| !ids.contains(cid)),
+            )
+        };
         let source = if let Some(cid) = &rules.source_model {
             let model: ergo_world::assembly::Model =
                 ws.tx.blob_limited(cid, ws.remaining()).await?;
@@ -93,11 +156,11 @@ impl SharedWorlds {
             fixed_bricks: rules.fixed_bricks.clone(),
             groups: rules.groups.clone(),
             ground: Vec::new(),
-            model: source,
+            model: if export_aliases { None } else { source },
         };
         Ok(
             serde_json::json!({"world_id":id,"assembly_id":assembly,"base_revision":revision,
-            "scene":scene,"external_dependencies":domain.iter().any(|cid|!ids.contains(cid))}),
+            "scene":scene,"external_dependencies":external}),
         )
     }
 
@@ -285,6 +348,7 @@ impl SharedWorlds {
             let rules = Rules {
                 id: assembly.clone(),
                 name: scene.name,
+                creation: original.creation.clone(),
                 pieces: pieces.clone(),
                 meshes,
                 joints: scene.joints,
@@ -384,6 +448,78 @@ pub(super) async fn replace_batch(
 }
 
 #[derive(Default, Deserialize)]
+#[serde(rename_all = "lowercase")]
+enum DownloadFormat {
+    Ergo,
+    #[default]
+    Ldraw,
+}
+#[derive(Default, Deserialize)]
+pub(super) struct DownloadQuery {
+    #[serde(default)]
+    format: DownloadFormat,
+    revision: Option<ContentId>,
+}
+pub(super) async fn download(
+    State(s): State<AppState>,
+    h: HeaderMap,
+    Path((id, assembly)): Path<(String, ContentId)>,
+    Query(query): Query<DownloadQuery>,
+) -> SharedResult<Response> {
+    let actor = reader(&s, &h)?.required()?;
+    let head = s
+        .shared
+        .head(
+            &id,
+            &Principal {
+                id: Some(actor.clone()),
+            },
+            query.revision.as_ref(),
+        )
+        .await?;
+    let workspace = s
+        .shared
+        .read_assembly(&id, &actor, &assembly, &head.revision, true)
+        .await?;
+    let scene: WorldExport =
+        serde_json::from_value(workspace["scene"].clone()).context("Invalid authoring scene")?;
+    let (bytes, mime, extension) = match query.format {
+        DownloadFormat::Ergo => (
+            serde_json::to_vec(&ergo_world::storage::Construction::from(&scene))
+                .context("Cannot encode construction")?,
+            "application/json",
+            "ergo.json",
+        ),
+        DownloadFormat::Ldraw => (
+            tokio::task::spawn_blocking(move || ergo_world::exchange::mpd(&scene))
+                .await
+                .map_err(anyhow::Error::from)??
+                .into_bytes(),
+            "application/x-ldraw",
+            "mpd",
+        ),
+    };
+    let mut response = bytes.into_response();
+    response
+        .headers_mut()
+        .insert("content-type", mime.parse().unwrap());
+    response.headers_mut().insert(
+        "content-disposition",
+        format!("attachment; filename=\"{assembly}.{extension}\"")
+            .parse()
+            .unwrap(),
+    );
+    response
+        .headers_mut()
+        .insert("cache-control", "private, no-store".parse().unwrap());
+    response.headers_mut().insert(
+        "x-ergo-revision",
+        head.revision.to_string().parse().unwrap(),
+    );
+    Ok(response)
+}
+
+#[derive(Default, Deserialize)]
 pub(super) struct AssemblyQuery {
     limit: Option<usize>,
     after: Option<String>,
@@ -416,7 +552,62 @@ pub(super) async fn list(
         {
             let members = snapshot.scan_page(&path.child(1)?, None, 1).await?;
             if !members.leaves.is_empty() {
-                items.push(header);
+                let creation = if let Some(creation) = &header.creation {
+                    Some(creation.clone())
+                } else {
+                    // The immutable assembly birth identifies its real creator;
+                    // historical births did not record a creation timestamp.
+                    let birth: Vec<serde_json::Value> =
+                        snapshot.blob_limited(&header.id, 64 * 1024).await?;
+                    match birth.first().and_then(|v| v.as_str()) {
+                        Some("assembly-birth-v1") => {
+                            let actor = birth
+                                .get(2)
+                                .and_then(|v| v.as_str())
+                                .context("Invalid assembly birth")?;
+                            Some(Creation {
+                                created_by: actor.into(),
+                                created_by_name: s.shared.actor_name(actor).await?,
+                                created_at: None,
+                            })
+                        }
+                        Some("assembly-birth-v2") => Some(
+                            serde_json::from_value(
+                                birth.get(4).context("Invalid assembly birth")?.clone(),
+                            )
+                            .context("Invalid creation metadata")?,
+                        ),
+                        _ => None,
+                    }
+                };
+                let count = if let Some(count) = header.piece_count {
+                    Some(count)
+                } else {
+                    let mut count = 0;
+                    let mut cursor = None;
+                    loop {
+                        let rows = snapshot
+                            .scan_page(&path.child(1)?, cursor.as_ref(), 128)
+                            .await?;
+                        count += rows.leaves.len();
+                        if count > 5000 {
+                            break None;
+                        }
+                        cursor = rows.next;
+                        if cursor.is_none() {
+                            break Some(count);
+                        }
+                    }
+                };
+                let mut item =
+                    serde_json::to_value(header).context("Cannot encode assembly header")?;
+                item["piece_count"] = serde_json::json!(count);
+                item["created_by"] = serde_json::json!(creation.as_ref().map(|c| &c.created_by));
+                item["created_by_name"] =
+                    serde_json::json!(creation.as_ref().and_then(|c| c.created_by_name.as_deref()));
+                item["created_at"] =
+                    serde_json::json!(creation.as_ref().and_then(|c| c.created_at));
+                items.push(item);
             }
         }
     }

@@ -37,6 +37,12 @@ The interaction form and exponent require measurements; this is not a shipped mo
   more expensive constraint solve. Refined profiles still need independent
   loose-stack qualification. Do not use unqualified failures for
   destructive cleanup or infer measured clutch strength from an empty joint set.
+- Qualify large bonded architecture too: the monument recipes in
+  `scripts/build/` can have a constructive zero-joint-wrench static certificate
+  while native dynamic probes flag startup drift or estimated connection breaks.
+  Investigate convergence and redundant-joint reaction distribution without
+  inflating capacities, silently relaxing tolerances, or claiming earthquake
+  survival from the static proof. Preserve failed diagnostic receipts separately.
 - Ground-motion models only with traceable region/distance/site inputs; magnitude
   is not local PGA. Impact energy alone does not specify peak force.
 - Contact-force, support-polygon and connector-utilization overlays.

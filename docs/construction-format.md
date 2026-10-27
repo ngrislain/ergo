@@ -106,3 +106,44 @@ grid at commit; see [ground and coordinates](ground-and-coordinates.md).
 
 Implementation: `crates/world/src/assembly.rs`, `assembly/format.rs`, `storage.rs`,
 `coordinates.rs`; import conversion is separate from these native wire types.
+
+## Standard LDraw/MPD export
+
+`crates/world/src/exchange.rs` exports ordinary UTF-8, CRLF-terminated MPD using
+standard type-1 references and type-3 part triangles. Coordinates use LDraw's
+20-LDU stud pitch, 24-LDU brick height and negative-Y up. The construction is
+centred horizontally, retaining its original ground plane. Relative poses,
+standard colour IDs and custom RGB colours are preserved; custom RGB uses the
+standard `0x2RRGGBB` notation.
+
+Every referenced resolved part is embedded once, including custom/imported
+geometry. Source authors, URLs, licences and geometry-quality labels remain
+comments. Embedded resolved meshes are marked unofficial, not certified official
+LDraw parts. Corrected winding is declared with BFC. Consumers do not need an
+Ergo asset cache or a separate part-library installation to resolve the file.
+If an assembly contains different resolved meshes for one catalogue ID, export
+gives later variants distinct subfile names and records the original ID in their
+quality comments. Geometry and occurrence IDs are retained without pretending
+incompatible meshes are one part definition; reimport still needs normal physical
+validation for such visual variants.
+
+Select an assembly and choose **Download construction → LDraw / MPD**, or GET
+`/api/shared-worlds/{id}/assemblies/{assembly}/export?format=ldraw` (optional
+`revision=CID`). `format=ergo` exports the complete native envelope. Both apply
+normal world-read permissions and bounded complete-assembly loading; neither
+mistakes a clipped browser region for the selected construction. The response
+is an attachment and identifies its accepted revision in `X-Ergo-Revision`.
+Local workspaces also have **Export workspace MPD**.
+Read-only construction downloads do not inherit the 5,000-body dynamics or
+ordinary authoring count cap. The complete selected assembly is read under the
+encoded-byte budget, without traversing mechanical neighbors or claiming a
+standalone physical certificate.
+
+MPD is visual interchange: Ergo identities, geographic placement, groups, frozen
+measurements and physical constraints remain in native Ergo files. Reimported
+geometry must pass normal validation before publication; export is not a physical
+certificate. Proprietary Studio `.io` writing is not implemented.
+
+References: [LDraw file format](https://www.ldraw.org/article/218.html),
+[MPD extension](https://www.ldraw.org/article/47.html), and
+[BFC extension](https://www.ldraw.org/article/415.html).

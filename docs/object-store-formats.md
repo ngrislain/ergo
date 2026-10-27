@@ -75,7 +75,9 @@ all 256 hash bits, padded by two bits and split into 86 octants.
 - **`[5]+block-address` BlockHeader:** `{coord,paged:true}`. This sparse allocated
   block directory is not a preallocated world grid.
 - **`[4]+assembly-ID` paged rules:** child `0` is
-  **RulesHeader** `{id,name,meshes,paged:true,source_model?}`; meshes map part IDs
+  **RulesHeader** `{id,name,meshes,paged:true,source_model?,creation?,piece_count?}`;
+  creation is retained across edits and new headers store the exact current count.
+  Meshes map part IDs
   to CIDs. Child `1` has `{local_id,piece}` membership rows, child `2` peer-CID
   adjacency, child `3` endpoint-bound `{a,b,spec}` joints, child `4` boolean anchor
   markers, child `5` group headers/members and child `6` authored joint specs.
@@ -88,8 +90,13 @@ all 256 hash bits, padded by two bits and split into 86 octants.
 
 ### Linked blobs
 
-- **Assembly birth:** `["assembly-birth-v1",nonce,actor,name]`. Its hash remains
-  the assembly identity after later renames/edits.
+- **Assembly birth:** new records use
+  `["assembly-birth-v2",nonce,actor,name,creation]`, where creation has
+  `{created_by,created_by_name?,created_at?}`. `created_at` is server-recorded Unix
+  milliseconds. Existing `["assembly-birth-v1",nonce,actor,name]` identities remain
+  valid and retain their creator, but contain no creation timestamp. Their dates
+  are not fabricated from later edits/object timestamps. The hash remains the
+  assembly identity after renames/replacements.
 - **Birth:** `{nonce,created_by,created_by_name?,assembly,initial,mesh}`. Initial is
   Geometry. Names are server-resolved attribution snapshots; permissions use stable
   actor IDs. This is not a personal cryptographic signature by a display name.

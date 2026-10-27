@@ -104,6 +104,9 @@ pub fn mass_kg(part: &str) -> Result<f64> {
         "3001.dat" => 2.32,
         "2456.dat" => 3.74,
         "3007.dat" => 4.75,
+        // BrickLink item-info weights, verified 2026-10-27.
+        "4201.dat" => 16.30,
+        "4204.dat" => 30.66,
         "3024.dat" => 0.20,
         "3023.dat" => 0.36,
         "3710.dat" => 0.71,

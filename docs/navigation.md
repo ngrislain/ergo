@@ -45,11 +45,30 @@ shorter on mobile. The list pages accepted assemblies in bounded batches. Scroll
 loads another page; Load more and Refresh list remain explicit controls. Requests
 are coalesced and repeated identities are deduplicated.
 
+Rows show the construction's creator, recorded UTC creation date/time and piece
+count. New assembly births capture server time and author attribution; renames
+and replacements retain them. Historical births identify their creator but did
+not record dates, so those rows say **Date unavailable**, not the last edit or
+migration date. Old headers can recover counts from at most 5,000 member rows;
+larger uncounted historical assemblies show an unavailable size until metadata is
+available. New headers store their exact count.
+
+The sort control orders loaded rows by name, author, creation time or size, with
+a reverse-order button. Name/author comparisons are case-insensitive; missing
+dates/sizes stay last. When further pages remain, **Sorts loaded constructions**
+makes the scope explicit. This does not claim a globally indexed whole-world sort.
+
 Clicking a construction asks for one current member's bounded location hint,
 opens that shared region and focuses its resident assembly bounds. The world
 geometry retains neighboring constructions at their actual positions. Browsing
 does not fetch an isolated authoring workspace or publish an edit. The selected
 assembly is included in the agent handoff even without a separately selected brick.
+
+After selecting a construction, **Download construction** exports its complete
+accepted assembly as self-contained LDraw/MPD or native Ergo JSON. It uses a
+revision-consistent authoring read, rather than downloading only the visible
+region. Workspace JSON/MPD actions separately export the current local workspace.
+See [interchange export](construction-format.md#standard-ldrawmpd-export).
 
 ## Shared-region boundaries
 
@@ -76,6 +95,8 @@ pills. Browser regression checks cover eight compass headings in normal,
 fullscreen and mobile layouts. Keyboard focus
 uses a neutral thin indicator and an explicit focus label, with scroll-preserving
 canvas focus.
+The Orbit/Fly/Walk group sizes to its buttons, including in fullscreen, so its
+border does not leave an empty column on the right.
 
 `cargo run --locked -p ergo-client --example check_walk -- CONSTRUCTION ROUTE.json`
 loads a complete native construction and runs `walking::Walker` at 120 Hz, with

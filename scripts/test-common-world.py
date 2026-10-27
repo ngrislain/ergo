@@ -120,6 +120,26 @@ with tempfile.TemporaryDirectory(prefix="ergo-common-") as directory:
             expect(guest.locator(".status-message")).to_contain_text("Shared-world region loaded",timeout=30000)
             expect(guest.locator("h1")).to_have_text("Ergo Sandbox")
             expect(guest.locator(".status-bar")).to_contain_text("4 bricks")
+            selected=guest.locator(f'[data-assembly-id="{assembly}"]')
+            expect(selected.locator('.construction-author')).to_have_text('Alice Builder')
+            expect(selected.locator('.construction-date')).to_have_text(re.compile(r'\d{4}-\d{2}-\d{2}'))
+            expect(selected.locator('.construction-size')).to_have_text('3')
+            for key in ['name','author','date','size']:
+                guest.get_by_label('Sort constructions',exact=True).select_option(key)
+                expect(guest.get_by_label('Sort constructions',exact=True)).to_have_value(key)
+            sizes=[int(s.replace(',','')) for s in guest.locator('.construction-size').all_text_contents()]
+            assert sizes==sorted(sizes,reverse=True)
+            with guest.expect_download() as captured:
+                guest.get_by_role('button',name='Download construction',exact=True).click()
+            download=captured.value;text=pathlib.Path(download.path()).read_text()
+            assert download.suggested_filename.endswith('.mpd') and text.startswith('0 FILE construction.ldr')
+            assert sum(line.startswith('1 ') for line in text.splitlines())==3
+            assert '0 FILE 3003.dat' in text
+            guest.get_by_label('Construction export format',exact=True).select_option('ergo')
+            with guest.expect_download() as captured:
+                guest.get_by_role('button',name='Download construction',exact=True).click()
+            native=json.loads(pathlib.Path(captured.value.path()).read_text())
+            assert native['format']=='ergo-construction-1' and len(native['pieces'])==3
             short_list_height=guest.locator(".construction-list").evaluate("el=>el.clientHeight")
             assert guest.locator(".world-coordinates").bounding_box()['y']<guest.locator(".browser").bounding_box()['y']
             guest.close()
@@ -143,6 +163,9 @@ with tempfile.TemporaryDirectory(prefix="ergo-common-") as directory:
             assert panel.evaluate("el=>el.clientHeight")==short_list_height,"List height must not grow with its item count"
             panel.evaluate("el=>el.scrollTop=el.scrollHeight")
             expect(page.locator(".construction-list .world-item")).to_have_count(42,timeout=15000)
+            page.get_by_label('Sort constructions',exact=True).select_option('name')
+            names=page.locator('.construction-list .world-item strong').all_text_contents()
+            assert names==sorted(names,key=str.lower)
             assert panel.evaluate("el=>el.clientHeight")==short_list_height,"Pagination must stay inside the fixed-height zone"
             panel.evaluate("el=>el.scrollTop=0")
             page.locator(f'[data-assembly-id="{assembly}"]').click()

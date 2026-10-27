@@ -278,14 +278,15 @@ def palace():
     return model
 
 
-def run_model(binary,output,name,model,origin,token_file=None,publish=False,estimated_connectors=False):
+def run_model(binary,output,name,model,origin,token_file=None,publish=False,estimated_connectors=False,technique_query=None):
     origin=snap_origin(origin)
     output.mkdir(parents=True,exist_ok=True);workspace=output/"construction.ergo.json"
     if workspace.exists():raise RuntimeError("Choose a fresh output directory: "+str(output))
     native=model.export(tuple(origin));(output/"model.ergo-model.json").write_text(json.dumps(native,separators=(',',':'))+'\n')
     mcp=demo.Mcp(binary,workspace,'https://ergosandbox.com',None)
     try:
-        technique_plan=mcp.call('get_building_techniques',query='palace' if 'palace' in name.lower() else 'chalet')['structuredContent']
+        query=technique_query if technique_query is not None else ('palace' if 'palace' in name.lower() else 'chalet')
+        technique_plan=mcp.call('get_building_techniques',query=query)['structuredContent']
         mcp.call('place_submodel',model=native)
         validation=mcp.call('validate_construction')['structuredContent']
         lo,hi=bounds(native);target=[(a+b)/2 for a,b in zip(lo,hi)];span=max(b-a for a,b in zip(lo,hi))

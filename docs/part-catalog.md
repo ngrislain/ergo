@@ -21,7 +21,7 @@ The resolver verifies hash, schema and part identity when reading cached geometr
 
 ## Resolution
 
-The catalog recommends 29 standard brick/plate/tile geometries and 20 opaque
+The catalog recommends 31 standard brick/plate/tile geometries and 20 opaque
 colors. It also exposes the sourced complete color palette and resolves other
 part IDs when actual geometry is available. These recommendations help minimize
 piece count; they are not an allowlist or a popularity ranking.
@@ -31,6 +31,12 @@ nominal dimensions and catalogue masses sourced from their BrickLink records:
 [3832](https://www.bricklink.com/v2/catalog/catalogitem.page?P=3832) and
 [4282](https://www.bricklink.com/v2/catalog/catalogitem.page?P=4282). Catalogue mass
 is not a connector-strength measurement.
+
+For solid monument interiors, real standard bricks 4201 (8×8, 16.30g) and 4204
+(8×16, 30.66g) are also supported, rather than scaling smaller parts. Dimensions
+and catalogue weights are sourced from BrickLink
+[4201](https://www.bricklink.com/v2/catalog/catalogitem.page?P=4201) and
+[4204](https://www.bricklink.com/v2/catalog/catalogitem.page?P=4204).
 
 Resolution is cache-first. An import adapter can read a configured local source
 library or retrieve a missing source, bake it into Ergo geometry, and store its

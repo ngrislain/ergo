@@ -27,6 +27,12 @@ def assert_status_overlay_separation(page):
         } finally {pointer.style.transform=original;}
     }"""),"Compass arrow/label must clear every lower-right pill at every heading"
 
+def assert_navigation_box_fits_buttons(page):
+    assert page.locator('.mobile-navigation').evaluate("""el=>{
+        const box=el.getBoundingClientRect();const buttons=[...el.querySelectorAll('button')].map(b=>b.getBoundingClientRect());
+        return Math.abs(box.right-Math.max(...buttons.map(b=>b.right)))<=3 && Math.abs(box.left-Math.min(...buttons.map(b=>b.left)))<=3;
+    }"""),"Fullscreen navigation must not have an empty right-hand column"
+
 
 def main():
     parser = argparse.ArgumentParser()
@@ -231,6 +237,7 @@ def main():
         expect(page.locator('.canvas-focus-status')).to_be_visible()
         assert_status_overlay_separation(page)
         assert canvas.evaluate("el=>{const s=getComputedStyle(el);return s.outlineStyle!=='auto' && parseFloat(s.outlineWidth)<=1}")
+        assert_navigation_box_fits_buttons(page)
         page.get_by_role("button", name="Exit full screen", exact=True).click()
         expect(viewport).not_to_have_class(re.compile(r"is-fullscreen"))
         expect(canvas).to_have_attribute("data-navigation", "walk")

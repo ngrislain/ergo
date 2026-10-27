@@ -1,5 +1,7 @@
 #[cfg(target_arch = "wasm32")]
 mod app;
+#[cfg(any(target_arch = "wasm32", test))]
+mod construction_list;
 #[cfg(target_arch = "wasm32")]
 mod landing;
 #[cfg(any(target_arch = "wasm32", test))]

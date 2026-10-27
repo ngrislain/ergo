@@ -403,11 +403,25 @@ impl SharedWorlds {
         if canonical_cbor(&request.scene)?.len() > self.limits.bytes {
             return Err(SharedError::working_limit("import bytes"));
         }
+        let creation = Creation {
+            created_by: actor.into(),
+            created_by_name: self.actor_name(actor).await?,
+            created_at: Some(
+                u64::try_from(
+                    std::time::SystemTime::now()
+                        .duration_since(std::time::UNIX_EPOCH)
+                        .map_err(anyhow::Error::from)?
+                        .as_millis(),
+                )
+                .context("Creation time overflow")?,
+            ),
+        };
         let assembly = ws.tx.stage_blob(&(
-            "assembly-birth-v1",
+            "assembly-birth-v2",
             uuid::Uuid::new_v4().to_string(),
             actor,
             &request.scene.name,
+            &creation,
         ))?;
         let mut meshes = BTreeMap::new();
         for (name, mesh) in &request.scene.meshes {
@@ -446,6 +460,7 @@ impl SharedWorlds {
         let rules = Rules {
             id: assembly.clone(),
             name: request.scene.name,
+            creation: Some(creation),
             pieces: pieces.clone(),
             meshes,
             joints: request.scene.joints,
@@ -790,6 +805,10 @@ pub fn routes() -> Router<AppState> {
         .route(
             "/api/shared-worlds/{id}/assemblies/{assembly}/workspace",
             get(authoring::workspace).put(authoring::replace),
+        )
+        .route(
+            "/api/shared-worlds/{id}/assemblies/{assembly}/export",
+            get(authoring::download),
         )
         .route(
             "/api/shared-worlds/{id}/assemblies/workspaces",

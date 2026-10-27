@@ -18,11 +18,26 @@ struct Workspace {
     #[serde(flatten)]
     binding: Binding,
 }
-#[derive(Clone, Deserialize)]
-pub(super) struct Assembly {
-    pub id: String,
-    pub name: String,
+pub(super) use crate::construction_list::{Assembly, sort};
+
+impl Assembly {
+    pub fn date(&self) -> String {
+        self.created_at
+            .and_then(|ms| {
+                js_sys::Date::new(&wasm_bindgen::JsValue::from_f64(ms as f64))
+                    .to_iso_string()
+                    .as_string()
+            })
+            .map(|s| {
+                format!(
+                    "{} UTC",
+                    s.chars().take(16).collect::<String>().replace('T', " ")
+                )
+            })
+            .unwrap_or_else(|| "Date unavailable".into())
+    }
 }
+
 #[derive(Deserialize)]
 struct Page {
     items: Vec<Assembly>,
@@ -140,6 +155,34 @@ pub(super) fn open(handle: Handle, assembly: String) {
             }),
         }
     });
+}
+
+pub(super) fn download(handle: Handle, format: &str) {
+    let Some((world, assembly)) = with_client(handle, |c| {
+        Some((
+            c.ui.common_world.get_untracked()?,
+            c.ui.focused_assembly
+                .get_untracked()
+                .or_else(|| c.common_binding.as_ref().map(|b| b.assembly_id.clone()))?,
+        ))
+    }) else {
+        return;
+    };
+    let document = web_sys::window().unwrap().document().unwrap();
+    let link = document
+        .create_element("a")
+        .unwrap()
+        .dyn_into::<web_sys::HtmlAnchorElement>()
+        .unwrap();
+    link.set_href(&format!(
+        "/api/shared-worlds/{world}/assemblies/{assembly}/export?format={format}"
+    ));
+    link.set_download(if format == "ldraw" {
+        "construction.mpd"
+    } else {
+        "construction.ergo.json"
+    });
+    link.click();
 }
 
 pub(super) fn pump(handle: Handle) {

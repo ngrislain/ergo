@@ -17,6 +17,9 @@ subject to permissions, their brick-change allowance and server validation.
 The scrolling construction list navigates to models at their actual shared-world
 positions. Live camera GPS, height and storage-cell coordinates update as you move.
 Signed-in camera positions are saved privately for agent placement.
+Construction rows show author, recorded creation time and size, with sorting of
+loaded rows. Complete selected constructions download as standard self-contained
+LDraw/MPD or native Ergo JSON.
 
 The server owns authorization, static acceptance and persistence. Dynamic gravity,
 earthquake/drop tests, editing feedback and actual image rendering run locally in
@@ -28,7 +31,7 @@ The prebuilt bundle includes native binaries and WASM assets; consumers need
 Node.js 20+ and Chrome/Chromium, not Rust.
 
 ```sh
-npm install --global --ignore-scripts 'https://github.com/ngrislain/ergo/releases/download/v0.5.7/ngrislain-ergo-mcp-0.5.7.tgz'
+npm install --global --ignore-scripts 'https://github.com/ngrislain/ergo/releases/download/v0.5.8/ngrislain-ergo-mcp-0.5.8.tgz'
 ergo-mcp --login --publish-url https://ergosandbox.com
 ```
 
@@ -116,3 +119,6 @@ walking, floor arrivals and headroom with the viewer's actual movement engine.
 The [connector requirements helper](docs/physical-calibration.md#inventory-the-measurements-a-construction-requires)
 inventories the exact calibration keys a construction needs without supplying
 invented strength values.
+
+Original [walkable monument recipes](docs/model-recipes.md) are in
+`scripts/build/`, including a corridor pyramid and a ten-level Seven Sisters-inspired tower.

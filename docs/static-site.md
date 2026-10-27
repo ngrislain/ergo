@@ -94,7 +94,7 @@ generated `/llms.txt`. It is a **public build setting**, not a credential. The
 default and current repository variable point to:
 
 ```text
-https://github.com/ngrislain/ergo/releases/download/v0.5.7/ngrislain-ergo-mcp-0.5.7.tgz
+https://github.com/ngrislain/ergo/releases/download/v0.5.8/ngrislain-ergo-mcp-0.5.8.tgz
 ```
 
 For a local override, copy `site/.env.example` to ignored `site/.env`, edit that
@@ -103,7 +103,7 @@ variable with the same name. Update it only after the release asset is verified:
 
 ```sh
 gh variable set ERGO_MCP_PACKAGE --repo ngrislain/ergo \
-  --body 'https://github.com/ngrislain/ergo/releases/download/v0.5.7/ngrislain-ergo-mcp-0.5.7.tgz'
+  --body 'https://github.com/ngrislain/ergo/releases/download/v0.5.8/ngrislain-ergo-mcp-0.5.8.tgz'
 gh workflow run pages.yml --repo ngrislain/ergo --ref main
 ```
 
