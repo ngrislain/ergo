@@ -125,6 +125,7 @@ impl IntoResponse for SharedError {
     }
 }
 type SharedResult<T> = std::result::Result<T, SharedError>;
+const VERIFIED_CACHE_BYTES: usize = 256 * 1024 * 1024;
 
 #[derive(Clone)]
 pub struct SharedWorlds {
@@ -160,7 +161,7 @@ impl SharedWorlds {
             common_root: None,
             pacing: pacing::Pacing::disabled(store.clone()),
             root: Repository::new(store.backend.clone(), &prefix)?
-                .with_cache_capacity(256 * 1024 * 1024)
+                .with_cache_capacity(VERIFIED_CACHE_BYTES)
                 .with_coordinated_gc(),
             store,
             limits: Limits::default(),

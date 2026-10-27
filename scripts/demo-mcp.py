@@ -8,12 +8,11 @@ import argparse
 import base64
 import hashlib
 import json
-import os
 import pathlib
-import select
 import shutil
-import subprocess
-import tempfile
+import sys
+sys.path.insert(0,str(pathlib.Path(__file__).resolve().parents[1]))
+from scripts.mcp_client import Mcp
 
 
 def designs():
@@ -35,52 +34,6 @@ def designs():
     courtyard += [("3024",71,[17,y,0],0) for y in range(12,24)]
     courtyard += [("3003",2,[x,y,0],0) for x in [13,20] for y in [14,20]]
     yield "Garden courtyard", courtyard
-
-
-class Mcp:
-    def __init__(self, binary, workspace, url, token_file):
-        command = [binary,"--workspace",str(workspace),"--headless"]
-        environment = os.environ.copy()
-        if token_file:
-            command += ["--publish-url",url,"--publish-token-file",str(token_file)]
-        else:
-            for key in ["ERGO_PUBLISH_URL","ERGO_PUBLISH_TOKEN","ERGO_PUBLISH_TOKEN_FILE"]:
-                environment.pop(key,None)
-        self.log = tempfile.TemporaryFile(mode="w+t")
-        self.process = subprocess.Popen(command,stdin=subprocess.PIPE,stdout=subprocess.PIPE,
-            stderr=self.log,text=True,env=environment)
-        self.sequence = 0
-        self.rpc("initialize",{"protocolVersion":"2025-06-18","capabilities":{},
-            "clientInfo":{"name":"ergo-production-demo","version":"1"}})
-
-    def rpc(self, method, params):
-        assert self.process.stdin is not None and self.process.stdout is not None
-        self.sequence += 1
-        self.process.stdin.write(json.dumps({"jsonrpc":"2.0","id":self.sequence,
-            "method":method,"params":params})+"\n")
-        self.process.stdin.flush()
-        if not select.select([self.process.stdout],[],[],2100)[0]:
-            raise RuntimeError("MCP timed out; no request has been automatically retried")
-        line = self.process.stdout.readline()
-        if not line:
-            self.log.seek(0)
-            raise RuntimeError("MCP exited: "+self.log.read())
-        response = json.loads(line)
-        if "error" in response:
-            raise RuntimeError(str(response["error"]))
-        return response["result"]
-
-    def call(self, tool_name, **arguments):
-        result = self.rpc("tools/call",{"name":tool_name,"arguments":arguments})
-        if result.get("isError"):
-            raise RuntimeError(json.dumps(result.get("structuredContent",result)))
-        return result
-
-    def close(self):
-        assert self.process.stdin is not None
-        self.process.stdin.close()
-        self.process.wait(timeout=15)
-        self.log.close()
 
 
 def main():

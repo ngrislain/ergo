@@ -2,19 +2,18 @@
 """Generate native world models and inspect them via the real Ergo MCP client."""
 import argparse
 import base64
-import importlib.util
 import json
 import math
 from pathlib import Path
 import shutil
 import chalet_model
+import sys
 
 from native_model import Model,bounds,east_rotation,local_bounds,multiply,north_rotation,yaw,snap_origin
 
 ROOT=Path(__file__).resolve().parents[1]
-spec=importlib.util.spec_from_file_location("demo",ROOT/"scripts/demo-mcp.py")
-assert spec and spec.loader
-demo=importlib.util.module_from_spec(spec);spec.loader.exec_module(demo)
+sys.path.insert(0,str(ROOT))
+from scripts.mcp_client import Mcp
 
 
 def chalet(wall,timber,roof,shutter):
@@ -283,7 +282,7 @@ def run_model(binary,output,name,model,origin,token_file=None,publish=False,esti
     output.mkdir(parents=True,exist_ok=True);workspace=output/"construction.ergo.json"
     if workspace.exists():raise RuntimeError("Choose a fresh output directory: "+str(output))
     native=model.export(tuple(origin));(output/"model.ergo-model.json").write_text(json.dumps(native,separators=(',',':'))+'\n')
-    mcp=demo.Mcp(binary,workspace,'https://ergosandbox.com',None)
+    mcp=Mcp(binary,workspace,'https://ergosandbox.com',None)
     try:
         query=technique_query if technique_query is not None else ('palace' if 'palace' in name.lower() else 'chalet')
         technique_plan=mcp.call('get_building_techniques',query=query)['structuredContent']
@@ -301,7 +300,7 @@ def run_model(binary,output,name,model,origin,token_file=None,publish=False,esti
     if publish or estimated_connectors:
         if publish and not validation['publication_ready']:raise RuntimeError('Not publishable: '+json.dumps(validation))
         # A gravity compression certificate alone does not establish robustness.
-        mcp=demo.Mcp(binary,workspace,'https://ergosandbox.com',None)
+        mcp=Mcp(binary,workspace,'https://ergosandbox.com',None)
         try:
             stability=mcp.call('test_small_earthquake_stability',include_images=False,
                 connection_model='estimated' if estimated_connectors else 'measured')['structuredContent']
@@ -312,7 +311,7 @@ def run_model(binary,output,name,model,origin,token_file=None,publish=False,esti
                 raise RuntimeError('Publication withheld: the selected connector model did not pass gravity/small-shake checks; inspect report.json')
         finally:mcp.close()
     if publish:
-        mcp=demo.Mcp(binary,workspace,'https://ergosandbox.com',token_file)
+        mcp=Mcp(binary,workspace,'https://ergosandbox.com',token_file)
         try:
             current=mcp.call('validate_construction')['structuredContent']
             report['publication_attempted']=True;(output/'report.json').write_text(json.dumps(report,indent=2)+'\n')

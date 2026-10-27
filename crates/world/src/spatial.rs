@@ -202,8 +202,8 @@ pub fn relation(a: &Brick, b: &Brick) -> Option<Relation> {
             && (lower.transform.y_axis - DVec3::Y).length() < 1e-5
             && (upper.transform.y_axis - DVec3::Y).length() < 1e-5
         {
-            if let Some(grid) = crate::interference::receiving_grid(&upper.part) {
-                inferred = crate::interference::top_studs(&lower.part)
+            if let Some(grid) = crate::part_profiles::receiving_grid(&upper.part) {
+                inferred = crate::part_profiles::stud_centres(&lower.part)
                     .into_iter()
                     .any(|stud| {
                         let point = upper.transform.inverse()

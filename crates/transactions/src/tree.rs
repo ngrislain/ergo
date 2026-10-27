@@ -90,32 +90,26 @@ impl Tree {
         }
     }
     pub fn with_read_prefetch(mut self) -> Self {
-        self.read_prefetch = true;
+        self.read_prefetch = self.repo.cache_stats().capacity_bytes > 0;
         self
     }
     async fn prefetch_nodes(&self, ids: Vec<ContentId>) {
-        if self.repo.cache_stats().capacity_bytes == 0 {
-            return;
-        }
-        // Read only two immutable node levels, never application payloads.
+        // Read only three immutable node levels, never application payloads.
         // Failed/oversized speculative reads are misses, not page failures.
         let mut frontier = ids;
-        for _ in 0..2 {
-            let repo = self.repo.clone();
+        for _ in 0..3 {
+            let repo = &self.repo;
             let loaded: Vec<_> = stream::iter(frontier)
-                .map(|id| {
-                    let repo = repo.clone();
-                    async move {
-                        tokio::time::timeout(
-                            std::time::Duration::from_secs(2),
-                            repo.object_limited(&id, 64 * 1024),
-                        )
-                        .await
-                        .ok()
-                        .and_then(Result::ok)
-                    }
+                .map(|id| async move {
+                    tokio::time::timeout(
+                        std::time::Duration::from_secs(2),
+                        repo.object_limited(&id, 64 * 1024),
+                    )
+                    .await
+                    .ok()
+                    .and_then(Result::ok)
                 })
-                .buffered(8)
+                .buffered(32)
                 .collect()
                 .await;
             frontier = loaded

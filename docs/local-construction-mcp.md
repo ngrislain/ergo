@@ -104,6 +104,9 @@ Existing construction edits preserve their absolute accepted positions.
 
 ## Native construction and editing
 
+Repository authoring recipes use the shared `scripts/mcp_client.py` stdio client;
+demo, monument and district drivers share its request/error/close handling.
+
 Native publication requests and complete-assembly read-back responses are bounded
 to 128 MiB each. The response cap also applies while streaming when no length is
 declared. An accepted write whose read-back fails must be reconciled by reopening

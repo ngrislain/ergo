@@ -3,45 +3,11 @@
 //! bottom cavity, never through a sideways solid face.
 use crate::{
     Brick,
-    geometry::part_spec,
+    part_profiles::{receiving_grid, stud_centres},
     physical::{SCALE, STUD_DIAMETER_M, STUD_HEIGHT_M, metric_transform},
     spatial::Octree,
 };
 use glam::DVec3;
-
-pub(crate) fn top_studs(part: &str) -> Vec<DVec3> {
-    if let Some(spec) = part_spec(part) {
-        if !spec.studs {
-            return vec![];
-        }
-        return (0..spec.width)
-            .flat_map(|x| {
-                (0..spec.depth).map(move |z| {
-                    DVec3::new(
-                        f64::from(x) + 0.5 - f64::from(spec.width) / 2.,
-                        0.,
-                        f64::from(z) + 0.5 - f64::from(spec.depth) / 2.,
-                    )
-                })
-            })
-            .collect();
-    }
-    crate::part_profiles::profile(part).map_or_else(Vec::new, |p| p.studs)
-}
-pub(crate) fn receiving_grid(part: &str) -> Option<crate::part_profiles::Grid> {
-    if let Some(spec) = part_spec(part) {
-        return Some(crate::part_profiles::Grid {
-            width: spec.width,
-            depth: spec.depth,
-            first: [
-                0.5 - f64::from(spec.width) / 2.,
-                0.5 - f64::from(spec.depth) / 2.,
-            ],
-            bottom: -spec.height,
-        });
-    }
-    crate::part_profiles::profile(part).and_then(|p| p.cavity)
-}
 
 pub fn axis_aligned(brick: &Brick) -> bool {
     let rotation = metric_transform(brick.transform);
@@ -67,7 +33,7 @@ pub fn first_stud_collision(bricks: &[Brick], tolerance: f64) -> Option<String> 
         } else {
             2
         };
-        for local in top_studs(&source.part) {
+        for local in stud_centres(&source.part) {
             let base = source.position + source.transform * local;
             let center = base * SCALE + up * STUD_HEIGHT_M / 2.;
             let mut half = DVec3::splat(radius);

@@ -21,6 +21,39 @@ pub struct Profile {
     pub studs: Vec<DVec3>,
 }
 
+/// Shared interface lookup for collision clearance and inferred connectivity.
+pub(crate) fn stud_centres(part: &str) -> Vec<DVec3> {
+    if let Some(spec) = crate::geometry::part_spec(part) {
+        return if spec.studs {
+            centres(
+                spec.width,
+                spec.depth,
+                [
+                    0.5 - f64::from(spec.width) / 2.,
+                    0.5 - f64::from(spec.depth) / 2.,
+                ],
+            )
+        } else {
+            vec![]
+        };
+    }
+    profile(part).map_or_else(Vec::new, |p| p.studs)
+}
+pub(crate) fn receiving_grid(part: &str) -> Option<Grid> {
+    if let Some(spec) = crate::geometry::part_spec(part) {
+        return Some(grid(
+            spec.width,
+            spec.depth,
+            [
+                0.5 - f64::from(spec.width) / 2.,
+                0.5 - f64::from(spec.depth) / 2.,
+            ],
+            -spec.height,
+        ));
+    }
+    profile(part).and_then(|p| p.cavity)
+}
+
 fn grid(width: u32, depth: u32, first: [f64; 2], bottom: f64) -> Grid {
     Grid {
         width,

@@ -84,6 +84,8 @@ studs/details. The server supplies trusted mass/body measurements and connector
 capacities from its frozen physical model; uploaded description claims cannot
 override them. Missing measurements are disclosed and block the relevant physical
 admission. See [calibration](physical-calibration.md).
+Collision clearance and connectivity use the same interface lookup in
+`part_profiles.rs`; strength estimation remains a separate opt-in mechanism.
 
 Current shading is opaque RGB plastic. Source attribution and licenses are
 retained with converted data. Native descriptions do not imply texture, glitter,
