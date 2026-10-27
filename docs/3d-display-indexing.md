@@ -246,3 +246,10 @@ Content-addressed objects never need in-place invalidation. New content gets a
 new hash; manifests select a new set of hashes. The current service worker does
 not cache sessions, world lists, manifests, or the app shell and does not promise
 full offline operation. Logout clears model caches.
+
+Shared-region URLs use a separate, permission-revalidated path: typed CBOR/gzip,
+server revision-keyed encoded/persistent read caches, and ordinary HTTP ETags.
+They are not added to the service-worker immutable-object cache. Region refreshes
+retain unchanged GPU prototypes, and selecting a snapshot-certified fully
+resident assembly focuses it without a location/view fetch. See
+[loading and caching](loading-and-cache.md) for limits and invalidation.

@@ -10,6 +10,7 @@ designs live in `todo/` and are indexed by [TODO.md](../TODO.md).
 - [Sourced building-technique library](local-construction-mcp.md#sourced-building-techniques)
 - [Walkable pyramid and ten-level tower recipes](model-recipes.md)
 - [Camera navigation, GPS and construction list](navigation.md)
+- [Loading, compressed transport and revision-safe caches](loading-and-cache.md)
 - [Sign-in and access](access-and-onboarding.md)
 - [Nested groups](groups.md)
 - [Collision-aware positioning](interactive-constraints.md)

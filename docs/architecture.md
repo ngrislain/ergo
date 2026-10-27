@@ -64,6 +64,10 @@ Private account records, native caches and the authoritative world have separate
 [S3 namespaces](object-store-layout.md). The reusable transaction library owns
 immutable CBOR, read/predicate validation, durable maintenance pins and head CAS.
 The service supplies authenticated authors and schema-linked retention tracing.
+Shared-region loading uses typed CBOR/gzip and discardable revision-keyed encoded
+read packets. Current authorization is checked before cached responses or 304s;
+authoritative validation never consumes these packets. See
+[loading and caching](loading-and-cache.md).
 
 ## Acceptance
 

@@ -20,6 +20,8 @@ Signed-in camera positions are saved privately for agent placement.
 Construction rows show author, recorded creation time and size, with sorting of
 loaded rows. Complete selected constructions download as standard self-contained
 LDraw/MPD or native Ergo JSON.
+Accepted region reads use [compact compressed packets and revision-safe caches](docs/loading-and-cache.md);
+selecting fully resident constructions reuses their loaded geometry.
 
 The server owns authorization, static acceptance and persistence. Dynamic gravity,
 earthquake/drop tests, editing feedback and actual image rendering run locally in
@@ -31,7 +33,7 @@ The prebuilt bundle includes native binaries and WASM assets; consumers need
 Node.js 20+ and Chrome/Chromium, not Rust.
 
 ```sh
-npm install --global --ignore-scripts 'https://github.com/ngrislain/ergo/releases/download/v0.5.8/ngrislain-ergo-mcp-0.5.8.tgz'
+npm install --global --ignore-scripts 'https://github.com/ngrislain/ergo/releases/download/v0.5.9/ngrislain-ergo-mcp-0.5.9.tgz'
 ergo-mcp --login --publish-url https://ergosandbox.com
 ```
 

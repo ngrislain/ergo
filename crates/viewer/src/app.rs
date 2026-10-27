@@ -48,6 +48,7 @@ struct SharedPage {
 }
 struct SharedView {
     assemblies: BTreeMap<u32, String>,
+    fully_resident_assemblies: HashSet<String>,
     id: String,
     coord: [i64; 3],
     last_check: f64,
@@ -60,6 +61,8 @@ struct SharedRegion {
     revision: String,
     #[serde(default)]
     assemblies: BTreeMap<u32, String>,
+    #[serde(default)]
+    fully_resident_assemblies: HashSet<String>,
 }
 
 #[derive(Clone, Copy)]
@@ -610,6 +613,7 @@ fn open_shared(handle: Handle, location: SharedLocation) {
         c.ui.busy.set(true);
         c.shared = Some(SharedView {
             assemblies: BTreeMap::new(),
+            fully_resident_assemblies: HashSet::new(),
             id: location.world.clone(),
             coord,
             last_check: 0.,
@@ -624,10 +628,29 @@ fn request_shared_region(handle: Handle, id: String, coord: [i64; 3], fit_view: 
     let generation = with_client(handle, |c| c.generation);
     spawn_local(async move {
         let url = format!(
-            "/api/shared-worlds/{id}/view?x={}&y={}&z={}",
+            "/api/shared-worlds/{id}/view?x={}&y={}&z={}&format=cbor",
             coord[0], coord[1], coord[2]
         );
-        let result = json::<SharedRegion>(&url).await;
+        let result: anyhow::Result<SharedRegion> = async {
+            let response = Request::get(&url)
+                .header("Accept", "application/cbor")
+                .send()
+                .await?;
+            if !response.ok() {
+                anyhow::bail!(response.text().await?);
+            }
+            if response
+                .headers()
+                .get("content-type")
+                .is_some_and(|v| v.starts_with("application/cbor"))
+            {
+                Ok(ciborium::from_reader(response.binary().await?.as_slice())?)
+            } else {
+                // Rolling-deployment compatibility with the previous JSON route.
+                Ok(response.json().await?)
+            }
+        }
+        .await;
         with_client(handle, |c| {
             if c.generation != generation || c.shared.as_ref().is_none_or(|s| s.id != id) {
                 return;
@@ -641,6 +664,7 @@ fn request_shared_region(handle: Handle, id: String, coord: [i64; 3], fit_view: 
                 Ok(region) => {
                     if let Some(shared) = &mut c.shared {
                         shared.assemblies = region.assemblies;
+                        shared.fully_resident_assemblies = region.fully_resident_assemblies;
                         shared.revision = region.revision.clone();
                     }
                     let scene = region.scene;
@@ -678,9 +702,11 @@ fn request_shared_region(handle: Handle, id: String, coord: [i64; 3], fit_view: 
                     c.known_cells = c.blocks.keys().copied().collect();
                     c.world = Some(manifest.clone());
                     if let Some(renderer) = &mut c.renderer {
-                        let ground = std::mem::take(&mut renderer.ground);
-                        renderer.clear();
-                        renderer.ground = ground;
+                        // Keep unchanged LOD/GPU prototypes on region refresh.
+                        // set_meshes invalidates only changed/removed parts.
+                        renderer.selected = None;
+                        renderer.highlighted.clear();
+                        renderer.explode = 0.;
                         renderer.set_meshes(scene.meshes);
                         renderer.set_bricks(scene.bricks);
                         if fit_view {

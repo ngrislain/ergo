@@ -7,7 +7,7 @@ shared Sandbox. The bridge never grants itself acceptance or direct agent S3 acc
 ## Install and configure
 
 ```sh
-npm install --global --ignore-scripts 'https://github.com/ngrislain/ergo/releases/download/v0.5.8/ngrislain-ergo-mcp-0.5.8.tgz'
+npm install --global --ignore-scripts 'https://github.com/ngrislain/ergo/releases/download/v0.5.9/ngrislain-ergo-mcp-0.5.9.tgz'
 ergo-mcp --login --publish-url https://ergosandbox.com
 ```
 
@@ -103,6 +103,16 @@ indices. New models can pass the saved `model_transform` to `place_submodel`.
 Existing construction edits preserve their absolute accepted positions.
 
 ## Native construction and editing
+
+Grow an opened construction through small self-supporting published edits,
+preserving its assembly identity. Publication performs authoritative validation;
+a separate `validate_construction` or expensive dynamic probe is not a default
+prerequisite for every step. Use atomic batches where intermediate states would
+be unsupported, inspect real rejection details, and request additional diagnostics
+when useful or explicitly wanted. Existing local collision/integrity feedback
+and server validation remain enabled. Keep working user feedback and revise
+rejected approaches. These workflow suggestions are user-confirmed guidance,
+separate from the attributed building-technique source.
 
 `place_submodel` takes exactly one `model` (native `ergo-model-1` JSON) or `document`
 (an inline imported text model). The optional `transform` is a row-major4×4 matrix

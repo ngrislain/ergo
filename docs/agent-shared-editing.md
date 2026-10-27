@@ -3,7 +3,7 @@
 There is one **public Ergo Sandbox**. Anyone can view it; signed-in users can
 edit it, subject to pacing and physical validation. Current MCP clients commit
 accepted edits to that same S3-backed world automatically. A working file is a
-cache, not a private world. Use MCP **v0.5.8** for sourced building techniques,
+cache, not a private world. Use MCP **v0.5.9** for sourced building techniques,
 coherent grid snapping, proper-isometry checks, per-piece stability diagnostics,
 explicit estimated connector tests and long shared operations.
 
@@ -137,6 +137,12 @@ world. There is no `authenticated_editing=false` private-world option in the
 production tool schema.
 
 ## Acceptance, conflicts, and cache recovery
+
+Prefer gradual edits to the same assembly in small supported batches. Server
+publication validates the affected domain, so avoid a duplicate standalone
+pre-validation/dynamics chain by default. Additional diagnostics are for explicit
+requests or specific problems. Successful user feedback should shape subsequent
+edits; genuine catalogue architectural parts remain preferred.
 
 The server revalidates the affected mechanical dependency domain, permissions and
 quota, then publishes with compare-and-swap. It assigns names from the account

@@ -77,8 +77,13 @@ Use the viewer's Edit here with an agent button to get the current target/select
 assembly. Its setup includes ERGO_POSITION_WORLD (a JSON [east,north,height] string)
 and, for an exact selection, ERGO_SHARED_ASSEMBLY_ID. Use a fresh cache path.
 Or call open_shared_construction with assembly_id or position_world explicitly.
-Run validate_construction, test_stability_by_gravity, and
-test_visual_appearance. Physical connector capacities need sourced measurements;
+Grow the same construction through small self-supporting published edits,
+preserving assembly identity. Publication performs authoritative validation;
+do not duplicate it with pre-validation or expensive dynamics by default. Use
+atomic batches where intermediate states would be unsupported, inspect actual
+rejections, and retain successful user feedback. validate_construction,
+test_stability_by_gravity and test_visual_appearance remain optional diagnostics
+when requested or useful for a specific problem. Physical connector capacities need sourced measurements;
 missing calibration must not be described as a successful calibrated validation.
 Explicit connection_model:"estimated" diagnostics disclose ballpark assumptions
 separately; they do not alter the server's frozen measurement book.

@@ -17,6 +17,9 @@ tokio = { version = "1", features = ["macros", "rt-multi-thread", "net", "signal
 tower-http = { version = "0.6", features = ["fs", "trace", "compression-gzip"] }
 object_store = { version = "0.12", features = ["aws"] }
 futures = "0.3"
+bytes = "1"
+flate2 = "1"
+serde_bytes = "0.11"
 async-stream = "0.3"
 ciborium = "0.2"
 sha2 = "0.10"

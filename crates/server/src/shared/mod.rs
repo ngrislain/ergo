@@ -13,6 +13,7 @@ mod joints;
 mod model;
 pub(crate) mod pacing;
 mod paged;
+mod read_cache;
 mod retention;
 mod spatial;
 #[cfg(test)]
@@ -137,6 +138,7 @@ pub struct SharedWorlds {
     queues: std::sync::Arc<group_commit::Queues>,
     group_commit: bool,
     pub(crate) pacing: pacing::Pacing,
+    read_cache: std::sync::Arc<read_cache::ReadCache>,
 }
 impl SharedWorlds {
     async fn actor_name(&self, actor: &str) -> Result<Option<String>> {
@@ -165,6 +167,7 @@ impl SharedWorlds {
             event_period: std::time::Duration::from_secs(1),
             queues: std::sync::Arc::new(group_commit::Queues::default()),
             group_commit: false,
+            read_cache: std::sync::Arc::new(read_cache::ReadCache::default()),
         })
     }
     pub fn from_env(store: Store) -> Result<Self> {

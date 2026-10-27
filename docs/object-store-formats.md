@@ -119,6 +119,15 @@ all 256 hash bits, padded by two bits and split into 86 octants.
 The collector follows typed tree/history links and application blob links in
 `shared/retention.rs`. Hash-looking strings in comments are not implicit links.
 
+## `cache/read-views/v1/<hash>.cbor`: discardable read packet
+
+Discardable `cache/read-views/v1/*.cbor` objects use a separate compressed read
+packet, not a canonical world record. Its envelope has `format`, `key`
+(world/revision/cell/limits), `logical_read_bytes`, `decoded_bytes`, `checksum` and
+gzip bytes. Authorization/revision checks and bounded decompression precede use;
+see [loading caches](loading-and-cache.md). Removing this cache does not remove
+accepted history or geometry.
+
 ## `assets/parts/<part>.json`: Ergo part description
 
 UTF-8 JSON `{format:"ergo-part-1",schema:2,part,mesh_hash,bounds,body_bounds,

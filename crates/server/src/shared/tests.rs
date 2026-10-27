@@ -955,6 +955,186 @@ async fn browser_views_are_authenticated_bounded_and_preserve_mesh_variants() {
 }
 
 #[tokio::test]
+async fn compressed_cbor_views_cache_revalidate_and_invalidate_on_appearance_edits() {
+    use axum::{
+        body::{Body, to_bytes},
+        http::Request,
+    };
+    use std::io::Read;
+    use tower::ServiceExt;
+    let service = service();
+    let (head, imported) = seeded(&service, scene(100.)).await;
+    let (app, alice) = http(&service);
+    let url = format!("/api/shared-worlds/{}/view?format=cbor", head.id);
+    let mut request = Request::get(&url)
+        .header("accept-encoding", "gzip")
+        .body(Body::empty())
+        .unwrap();
+    request.headers_mut().extend(alice.clone());
+    let first = app.clone().oneshot(request).await.unwrap();
+    assert_eq!(first.status(), StatusCode::OK);
+    assert_eq!(first.headers()["content-type"], "application/cbor");
+    assert_eq!(first.headers()["content-encoding"], "gzip");
+    assert_eq!(first.headers()["x-ergo-read-cache"], "miss");
+    let etag = first.headers()["etag"].clone();
+    let bytes = to_bytes(first.into_body(), 16 * 1024 * 1024).await.unwrap();
+    let mut raw = Vec::new();
+    flate2::read::GzDecoder::new(bytes.as_ref())
+        .read_to_end(&mut raw)
+        .unwrap();
+    let packet: view::ViewPacket = ciborium::from_reader(raw.as_slice()).unwrap();
+    assert_eq!(packet.scene.bricks.len(), 1);
+    assert_eq!(packet.revision, head.revision);
+    let mut request = Request::get(&url)
+        .header("accept-encoding", "gzip;q=0, *;q=1")
+        .body(Body::empty())
+        .unwrap();
+    request.headers_mut().extend(alice.clone());
+    let cached = app.clone().oneshot(request).await.unwrap();
+    assert_eq!(cached.headers()["x-ergo-read-cache"], "memory");
+    assert!(!cached.headers().contains_key("content-encoding"));
+    let bytes = to_bytes(cached.into_body(), 16 * 1024 * 1024)
+        .await
+        .unwrap();
+    let decoded: view::ViewPacket = ciborium::from_reader(bytes.as_ref()).unwrap();
+    assert_eq!(
+        serde_json::to_value(decoded.scene).unwrap(),
+        serde_json::to_value(packet.scene).unwrap()
+    );
+    let mut request = Request::get(&url)
+        .header("if-none-match", etag.clone())
+        .body(Body::empty())
+        .unwrap();
+    request.headers_mut().extend(alice.clone());
+    assert_eq!(
+        app.clone().oneshot(request).await.unwrap().status(),
+        StatusCode::NOT_MODIFIED
+    );
+    let (_, bob) = crate::auth::Auth::test_session("bob");
+    let mut request = Request::get(&url)
+        .header("if-none-match", etag)
+        .body(Body::empty())
+        .unwrap();
+    request.headers_mut().extend(bob);
+    assert_eq!(
+        app.clone().oneshot(request).await.unwrap().status(),
+        StatusCode::FORBIDDEN,
+        "Cache/304 must not bypass current authorization"
+    );
+    let old = piece(&service, &head.id, &imported.pieces[&1]).await;
+    let mut geometry = old.geometry;
+    geometry.color = 14;
+    geometry.rgb = Some(ergo_world::color_rgb(14));
+    let accepted = service
+        .prepare(
+            &head.id,
+            "alice",
+            CommitRequest {
+                base: head.revision.clone(),
+                pieces: vec![PieceEdit {
+                    id: old.id,
+                    geometry: Some(geometry),
+                    mesh: None,
+                }],
+                rules: vec![],
+                joints: vec![],
+                message: "Color-only change".into(),
+            },
+        )
+        .await
+        .unwrap()
+        .publish()
+        .await
+        .unwrap();
+    let (status, current) = json(
+        &app,
+        "GET",
+        &format!("/api/shared-worlds/{}/view", head.id),
+        &alice,
+        None,
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(current["revision"], serde_json::json!(accepted.revision));
+    assert_eq!(current["scene"]["bricks"][0]["color"], 14);
+    let (_, historical) = json(
+        &app,
+        "GET",
+        &format!(
+            "/api/shared-worlds/{}/view?revision={}",
+            head.id, head.revision
+        ),
+        &alice,
+        None,
+    )
+    .await;
+    assert_eq!(
+        historical["scene"]["bricks"][0]["color"], 4,
+        "Accepted historical cache must retain its actual version"
+    );
+}
+
+#[tokio::test]
+async fn cached_historical_views_recheck_revoked_grants_before_304_or_body() {
+    use axum::{body::Body, http::Request};
+    use tower::ServiceExt;
+    let service = service();
+    let (head, _) = seeded(&service, scene(100.)).await;
+    let granted = service
+        .grants(
+            &head.id,
+            "alice",
+            GrantRequest {
+                base: head.revision,
+                grants: vec![Grant {
+                    user: "bob".into(),
+                    regions: vec!["/".parse().unwrap()],
+                }],
+                authenticated_editing: None,
+            },
+        )
+        .await
+        .unwrap();
+    let (app, _) = http(&service);
+    let (_, bob) = crate::auth::Auth::test_session("bob");
+    let url = format!(
+        "/api/shared-worlds/{}/view?revision={granted}&format=cbor",
+        head.id
+    );
+    let mut request = Request::get(&url).body(Body::empty()).unwrap();
+    request.headers_mut().extend(bob.clone());
+    let cached = app.clone().oneshot(request).await.unwrap();
+    assert_eq!(cached.status(), StatusCode::OK);
+    let etag = cached.headers()["etag"].clone();
+    service
+        .grants(
+            &head.id,
+            "alice",
+            GrantRequest {
+                base: granted,
+                grants: vec![],
+                authenticated_editing: None,
+            },
+        )
+        .await
+        .unwrap();
+    let mut request = Request::get(&url)
+        .header("if-none-match", etag)
+        .body(Body::empty())
+        .unwrap();
+    request.headers_mut().extend(bob.clone());
+    assert_eq!(
+        app.oneshot(request).await.unwrap().status(),
+        StatusCode::FORBIDDEN
+    );
+    let (app, _) = http(&service);
+    assert_eq!(
+        json(&app, "GET", &url, &bob, None).await.0,
+        StatusCode::FORBIDDEN
+    );
+}
+
+#[tokio::test]
 async fn signed_in_shared_editing_is_paced_and_paid_plans_do_not_bypass_permissions() {
     let mut service = service();
     service.pacing = pacing::Pacing::test_budget(service.store.clone(), 2, 86400);

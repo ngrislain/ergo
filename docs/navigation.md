@@ -63,6 +63,11 @@ opens that shared region and focuses its resident assembly bounds. The world
 geometry retains neighboring constructions at their actual positions. Browsing
 does not fetch an isolated authoring workspace or publish an edit. The selected
 assembly is included in the agent handoff even without a separately selected brick.
+When the accepted region confirms that all members of the selected assembly are
+already resident, selection reuses that geometry immediately. Partial/unknown
+membership still requests a server location and region. Region refreshes keep
+unchanged GPU prototypes instead of clearing every mesh buffer. See
+[loading and caching](loading-and-cache.md).
 
 After selecting a construction, **Download construction** exports its complete
 accepted assembly as self-contained LDraw/MPD or native Ergo JSON. It uses a

@@ -223,6 +223,8 @@ pub struct Repository {
     backend: Arc<dyn ObjectStore>,
     prefix: String,
     cache: Arc<Mutex<cache::Cache>>,
+    downloads:
+        Arc<Mutex<std::collections::HashMap<String, std::sync::Weak<tokio::sync::Mutex<()>>>>>,
     managed: bool,
 }
 
@@ -244,6 +246,7 @@ impl Repository {
             prefix: prefix.to_owned(),
             cache: Arc::new(Mutex::new(cache::Cache::default())),
             managed: false,
+            downloads: Arc::new(Mutex::new(std::collections::HashMap::new())),
         })
     }
 
@@ -303,6 +306,34 @@ impl Repository {
             }
             return Ok(bytes);
         }
+        let gate = {
+            let mut downloads = self.downloads.lock().unwrap();
+            if downloads.len() >= 1024 {
+                downloads.retain(|_, gate| gate.strong_count() > 0);
+            }
+            if let Some(gate) = downloads
+                .get(location.as_ref())
+                .and_then(std::sync::Weak::upgrade)
+            {
+                gate
+            } else {
+                let gate = Arc::new(tokio::sync::Mutex::new(()));
+                downloads.insert(location.to_string(), Arc::downgrade(&gate));
+                gate
+            }
+        };
+        let _guard = gate.lock().await;
+        // Parallel tree traversals share verified immutable downloads. Heads
+        // and explicit uncached verification never pass through this gate.
+        if let Some(bytes) = self.cache.lock().unwrap().get(location.as_ref()) {
+            if bytes.len() > limit {
+                return Err(Error::ObjectTooLarge {
+                    size: bytes.len() as u64,
+                    limit,
+                });
+            }
+            return Ok(bytes);
+        }
         self.download(id, limit).await
     }
 
@@ -331,16 +362,22 @@ impl Repository {
     }
 
     async fn put_object(&self, id: &ContentId, bytes: Bytes) -> Result<()> {
+        let location = self.path(&format!("objects/{id}.cbor"));
         match self
             .backend
-            .put_opts(
-                &self.path(&format!("objects/{id}.cbor")),
-                bytes.into(),
-                PutMode::Create.into(),
-            )
+            .put_opts(&location, bytes.clone().into(), PutMode::Create.into())
             .await
         {
-            Ok(_) => Ok(()),
+            Ok(_) => {
+                // Only an acknowledged immutable upload may populate the LRU.
+                // Never elide the upload based on a cache hit: GC may have
+                // collected an unreferenced object since it was downloaded.
+                self.cache
+                    .lock()
+                    .unwrap()
+                    .insert(location.to_string(), bytes);
+                Ok(())
+            }
             // A 409 may represent a concurrent conditional request, not an existing
             // object. Verify the object before treating either status as deduplication.
             Err(

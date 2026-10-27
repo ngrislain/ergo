@@ -17,6 +17,7 @@ s3://ergo/
     objects/<mesh-sha256>.cbor
     ground/rasters/<provider-hash>/<z>/<x>/<y>.cbor
     ground/blocks/<signature>/<east>_<north>.cbor
+    cache/read-views/v1/<region-and-limits-hash>.cbor
     users/<user-id>.json
     user-positions/<actor-hash>.json
     edit-pacing/<actor-hash>.json
@@ -50,6 +51,14 @@ text only occupies a bounded transient import cache.
 Ground source tiles and derived single-color baseplates are separate cache
 layers. Cached cells are not constructions, alternative worlds or physical anchors.
 World GC does not manage asset, terrain or account namespaces.
+
+## Derived shared-region packets
+
+`cache/read-views/v1` stores discardable gzip-CBOR packets for occupied browser
+regions. Exact revision/limits and current permission checks precede every hit.
+One region/configuration slot is reused across edits; old packets are never world
+GC roots or authoring input. World GC does not manage this separate namespace.
+See [loading and caching](loading-and-cache.md).
 
 ## Private account context
 

@@ -10,7 +10,11 @@ pub const BUILDING_GUIDANCE: &str = concat!(
     "Prefer purpose-made catalogue parts for roofs/slopes, windows, door frames and doors, fences, trees, flowers and other architectural or landscape details. Resolve actual part IDs and geometry with get_catalog and follow library examples; source the physical data needed for validation. ",
     "Use plates more sparingly, where thinner layers or the intended geometry need them. Prefer studded parts over stud-less tiles; reserve smooth tiles for deliberate finishing surfaces. ",
     "Stagger bricks between adjacent wall courses, typically by half a brick, and interlock corners where geometry permits rather than aligning vertical seams. Use suitable half/end bricks to preserve the footprint, openings and support instead of shifting entire walls outward. ",
-    "Verify support and measured connections; staggered joints alone do not prove solidity. For a given shape, minimize brick count using the largest suitable preferred standard parts while preserving shape, colors, support, connectivity and physical validation."
+    "Verify support and measured connections; staggered joints alone do not prove solidity. For a given shape, minimize brick count using the largest suitable preferred standard parts while preserving shape, colors, support, connectivity and physical validation. ",
+    "Prefer growing the same existing construction in small self-supporting published edits, preserving its assembly identity. Use an atomic batch where intermediate pieces would be unsupported. ",
+    "Publication performs authoritative validation: do not run a separate pre-publication validation or expensive dynamics routine by default. Inspect the accepted receipt or rejection and repair the specific problem. Run additional diagnostics when requested or useful for a diagnosed issue, and disclose unqualified results. ",
+    "Use genuine catalogue roof slopes, window frames, fences and round parts when appropriate; never substitute invented part IDs or scaled bricks. Distinguish buildings from paths, bridges, street furniture and other decorations when following a requested building count. ",
+    "Incorporate user feedback into subsequent edits, retaining suggestions that have worked and revising rejected ones."
 );
 fn tool(
     name: &str,
@@ -23,7 +27,7 @@ fn tool(
 }
 pub fn tools() -> Value {
     let catalog_description = format!(
-        "{BUILDING_GUIDANCE} Resolve Ergo part descriptions by catalog ID. Set include_extended for all colors, or part to resolve geometry. Measured physics is required for publication."
+        "{BUILDING_GUIDANCE} Resolve Ergo part descriptions by catalog ID. Set include_extended for all colors, or part to resolve geometry. Publication applies server-owned static checks; measured connector data is required when the certificate consumes joint strength."
     );
     let int = json!({"type":"integer","minimum":1,"maximum":4294967295_u64});
     let vec = json!({"type":"array","items":{"type":"number"},"minItems":3,"maxItems":3});

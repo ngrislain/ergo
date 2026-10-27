@@ -117,9 +117,13 @@ with tempfile.TemporaryDirectory(prefix="ergo-common-") as directory:
             expect(guest.locator("h1")).to_have_text("Ergo Sandbox",timeout=30000)
             expect(guest.get_by_role("link",name="Sign in with Google")).to_be_visible()
             guest.locator(f'[data-assembly-id="{assembly}"]').click(timeout=30000)
-            expect(guest.locator(".status-message")).to_contain_text("Shared-world region loaded",timeout=30000)
+            expect(guest.locator(".status-message")).to_contain_text(re.compile(r"Shared-world region loaded|Focused resident construction"),timeout=30000)
             expect(guest.locator("h1")).to_have_text("Ergo Sandbox")
             expect(guest.locator(".status-bar")).to_contain_text("4 bricks")
+            resident_requests=[];guest.on('request',lambda request:resident_requests.append(request.url))
+            guest.locator(f'[data-assembly-id="{assembly}"]').click()
+            expect(guest.locator('.status-message')).to_contain_text('Focused resident construction')
+            assert not any('/view?' in request or request.endswith('/location') for request in resident_requests),'Resident focus must reuse geometry without a region/location request'
             selected=guest.locator(f'[data-assembly-id="{assembly}"]')
             expect(selected.locator('.construction-author')).to_have_text('Alice Builder')
             expect(selected.locator('.construction-date')).to_have_text(re.compile(r'\d{4}-\d{2}-\d{2}'))
@@ -148,10 +152,18 @@ with tempfile.TemporaryDirectory(prefix="ergo-common-") as directory:
             page=context.new_page()
             # Exercise scrolling pagination without creating fake accepted objects.
             actual=helpers.http(url+f"/api/shared-worlds/{head['id']}/assemblies?limit=32")[1]
+            # Older catalogue payloads without exact sizes take the safe server
+            # location path rather than assuming resident geometry is complete.
+            legacy_items=[{**item,'piece_count':None} for item in actual['items']]
+            def legacy_view(route):
+                response=route.fetch(url=route.request.url.replace('&format=cbor',''))
+                value=response.json();value.pop('fully_resident_assemblies',None)
+                route.fulfill(status=response.status,content_type='application/json',body=json.dumps(value))
+            page.route('**/view?*',legacy_view)
             copies=[{"id":f"{1000+i:064x}","name":f"Navigation fixture {i}"} for i in range(40)]
             def list_page(route):
                 following="after=" in route.request.url
-                value={"items":copies[30:] if following else actual["items"]+copies[:30],
+                value={"items":copies[30:] if following else legacy_items+copies[:30],
                        "next":None if following else "7/0","revision":actual["revision"]}
                 route.fulfill(status=200,content_type="application/json",body=json.dumps(value))
             page.route("**/assemblies?*",list_page)

@@ -170,6 +170,11 @@ directly. See [MCP setup and outcome handling](local-construction-mcp.md#publica
   region for browser navigation, with accepted revision and geometry. It is
   capped at 5,000 pieces (or a smaller configured budget) and 16 MiB CBOR reads;
   no complete mechanical-domain certificate or editable fragment is implied.
+  Optional `format=cbor` selects compact typed CBOR; JSON remains the default.
+  Responses negotiate gzip, support weak-ETag revalidation and include
+  revision-safe read-cache diagnostics. `fully_resident_assemblies` identifies
+  complete visual membership for cached camera focus, not mechanical completeness.
+  See [read-packet caching](loading-and-cache.md).
 - `GET /api/shared-worlds/allowance`: the current actor's pacing allowance.
 - `GET /api/shared-worlds/{id}/blocks?revision=CID&region=PATH&limit=64&after=PATH`:
   spatial block-reference page. Region is a block-octree prefix (`/` by default);

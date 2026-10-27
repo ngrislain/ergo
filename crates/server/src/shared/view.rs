@@ -1,7 +1,29 @@
 //! Bounded read-only spatial view for browser navigation, never a whole-world
 //! export or an editable/certified mechanical fragment.
+use super::read_cache::{EncodedView, ReadCache, ViewKey};
 use super::*;
 use ergo_world::{BlockCoord, WorldExport, geometry::Mesh};
+use futures::{StreamExt, TryStreamExt};
+use std::sync::Arc;
+
+#[derive(Clone, Copy, Default, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+enum ViewFormat {
+    #[default]
+    Json,
+    Cbor,
+}
+
+#[derive(Serialize, Deserialize)]
+pub(super) struct ViewPacket {
+    pub scene: WorldExport,
+    pub revision: ContentId,
+    blocks: Vec<BlockCoord>,
+    assemblies: BTreeMap<u32, ContentId>,
+    #[serde(default)]
+    fully_resident_assemblies: BTreeSet<ContentId>,
+    pub(super) view_kind: String,
+}
 
 #[derive(Default, Deserialize)]
 pub(super) struct ViewQuery {
@@ -12,6 +34,8 @@ pub(super) struct ViewQuery {
     #[serde(default)]
     z: i64,
     revision: Option<ContentId>,
+    #[serde(default)]
+    format: ViewFormat,
 }
 
 pub(super) async fn view(
@@ -19,7 +43,8 @@ pub(super) async fn view(
     headers: HeaderMap,
     Path(id): Path<String>,
     Query(query): Query<ViewQuery>,
-) -> SharedResult<Json<serde_json::Value>> {
+) -> SharedResult<Response> {
+    let started = std::time::Instant::now();
     ensure!(
         [query.x, query.y, query.z]
             .iter()
@@ -27,12 +52,179 @@ pub(super) async fn view(
         "View block coordinate out of range"
     );
     let snapshot = snapshot(&s, &id, &headers, query.revision.as_ref()).await?;
+    let key = ViewKey {
+        world: id,
+        revision: snapshot.id().clone(),
+        coord: [query.x, query.y, query.z],
+        pieces: s.shared.limits.pieces.min(5000),
+        read_bytes: s.shared.limits.bytes.min(16 * 1024 * 1024),
+    };
+    let memory_key = key.memory_key()?;
+    let etag = format!(
+        "W/\"{}\"",
+        ContentId::of(&canonical_cbor(&(&memory_key, query.format))?)
+    );
+    // Current read permissions were checked above, even for 304/cache hits.
+    let unchanged = headers
+        .get("if-none-match")
+        .and_then(|v| v.to_str().ok())
+        .is_some_and(|value| {
+            value.split(',').any(|v| {
+                v.trim() == "*"
+                    || v.trim().trim_start_matches("W/") == etag.trim_start_matches("W/")
+            })
+        });
+    if unchanged {
+        let mut response = StatusCode::NOT_MODIFIED.into_response();
+        set_headers(&mut response, &etag, "revalidated", started);
+        return Ok(response);
+    }
+    let cache = &s.shared.read_cache;
+    if let Some(value) = cache.get(&memory_key) {
+        return Ok(response(
+            &value,
+            query.format,
+            &headers,
+            &etag,
+            "memory",
+            started,
+        ));
+    }
+    let gate = cache.gate(&memory_key);
+    let _guard = gate.lock().await;
+    if let Some(value) = cache.get(&memory_key) {
+        return Ok(response(
+            &value,
+            query.format,
+            &headers,
+            &etag,
+            "memory",
+            started,
+        ));
+    }
+    let (stored, write_mode) = cache.persistent(&s.shared.store, &key).await;
+    if let Some(value) = stored {
+        cache.insert(memory_key, value.clone());
+        return Ok(response(
+            &value,
+            query.format,
+            &headers,
+            &etag,
+            "persistent",
+            started,
+        ));
+    }
+    let (packet, read_bytes) = build(&snapshot, &query, &key).await?;
+    let encoding_key = key.clone();
+    let value = Arc::new(
+        tokio::task::spawn_blocking(move || {
+            EncodedView::encode(&packet, &encoding_key, read_bytes)
+        })
+        .await
+        .map_err(anyhow::Error::from)??,
+    );
+    cache.insert(memory_key, value.clone());
+    if query.revision.is_none() {
+        ReadCache::persist(s.shared.store.clone(), key, value.clone(), write_mode);
+    }
+    Ok(response(
+        &value,
+        query.format,
+        &headers,
+        &etag,
+        "miss",
+        started,
+    ))
+}
+
+fn set_headers(response: &mut Response, etag: &str, cache: &str, started: std::time::Instant) {
+    let headers = response.headers_mut();
+    headers.insert("etag", etag.parse().unwrap());
+    headers.insert("cache-control", "private, no-cache".parse().unwrap());
+    headers.insert("vary", "Accept-Encoding".parse().unwrap());
+    headers.insert("x-ergo-read-cache", cache.parse().unwrap());
+    headers.insert(
+        "server-timing",
+        format!("view;dur={:.2}", started.elapsed().as_secs_f64() * 1000.)
+            .parse()
+            .unwrap(),
+    );
+}
+fn response(
+    value: &EncodedView,
+    format: ViewFormat,
+    request: &HeaderMap,
+    etag: &str,
+    cache: &str,
+    started: std::time::Instant,
+) -> Response {
+    let gzip = accepts_gzip(request);
+    let bytes = match (format, gzip) {
+        (ViewFormat::Json, false) => &value.json,
+        (ViewFormat::Json, true) => &value.gzip_json,
+        (ViewFormat::Cbor, false) => &value.cbor,
+        (ViewFormat::Cbor, true) => &value.gzip_cbor,
+    };
+    let mut response = bytes.clone().into_response();
+    set_headers(&mut response, etag, cache, started);
+    response.headers_mut().insert(
+        "content-type",
+        match format {
+            ViewFormat::Json => "application/json",
+            ViewFormat::Cbor => "application/cbor",
+        }
+        .parse()
+        .unwrap(),
+    );
+    if gzip {
+        response
+            .headers_mut()
+            .insert("content-encoding", "gzip".parse().unwrap());
+    }
+    response
+}
+fn accepts_gzip(headers: &HeaderMap) -> bool {
+    let mut explicit = None;
+    let mut wildcard = false;
+    for item in headers
+        .get("accept-encoding")
+        .and_then(|v| v.to_str().ok())
+        .unwrap_or("")
+        .split(',')
+    {
+        let mut pieces = item.trim().split(';');
+        let encoding = pieces.next().unwrap_or("").trim();
+        let allowed = pieces
+            .find_map(|p| {
+                p.trim()
+                    .strip_prefix("q=")
+                    .map(|v| v.parse::<f64>().unwrap_or(0.))
+            })
+            .unwrap_or(1.)
+            > 0.;
+        if encoding.eq_ignore_ascii_case("gzip") {
+            explicit = Some(allowed);
+        } else if encoding == "*" {
+            wildcard = allowed;
+        }
+    }
+    explicit.unwrap_or(wildcard)
+}
+
+async fn build(
+    snapshot: &Snapshot,
+    query: &ViewQuery,
+    key: &ViewKey,
+) -> SharedResult<(ViewPacket, usize)> {
     let metadata: Metadata = snapshot
-        .get_limited(&root(2), s.shared.limits.bytes)
+        .get_limited(&root(2), key.read_bytes)
         .await?
         .context("Missing world metadata")?;
     let mut ids = BTreeSet::new();
-    let mut remaining = s.shared.limits.bytes.min(16 * 1024 * 1024);
+    let mut remaining = key
+        .read_bytes
+        .checked_sub(canonical_cbor(&metadata)?.len())
+        .ok_or_else(|| SharedError::working_limit("browser view bytes"))?;
     let mut blocks = Vec::new();
     for dx in -1..=1 {
         for dy in -1..=1 {
@@ -46,12 +238,20 @@ pub(super) async fn view(
                     if !page.leaves.is_empty() && !blocks.contains(&coord) {
                         blocks.push(coord);
                     }
-                    for (_, cid) in page.leaves {
-                        let row: spatial::SpatialRef =
-                            snapshot.blob_limited(&cid, remaining).await?;
-                        remaining = remaining.saturating_sub(canonical_cbor(&row)?.len());
+                    let limit = remaining;
+                    let mut rows = futures::stream::iter(page.leaves)
+                        .map(|(_, cid)| async move {
+                            snapshot
+                                .blob_limited::<spatial::SpatialRef>(&cid, limit)
+                                .await
+                        })
+                        .buffered(8);
+                    while let Some(row) = rows.try_next().await? {
+                        remaining = remaining
+                            .checked_sub(canonical_cbor(&row)?.len())
+                            .ok_or_else(|| SharedError::working_limit("browser view bytes"))?;
                         ids.insert(row.piece);
-                        if ids.len() > s.shared.limits.pieces.min(5000) {
+                        if ids.len() > key.pieces {
                             return Err(SharedError::working_limit("browser view pieces"));
                         }
                     }
@@ -60,7 +260,7 @@ pub(super) async fn view(
                         break;
                     }
                 }
-                if ids.len() > s.shared.limits.pieces.min(5000) {
+                if ids.len() > key.pieces {
                     return Err(SharedError::working_limit("browser view pieces"));
                 }
             }
@@ -70,17 +270,27 @@ pub(super) async fn view(
     let mut meshes = BTreeMap::new();
     let mut mesh_ids = BTreeMap::<ContentId, String>::new();
     let mut assemblies = BTreeMap::new();
-    for (index, piece_id) in ids.into_iter().enumerate() {
-        let piece: Piece = snapshot
-            .get_limited(&entity_path(3, &piece_id), remaining)
-            .await?
-            .context("Missing viewed piece")?;
-        remaining = remaining.saturating_sub(canonical_cbor(&piece)?.len());
+    let limit = remaining;
+    let mut pieces = futures::stream::iter(ids)
+        .map(|piece_id| async move {
+            snapshot
+                .get_limited::<Piece>(&entity_path(3, &piece_id), limit)
+                .await?
+                .context("Missing viewed piece")
+        })
+        .buffered(8);
+    let mut index = 0;
+    while let Some(piece) = pieces.try_next().await? {
+        remaining = remaining
+            .checked_sub(canonical_cbor(&piece)?.len())
+            .ok_or_else(|| SharedError::working_limit("browser view bytes"))?;
         let part = if let Some(key) = mesh_ids.get(&piece.mesh) {
             key.clone()
         } else {
             let mut mesh: Mesh = snapshot.blob_limited(&piece.mesh, remaining).await?;
-            remaining = remaining.saturating_sub(canonical_cbor(&mesh)?.len());
+            remaining = remaining
+                .checked_sub(canonical_cbor(&mesh)?.len())
+                .ok_or_else(|| SharedError::working_limit("browser view bytes"))?;
             let key = if meshes.contains_key(&piece.geometry.part) {
                 format!("view/{}/{}", piece.mesh, piece.geometry.part)
             } else {
@@ -96,6 +306,7 @@ pub(super) async fn view(
         geometry.part = part.clone();
         bricks.push(geometry.brick(local, &meshes[&part])?);
         assemblies.insert(local, piece.assembly);
+        index += 1;
     }
     let scene = WorldExport {
         schema: ergo_world::SCHEMA_VERSION,
@@ -109,7 +320,51 @@ pub(super) async fn view(
         model: None,
         ground: Vec::new(),
     };
-    Ok(Json(
-        serde_json::json!({"scene":scene,"revision":snapshot.id(),"blocks":blocks,"assemblies":assemblies,"view_kind":"bounded_read_only_region"}),
+    let mut visible = BTreeMap::<ContentId, usize>::new();
+    for assembly in assemblies.values() {
+        *visible.entry(assembly.clone()).or_default() += 1;
+    }
+    let mut fully_resident_assemblies = BTreeSet::new();
+    for (assembly, count) in visible {
+        let header: paged::RulesHeader = snapshot
+            .get_limited(&paged::rule_path(&assembly, 0), remaining)
+            .await?
+            .context("Missing viewed assembly header")?;
+        remaining = remaining
+            .checked_sub(canonical_cbor(&header)?.len())
+            .ok_or_else(|| SharedError::working_limit("browser view bytes"))?;
+        let complete = if let Some(total) = header.piece_count {
+            total == count
+        } else {
+            let mut total = 0;
+            let mut after = None;
+            loop {
+                let page = snapshot
+                    .scan_page(&paged::rule_path(&assembly, 1), after.as_ref(), 128)
+                    .await?;
+                total += page.leaves.len();
+                if total > count {
+                    break false;
+                }
+                after = page.next;
+                if after.is_none() {
+                    break total == count;
+                }
+            }
+        };
+        if complete {
+            fully_resident_assemblies.insert(assembly);
+        }
+    }
+    Ok((
+        ViewPacket {
+            scene,
+            revision: snapshot.id().clone(),
+            blocks,
+            assemblies,
+            fully_resident_assemblies,
+            view_kind: "bounded_read_only_region".into(),
+        },
+        key.read_bytes - remaining,
     ))
 }

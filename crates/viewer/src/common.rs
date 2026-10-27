@@ -116,6 +116,41 @@ pub(super) fn open(handle: Handle, assembly: String) {
     if with_client(handle, |c| c.ui.busy.get_untracked()) {
         return;
     }
+    let resident = with_client(handle, |c| {
+        let Some(shared) = c.shared.as_ref().filter(|s| s.id == id) else {
+            return false;
+        };
+        if !shared.fully_resident_assemblies.contains(&assembly) {
+            return false;
+        }
+        let Some(renderer) = c.renderer.as_mut() else {
+            return false;
+        };
+        let members = renderer
+            .bricks
+            .iter()
+            .filter(|b| shared.assemblies.get(&b.id) == Some(&assembly))
+            .collect::<Vec<_>>();
+        if members.is_empty() {
+            return false;
+        }
+        let bounds = members
+            .into_iter()
+            .map(|b| b.render_bounds)
+            .reduce(ergo_world::Aabb::union)
+            .unwrap();
+        c.ui.focused_assembly.set(Some(assembly.clone()));
+        c.ui.selected.set(None);
+        renderer.selected = None;
+        renderer.highlighted.clear();
+        renderer.fit(bounds);
+        c.ui.message
+            .set("Focused resident construction · reused loaded geometry".into());
+        true
+    });
+    if resident {
+        return;
+    }
     with_client(handle, |c| c.ui.busy.set(true));
     spawn_local(async move {
         match json::<Location>(&format!(

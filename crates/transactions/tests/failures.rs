@@ -9,7 +9,7 @@ use std::{
     fmt,
     sync::{
         Arc,
-        atomic::{AtomicU8, AtomicUsize, Ordering},
+        atomic::{AtomicBool, AtomicU8, AtomicUsize, Ordering},
     },
 };
 
@@ -22,6 +22,8 @@ struct FaultStore {
     fault: AtomicU8,
     head_started: tokio::sync::Notify,
     head_updates: AtomicUsize,
+    object_reads: AtomicUsize,
+    delayed_reads: AtomicBool,
 }
 impl fmt::Display for FaultStore {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -91,6 +93,12 @@ impl ObjectStore for FaultStore {
         self.inner.put_multipart_opts(p, o).await
     }
     async fn get_opts(&self, p: &Path, o: GetOptions) -> object_store::Result<GetResult> {
+        if p.as_ref().contains("/objects/") {
+            self.object_reads.fetch_add(1, Ordering::SeqCst);
+            if self.delayed_reads.load(Ordering::SeqCst) {
+                tokio::task::yield_now().await;
+            }
+        }
         self.inner.get_opts(p, o).await
     }
     async fn delete(&self, p: &Path) -> object_store::Result<()> {
@@ -115,6 +123,46 @@ impl ObjectStore for FaultStore {
     async fn copy_if_not_exists(&self, a: &Path, b: &Path) -> object_store::Result<()> {
         self.inner.copy_if_not_exists(a, b).await
     }
+}
+
+#[tokio::test]
+async fn parallel_verified_reads_share_one_download_and_failures_remain_retryable() {
+    let store = Arc::new(FaultStore::default());
+    let repo = Repository::new(store.clone(), "coalesced")
+        .unwrap()
+        .with_cache_capacity(64 * 1024);
+    let value = vec![27u32; 100];
+    let id = repo.put_blob(&value).await.unwrap();
+    let repo = Repository::new(store.clone(), "coalesced")
+        .unwrap()
+        .with_cache_capacity(64 * 1024);
+    store.object_reads.store(0, Ordering::SeqCst);
+    store.delayed_reads.store(true, Ordering::SeqCst);
+    let results = futures::future::join_all((0..16).map(|_| repo.blob::<Vec<u32>>(&id))).await;
+    for result in results {
+        assert_eq!(result.unwrap(), value);
+    }
+    assert_eq!(
+        store.object_reads.load(Ordering::SeqCst),
+        1,
+        "Concurrent verified reads must not duplicate storage GETs"
+    );
+    let next = vec![71u32; 10];
+    let missing =
+        ergo_transactions::ContentId::of(&ergo_transactions::canonical_cbor(&next).unwrap());
+    assert!(repo.blob::<Vec<u32>>(&missing).await.is_err());
+    // External arrival must retry the failed download, not be masked by the
+    // acknowledged-upload LRU population on this Repository instance.
+    store
+        .inner
+        .put(
+            &Path::from(format!("coalesced/objects/{missing}.cbor")),
+            ergo_transactions::canonical_cbor(&next).unwrap().into(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(repo.blob::<Vec<u32>>(&missing).await.unwrap(), next);
+    assert_eq!(store.object_reads.load(Ordering::SeqCst), 3);
 }
 
 #[tokio::test]
