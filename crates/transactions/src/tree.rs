@@ -94,10 +94,10 @@ impl Tree {
         self
     }
     async fn prefetch_nodes(&self, ids: Vec<ContentId>) {
-        // Read only three immutable node levels, never application payloads.
+        // Read only four immutable node levels, never application payloads.
         // Failed/oversized speculative reads are misses, not page failures.
         let mut frontier = ids;
-        for _ in 0..3 {
+        for _ in 0..4 {
             let repo = &self.repo;
             let loaded: Vec<_> = stream::iter(frontier)
                 .map(|id| async move {
@@ -109,7 +109,7 @@ impl Tree {
                     .ok()
                     .and_then(Result::ok)
                 })
-                .buffered(32)
+                .buffered(64)
                 .collect()
                 .await;
             frontier = loaded

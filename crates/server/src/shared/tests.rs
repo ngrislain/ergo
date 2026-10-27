@@ -374,8 +374,16 @@ async fn construction_download_preserves_per_instance_geometry_variants() {
     };
     use tower::ServiceExt;
     let service = service();
-    let (head, imported) = seeded(&service, scene(10.)).await;
+    let mut initial = scene(10.);
+    for index in 0..2 {
+        let mut repeated = initial.bricks[1].clone();
+        repeated.id = index + 3;
+        repeated.translated(glam::DVec3::X * f64::from((index + 1) * 10));
+        initial.bricks.push(repeated);
+    }
+    let (head, imported) = seeded(&service, initial).await;
     let original = piece(&service, &head.id, &imported.pieces[&1]).await;
+    let third = piece(&service, &head.id, &imported.pieces[&3]).await;
     let mut alternate = scene(50.);
     alternate.bricks.truncate(1);
     for mesh in alternate.meshes.values_mut() {
@@ -402,11 +410,18 @@ async fn construction_download_preserves_per_instance_geometry_variants() {
             "alice",
             CommitRequest {
                 base: alternate.accepted.revision,
-                pieces: vec![PieceEdit {
-                    id: original.id,
-                    geometry: Some(original.geometry),
-                    mesh: Some(variant),
-                }],
+                pieces: vec![
+                    PieceEdit {
+                        id: original.id,
+                        geometry: Some(original.geometry),
+                        mesh: Some(variant.clone()),
+                    },
+                    PieceEdit {
+                        id: third.id,
+                        geometry: Some(third.geometry),
+                        mesh: Some(variant),
+                    },
+                ],
                 rules: vec![],
                 joints: vec![],
                 message: "Use a second geometry variant".into(),
@@ -436,8 +451,10 @@ async fn construction_download_preserves_per_instance_geometry_variants() {
         .unwrap()
         .references()
         .unwrap();
-    assert_eq!(refs.len(), 2);
+    assert_eq!(refs.len(), 4);
     assert_ne!(refs[0].name, refs[1].name);
+    assert_eq!(refs[0].name, refs[2].name);
+    assert_eq!(refs[1].name, refs[3].name);
     assert!(text.contains("export geometry variant of 3003.dat"));
 }
 async fn seeded(service: &SharedWorlds, initial: WorldExport) -> (Head, Imported) {

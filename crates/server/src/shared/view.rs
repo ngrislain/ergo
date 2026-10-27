@@ -5,6 +5,8 @@ use super::*;
 use ergo_world::{BlockCoord, WorldExport, geometry::Mesh};
 use futures::{StreamExt, TryStreamExt};
 use std::sync::Arc;
+const READ_CONCURRENCY: usize = 64;
+const INDEX_PAGE_SIZE: usize = 512;
 
 /// Read-only browser budgets are independent of authoring and dynamic bodies.
 #[derive(Clone, Copy)]
@@ -293,7 +295,7 @@ async fn build(
                 let mut after = None;
                 loop {
                     let page = snapshot
-                        .scan_page_prefetched(&block_path(coord), after.as_ref(), 128)
+                        .scan_page_prefetched(&block_path(coord), after.as_ref(), INDEX_PAGE_SIZE)
                         .await?;
                     if !page.leaves.is_empty() && !blocks.contains(&coord) {
                         blocks.push(coord);
@@ -305,7 +307,7 @@ async fn build(
                                 .blob_limited::<spatial::SpatialRef>(&cid, limit)
                                 .await
                         })
-                        .buffered(32);
+                        .buffered(READ_CONCURRENCY);
                     while let Some(row) = rows.try_next().await? {
                         remaining = remaining
                             .checked_sub(canonical_cbor(&row)?.len())
@@ -338,7 +340,7 @@ async fn build(
                 .await?
                 .context("Missing viewed piece")
         })
-        .buffered(32);
+        .buffered(READ_CONCURRENCY);
     let mut index = 0;
     while let Some(piece) = pieces.try_next().await? {
         remaining = remaining

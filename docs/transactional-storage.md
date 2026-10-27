@@ -306,8 +306,8 @@ overwritten or deleted by an edit.
   download; failures remain retryable. Acknowledged uploads populate the LRU,
   but an LRU hit never skips a subsequent upload, preserving orphan/GC safety.
   Explicit uncached verification still bypasses the cache and read-coalescing gates.
-  `Snapshot::scan_page_prefetched` optionally looks ahead three immutable-node levels
-  with 32 concurrent GETs, a 64 KiB node bound and two-second speculative
+  `Snapshot::scan_page_prefetched` optionally looks ahead four immutable-node levels
+  with 64 concurrent GETs, a 64 KiB node bound and two-second speculative
   timeout. It never follows application-value links; required traversal still
   verifies/decodes nodes normally. Transaction predicate registration is unchanged.
 - Nodes are also cached within a transaction; staged values and serialization

@@ -77,10 +77,11 @@ These read packets can be discarded without losing constructions.
 
 ## Fewer storage round trips
 
-Spatial-reference and piece reads use ordered batches with at most 32 reads
+Spatial-reference and piece reads use ordered batches with at most 64 reads
 in flight. Immutable-object reads sharing a namespace/key coalesce into one
-verified download. Read-only spatial pages use three-level node lookahead with at
-most 32 node GETs in flight and a 64 KiB speculative-node limit. Speculation
+verified download. Read-only spatial pages use four-level node lookahead with at
+most 64 node GETs in flight and a 64 KiB speculative-node limit. Internal spatial
+pages contain up to 512 rows. Speculation
 does not fetch application values or change page order/cursors; speculative
 failures fall back to normal required reads. The transaction/predicate path is
 unchanged. Acknowledged immutable uploads populate the server's 256 MiB

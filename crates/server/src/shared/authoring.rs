@@ -93,6 +93,7 @@ impl SharedWorlds {
         }
         let mut bricks = Vec::new();
         let mut meshes = BTreeMap::new();
+        let mut mesh_names = BTreeMap::<ContentId, String>::new();
         let mut export_aliases = false;
         for (&local, global) in &rules.pieces {
             let piece = ws.piece(global).await?.ok_or_else(SharedError::missing)?;
@@ -102,7 +103,9 @@ impl SharedWorlds {
             );
             let mesh = ws.mesh(&piece.mesh).await?;
             let mut brick = piece.geometry.brick(local, mesh.as_ref())?;
-            if let Some(previous) = meshes.get(&mesh.part) {
+            if let Some(name) = mesh_names.get(&piece.mesh) {
+                brick.part = name.clone();
+            } else if let Some(previous) = meshes.get(&mesh.part) {
                 if canonical_cbor(previous)? != canonical_cbor(mesh.as_ref())? {
                     ensure!(
                         export_only,
@@ -123,8 +126,10 @@ impl SharedWorlds {
                     brick.part = alias;
                     export_aliases = true;
                 }
+                mesh_names.insert(piece.mesh.clone(), brick.part.clone());
             } else {
                 meshes.insert(mesh.part.clone(), mesh.as_ref().clone());
+                mesh_names.insert(piece.mesh.clone(), mesh.part.clone());
             }
             bricks.push(brick);
         }

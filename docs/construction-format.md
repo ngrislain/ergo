@@ -109,6 +109,10 @@ Implementation: `crates/world/src/assembly.rs`, `assembly/format.rs`, `storage.r
 
 ## Standard LDraw/MPD export
 
+Complete-assembly reads deduplicate geometry by its immutable mesh CID. Variant
+compatibility is compared once per distinct CID rather than serializing the same
+mesh for every brick; incompatible same-part variants retain distinct export aliases.
+
 `crates/world/src/exchange.rs` exports ordinary UTF-8, CRLF-terminated MPD using
 standard type-1 references and type-3 part triangles. Coordinates use LDraw's
 20-LDU stud pitch, 24-LDU brick height and negative-Y up. The construction is
