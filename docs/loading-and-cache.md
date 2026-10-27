@@ -4,6 +4,20 @@ The shared browser region is a read-only view, not the whole world or a certifie
 mechanical domain. Authoritative geometry/history remains in the transactional
 world namespace. Loading optimizations do not change publication validation.
 
+## Dense-region budgets
+
+The 3×3×3-cell region has independent read-only budgets: by default 50,000 pieces
+and 64 MiB of charged CBOR reads. `ERGO_SHARED_VIEW_PIECES` accepts 1–100,000 and
+`ERGO_SHARED_VIEW_BYTES` accepts 1–67,108,864. Invalid settings fail startup.
+Regions exceeding the configured budgets return HTTP 413 rather than silently
+losing geometry or claiming complete visual membership for a truncated scene. The response/cache's decoded
+CBOR packet also retains its separate 64 MiB bound.
+
+These settings do not enlarge ordinary authoring budgets or the 5,000-body
+dynamic simulation limit. Both read budgets are part of cache keys, so lowering a
+budget cannot reuse a previously cached oversized region. Large responses still
+need more decoded client memory; these are operation limits, not process heap quotas.
+
 ## Resident navigation and GPU reuse
 
 The server includes `fully_resident_assemblies` in each region response. New

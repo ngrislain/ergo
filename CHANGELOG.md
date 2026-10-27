@@ -1,5 +1,15 @@
 # Changelog
 
+## v0.5.10
+
+- Give read-only browser regions independent budgets, defaulting to 50,000 pieces
+  and 64 MiB of charged CBOR reads. Ordinary authoring and dynamic body limits
+  remain separate.
+- Add bounded `ERGO_SHARED_VIEW_PIECES` and `ERGO_SHARED_VIEW_BYTES` settings;
+  oversized regions are rejected without truncation or oversized cache reuse.
+- Verify dense rendering with a real 6,000-piece browser fixture and retain
+  resident-construction focus without additional geometry requests.
+
 ## v0.4.0
 
 - Make one public Ergo Sandbox authoritative; authenticated UI/MCP edits commit

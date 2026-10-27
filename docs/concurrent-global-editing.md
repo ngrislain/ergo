@@ -167,8 +167,11 @@ directly. See [MCP setup and outcome handling](local-construction-mcp.md#publica
   cache records are not authored terrain. The world uses the declared Z=0 floor.
 - `GET /api/shared-worlds/{id}`: small head/metadata only, never a world export.
 - `GET /api/shared-worlds/{id}/view?x=0&y=0&z=0`: bounded read-only 3×3×3-block
-  region for browser navigation, with accepted revision and geometry. It is
-  capped at 5,000 pieces (or a smaller configured budget) and 16 MiB CBOR reads;
+  region for browser navigation, with accepted revision and geometry. It
+  defaults to 50,000 pieces and 64 MiB of charged CBOR reads, using independent
+  `ERGO_SHARED_VIEW_PIECES`/`ERGO_SHARED_VIEW_BYTES` budgets; oversized requests are
+  rejected rather than truncated. Configured bounds are 1–100,000 pieces and
+  1–67,108,864 bytes. Ordinary authoring and dynamics limits are separate;
   no complete mechanical-domain certificate or editable fragment is implied.
   Optional `format=cbor` selects compact typed CBOR; JSON remains the default.
   Responses negotiate gzip, support weak-ETag revalidation and include

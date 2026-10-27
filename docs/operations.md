@@ -19,6 +19,7 @@ With Playwright/Chrome/Pillow installed:
 
 ```sh
 python3 scripts/test-common-world.py
+python3 scripts/test-dense-world.py
 python3 scripts/test-web-isolated.py --script scripts/test-headlamp.py
 npm ci --prefix site --ignore-scripts
 npm run build --prefix site
@@ -50,7 +51,7 @@ prove an asset or image was published.
 
 ```sh
 gh run list --repo ngrislain/ergo --workflow release.yml --limit 5
-gh release view v0.5.9 --repo ngrislain/ergo
+gh release view v0.5.10 --repo ngrislain/ergo
 ```
 
 Verify the public tarball version/checksum, consumer install and actual MCP smoke
@@ -61,7 +62,7 @@ After publication, set the public Pages variable and rebuild:
 
 ```sh
 gh variable set ERGO_MCP_PACKAGE --repo ngrislain/ergo \
-  --body 'https://github.com/ngrislain/ergo/releases/download/v0.5.9/ngrislain-ergo-mcp-0.5.9.tgz'
+  --body 'https://github.com/ngrislain/ergo/releases/download/v0.5.10/ngrislain-ergo-mcp-0.5.10.tgz'
 gh workflow run pages.yml --repo ngrislain/ergo --ref main
 ```
 

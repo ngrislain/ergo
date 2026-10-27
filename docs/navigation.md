@@ -77,8 +77,11 @@ See [interchange export](construction-format.md#standard-ldrawmpd-export).
 
 ## Shared-region boundaries
 
-The browser loads a bounded 3×3×3 storage-cell neighborhood, at most 5,000 pieces
-and 16 MiB of CBOR. It checks the small accepted head every five seconds and
+The browser loads a bounded 3×3×3 storage-cell neighborhood, by default at most
+50,000 pieces and 64 MiB of charged CBOR reads. Independent
+`ERGO_SHARED_VIEW_PIECES`/`ERGO_SHARED_VIEW_BYTES` budgets support dense districts
+without changing authoring or dynamics limits. Oversized views are rejected, not
+silently truncated. It checks the small accepted head every five seconds and
 reloads when its revision or region changes. This navigation set is not a complete
 mechanical domain; direct clipped-fragment simulation is rejected.
 

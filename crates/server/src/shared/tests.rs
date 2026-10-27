@@ -946,11 +946,75 @@ async fn browser_views_are_authenticated_bounded_and_preserve_mesh_variants() {
         json(&app, "GET", &url, &bob, None).await.0,
         StatusCode::FORBIDDEN
     );
-    service.limits.pieces = 1;
+    service.view_limits.pieces = 1;
     let (limited, alice) = http(&service);
     assert_eq!(
         json(&limited, "GET", &url, &alice, None).await.0,
         StatusCode::PAYLOAD_TOO_LARGE
+    );
+}
+
+#[tokio::test]
+async fn dense_browser_regions_exceed_authoring_caps_without_truncation_or_cache_budget_bypass() {
+    let mut service = service();
+    service.pacing.set_unlimited("alice", true).await.unwrap();
+    let mut demo = ergo_world::demo::Demo::new();
+    for index in 0..5001 {
+        demo.add(
+            "3068b",
+            19,
+            (index % 100) as f64 * 3.,
+            0.,
+            (index / 100) as f64 * 3.,
+        );
+    }
+    let mut dense = scene(0.);
+    dense.bricks = demo.bricks;
+    dense.meshes = demo.meshes;
+    let (head, imported) = seeded(&service, dense).await;
+    service.pacing.set_unlimited("alice", false).await.unwrap();
+    assert_eq!(service.limits.pieces, 5000);
+    assert!(
+        service
+            .authoring_scene(&head.id, "alice", &imported.assembly, &head.revision)
+            .await
+            .is_err()
+    );
+    let (app, alice) = http(&service);
+    let url = format!("/api/shared-worlds/{}/view", head.id);
+    let (status, packet) = json(&app, "GET", &url, &alice, None).await;
+    assert_eq!(status, StatusCode::OK, "{packet}");
+    assert_eq!(packet["scene"]["bricks"].as_array().unwrap().len(), 5001);
+    assert!(
+        packet["fully_resident_assemblies"]
+            .as_array()
+            .unwrap()
+            .contains(&serde_json::json!(imported.assembly))
+    );
+    // The same cache is shared by these handles. Lower limits must neither hit
+    // an oversized packet nor silently serve only its first 5,000 pieces.
+    service.view_limits.pieces = 5000;
+    let (limited, alice) = http(&service);
+    assert_eq!(
+        json(&limited, "GET", &url, &alice, None).await.0,
+        StatusCode::PAYLOAD_TOO_LARGE
+    );
+    service.view_limits.pieces = 5001;
+    service.view_limits.bytes = 1;
+    let (limited, alice) = http(&service);
+    assert_eq!(
+        json(&limited, "GET", &url, &alice, None).await.0,
+        StatusCode::PAYLOAD_TOO_LARGE
+    );
+    assert_eq!(
+        service
+            .repo(&head.id)
+            .unwrap()
+            .checkout("main")
+            .await
+            .unwrap()
+            .id(),
+        &head.revision
     );
 }
 

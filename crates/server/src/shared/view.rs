@@ -6,6 +6,39 @@ use ergo_world::{BlockCoord, WorldExport, geometry::Mesh};
 use futures::{StreamExt, TryStreamExt};
 use std::sync::Arc;
 
+/// Read-only browser budgets are independent of authoring and dynamic bodies.
+#[derive(Clone, Copy)]
+pub(super) struct Limits {
+    pub pieces: usize,
+    pub bytes: usize,
+}
+impl Default for Limits {
+    fn default() -> Self {
+        Self {
+            pieces: 50_000,
+            bytes: 64 * 1024 * 1024,
+        }
+    }
+}
+impl Limits {
+    pub fn configured(pieces: Option<&str>, bytes: Option<&str>) -> anyhow::Result<Self> {
+        let defaults = Self::default();
+        let limits = Self {
+            pieces: pieces
+                .map(str::parse)
+                .transpose()?
+                .unwrap_or(defaults.pieces),
+            bytes: bytes.map(str::parse).transpose()?.unwrap_or(defaults.bytes),
+        };
+        anyhow::ensure!(
+            (1..=100_000).contains(&limits.pieces)
+                && (1..=64 * 1024 * 1024).contains(&limits.bytes),
+            "Browser view budgets must be 1..100000 pieces and 1..67108864 bytes"
+        );
+        Ok(limits)
+    }
+}
+
 #[derive(Clone, Copy, Default, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 enum ViewFormat {
@@ -56,8 +89,8 @@ pub(super) async fn view(
         world: id,
         revision: snapshot.id().clone(),
         coord: [query.x, query.y, query.z],
-        pieces: s.shared.limits.pieces.min(5000),
-        read_bytes: s.shared.limits.bytes.min(16 * 1024 * 1024),
+        pieces: s.shared.view_limits.pieces,
+        read_bytes: s.shared.view_limits.bytes,
     };
     let memory_key = key.memory_key()?;
     let etag = format!(
@@ -135,6 +168,33 @@ pub(super) async fn view(
         "miss",
         started,
     ))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::Limits;
+
+    #[test]
+    fn view_configuration_has_explicit_bounds_and_rejects_invalid_values() {
+        let defaults = Limits::configured(None, None).unwrap();
+        assert_eq!(defaults.pieces, 50_000);
+        assert_eq!(defaults.bytes, 64 * 1024 * 1024);
+        assert_eq!(
+            Limits::configured(Some("6000"), Some("1048576"))
+                .unwrap()
+                .pieces,
+            6000
+        );
+        for (pieces, bytes) in [
+            (Some("0"), None),
+            (Some("100001"), None),
+            (Some("invalid"), None),
+            (None, Some("0")),
+            (None, Some("67108865")),
+        ] {
+            assert!(Limits::configured(pieces, bytes).is_err());
+        }
+    }
 }
 
 fn set_headers(response: &mut Response, etag: &str, cache: &str, started: std::time::Instant) {

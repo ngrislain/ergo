@@ -9,7 +9,7 @@ Windows and Linux musl/Alpine binaries are not included.
 Install the GitHub-hosted bundle with npm (registry publication is currently disabled):
 
 ```sh
-npm install --global --ignore-scripts 'https://github.com/ngrislain/ergo/releases/download/v0.5.9/ngrislain-ergo-mcp-0.5.9.tgz'
+npm install --global --ignore-scripts 'https://github.com/ngrislain/ergo/releases/download/v0.5.10/ngrislain-ergo-mcp-0.5.10.tgz'
 ergo-mcp --workspace /absolute/path/construction.ergo.json
 ```
 

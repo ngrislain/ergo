@@ -54,8 +54,8 @@ designs live in `todo/` and are indexed by [TODO.md](../TODO.md).
 The hosted service has one public world and no aggregate world piece-count cap.
 Individual operations are bounded: shared edits normally load at most 5,000 pieces
 and 128 MiB of CBOR; god-mode authoring has no piece-count cap. Browser regions
-contain at most 5,000 pieces; local simulation
-uses a complete working set of at most 5,000 pieces. Imports have a 128 MiB upload
+have independent budgets, by default 50,000 pieces/64 MiB of charged reads; local
+simulation uses a complete working set of at most 5,000 pieces. Imports have a 128 MiB upload
 and 200,000-part expansion limit. Rendering never substitutes for server acceptance.
 
 The renderer, importer, persistence address space and physics model are separate.

@@ -1,6 +1,6 @@
 {
   "name": "@ngrislain/ergo-mcp",
-  "version": "0.5.9",
+  "version": "0.5.10",
   "private": true,
   "description": "Ergo construction MCP server with bundled native bridge and local WASM runtime",
   "license": "Apache-2.0",

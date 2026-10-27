@@ -133,6 +133,7 @@ pub struct SharedWorlds {
     root: Repository,
     store: Store,
     limits: Limits,
+    view_limits: view::Limits,
     hubs: std::sync::Arc<events::Hubs>,
     event_period: std::time::Duration,
     queues: std::sync::Arc<group_commit::Queues>,
@@ -163,6 +164,7 @@ impl SharedWorlds {
                 .with_coordinated_gc(),
             store,
             limits: Limits::default(),
+            view_limits: view::Limits::default(),
             hubs: std::sync::Arc::new(events::Hubs::default()),
             event_period: std::time::Duration::from_secs(1),
             queues: std::sync::Arc::new(group_commit::Queues::default()),
@@ -208,6 +210,10 @@ impl SharedWorlds {
                 && service.limits.bytes > 0,
             "Invalid shared edit working-set limits"
         );
+        service.view_limits = view::Limits::configured(
+            std::env::var("ERGO_SHARED_VIEW_PIECES").ok().as_deref(),
+            std::env::var("ERGO_SHARED_VIEW_BYTES").ok().as_deref(),
+        )?;
         Ok(service)
     }
     pub(crate) fn repo(&self, id: &str) -> SharedResult<Repository> {

@@ -91,10 +91,12 @@ and readable no-JavaScript content.
 
 `ERGO_MCP_PACKAGE` selects the npm package spec displayed in the homepage and
 generated `/llms.txt`. It is a **public build setting**, not a credential. The
-default and current repository variable point to:
+source default points to the versioned release asset below. The deployed
+repository variable stays on the last verified asset until the new release is
+published and verified:
 
 ```text
-https://github.com/ngrislain/ergo/releases/download/v0.5.9/ngrislain-ergo-mcp-0.5.9.tgz
+https://github.com/ngrislain/ergo/releases/download/v0.5.10/ngrislain-ergo-mcp-0.5.10.tgz
 ```
 
 For a local override, copy `site/.env.example` to ignored `site/.env`, edit that
@@ -103,7 +105,7 @@ variable with the same name. Update it only after the release asset is verified:
 
 ```sh
 gh variable set ERGO_MCP_PACKAGE --repo ngrislain/ergo \
-  --body 'https://github.com/ngrislain/ergo/releases/download/v0.5.9/ngrislain-ergo-mcp-0.5.9.tgz'
+  --body 'https://github.com/ngrislain/ergo/releases/download/v0.5.10/ngrislain-ergo-mcp-0.5.10.tgz'
 gh workflow run pages.yml --repo ngrislain/ergo --ref main
 ```
 
