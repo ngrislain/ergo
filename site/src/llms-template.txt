@@ -17,7 +17,8 @@ The static information site does not issue, receive, or store agent tokens.
 
 Tokens normally expire after one hour, never exceed 24 hours or the issuing
 session's expiry, and are bound to https://ergosandbox.com. They authorize
-permissioned shared-world reads, creation, assembly import and geometry commits.
+permissioned shared-world reads, assembly import and geometry commits. The hosted
+Sandbox has one public world; creating additional worlds is disabled there.
 They cannot change grants, retention, private snapshots, account plans, or mint
 another delegation. Logging out does not individually revoke an issued token.
 
@@ -58,9 +59,18 @@ launches this process itself using the configuration above, one process per work
 
 ## Start building
 
-Discover the current tools and their JSON schemas. Start with get_catalog and
-list_bricks. Use place_brick, move_brick, connect_bricks and grouping tools to
+Discover the current tools and their JSON schemas. Propose sourced building
+patterns with get_building_techniques, then inspect get_catalog and list_bricks.
+The curated library covers bonded walls/corners/T-junctions, supported openings,
+overlapping slabs and roofs; descriptions are guidance, not physical certificates.
+Use minifigure scale and nine upright brick courses per house storey, with floor
+slabs additional. Prefer standard studded bricks and genuine catalogue parts.
+Use place_brick, move_brick, connect_bricks and grouping tools to
 edit the shared construction. Coordinates are X east, Y north, Z up.
+CAD placements snap complete models coherently to stud/plate increments. The
+server independently rejects off-grid grounded footprints and scale, shear or
+reflection, including invalid nested instances. Camera coordinates stay continuous;
+get_user_position supplies a snapped standing-model origin.
 Minimize brick count for the requested shape: use the largest suitable standard
 bricks/plates while preserving shape, colors, support and connection constraints.
 Use the viewer's Edit here with an agent button to get the current target/selected
@@ -70,6 +80,8 @@ Or call open_shared_construction with assembly_id or position_world explicitly.
 Run validate_construction, test_stability_by_gravity, and
 test_visual_appearance. Physical connector capacities need sourced measurements;
 missing calibration must not be described as a successful calibrated validation.
+Explicit connection_model:"estimated" diagnostics disclose ballpark assumptions
+separately; they do not alter the server's frozen measurement book.
 
 Normal edits update the same shared assembly automatically and preserve stable
 piece identities. publish_construction can confirm the last shared receipt,
@@ -88,6 +100,12 @@ Read GET /api/shared-worlds/allowance using Authorization: Bearer TOKEN.
 Use that header for other shared-world endpoints. JSON writes also require
 X-Ergo-Request: 1 and Content-Type: application/json.
 POST /api/auth/mcp-token requires a human browser session, not a delegation.
+
+Interdependent rebuilds can PUT /api/shared-worlds/{id}/assemblies/workspaces with
+{base, assemblies:[{assembly_id, scene}, ...]}. The authenticated route replaces
+1–32 distinct existing assemblies in one validated publication, under aggregate
+operation budgets. Retained local piece numbers keep their birth identities.
+MCP tools continue to edit one opened assembly at a time.
 
 Authoritative docs:
 https://github.com/ngrislain/ergo/blob/main/docs/local-construction-mcp.md
