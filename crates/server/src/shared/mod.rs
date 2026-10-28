@@ -126,6 +126,7 @@ impl IntoResponse for SharedError {
 }
 type SharedResult<T> = std::result::Result<T, SharedError>;
 const VERIFIED_CACHE_BYTES: usize = 256 * 1024 * 1024;
+const READ_CONCURRENCY: usize = 64;
 
 #[derive(Clone)]
 pub struct SharedWorlds {

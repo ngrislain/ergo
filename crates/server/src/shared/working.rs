@@ -1,4 +1,4 @@
-use super::{SharedError, SharedResult, address::entity_path, model::*};
+use super::{READ_CONCURRENCY, SharedError, SharedResult, address::entity_path, model::*};
 use anyhow::Context;
 use ergo_transactions::{ContentId, OctreePath, Transaction, canonical_cbor};
 use ergo_world::{Aabb, BlockCoord, WorldExport, constraints::INFERRED_JOINT_HALO, geometry::Mesh};
@@ -97,6 +97,27 @@ impl Working {
         let value = Arc::new(value);
         self.spatial_refs.insert(id.clone(), value.clone());
         Ok(value)
+    }
+    pub(super) async fn load_spatial_refs(&mut self, ids: BTreeSet<ContentId>) -> SharedResult<()> {
+        use futures::{StreamExt, TryStreamExt};
+        let tx = &self.tx;
+        let limit = self.remaining();
+        let records: Vec<_> = futures::stream::iter(
+            ids.into_iter()
+                .filter(|id| !self.spatial_refs.contains_key(id)),
+        )
+        .map(|id| async move {
+            let value: super::spatial::SpatialRef = tx.blob_limited(&id, limit).await?;
+            Ok::<_, SharedError>((id, value))
+        })
+        .buffered(READ_CONCURRENCY)
+        .try_collect()
+        .await?;
+        for (id, value) in records {
+            self.charge(&value)?;
+            self.spatial_refs.insert(id, Arc::new(value));
+        }
+        Ok(())
     }
     pub fn charge<T: Serialize>(&mut self, value: &T) -> SharedResult<()> {
         let bytes = canonical_cbor(value)?.len();

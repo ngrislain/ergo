@@ -5,7 +5,6 @@ use super::*;
 use ergo_world::{BlockCoord, WorldExport, geometry::Mesh};
 use futures::{StreamExt, TryStreamExt};
 use std::sync::Arc;
-const READ_CONCURRENCY: usize = 64;
 const INDEX_PAGE_SIZE: usize = 512;
 
 /// Read-only browser budgets are independent of authoring and dynamic bodies.

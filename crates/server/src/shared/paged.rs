@@ -120,12 +120,19 @@ pub(super) async fn rows<T: serde::de::DeserializeOwned + Serialize>(
     ws: &mut working::Working,
     prefix: &OctreePath,
 ) -> SharedResult<Vec<T>> {
+    use futures::{StreamExt, TryStreamExt};
     let mut after = None;
     let mut result = Vec::new();
     loop {
         let page = ws.tx.scan_page(prefix, after.as_ref(), 128).await?;
-        for (_, cid) in page.leaves {
-            let value: T = ws.tx.blob_limited(&cid, ws.remaining()).await?;
+        let limit = ws.remaining();
+        let tx = &ws.tx;
+        let values: Vec<T> = futures::stream::iter(page.leaves)
+            .map(|(_, cid)| async move { tx.blob_limited(&cid, limit).await })
+            .buffered(READ_CONCURRENCY)
+            .try_collect()
+            .await?;
+        for value in values {
             ws.charge(&value)?;
             result.push(value);
         }

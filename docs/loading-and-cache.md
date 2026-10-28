@@ -91,6 +91,10 @@ unchanged. Acknowledged immutable uploads populate the server's 256 MiB
 verified-object LRU, avoiding a download immediately after writing the bytes.
 Mutable heads and explicit uncached CAS verification remain uncached. Uploads
 are never skipped based on an LRU hit, preserving GC/orphan safety.
+Required authoring rule rows and spatial-reference payloads are also loaded in
+ordered batches of at most 64 reads within their existing 128-row pages. Every
+record is still charged once to the working budget, and spatial predicates and
+complete publication dependency discovery remain unchanged.
 
 The encoded read budget is enforced on the final operation, including the
 additional membership headers. It is not a complete allocator-RSS bound; bounded

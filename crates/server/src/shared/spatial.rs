@@ -245,12 +245,18 @@ impl Working {
                         let mut cursor = None;
                         loop {
                             let refs = self.tx.scan_page(&own, cursor.as_ref(), 128).await?;
+                            let mut ids = Vec::new();
                             for (path, cid) in refs.leaves {
                                 if !excluded.is_empty()
                                     && excluded.contains(&reference_piece(&path, h.coord)?)
                                 {
                                     continue;
                                 }
+                                ids.push(cid);
+                            }
+                            self.load_spatial_refs(ids.iter().cloned().collect())
+                                .await?;
+                            for cid in ids {
                                 let r = self.spatial_ref(&cid).await?;
                                 if r.bounds.intersects(bounds)
                                     && let Some(piece) = self.piece(&r.piece).await?

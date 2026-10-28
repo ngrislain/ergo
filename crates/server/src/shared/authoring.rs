@@ -125,7 +125,7 @@ impl SharedWorlds {
                         )
                     }
                 })
-                .buffered(64);
+                .buffered(READ_CONCURRENCY);
             while let Some(bytes) = records.try_next().await? {
                 count += 1;
                 if count > ws.piece_limit() {
