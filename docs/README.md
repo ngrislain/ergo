@@ -44,6 +44,7 @@ designs live in `todo/` and are indexed by [TODO.md](../TODO.md).
 ## Maintain and deploy
 
 - [Operations](operations.md)
+- [Accepted-region cache warm-up](loading-and-cache.md#operator-warm-up)
 - [Scaleway deployment](scaleway-deployment.md)
 - [GitHub client/image distributions](distribution.md)
 - [Public website](static-site.md)

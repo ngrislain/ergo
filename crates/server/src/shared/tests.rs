@@ -1156,6 +1156,45 @@ async fn compressed_cbor_views_cache_revalidate_and_invalidate_on_appearance_edi
 }
 
 #[tokio::test]
+async fn operator_warm_view_persists_verified_read_data_without_a_world_commit() {
+    use axum::{body::Body, http::Request};
+    use tower::ServiceExt;
+    let service = service();
+    let (head, _) = seeded(&service, scene(100.)).await;
+    let report = service.warm_view(&head.id, [0; 3]).await.unwrap();
+    assert_eq!(report["revision"], serde_json::json!(head.revision));
+    assert_eq!(report["pieces"], 1);
+    assert_eq!(
+        service
+            .repo(&head.id)
+            .unwrap()
+            .checkout("main")
+            .await
+            .unwrap()
+            .id(),
+        &head.revision
+    );
+    let restarted = SharedWorlds::new(service.store.clone()).unwrap();
+    let (app, headers) = http(&restarted);
+    let mut request = Request::get(format!("/api/shared-worlds/{}/view?format=cbor", head.id))
+        .body(Body::empty())
+        .unwrap();
+    request.headers_mut().extend(headers);
+    let response = app.oneshot(request).await.unwrap();
+    assert_eq!(response.status(), StatusCode::OK);
+    assert_eq!(response.headers()["x-ergo-read-cache"], "persistent");
+    let mut bounded = service.clone();
+    bounded.view_limits.bytes = 1;
+    assert!(bounded.warm_view(&head.id, [0; 3]).await.is_err());
+    assert!(
+        service
+            .warm_view(&head.id, [1_000_000_000, 0, 0])
+            .await
+            .is_err()
+    );
+}
+
+#[tokio::test]
 async fn read_progress_is_authorized_ephemeral_and_contains_no_geometry() {
     let service = service();
     let (head, _) = seeded(&service, scene(100.)).await;

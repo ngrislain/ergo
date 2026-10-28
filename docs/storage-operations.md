@@ -47,9 +47,14 @@ ambiguous mutation leaves fencing in place until the holder/remote requests are
 settled and an operator explicitly recovers it.
 
 Supported operator commands include `shared-maintenance-status`, `shared-gc`,
-`shared-prune`, `shared-compact`, current-format namespace migration and current
+`shared-prune`, `shared-compact`, `shared-warm-view`, current-format namespace migration and current
 history installation. They have no public HTTP mutation endpoint. See
 [the runbook](operations.md).
+
+`shared-warm-view WORLD_ID X Y Z` materializes the existing accepted region through
+the normal bounded reader and confirms its discardable cache packet. It does not
+advance the world head or publish geometry. See [cache warm-up](loading-and-cache.md#operator-warm-up)
+for the source-built command and required storage configuration.
 
 ### Current history installation
 

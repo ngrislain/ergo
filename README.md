@@ -24,6 +24,8 @@ Accepted region reads use [compact compressed packets and revision-safe caches](
 selecting fully resident constructions reuses their loaded geometry.
 Read-only regions have independent budgets, defaulting to 50,000 pieces and
 64 MiB of charged reads, for denser neighborhoods.
+Storage operators can [warm an accepted region's discardable cache](docs/loading-and-cache.md#operator-warm-up)
+without publishing or changing constructions.
 
 The server owns authorization, static acceptance and persistence. Dynamic gravity,
 earthquake/drop tests, editing feedback and actual image rendering run locally in

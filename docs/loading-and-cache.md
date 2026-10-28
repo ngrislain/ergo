@@ -107,6 +107,29 @@ key canonicalization are unchanged.
 
 ## Observe and measure
 
+### Operator warm-up
+
+Source-built servers after v0.5.11 provide a storage-operator command for a first
+dense materialization that would exceed the hosting proxy's request deadline:
+
+```sh
+ERGO_SHARED_VIEW_PIECES=100000 cargo run --release -p ergo-server -- \
+  shared-warm-view "$ERGO_COMMON_WORLD_ID" 19 0 0
+```
+
+Use the existing application S3 credentials, prefix and common-world settings.
+This has no public HTTP mutation route. It runs the same bounded region builder
+against the actual accepted S3 snapshot, holds its ordinary reader pin, and writes
+only the discardable cache packet. It does not import local construction JSON,
+advance the world head, change identities, or bypass publication validation.
+New packets are not persisted if the head changes during materialization.
+Conditional persistence is confirmed by reading back the verified packet; API
+readers still check current permission, accepted revision and budgets before use.
+The report separates materialization time, logical bytes and compressed size.
+Warm-up does not make cold reconstruction intrinsically fast or raise read limits.
+
+### HTTP diagnostics
+
 The same authorized view URL with `status=true` returns the accepted revision and
 an ephemeral build phase (or null when no matching build is active). It is
 `private, no-store`, exposes no geometry, and does not start a build. Progress is

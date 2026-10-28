@@ -183,6 +183,94 @@ pub(super) async fn view(
     ))
 }
 
+impl SharedWorlds {
+    /// Storage-operator cache warm-up, never exposed as a network write route.
+    /// Materializes the same bounded accepted snapshot as the HTTP reader.
+    pub async fn warm_view(&self, id: &str, coord: [i64; 3]) -> anyhow::Result<serde_json::Value> {
+        ensure!(
+            coord.iter().all(|n| n.unsigned_abs() < 1_000_000_000),
+            "View block coordinate out of range"
+        );
+        let started = std::time::Instant::now();
+        let repo = self.repo(id)?;
+        let snapshot = repo.checkout("main").await?;
+        let metadata: Metadata = snapshot
+            .get_limited(&root(2), self.view_limits.bytes)
+            .await?
+            .context("Missing world metadata")?;
+        anyhow::ensure!(
+            metadata.id.as_deref().is_none_or(|stored| stored == id),
+            "Configured sandbox ID does not match the stored namespace"
+        );
+        anyhow::ensure!(
+            metadata.layout == 2,
+            "Only current paged shared records are supported"
+        );
+        let key = ViewKey {
+            world: id.into(),
+            revision: snapshot.id().clone(),
+            coord,
+            pieces: self.view_limits.pieces,
+            read_bytes: self.view_limits.bytes,
+        };
+        let memory_key = key.memory_key()?;
+        let gate = self.read_cache.gate(&memory_key);
+        let _guard = gate.lock().await;
+        let progress = self.read_cache.start_progress(&memory_key);
+        let (stored, mode) = self.read_cache.persistent(&self.store, &key).await;
+        let value = if let Some(value) = stored {
+            value
+        } else {
+            let query = ViewQuery {
+                x: coord[0],
+                y: coord[1],
+                z: coord[2],
+                ..Default::default()
+            };
+            let work = build(&snapshot, &query, &key, &progress);
+            tokio::pin!(work);
+            let mut interval = tokio::time::interval(std::time::Duration::from_secs(10));
+            let (packet, read_bytes) = loop {
+                tokio::select! {
+                    result=&mut work=>break result?,
+                    _=interval.tick()=>tracing::info!(phase=?self.read_cache.progress(&memory_key),elapsed_s=started.elapsed().as_secs(),"Warming accepted read view"),
+                }
+            };
+            let encoding_key = key.clone();
+            let value = Arc::new(
+                tokio::task::spawn_blocking(move || {
+                    EncodedView::encode(&packet, &encoding_key, read_bytes)
+                })
+                .await??,
+            );
+            anyhow::ensure!(
+                repo.checkout("main").await?.id() == &key.revision,
+                "World changed during warm-up; no packet persisted"
+            );
+            if value.brick_count > 0 {
+                ReadCache::persist(self.store.clone(), key.clone(), value.clone(), mode)
+                    .context("No safe conditional cache-write mode")?
+                    .await?;
+            }
+            value
+        };
+        if value.brick_count > 0 {
+            let (verified, _) = self.read_cache.persistent(&self.store, &key).await;
+            anyhow::ensure!(
+                verified.is_some_and(|stored| stored.cbor == value.cbor),
+                "Read-view cache write was not confirmed"
+            );
+        }
+        self.read_cache.insert(memory_key, value.clone());
+        let revision = key.revision.clone();
+        snapshot.close().await?;
+        Ok(
+            serde_json::json!({"kind":"discardable accepted read-view cache; not a world commit","world_id":id,"revision":revision,
+            "coord":coord,"pieces":value.brick_count,"logical_read_bytes":value.logical_read_bytes,"cbor_bytes":value.cbor.len(),"gzip_cbor_bytes":value.gzip_cbor.len(),"elapsed_s":started.elapsed().as_secs_f64()}),
+        )
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::Limits;

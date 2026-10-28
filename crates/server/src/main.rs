@@ -428,6 +428,20 @@ async fn main() -> Result<()> {
         let shared = shared::SharedWorlds::from_env(store.clone())?;
         let repo = shared.repo(&id)?;
         match command.as_str() {
+            "shared-warm-view" => {
+                let mut coord = [0i64; 3];
+                for value in &mut coord {
+                    *value = args
+                        .next()
+                        .context("Usage: ergo-server shared-warm-view WORLD_ID X Y Z")?
+                        .parse()?;
+                }
+                anyhow::ensure!(args.next().is_none(), "Unexpected argument");
+                println!(
+                    "{}",
+                    serde_json::to_string_pretty(&shared.warm_view(&id, coord).await?)?
+                );
+            }
             "shared-install-history" => {
                 let path = args
                     .next()
