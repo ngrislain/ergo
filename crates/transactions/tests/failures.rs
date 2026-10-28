@@ -222,6 +222,49 @@ async fn decoded_lookahead_still_follows_cached_parents_to_uncached_descendants(
 }
 
 #[tokio::test]
+async fn transaction_lookahead_reads_pending_nodes_and_keeps_phantom_protection() {
+    use ergo_transactions::OctreePath;
+    let store = Arc::new(FaultStore::default());
+    let repo = Repository::new(store.clone(), "pending-prefetch")
+        .unwrap()
+        .with_cache_capacity(16 * 1024 * 1024);
+    repo.create("main").await.unwrap();
+    let mut tx = repo.begin("main").await.unwrap();
+    let region = OctreePath::new(vec![3]).unwrap();
+    store.object_reads.store(0, Ordering::SeqCst);
+    for index in 0..512u32 {
+        let path = OctreePath::new(vec![
+            3,
+            0,
+            ((index >> 6) & 7) as u8,
+            ((index >> 3) & 7) as u8,
+            (index & 7) as u8,
+        ])
+        .unwrap();
+        tx.put(&path, &index).await.unwrap();
+    }
+    let page = tx.scan_page_prefetched(&region, None, 1000).await.unwrap();
+    assert_eq!(page.leaves.len(), 512);
+    for (index, (_, cid)) in page.leaves.iter().enumerate() {
+        assert_eq!(tx.blob_limited::<u32>(cid, 64).await.unwrap(), index as u32);
+    }
+    assert_eq!(
+        store.object_reads.load(Ordering::SeqCst),
+        0,
+        "Pending tree nodes and values must not be fetched from object storage"
+    );
+    let mut other = repo.begin("main").await.unwrap();
+    other.put(&"3/7".parse().unwrap(), &900u32).await.unwrap();
+    other
+        .commit("other", "phantom", Default::default())
+        .await
+        .unwrap();
+    assert!(
+        matches!(tx.commit("first","must conflict",Default::default()).await,Err(Error::Conflict{paths}) if paths.contains(&region))
+    );
+}
+
+#[tokio::test]
 async fn parallel_verified_reads_share_one_download_and_failures_remain_retryable() {
     let store = Arc::new(FaultStore::default());
     let repo = Repository::new(store.clone(), "coalesced")

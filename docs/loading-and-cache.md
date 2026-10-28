@@ -86,8 +86,9 @@ most 64 node GETs in flight and a 64 KiB speculative-node limit. Internal spatia
 pages contain up to 512 rows. Speculation
 retains validated decoded nodes for the page, avoiding repeated lookahead decoding.
 It does not fetch application values or change page order/cursors; speculative
-failures fall back to normal required reads. The transaction/predicate path is
-unchanged. Acknowledged immutable uploads populate the server's 256 MiB
+failures fall back to normal required reads. Authoring spatial and rule pages use
+the same node-only lookahead while preserving staged-node reads and whole-prefix
+transaction predicates. Acknowledged immutable uploads populate the server's 256 MiB
 verified-object LRU, avoiding a download immediately after writing the bytes.
 Mutable heads and explicit uncached CAS verification remain uncached. Uploads
 are never skipped based on an LRU hit, preserving GC/orphan safety.

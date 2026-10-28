@@ -50,7 +50,6 @@ pub(crate) struct Tree {
     nodes: BTreeMap<ContentId, Node>,
     pending: BTreeMap<ContentId, Bytes>,
     uploaded: BTreeSet<ContentId>,
-    read_prefetch: bool,
 }
 impl Tree {
     pub fn absorb(&mut self, other: Tree) {
@@ -86,12 +85,7 @@ impl Tree {
             nodes: BTreeMap::new(),
             pending: BTreeMap::new(),
             uploaded: BTreeSet::new(),
-            read_prefetch: false,
         }
-    }
-    pub fn with_read_prefetch(mut self) -> Self {
-        self.read_prefetch = self.repo.cache_stats().capacity_bytes > 0;
-        self
     }
     async fn prefetch_nodes(&mut self, ids: Vec<ContentId>) {
         // Read only four immutable node levels, never application payloads.
@@ -346,6 +340,27 @@ impl Tree {
         after: Option<&OctreePath>,
         limit: usize,
     ) -> Result<crate::ScanPage> {
+        self.scan_page_inner(root, path, after, limit, false).await
+    }
+    pub async fn scan_page_prefetched(
+        &mut self,
+        root: Option<&ContentId>,
+        path: &OctreePath,
+        after: Option<&OctreePath>,
+        limit: usize,
+    ) -> Result<crate::ScanPage> {
+        let enabled = self.repo.cache_stats().capacity_bytes > 0;
+        self.scan_page_inner(root, path, after, limit, enabled)
+            .await
+    }
+    async fn scan_page_inner(
+        &mut self,
+        root: Option<&ContentId>,
+        path: &OctreePath,
+        after: Option<&OctreePath>,
+        limit: usize,
+        read_prefetch: bool,
+    ) -> Result<crate::ScanPage> {
         if !(1..=10_000).contains(&limit) || after.is_some_and(|a| !path.is_prefix_of(a)) {
             return Err(Error::InvalidCursor);
         }
@@ -384,7 +399,7 @@ impl Tree {
                     child,
                 } => stack.push((Self::descend(&path, &suffix)?, child)),
                 Node::Branch { children, .. } => {
-                    if self.read_prefetch {
+                    if read_prefetch {
                         self.prefetch_nodes(children.iter().flatten().cloned().collect())
                             .await;
                     }

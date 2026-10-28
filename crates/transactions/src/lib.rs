@@ -732,8 +732,7 @@ impl Snapshot {
         limit: usize,
     ) -> Result<ScanPage> {
         Tree::new(self.repo.clone())
-            .with_read_prefetch()
-            .scan_page(self.commit.root.as_ref(), path, after, limit)
+            .scan_page_prefetched(self.commit.root.as_ref(), path, after, limit)
             .await
     }
 }
@@ -882,6 +881,20 @@ impl Transaction {
         self.observe(path).await?;
         self.tree
             .scan_page(self.working_root.as_ref(), path, after, limit)
+            .await
+    }
+
+    /// Ordered paging with node-only lookahead, including read-your-writes and
+    /// the same whole-prefix phantom predicate as ordinary transaction paging.
+    pub async fn scan_page_prefetched(
+        &mut self,
+        path: &OctreePath,
+        after: Option<&OctreePath>,
+        limit: usize,
+    ) -> Result<ScanPage> {
+        self.observe(path).await?;
+        self.tree
+            .scan_page_prefetched(self.working_root.as_ref(), path, after, limit)
             .await
     }
 

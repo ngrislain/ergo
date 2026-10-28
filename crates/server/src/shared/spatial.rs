@@ -244,7 +244,10 @@ impl Working {
                         };
                         let mut cursor = None;
                         loop {
-                            let refs = self.tx.scan_page(&own, cursor.as_ref(), 128).await?;
+                            let refs = self
+                                .tx
+                                .scan_page_prefetched(&own, cursor.as_ref(), 128)
+                                .await?;
                             let mut ids = Vec::new();
                             for (path, cid) in refs.leaves {
                                 if !excluded.is_empty()

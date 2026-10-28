@@ -124,7 +124,10 @@ pub(super) async fn rows<T: serde::de::DeserializeOwned + Serialize>(
     let mut after = None;
     let mut result = Vec::new();
     loop {
-        let page = ws.tx.scan_page(prefix, after.as_ref(), 128).await?;
+        let page = ws
+            .tx
+            .scan_page_prefetched(prefix, after.as_ref(), 128)
+            .await?;
         let limit = ws.remaining();
         let tx = &ws.tx;
         let values: Vec<T> = futures::stream::iter(page.leaves)

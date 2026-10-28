@@ -313,6 +313,9 @@ overwritten or deleted by an edit.
   cached parents to uncached descendants, including packed leaf edges. It never follows application-value
   links; invalid speculative nodes fall back to required traversal and its ordinary
   errors. Transaction predicate registration is unchanged.
+  `Transaction::scan_page_prefetched` provides the same optimization for authoring
+  pages. It still observes the complete scanned prefix, reads pending edits, and
+  reuses staged nodes without trying to download their not-yet-uploaded objects.
 - Nodes are also cached within a transaction; staged values and serialization
   buffers remain in memory. There is no whole-process heap quota, streaming CBOR
   encoder, or automatic chunker. `scan` is an unbounded compatibility convenience;
