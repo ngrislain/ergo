@@ -1,4 +1,5 @@
 use crate::location::CameraLocation;
+use anyhow::Context;
 use ergo_client::{
     navigation::{
         Control, DEFAULT_EYE_HEIGHT, MAX_EYE_HEIGHT, MIN_EYE_HEIGHT, NavigationInput,
@@ -91,6 +92,7 @@ struct Ui {
     first: RwSignal<Option<u32>>,
     joint_count: RwSignal<usize>,
     busy: RwSignal<bool>,
+    loading: RwSignal<Option<crate::loading::Loading>>,
     user: RwSignal<String>,
     google: RwSignal<bool>,
     signed_in: RwSignal<bool>,
@@ -99,6 +101,7 @@ struct Ui {
     ground_status: RwSignal<String>,
     ground_attribution: RwSignal<Option<(String, String)>>,
     fog: RwSignal<f64>,
+    render_quality: RwSignal<String>,
     authoring_groups: RwSignal<Vec<ergo_world::groups::Group>>,
     group_selection: RwSignal<Vec<u32>>,
     navigation: RwSignal<NavigationStatus>,
@@ -180,6 +183,7 @@ impl Ui {
             first: RwSignal::new(None),
             joint_count: RwSignal::new(0),
             busy: RwSignal::new(false),
+            loading: RwSignal::new(None),
             user: RwSignal::new("Connecting…".into()),
             google: RwSignal::new(false),
             signed_in: RwSignal::new(false),
@@ -188,6 +192,7 @@ impl Ui {
             ground_status: RwSignal::new("Ground: loading map colors".into()),
             ground_attribution: RwSignal::new(None),
             fog: RwSignal::new(2200.0),
+            render_quality: RwSignal::new("auto".into()),
             authoring_groups: RwSignal::new(Vec::new()),
             group_selection: RwSignal::new(Vec::new()),
             navigation: RwSignal::new(NavigationStatus::default()),
@@ -201,6 +206,7 @@ impl Ui {
     fn fail(self, error: impl ToString) {
         self.error.set(Some(error.to_string()));
         self.busy.set(false);
+        self.loading.set(None);
     }
 }
 
@@ -221,6 +227,7 @@ struct Client {
     known_cells: HashSet<BlockCoord>,
     default_geo: ergo_world::GeoReference,
     generation: u64,
+    region_request: u64,
     ready: bool,
     load_all: bool,
     start_when_loaded: bool,
@@ -254,6 +261,7 @@ impl Client {
             navigation_controls: HashSet::new(),
             known_cells: HashSet::new(),
             generation: 0,
+            region_request: 0,
             ready: false,
             load_all: false,
             start_when_loaded: false,
@@ -571,6 +579,7 @@ fn open_shared(handle: Handle, location: SharedLocation) {
         c.common_fenced = false;
         c.ui.editing_shared.set(false);
         c.generation += 1;
+        c.ui.loading.set(None);
         c.blocks.clear();
         c.pending.clear();
         c.ground_pending.clear();
@@ -625,36 +634,136 @@ fn open_shared(handle: Handle, location: SharedLocation) {
 }
 
 fn request_shared_region(handle: Handle, id: String, coord: [i64; 3], fit_view: bool) {
-    let generation = with_client(handle, |c| c.generation);
+    let (generation, request_id, previous) = with_client(handle, |c| {
+        c.region_request += 1;
+        c.ui.loading
+            .set(Some(crate::loading::Loading::new(js_sys::Date::now())));
+        (
+            c.generation,
+            c.region_request,
+            c.shared.as_ref().map(|shared| shared.coord),
+        )
+    });
     spawn_local(async move {
-        let url = format!(
+        let mut url = format!(
             "/api/shared-worlds/{id}/view?x={}&y={}&z={}&format=cbor",
             coord[0], coord[1], coord[2]
         );
+        if let Some(previous) = previous.filter(|previous| *previous != coord) {
+            url.push_str(&format!(
+                "&from_x={}&from_y={}&from_z={}",
+                previous[0], previous[1], previous[2]
+            ));
+        }
+        // Pin the read and its progress polls to one accepted revision. A new
+        // head must not make this loader display another request's counters.
+        #[derive(Deserialize)]
+        struct HeadRevision {
+            revision: String,
+        }
+        if let Ok(head) = json::<HeadRevision>(&format!("/api/shared-worlds/{id}")).await {
+            url.push_str(&format!("&revision={}", head.revision));
+            poll_region_progress(handle, url.clone(), head.revision, generation, request_id);
+        }
+        if !with_client(handle, |c| {
+            c.generation == generation && c.region_request == request_id
+        }) {
+            return;
+        }
         let result: anyhow::Result<SharedRegion> = async {
-            let response = Request::get(&url)
-                .header("Accept", "application/cbor")
-                .send()
-                .await?;
+            let cached = crate::read_cache::get(&url).await;
+            let mut request = Request::get(&url).header("Accept", "application/cbor");
+            if let Some(cached) = &cached {
+                request = request.header("If-None-Match", &cached.etag);
+            }
+            let response = request.send().await?;
+            if response.status() == 304 {
+                let cached =
+                    cached.context("Server revalidated an unavailable local construction")?;
+                region_loading_stage(
+                    handle,
+                    generation,
+                    request_id,
+                    "Opening local construction",
+                    "Reusing the verified construction and spatial index…",
+                );
+                gloo_timers::future::TimeoutFuture::new(16).await;
+                return Ok(ciborium::from_reader(cached.bytes.as_slice())?);
+            }
             if !response.ok() {
+                if [401, 403].contains(&response.status()) {
+                    crate::read_cache::forget(&url).await;
+                }
                 anyhow::bail!(response.text().await?);
             }
+            region_loading_stage(
+                handle,
+                generation,
+                request_id,
+                "Receiving construction",
+                "Downloading the prepared region…",
+            );
             if response
                 .headers()
                 .get("content-type")
                 .is_some_and(|v| v.starts_with("application/cbor"))
             {
-                Ok(ciborium::from_reader(response.binary().await?.as_slice())?)
+                let bytes = response.binary().await?;
+                region_loading_stage(
+                    handle,
+                    generation,
+                    request_id,
+                    "Decoding construction",
+                    "Reading brick geometry…",
+                );
+                gloo_timers::future::TimeoutFuture::new(16).await;
+                let region = ciborium::from_reader(bytes.as_slice())?;
+                if let Some(etag) = response.headers().get("etag") {
+                    if with_client(handle, |c| {
+                        c.generation == generation
+                            && c.region_request == request_id
+                            && !c.ui.signing_out.get_untracked()
+                    }) {
+                        crate::read_cache::put(&url, &etag, &bytes).await;
+                    }
+                }
+                Ok(region)
             } else {
                 // Rolling-deployment compatibility with the previous JSON route.
-                Ok(response.json().await?)
+                let text = response.text().await?;
+                region_loading_stage(
+                    handle,
+                    generation,
+                    request_id,
+                    "Decoding construction",
+                    "Reading brick geometry…",
+                );
+                gloo_timers::future::TimeoutFuture::new(16).await;
+                Ok(serde_json::from_str(&text)?)
             }
         }
         .await;
+        if let Ok(region) = &result {
+            region_loading_stage(
+                handle,
+                generation,
+                request_id,
+                "Preparing display",
+                &format!(
+                    "Preparing {} bricks for the 3D view…",
+                    number(region.scene.bricks.len())
+                ),
+            );
+            gloo_timers::future::TimeoutFuture::new(16).await;
+        }
         with_client(handle, |c| {
-            if c.generation != generation || c.shared.as_ref().is_none_or(|s| s.id != id) {
+            if c.generation != generation
+                || c.region_request != request_id
+                || c.shared.as_ref().is_none_or(|s| s.id != id)
+            {
                 return;
             }
+            c.ui.loading.set(None);
             if let Some(shared) = &mut c.shared {
                 shared.loading = false;
                 shared.last_check = js_sys::Date::now();
@@ -728,6 +837,66 @@ fn request_shared_region(handle: Handle, id: String, coord: [i64; 3], fit_view: 
     });
 }
 
+fn region_loading_stage(
+    handle: Handle,
+    generation: u64,
+    request_id: u64,
+    title: &str,
+    detail: &str,
+) {
+    with_client(handle, |c| {
+        if c.generation == generation && c.region_request == request_id {
+            c.ui.loading.update(|loading| {
+                if let Some(loading) = loading {
+                    loading.client_stage(title, detail);
+                }
+            });
+        }
+    });
+}
+
+fn poll_region_progress(
+    handle: Handle,
+    url: String,
+    revision: String,
+    generation: u64,
+    request_id: u64,
+) {
+    spawn_local(async move {
+        loop {
+            let waiting = with_client(handle, |c| {
+                c.generation == generation
+                    && c.region_request == request_id
+                    && c.ui
+                        .loading
+                        .get_untracked()
+                        .is_some_and(|loading| loading.waiting_for_server)
+            });
+            if !waiting {
+                return;
+            }
+            if let Ok(status) =
+                json::<crate::loading::ReadStatus>(&format!("{url}&status=true")).await
+            {
+                with_client(handle, |c| {
+                    if c.generation == generation
+                        && c.region_request == request_id
+                        && status.revision == revision
+                    {
+                        c.ui.loading.update(|loading| {
+                            if let Some(loading) = loading {
+                                loading.server_status(status);
+                            }
+                        });
+                    }
+                });
+            }
+            // Progress is optional: a failed poll never aborts or retries the read.
+            gloo_timers::future::TimeoutFuture::new(2000).await;
+        }
+    });
+}
+
 fn pump_shared(handle: Handle) {
     let request = with_client(handle, |c| {
         let eye = c.renderer.as_ref()?.eye();
@@ -781,6 +950,28 @@ fn pump_shared(handle: Handle) {
     }
 }
 
+fn loading_indicator(ui: Ui) -> impl IntoView {
+    view! {
+        <Show when=move ||ui.loading.get().is_some() fallback=move ||view!{
+            <Show when=move ||ui.busy.get()><div class="loading-pill" role="status"><span class="spinner" aria-hidden="true"></span>"Loading construction…"</div></Show>
+        }>
+            <div class="loading-pill loading-panel">
+                <div class="loading-announcement" role="status" aria-live="polite" aria-atomic="true">
+                    <div class="loading-heading">
+                        <strong class="loading-stage">{move ||ui.loading.get().map(|loading|loading.title).unwrap_or_default()}</strong>
+                        <span class="loading-percent">{move ||ui.loading.get().and_then(|loading|loading.percent).map(|percent|format!("{percent}%"))}</span>
+                    </div>
+                    <div class="loading-detail">{move ||ui.loading.get().map(|loading|loading.detail).unwrap_or_default()}</div>
+                </div>
+                <progress max="100" value=move ||ui.loading.get().and_then(|loading|loading.percent)
+                    aria-label=move ||ui.loading.get().map(|loading|loading.title).unwrap_or_default()
+                    aria-valuetext=move ||ui.loading.get().map(|loading|loading.detail).unwrap_or_default()/>
+                <div class="loading-footnote" aria-hidden="true"><span>"Current stage"</span><span>{move ||ui.loading.get().map(|loading|loading.elapsed()).unwrap_or_default()}</span></div>
+            </div>
+        </Show>
+    }
+}
+
 fn more_shared_regions(handle: Handle) {
     let cursor = with_client(handle, |c| c.ui.shared_cursor.get_untracked());
     if let Some(cursor) = cursor {
@@ -811,6 +1002,7 @@ fn more_shared_regions(handle: Handle) {
 fn open_world(handle: Handle, world: WorldManifest) {
     let generation = with_client(handle, |c| {
         c.generation += 1;
+        c.ui.loading.set(None);
         c.shared = None;
         c.world = Some(world.clone());
         c.known_cells = world.blocks.iter().map(|b| b.coord).collect();
@@ -910,6 +1102,7 @@ fn open_draft(handle: Handle, scene: WorldExport) -> anyhow::Result<()> {
         c.ui.editing_shared.set(false);
         c.generation += 1;
         c.shared = None;
+        c.ui.loading.set(None);
         c.pending.clear();
         c.ground_pending.clear();
         c.ground_retry.clear();
@@ -1363,6 +1556,10 @@ pub fn App() -> impl IntoView {
                 presence::pump(handle);
             }
             if now - measured > 1000.0 {
+                if let Some(mut loading) = ui.loading.get_untracked() {
+                    loading.tick(now);
+                    ui.loading.set(Some(loading));
+                }
                 ui.fps
                     .set((frames as f64 * 1000.0 / (now - measured)) as u32);
                 frames = 0;
@@ -1531,7 +1728,7 @@ pub fn App() -> impl IntoView {
                 <span class="render-badge">"WebGL2"<b>{move ||format!("{} fps",ui.fps.get())}</b></span>
                 </div>
                 <div class="viewport-footer"><span>{move ||ui.navigation.get().mode.instructions()}</span></div>
-                <Show when=move ||ui.busy.get()><div class="loading-pill" role="status"><span class="spinner"></span>"Loading construction…"</div></Show>
+                {loading_indicator(ui)}
                 <Show when=move ||ui.fullscreen.get()><ErrorToast/></Show>
             </section>
             <aside class="right-dock"><BrickInspector/><Show when=move ||ui.current.get().is_some_and(|w|w.owner=="shared") fallback=move ||view!{<SimulationControls/>}><div class="dock-section"><h2>"Shared-world navigation"</h2><p class="subtle compact">"This is a bounded spatial view. Edit complete constructions through MCP or the API; the server checks permissions, edit allowance, and measured physics."</p><a class="button full quiet" href="/#connect">"Edit with MCP / API"</a></div></Show></aside>
@@ -1886,6 +2083,12 @@ fn ConstructionBrowser() -> impl IntoView {
             <label class="range-label" for="explode">"Separate layers"<span>"Visual only"</span></label><input id="explode" type="range" min="0" max="1" step="0.02" value="0" on:input=move |e|with_client(handle,|c|{if c.simulation.is_none()&&let Some(r)=&mut c.renderer{r.explode=event_target_value(&e).parse().unwrap_or(0.0);r.changed();}})/>
             <label class="range-label" for="fog-distance">"Viewing distance (fog)"<span>{move ||format!("{:.0} studs",ui.fog.get())}</span></label><input id="fog-distance" type="range" min="200" max="4096" step="100" prop:value=move ||ui.fog.get().to_string() on:input=move |e|{let value=event_target_value(&e).parse::<f64>().unwrap_or(2200.0);ui.fog.set(value);with_client(handle,|c|{if let Some(r)=&mut c.renderer{r.fog_distance=value;r.distance=r.distance.min(value*0.9);r.changed();}});}/>
             <p class="subtle compact">"Visible blocks only · automatic distance LOD"</p>
+            <label class="range-label" for="render-quality">"Render detail"<span>"Visual only"</span></label>
+            <select id="render-quality" aria-label="Render detail" prop:value=move ||ui.render_quality.get() on:change=move |event|{
+                let value=event_target_value(&event);
+                let policy=match value.as_str(){"high"=>ergo_client::scene::RenderPolicy::DETAILED_INTERACTIVE,"performance"=>ergo_client::scene::RenderPolicy::PERFORMANCE,_=>ergo_client::scene::RenderPolicy::INTERACTIVE};
+                ui.render_quality.set(value);with_client(handle,|client|if let Some(renderer)=&mut client.renderer{renderer.set_policy(policy);});
+            }><option value="auto">"Auto (balanced)"</option><option value="performance">"Performance"</option><option value="high">"High (per-brick LOD)"</option></select>
             <p class="subtle compact">{move ||format!("{} octree nodes · geometry instanced on GPU",ui.nodes.get())}</p>
         </div>
     }

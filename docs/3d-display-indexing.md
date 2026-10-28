@@ -149,19 +149,133 @@ where $H$ is viewport height, $D$ the metric-proportioned bound diameter, $d$ ca
 distance, and $\theta_v$ vertical field of view. The implemented discrete tiers are:
 
 - At least 24 px: detailed supplied/cached Ergo geometry.
-- At least 8 px: simplified parametric mesh for known rectangular catalog parts.
-- At least 2 px: nominal body box for those rectangular parts.
+- At least 8 px: simplified parametric mesh for known rectangular catalog parts,
+  or a reviewed specialty display mesh.
+- At least 2 px: nominal rectangular body box, or the specialty's far mesh.
 - Below 2 px: coarse colored bounds aggregated in 8-unit spatial buckets.
 
 The listed thresholds initialize a piece's tier. Subsequent changes use a **12%
 hysteresis band**: refine above 1.12× a boundary and coarsen below 0.88× it.
-Large camera moves can cross several tiers in one update. Nonrectangular/custom
+Large camera moves can cross several tiers in one update. Unreviewed nonrectangular/custom
 parts retain their canonical mesh through the medium tiers, rather than
 substituting a box that changes their silhouette; subpixel aggregates still apply.
 The selected piece keeps detailed geometry; highlighted group members retain at
 least box-level individual display. Full resident geometry remains available for
 picking, and physics never substitutes these render LODs for its body model.
-Fog hides the final distance cutoff.
+Fog hides the final distance cutoff. A scene-wide detail bias can move a part
+between the first three tiers, but aggregation still requires its **unbiased**
+projected size to be subpixel-scale. Merging resolvable façade/window pieces into
+colored envelopes would create overlapping bounds and damage the architecture.
+
+### Scene-wide budget and quality controls
+
+The navigator's **Render detail** control selects an explicit policy:
+
+- **Auto (balanced)** targets 2,000,000 estimated visible-brick triangles.
+- **Performance** targets 500,000.
+- **High (per-brick LOD)** retains the original per-brick thresholds without a
+  scene-wide target, and uses full source meshes for resident shadow casters.
+
+For budgeted modes, the planner counts the cost of all camera-visible candidates
+at a common projected-size divisor of 1, 2, 4 or 8. It coarsens until the estimate
+fits or reaches 8, then refines only with 25% spare budget. The per-piece 12%
+hysteresis still applies. This is a fixed **soft triangle target**, not a frame-time
+controller or a guaranteed cap. Source-only/custom silhouettes, selected pieces,
+individual highlighted pieces and the stud transition can keep it above target.
+Ground is outside this brick target; aggregate costs conservatively count each
+candidate before merging. Picking, collision, resident piece count and saved
+models retain their full geometry. Captures and the homepage illustration keep
+their full-detail policies independently of the navigator control.
+
+Shadow LOD uses the light buffer's projected stud size, rather than the color
+camera's distance: source mesh at 6 texels or more, reviewed medium mesh from
+1.25 texels, otherwise a reviewed far mesh, with 12% hysteresis. Source-only, selected
+and highlighted pieces remain source geometry. The independent light-frustum
+query still includes resident offscreen casters. Its instance plan is cached
+until the light matrix/origin/resolution, scene/meshes, selection, explosion or
+policy changes. Camera-only color replans can reuse it; the existing GPU depth-map
+reuse remains separate. There is no separate global shadow-triangle cap.
+The [display part library](part-catalog.md#reviewed-display-detail-library) adds
+open-aperture window frames 60594/60592, annular round brick 87081 and verified
+parametric aliases; these specialties do not turn into solid body boxes. Its
+eight-sided standard studs also reduce the cost of medium and shadow detail.
+
+### Measurements and repeatable profiling
+
+On the accepted **91,265-piece** district readback, the native planner comparison
+at the nearer 1280×720 overview reduced color submission from **37,494,790 to
+1,979,926 triangles (95%)** versus per-brick LOD using the same updated display
+library, and its fixed 2048² light-volume casters from
+**130,259,476 to 33,599,614 (74%)**. At three times the camera distance, color
+triangles fell from 6,495,792 to 1,330,224. Auto fits its soft target in these cases;
+selected/protected source geometry can still exceed it in other views. No pieces
+are discarded to force a lower count.
+These are submitted triangle counts, not GPU timings or an FPS speedup ratio.
+
+An actual headless Chrome WebGL2 check on an Apple M4 Max/ANGLE Metal renderer,
+1440×1000 window at device scale 1, gave **16.7–33.3 ms median presentation
+intervals** during warmed district orbit in the budgeted modes. Its different
+fitted camera/light submitted about 1.59 million color triangles and estimated
+35.3 million brick-shadow triangles. Auto used divisor 4; Performance used 8 and
+could not meet its lower target. Their final fitted-frame counts were identical;
+interval samples also include changing-camera work and hardware scheduling. This is
+a local presentation measurement, not a portable FPS guarantee. Repeated full
+High-policy stress caused a WebGL context loss in one benchmark run, so there is
+no reliable like-for-like browser FPS ratio against the old policy.
+
+After building the viewer WASM and local server, with Playwright/Chrome installed:
+
+```sh
+cargo run --release -p ergo-client --example profile_scene -- construction.ergo.json
+cargo run --release -p ergo-client --example profile_scene -- --inventory construction.ergo.json
+python3 scripts/profile-rendering.py construction.ergo.json --output target/render-profile.json
+```
+
+The native example uses the actual scene planner without a GPU. The browser
+script uses disposable local storage and a read-only scene-response fixture,
+because combined accepted readbacks can contain prototype aliases that the
+public authoring importer intentionally rejects. It runs the actual WASM/WebGL
+renderer, primes the selected policies, then drives UI pointer orbit, writes
+per-mode PNGs and reports canvas metrics/presentation intervals. It never saves
+or publishes the preview. The JSON records the actual graphics backend and GL
+errors; `--qualities` selects the policies to exercise.
+
+Canvas diagnostics include `data-color-triangles` (submitted color geometry,
+including ground), `data-brick-shadow-triangles-estimate` (resident brick casters,
+not necessarily redrawn that frame), `data-detail-scale`, `data-lod-counts`,
+`data-shadow-lod-counts` and `data-color-budget-estimate-exceeded`. The last flag
+describes the conservative brick estimate, not a GPU timeout or a world limit.
+
+### Relation to Nanite
+
+[Unreal Engine's Nanite](https://dev.epicgames.com/documentation/en-us/unreal-engine/nanite-virtualized-geometry-in-unreal-engine)
+builds a hierarchical multiresolution representation of triangle clusters, selects
+detail according to projected error, culls visibility on the GPU and streams
+compressed geometry pages as needed. That makes the selected work depend on the
+visible image rather than submitting every source triangle in a huge scene.
+
+Ergo implements the smaller WebGL2-compatible steps above: shared part prototypes,
+resident-octree culling, a scene-wide screen-detail bias, light-space LOD and pass
+reuse. It does **not** implement Nanite cluster hierarchies, GPU occlusion culling,
+error-bounded arbitrary-mesh simplification or virtualized geometry streaming.
+Construction/cell HLOD proxies and finer-grained source-mesh clusters are future
+ways to reduce the protected-geometry floor; they would need revision-bound
+representations while preserving real geometry for editing and collisions.
+
+### Rendering detail versus loading detail
+
+These tiers reduce drawing work after the region is resident. They do not avoid
+reading all region piece records or downloading their source mesh prototypes.
+Current shared-region loading still prepares a complete bounded region; nearby
+camera-cell cache reuse can skip an unchanged rebuild, but is not coarse-first
+streaming.
+
+Construction-level coarse-first loading is a future extension, not an implemented
+guarantee: it needs cheap, revision-bound construction/cell summaries or coarse
+meshes, followed by full geometry only near the camera or on demand. Such visual
+proxies must not be treated as complete editable or collision/physics geometry;
+walking into an unloaded area must wait for its real collision data. Lowering GPU
+detail alone cannot solve the measured per-record S3 traversal bottleneck.
 
 ## Picking: broad phase, then triangle tests
 
@@ -249,7 +363,9 @@ full offline operation. Logout clears model caches.
 
 Shared-region URLs use a separate, permission-revalidated path: typed CBOR/gzip,
 server revision-keyed encoded/persistent read caches, and ordinary HTTP ETags.
-They are not added to the service-worker immutable-object cache. Region refreshes
+They are not added to the service-worker immutable-object cache. The viewer's
+separate local packet CacheStorage retains construction/index bytes only for use
+after a fresh authorized HTTP 304. Region refreshes
 retain unchanged GPU prototypes, and selecting a snapshot-certified fully
 resident assembly focuses it without a location/view fetch. See
 [loading and caching](loading-and-cache.md) for limits and invalidation.

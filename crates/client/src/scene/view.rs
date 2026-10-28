@@ -8,11 +8,12 @@ pub const DISPLAY_SCALE: DVec3 = DVec3::new(
     1.,
 );
 
-#[derive(Clone)]
+#[derive(Clone, PartialEq)]
 pub struct Visibility {
     pub planes: [[f64; 4]; 6],
     pub origin: DVec3,
     range: Option<(DVec3, f64)>,
+    matrix: DMat4,
 }
 impl Visibility {
     /// Matrix maps origin-relative construction coordinates to clip space.
@@ -21,6 +22,7 @@ impl Visibility {
         Self {
             origin,
             range: None,
+            matrix,
             planes: [
                 rows[3] + rows[0],
                 rows[3] - rows[0],
@@ -41,6 +43,26 @@ impl Visibility {
         }) && self.range.is_none_or(|(eye, far)| {
             ((eye - eye.clamp(bounds.min, bounds.max)) * DISPLAY_SCALE).length() <= far
         })
+    }
+    /// Project an actual bound into the light buffer. Near-plane crossings keep
+    /// full detail rather than using an unstable perspective size estimate.
+    pub fn projected_diameter(&self, bounds: Aabb, resolution: f64) -> f64 {
+        let mut lo = glam::DVec2::splat(f64::INFINITY);
+        let mut hi = glam::DVec2::splat(f64::NEG_INFINITY);
+        for x in [bounds.min.x, bounds.max.x] {
+            for y in [bounds.min.y, bounds.max.y] {
+                for z in [bounds.min.z, bounds.max.z] {
+                    let clip = self.matrix * (DVec3::new(x, y, z) - self.origin).extend(1.);
+                    if clip.w <= 1e-6 || clip.z < -clip.w || !clip.is_finite() {
+                        return f64::INFINITY;
+                    }
+                    let p = glam::DVec2::new(clip.x, clip.y) / clip.w;
+                    lo = lo.min(p);
+                    hi = hi.max(p);
+                }
+            }
+        }
+        (hi - lo).length() * resolution * 0.5
     }
 }
 

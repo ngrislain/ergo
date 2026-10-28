@@ -106,9 +106,19 @@ is initially at most 600 CSS pixels wide, otherwise 2048². Sunlight uses a boun
 orthographic volume near the target; the flashlight uses a bounded perspective
 volume. The map is reused while its matrix and uploaded geometry stay unchanged.
 
-Shadow casters use full source-part geometry from an **independent light-frustum
-query** of the resident octree. Camera clipping and body LOD no longer remove a
-resident caster. Ground studs retain their bounded camera-local detail region.
+Shadow casters come from an **independent light-frustum query** of the resident
+octree. Camera clipping and color-body LOD do not remove a resident caster.
+Auto/Performance navigator policies select source/medium/far display geometry
+for reviewed parts according to projected stud size in the shadow
+buffer (6/1.25 texels, 12% hysteresis). Parts without a reviewed display profile
+retain source shadow geometry, as do
+selected and highlighted pieces. Window-frame far meshes retain their apertures
+and the round-brick far mesh retains its annular silhouette. High, MCP captures and the homepage retain
+full source shadow parts. This is visual LOD, not a change to collision bodies.
+The caster-instance plan is reused while the light volume/origin/resolution,
+scene/meshes, selected/highlighted IDs, explosion and quality policy are unchanged;
+the existing GPU map reuse then skips the depth draw when appropriate.
+Ground studs retain their bounded camera-local detail region.
 This is not a whole-world occlusion query: unloaded or light-volume-clipped
 casters can still be absent. Full-detail shadow prototypes share GPU geometry
 with full-detail color batches; adaptive color proxies need separate prototypes.
@@ -143,4 +153,7 @@ login/viewer routing. Canvas diagnostics include `data-renderer`, `data-lighting
 `data-sun-elevation`, `data-sun-azimuth`, and `data-shadow-map`.
 `data-color-instances`, `data-shadow-draw-calls` and `data-instance-upload-bytes`
 expose current-frame submission/upload diagnostics (a reused shadow map has zero
-depth draw calls for that frame).
+depth draw calls for that frame). `data-shadow-lod-counts` and
+`data-brick-shadow-triangles-estimate` expose planned brick caster detail/work,
+including casters whose depth map is reused; they exclude ground.
+See [scene-wide LOD and profiling](3d-display-indexing.md#scene-wide-budget-and-quality-controls).

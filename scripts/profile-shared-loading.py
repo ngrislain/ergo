@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """Read-only transfer/timing comparison; never print construction geometry."""
-import argparse,gzip,json,time,urllib.error,urllib.parse,urllib.request
+import argparse,gzip,json,re,time,urllib.error,urllib.parse,urllib.request
 from pathlib import Path
 
 def main():
@@ -31,9 +31,11 @@ def main():
             first=time.monotonic()-start;body=response.read();elapsed=time.monotonic()-start
             decoded=gzip.decompress(body) if body and response.headers.get('Content-Encoding')=='gzip' else body
             row={'request':name,'status':response.status,'ttfb_s':round(first,3),'total_s':round(elapsed,3),
+                'body_transfer_s':round(elapsed-first,3),
                 'wire_bytes':len(body),'decoded_bytes':len(decoded),'content_type':response.headers.get('Content-Type'),
                 'content_encoding':response.headers.get('Content-Encoding','identity'),'read_cache':response.headers.get('X-Ergo-Read-Cache'),
                 'server_timing':response.headers.get('Server-Timing')}
+            row['server_phase_ms']={stage:float(duration) for stage,duration in re.findall(r'(view(?:_[a-z]+)*);dur=([0-9.]+)',row['server_timing'] or '')}
             if format=='cbor':etag=response.headers.get('ETag') or etag
             results.append(row);print(json.dumps(row),flush=True)
     if args.output:args.output.write_text(json.dumps({'origin':base,'world':args.world,'cell':args.cell,'results':results},indent=2)+'\n')

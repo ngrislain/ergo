@@ -33,6 +33,17 @@ pub(super) fn blob_links(bytes: &[u8]) -> ergo_transactions::Result<Vec<ContentI
         map.iter()
             .find_map(|(k, v)| (k.as_text() == Some(key)).then_some(v))
     };
+    if get("format").and_then(Value::as_text) == Some(super::bulk::FORMAT) {
+        let mut links = Vec::new();
+        let pieces = get("pieces")
+            .and_then(Value::as_map)
+            .ok_or_else(|| ergo_transactions::Error::Encoding("Invalid spatial page".into()))?;
+        for (_, piece) in pieces {
+            let bytes = canonical_cbor(piece)?;
+            links.extend(blob_links(&bytes)?);
+        }
+        return Ok(links);
+    }
     let mut links = Vec::new();
     let mut add = |v: Option<&Value>| -> ergo_transactions::Result<()> {
         if let Some(v) = v {

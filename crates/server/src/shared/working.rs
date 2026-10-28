@@ -22,6 +22,7 @@ pub struct Working {
     fixed: BTreeSet<ContentId>,
     meshes: BTreeMap<ContentId, Arc<Mesh>>,
     spatial_refs: BTreeMap<ContentId, Arc<super::spatial::SpatialRef>>,
+    bulk: super::bulk::Updates,
     pub regions: BTreeSet<OctreePath>,
     pub new_blocks: BTreeSet<BlockCoord>,
     pub loaded_bytes: usize,
@@ -69,6 +70,7 @@ impl Working {
             fixed: BTreeSet::new(),
             meshes: BTreeMap::new(),
             spatial_refs: BTreeMap::new(),
+            bulk: Default::default(),
             regions: BTreeSet::new(),
             new_blocks: BTreeSet::new(),
             loaded_bytes: 0,
@@ -325,6 +327,7 @@ impl Working {
             piece.replicas = self.cells(piece).await?;
         }
         self.replace_spatial(old, new.as_ref()).await?;
+        self.bulk.replace(&mut self.tx, old, new.as_ref()).await?;
         if let Some(piece) = &new {
             self.tx.put(&entity_path(3, &id), piece).await?;
         } else {
@@ -338,6 +341,9 @@ impl Working {
     }
     pub async fn neighbors(&mut self, bounds: Aabb) -> SharedResult<BTreeSet<ContentId>> {
         self.spatial_neighbors(bounds).await
+    }
+    pub(super) async fn flush_bulk(&mut self) -> SharedResult<()> {
+        self.bulk.flush(&mut self.tx).await
     }
     pub async fn discover(
         &mut self,

@@ -80,6 +80,56 @@ pub struct PartCache {
     gate: Arc<tokio::sync::Mutex<()>>,
     failures: Arc<std::sync::Mutex<HashMap<String, (Instant, String)>>>,
     sources: Arc<std::sync::Mutex<(usize, BTreeMap<String, Source>)>>,
+    resolved: Arc<std::sync::Mutex<ResolvedCache>>,
+}
+#[derive(Default)]
+struct ResolvedCache {
+    values: BTreeMap<String, (Instant, PartAsset, usize)>,
+    order: VecDeque<String>,
+    bytes: usize,
+}
+impl ResolvedCache {
+    fn get(&mut self, part: &str) -> Option<PartAsset> {
+        let (when, asset, _) = self.values.get(part)?;
+        if when.elapsed() > Duration::from_secs(60) {
+            self.remove(part);
+            return None;
+        }
+        let mut asset = asset.clone();
+        asset.cache_hit = true;
+        self.order.retain(|key| key != part);
+        self.order.push_back(part.into());
+        Some(asset)
+    }
+    fn remove(&mut self, part: &str) {
+        if let Some((_, _, bytes)) = self.values.remove(part) {
+            self.bytes -= bytes;
+        }
+        self.order.retain(|key| key != part);
+    }
+    fn insert(&mut self, part: &str, asset: &PartAsset) {
+        if asset.mesh.quality != "source" || asset.description.is_none() {
+            return;
+        }
+        let Ok(bytes) = serde_json::to_vec(asset).map(|bytes| bytes.len()) else {
+            return;
+        };
+        const BUDGET: usize = 64 * 1024 * 1024;
+        if bytes > BUDGET {
+            return;
+        }
+        self.remove(part);
+        while self.bytes + bytes > BUDGET {
+            let Some(old) = self.order.pop_front() else {
+                break;
+            };
+            self.remove(&old);
+        }
+        self.bytes += bytes;
+        self.order.push_back(part.into());
+        self.values
+            .insert(part.into(), (Instant::now(), asset.clone(), bytes));
+    }
 }
 impl PartCache {
     pub fn new(store: Arc<dyn ObjectStore>, prefix: String) -> Result<Self> {
@@ -104,6 +154,7 @@ impl PartCache {
             gate: Arc::new(tokio::sync::Mutex::new(())),
             failures: Arc::new(std::sync::Mutex::new(HashMap::new())),
             sources: Default::default(),
+            resolved: Default::default(),
         })
     }
     fn path(&self, key: &str) -> Path {
@@ -130,7 +181,18 @@ impl PartCache {
             ergo_world::catalog::valid_part(&part),
             "Invalid part {part}"
         );
+        if let Some(asset) = self.resolved.lock().unwrap().get(&part) {
+            return Ok(asset);
+        }
         let _guard = self.gate.lock().await;
+        if let Some(asset) = self.resolved.lock().unwrap().get(&part) {
+            return Ok(asset);
+        }
+        let asset = self.resolve_part(&part).await?;
+        self.resolved.lock().unwrap().insert(&part, &asset);
+        Ok(asset)
+    }
+    async fn resolve_part(&self, part: &str) -> Result<PartAsset> {
         let key = format!("assets/parts/{part}.json");
         if let Some(bytes) = self.get(&key).await? {
             let mut record: PartDescription = serde_json::from_slice(&bytes)?;
@@ -183,7 +245,7 @@ impl PartCache {
             .failures
             .lock()
             .unwrap()
-            .get(&part)
+            .get(part)
             .cloned()
             .filter(|(when, _)| when.elapsed() < Duration::from_secs(30))
         {
@@ -222,7 +284,7 @@ impl PartCache {
                 self.failures
                     .lock()
                     .unwrap()
-                    .insert(part.clone(), (Instant::now(), message.clone()));
+                    .insert(part.to_owned(), (Instant::now(), message.clone()));
                 Ok(PartAsset {
                     mesh: fallback_mesh(&part),
                     credits: Vec::new(),
@@ -429,6 +491,7 @@ mod tests {
             gate: Arc::new(tokio::sync::Mutex::new(())),
             failures: Arc::new(std::sync::Mutex::new(HashMap::new())),
             sources: Default::default(),
+            resolved: Default::default(),
         }
     }
     #[tokio::test]
@@ -445,5 +508,40 @@ mod tests {
         let b = second.resolve("3003.dat").await.unwrap();
         assert!(b.cache_hit);
         assert_eq!(a.mesh.vertices, b.mesh.vertices);
+        // The same resolver keeps both specification and decoded geometry
+        // locally, but revalidates the mutable description after the TTL.
+        let mut changed = a.mesh.clone();
+        changed.vertices[0] += 0.125;
+        let mut bytes = Vec::new();
+        ciborium::into_writer(&changed, &mut bytes).unwrap();
+        let hash = hex::encode(Sha256::digest(&bytes));
+        first
+            .put(&format!("objects/{hash}.cbor"), bytes)
+            .await
+            .unwrap();
+        let description = PartDescription::from_mesh(&changed, hash);
+        first
+            .put(
+                "assets/parts/3003.dat.json",
+                serde_json::to_vec(&description).unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(
+            first.resolve("3003.dat").await.unwrap().mesh.vertices,
+            a.mesh.vertices
+        );
+        first
+            .resolved
+            .lock()
+            .unwrap()
+            .values
+            .get_mut("3003.dat")
+            .unwrap()
+            .0 = Instant::now() - Duration::from_secs(61);
+        assert_eq!(
+            first.resolve("3003.dat").await.unwrap().mesh.vertices,
+            changed.vertices
+        );
     }
 }

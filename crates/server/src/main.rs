@@ -130,14 +130,50 @@ async fn worlds(
 
 async fn part_asset(
     State(s): State<AppState>,
+    headers: HeaderMap,
     Path(part): Path<String>,
-) -> Result<Json<ergo_assets::PartAsset>, ApiError> {
+) -> Result<Response, ApiError> {
     let part = if part.ends_with(".dat") {
         part
     } else {
         format!("{part}.dat")
     };
-    Ok(Json(s.parts.resolve(&part).await?))
+    let asset = s.parts.resolve(&part).await?;
+    let etag = asset
+        .description
+        .as_ref()
+        .filter(|_| asset.mesh.quality == "source")
+        .map(|description| {
+            ergo_transactions::canonical_cbor(description)
+                .map(|bytes| format!("W/\"part-{}\"", ergo_transactions::ContentId::of(&bytes)))
+        })
+        .transpose()?;
+    let unchanged = etag.as_ref().is_some_and(|etag| {
+        headers
+            .get("if-none-match")
+            .and_then(|value| value.to_str().ok())
+            .is_some_and(|values| {
+                values
+                    .split(',')
+                    .any(|value| value.trim() == etag || value.trim() == "*")
+            })
+    });
+    let mut response = if unchanged {
+        StatusCode::NOT_MODIFIED.into_response()
+    } else {
+        Json(asset).into_response()
+    };
+    if let Some(etag) = etag {
+        response.headers_mut().insert(header::ETAG, etag.parse()?);
+        response
+            .headers_mut()
+            .insert(header::CACHE_CONTROL, "public, max-age=60".parse()?);
+    } else {
+        response
+            .headers_mut()
+            .insert(header::CACHE_CONTROL, "no-store".parse()?);
+    }
+    Ok(response)
 }
 
 #[derive(Deserialize)]
@@ -428,6 +464,20 @@ async fn main() -> Result<()> {
         let shared = shared::SharedWorlds::from_env(store.clone())?;
         let repo = shared.repo(&id)?;
         match command.as_str() {
+            "shared-pack-block" => {
+                let mut coord = [0i64; 3];
+                for value in &mut coord {
+                    *value = args
+                        .next()
+                        .context("Usage: ergo-server shared-pack-block WORLD_ID X Y Z")?
+                        .parse()?;
+                }
+                anyhow::ensure!(args.next().is_none(), "Unexpected argument");
+                println!(
+                    "{}",
+                    serde_json::to_string_pretty(&shared.pack_block(&id, coord).await?)?
+                );
+            }
             "shared-warm-view" => {
                 let mut coord = [0i64; 3];
                 for value in &mut coord {

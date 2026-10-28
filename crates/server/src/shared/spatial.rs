@@ -15,6 +15,8 @@ pub struct BlockHeader {
     pub coord: BlockCoord,
     #[serde(deserialize_with = "super::paged::current_paged")]
     pub paged: bool,
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub packed: bool,
 }
 pub fn directory(coord: BlockCoord) -> OctreePath {
     let mut p = block_path(coord).octants().to_vec();
@@ -183,7 +185,14 @@ impl Working {
                 {
                     self.new_blocks.insert(coord);
                     self.tx
-                        .put(&directory(coord), &BlockHeader { coord, paged: true })
+                        .put(
+                            &directory(coord),
+                            &BlockHeader {
+                                coord,
+                                paged: true,
+                                packed: self.metadata.layout >= 3,
+                            },
+                        )
                         .await?;
                 }
                 let (path, row) = record(p, coord, new_box.unwrap());

@@ -91,13 +91,12 @@ mod tests {
     #[test]
     fn memory_cache_is_byte_bounded_and_uses_lru_eviction() {
         let cache = ReadCache::default();
-        let bytes = Bytes::from(vec![0; 9 * 1024 * 1024]);
+        let bytes = Bytes::from(vec![0; 20 * 1024 * 1024]);
         let make = || {
             Arc::new(EncodedView {
                 cbor: bytes.clone(),
-                json: bytes.clone(),
                 gzip_cbor: bytes.clone(),
-                gzip_json: bytes.clone(),
+                blocks: Vec::new(),
                 logical_read_bytes: 0,
                 brick_count: 1,
             })
@@ -144,14 +143,27 @@ impl ViewKey {
 
 pub(super) struct EncodedView {
     pub cbor: Bytes,
-    pub json: Bytes,
     pub gzip_cbor: Bytes,
-    pub gzip_json: Bytes,
     pub logical_read_bytes: usize,
     pub brick_count: usize,
+    pub blocks: Vec<ergo_world::BlockCoord>,
 }
 impl EncodedView {
     pub fn encode(packet: &ViewPacket, key: &ViewKey, logical_read_bytes: usize) -> Result<Self> {
+        Self::check(packet, key, logical_read_bytes)?;
+        let mut cbor = Vec::new();
+        ciborium::into_writer(packet, &mut cbor)?;
+        ensure!(cbor.len() <= MAX_PACKET_BYTES, "Read packet too large");
+        let gzip_cbor = Self::gzip(&cbor)?;
+        Ok(Self {
+            cbor: cbor.into(),
+            gzip_cbor,
+            logical_read_bytes,
+            brick_count: packet.scene.bricks.len(),
+            blocks: packet.blocks.clone(),
+        })
+    }
+    fn check(packet: &ViewPacket, key: &ViewKey, logical_read_bytes: usize) -> Result<()> {
         ensure!(
             packet.revision == key.revision && packet.scene.bricks.len() <= key.pieces,
             "Invalid cached region"
@@ -165,33 +177,17 @@ impl EncodedView {
             logical_read_bytes <= key.read_bytes,
             "Cached region exceeds read budget"
         );
-        // Read packets are discardable transport, not content-addressed world
-        // records. Serialize the typed packet directly: building a second full
-        // ciborium::Value tree adds a large avoidable peak for dense scenes.
-        let mut cbor = Vec::new();
-        ciborium::into_writer(packet, &mut cbor)?;
-        ensure!(cbor.len() <= MAX_PACKET_BYTES, "Read packet too large");
-        let json = serde_json::to_vec(packet)?;
-        let gzip = |data: &[u8]| -> Result<Bytes> {
-            let mut encoder = GzBuilder::new()
-                .mtime(0)
-                .write(Vec::new(), Compression::default());
-            encoder.write_all(data)?;
-            Ok(encoder.finish()?.into())
-        };
-        let gzip_cbor = gzip(&cbor)?;
-        let gzip_json = gzip(&json)?;
-        Ok(Self {
-            cbor: cbor.into(),
-            json: json.into(),
-            gzip_cbor,
-            gzip_json,
-            logical_read_bytes,
-            brick_count: packet.scene.bricks.len(),
-        })
+        Ok(())
+    }
+    pub fn gzip(data: &[u8]) -> Result<Bytes> {
+        let mut encoder = GzBuilder::new()
+            .mtime(0)
+            .write(Vec::new(), Compression::default());
+        encoder.write_all(data)?;
+        Ok(encoder.finish()?.into())
     }
     fn size(&self) -> usize {
-        self.cbor.len() + self.json.len() + self.gzip_cbor.len() + self.gzip_json.len()
+        self.cbor.len() + self.gzip_cbor.len()
     }
 }
 
@@ -216,19 +212,104 @@ struct Memory {
 pub(super) struct ReadCache {
     memory: Mutex<Memory>,
     gates: Mutex<HashMap<String, Weak<tokio::sync::Mutex<()>>>>,
-    progress: Mutex<HashMap<String, String>>,
+    progress: Mutex<HashMap<String, ProgressState>>,
+}
+#[derive(Clone, Serialize)]
+pub(super) struct ReadWork {
+    stage: &'static str,
+    completed: usize,
+    total: usize,
+    found_pieces: Option<usize>,
+}
+#[derive(Clone)]
+struct ProgressState {
+    phase: String,
+    work: Option<ReadWork>,
 }
 pub(super) struct ReadProgress<'a> {
     cache: &'a ReadCache,
     key: String,
+    timer: Mutex<StageTimer>,
+}
+struct StageTimer {
+    stage: &'static str,
+    since: std::time::Instant,
+    totals: BTreeMap<&'static str, f64>,
 }
 impl ReadProgress<'_> {
     pub fn report(&self, phase: impl Into<String>) {
+        self.set(phase.into(), None);
+    }
+    fn set(&self, phase: String, work: Option<ReadWork>) {
+        let stage = work.as_ref().map(|work| work.stage).unwrap_or_else(|| {
+            if phase.contains("cache lookup") {
+                "cache"
+            } else if phase.starts_with("encoding") {
+                "encoding"
+            } else if phase.starts_with("persisting") {
+                "persisting"
+            } else if phase.starts_with("verifying") {
+                "cache_verify"
+            } else {
+                "preparing"
+            }
+        });
+        let mut timer = self.timer.lock().unwrap();
+        if timer.stage != stage {
+            let previous = timer.stage;
+            let elapsed = timer.since.elapsed().as_secs_f64() * 1000.;
+            *timer.totals.entry(previous).or_default() += elapsed;
+            timer.stage = stage;
+            timer.since = std::time::Instant::now();
+        }
+        drop(timer);
         self.cache
             .progress
             .lock()
             .unwrap()
-            .insert(self.key.clone(), phase.into());
+            .insert(self.key.clone(), ProgressState { phase, work });
+    }
+    pub fn scanning(&self, completed: usize, found: usize, coord: Option<[i64; 3]>) {
+        let phase = coord
+            .map(|coord| format!("spatial index: block {coord:?}, {found} unique pieces"))
+            .unwrap_or_else(|| format!("spatial references: {found} unique pieces"));
+        self.set(
+            phase,
+            Some(ReadWork {
+                stage: "discovering",
+                completed,
+                total: 27,
+                found_pieces: Some(found),
+            }),
+        );
+    }
+    pub fn pieces(&self, completed: usize, total: usize, meshes: usize) {
+        self.set(
+            format!("piece records: {completed}/{total}, {meshes} meshes"),
+            Some(ReadWork {
+                stage: "pieces",
+                completed,
+                total,
+                found_pieces: None,
+            }),
+        );
+    }
+    pub fn membership(&self, completed: usize, total: usize) {
+        self.set(
+            format!("checking complete visual membership: {completed}/{total}"),
+            Some(ReadWork {
+                stage: "membership",
+                completed,
+                total,
+                found_pieces: None,
+            }),
+        );
+    }
+    pub fn timings_ms(&self) -> BTreeMap<&'static str, f64> {
+        let timer = self.timer.lock().unwrap();
+        let mut totals = timer.totals.clone();
+        *totals.entry(timer.stage).or_default() += timer.since.elapsed().as_secs_f64() * 1000.;
+        totals
     }
 }
 impl Drop for ReadProgress<'_> {
@@ -238,12 +319,28 @@ impl Drop for ReadProgress<'_> {
 }
 impl ReadCache {
     pub fn progress(&self, key: &str) -> Option<String> {
-        self.progress.lock().unwrap().get(key).cloned()
+        self.progress
+            .lock()
+            .unwrap()
+            .get(key)
+            .map(|state| state.phase.clone())
+    }
+    pub fn progress_status(&self, key: &str) -> Option<(String, Option<ReadWork>)> {
+        self.progress
+            .lock()
+            .unwrap()
+            .get(key)
+            .map(|state| (state.phase.clone(), state.work.clone()))
     }
     pub fn start_progress(&self, key: &str) -> ReadProgress<'_> {
         let progress = ReadProgress {
             cache: self,
             key: key.into(),
+            timer: Mutex::new(StageTimer {
+                stage: "preparing",
+                since: std::time::Instant::now(),
+                totals: BTreeMap::new(),
+            }),
         };
         progress.report("starting");
         progress
@@ -347,11 +444,14 @@ impl ReadCache {
                 "Invalid read cache length"
             );
             let packet: ViewPacket = ciborium::from_reader(raw.as_slice())?;
-            Ok(Arc::new(EncodedView::encode(
-                &packet,
-                &key,
-                stored.logical_read_bytes,
-            )?))
+            EncodedView::check(&packet, &key, stored.logical_read_bytes)?;
+            Ok(Arc::new(EncodedView {
+                cbor: raw.into(),
+                gzip_cbor: stored.gzip.into(),
+                logical_read_bytes: stored.logical_read_bytes,
+                brick_count: packet.scene.bricks.len(),
+                blocks: packet.blocks.clone(),
+            }))
         })
         .await;
         (decoded.ok().and_then(Result::ok), mode)

@@ -2,6 +2,9 @@ use super::*;
 use ergo_world::{SCHEMA_VERSION, WorldExport};
 use std::sync::Arc;
 
+#[path = "tests_bulk.rs"]
+mod packed;
+
 fn service() -> SharedWorlds {
     SharedWorlds::new(Store {
         backend: Arc::new(object_store::memory::InMemory::new()),
@@ -1156,6 +1159,82 @@ async fn compressed_cbor_views_cache_revalidate_and_invalidate_on_appearance_edi
 }
 
 #[tokio::test]
+async fn neighboring_views_reuse_only_proven_identical_geometry_and_persist_pinned_current_reads() {
+    use axum::{
+        body::{Body, to_bytes},
+        http::Request,
+    };
+    use tower::ServiceExt;
+    let service = service();
+    let mut three = scene(100.);
+    three.bricks.truncate(1);
+    for (id, x) in [(2, 1900.), (3, 2200.)] {
+        let mut brick = scene(x).bricks.remove(0);
+        brick.id = id;
+        three.bricks.push(brick);
+    }
+    let (head, _) = seeded(&service, three).await;
+    assert_eq!(
+        service.warm_view(&head.id, [0; 3]).await.unwrap()["pieces"],
+        2
+    );
+    let (app, headers) = http(&service);
+    for (coord, expected, source) in [
+        ([0, -1, 0], 2, "neighbor"),
+        ([1, 0, 0], 3, "miss"),
+        ([-1, 0, 0], 1, "miss"),
+    ] {
+        let url = format!(
+            "/api/shared-worlds/{}/view?x={}&y={}&z={}&revision={}&from_x=0&from_y=0&from_z=0",
+            head.id, coord[0], coord[1], coord[2], head.revision
+        );
+        let mut request = Request::get(url).body(Body::empty()).unwrap();
+        request.headers_mut().extend(headers.clone());
+        let response = app.clone().oneshot(request).await.unwrap();
+        assert_eq!(response.status(), StatusCode::OK);
+        assert_eq!(response.headers()["x-ergo-read-cache"], source);
+        assert!(
+            response.headers()["server-timing"]
+                .to_str()
+                .unwrap()
+                .contains("view_cache;dur=")
+        );
+        let packet: serde_json::Value =
+            serde_json::from_slice(&to_bytes(response.into_body(), 1024 * 1024).await.unwrap())
+                .unwrap();
+        assert_eq!(
+            packet["scene"]["bricks"].as_array().unwrap().len(),
+            expected
+        );
+    }
+    let key = read_cache::ViewKey {
+        world: head.id.clone(),
+        revision: head.revision.clone(),
+        coord: [1, 0, 0],
+        pieces: service.view_limits.pieces,
+        read_bytes: service.view_limits.bytes,
+    };
+    let mut persisted = false;
+    for _ in 0..20 {
+        if service
+            .read_cache
+            .persistent(&service.store, &key)
+            .await
+            .0
+            .is_some()
+        {
+            persisted = true;
+            break;
+        }
+        tokio::task::yield_now().await;
+    }
+    assert!(
+        persisted,
+        "Explicit-current revision reads must still populate the persistent cache"
+    );
+}
+
+#[tokio::test]
 async fn operator_warm_view_persists_verified_read_data_without_a_world_commit() {
     use axum::{body::Body, http::Request};
     use tower::ServiceExt;
@@ -1216,12 +1295,24 @@ async fn read_progress_is_authorized_ephemeral_and_contains_no_geometry() {
     assert_eq!(status, StatusCode::OK);
     assert_eq!(result["phase"], "piece records: 1024/5000");
     assert!(result.get("scene").is_none());
+    progress.scanning(12, 12288, None);
+    let (_, discovering) = json(&app, "GET", &url, &alice, None).await;
+    assert_eq!(discovering["progress"]["stage"], "discovering");
+    assert_eq!(discovering["progress"]["completed"], 12);
+    assert_eq!(discovering["progress"]["total"], 27);
+    assert_eq!(discovering["progress"]["found_pieces"], 12288);
+    progress.pieces(2048, 6000, 13);
+    let (_, pieces) = json(&app, "GET", &url, &alice, None).await;
+    assert_eq!(pieces["progress"]["stage"], "pieces");
+    assert_eq!(pieces["progress"]["completed"], 2048);
+    assert_eq!(pieces["progress"]["total"], 6000);
     assert_eq!(
         json(&app, "GET", &url, &bob, None).await.0,
         StatusCode::FORBIDDEN
     );
     drop(progress);
     assert!(json(&app, "GET", &url, &alice, None).await.1["phase"].is_null());
+    assert!(json(&app, "GET", &url, &alice, None).await.1["progress"].is_null());
 }
 
 #[tokio::test]
@@ -2074,15 +2165,17 @@ fn http(service: &SharedWorlds) -> (Router, HeaderMap) {
     let store = service.store.clone();
     let (auth, headers) = crate::auth::Auth::test_session("alice");
     (
-        routes().with_state(AppState {
-            shared: service.clone(),
-            parts: store.part_cache().unwrap(),
-            ground: store.ground_cache().unwrap(),
-            store,
-            auth,
-            geo: Default::default(),
-            library: None,
-        }),
+        routes()
+            .route("/api/parts/{part}", get(crate::part_asset))
+            .with_state(AppState {
+                shared: service.clone(),
+                parts: store.part_cache().unwrap(),
+                ground: store.ground_cache().unwrap(),
+                store,
+                auth,
+                geo: Default::default(),
+                library: None,
+            }),
         headers,
     )
 }
@@ -2652,7 +2745,7 @@ async fn noncurrent_shared_layouts_are_rejected() {
     let service = service();
     let (head, _) = seeded(&service, scene(100.)).await;
     let current = serde_json::to_value(&head.metadata).unwrap();
-    for layout in [0, 1, 3] {
+    for layout in [0, 1, 4] {
         let mut value = current.clone();
         value["layout"] = serde_json::json!(layout);
         assert!(serde_json::from_value::<Metadata>(value).is_err());

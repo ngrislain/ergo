@@ -10,7 +10,7 @@ designs live in `todo/` and are indexed by [TODO.md](../TODO.md).
 - [Sourced building-technique library](local-construction-mcp.md#sourced-building-techniques)
 - [Walkable pyramid and ten-level tower recipes](model-recipes.md)
 - [Camera navigation, GPS and construction list](navigation.md)
-- [Loading, compressed transport and revision-safe caches](loading-and-cache.md)
+- [Loading progress, timing diagnosis and revision-safe caches](loading-and-cache.md)
 - [Sign-in and access](access-and-onboarding.md)
 - [Nested groups](groups.md)
 - [Collision-aware positioning](interactive-constraints.md)
@@ -22,6 +22,7 @@ designs live in `todo/` and are indexed by [TODO.md](../TODO.md).
 - [S3 organization](object-store-layout.md)
 - [Every persisted record family](object-store-formats.md)
 - [Spatial persistence indexing](persistence-indexing.md)
+  includes packed block reads and the layout-2 backfill/writer-fence workflow.
 - [Shared-world protocol](concurrent-global-editing.md)
 - [Transactional CBOR library](transactional-storage.md)
 - [Paging, history and maintenance](storage-operations.md)
@@ -31,7 +32,7 @@ designs live in `todo/` and are indexed by [TODO.md](../TODO.md).
 ## Engine and validation
 
 - [Architecture and execution boundaries](architecture.md)
-- [Block display pipeline](3d-display-indexing.md)
+- [Block display pipeline, scene-wide LOD and rendering benchmarks](3d-display-indexing.md)
 - [Lighting and shadows](lighting.md)
 - [Stud-specific LOD](stud-lod.md)
 - [Ground, coordinates and placement snapping](ground-and-coordinates.md)

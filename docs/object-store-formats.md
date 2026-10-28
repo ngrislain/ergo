@@ -15,7 +15,7 @@ Only current persisted formats are supported by the application.
   hashing always uses the actual stored bytes.
 - Public coordinate `schema: 2` is east/north/up construction space. X/Y units are
   8 mm and Z units are 9.6 mm. Bounds are `{min:[x,y,z],max:[x,y,z]}`.
-- Transaction `format: 3`, spatial `layout: 2`, and the named Ergo model/part/
+- Transaction `format: 3`, spatial layouts `2` (legacy) and `3` (packed reads), and the named Ergo model/part/
   construction formats are independent version domains.
 - Logical octree paths are arrays of octants 0–7 (maximum depth 192), not S3 keys.
   Sets/ordered sequences encode as arrays; CBOR integer map keys remain integers.
@@ -60,7 +60,7 @@ all 256 hash bits, padded by two bits and split into 86 octants.
 - **`[0]` Policy:** `{owner,grants,keep_last,authenticated_editing}`. Grants contain
   `{user,regions}`. Retention is optional; permissions come from this policy and
   authenticated server identity, not free-form author strings.
-- **`[2]` Metadata:** `{id?,name,geo,model,layout:2}`. Geo is
+- **`[2]` Metadata:** `{id?,name,geo,model,layout:2|3}`. Geo is
   `{latitude,longitude,arcseconds_per_block}`. Model links the frozen physical model.
   The record contains neither a world-sized piece list nor a global piece counter.
 - **`[3]+entity-ID` Piece:** `{id,assembly,local_id,geometry,mesh,replicas}`. The stable
@@ -72,8 +72,21 @@ all 256 hash bits, padded by two bits and split into 86 octants.
   children `1/q` descend by octant, up to ten levels. **SpatialRef** is
   `{coord,piece,bounds}` using render bounds. There is one reference per piece/
   intersected storage block, not one in every fine cell it crosses.
-- **`[5]+block-address` BlockHeader:** `{coord,paged:true}`. This sparse allocated
+- **`[5]+block-address` BlockHeader:** `{coord,paged:true,packed?:bool}`. Missing
+  `packed` means false. Layout 3 may supply a complete packed read projection.
+  This sparse allocated
   block directory is not a preallocated world grid.
+- **`[3,2]+block-address+shard` SpatialPage:**
+  `{format:"ergo-spatial-page-1",coord,shard,pieces:{BirthCID:Piece}}`.
+  Entity IDs begin with padded octants 0/1, so child 2 cannot collide with canonical
+  Piece paths. The first byte of the birth hash selects one of 256 shards, encoded
+  in three octants. Pages contain inline complete Piece metadata and mesh CIDs,
+  not duplicated mesh vertices. Each page is limited to 1 MiB and 1,024 records.
+  `packed:true` means complete coverage for that block in this accepted snapshot.
+  Edit transactions maintain pages atomically, including colour-only edits and
+  cross-block replica changes. Page overflow or a projection update exceeding its
+  separate 64 MiB read-and-update budget disables the block projection and removes its pages;
+  it does not impose a world-size limit or bypass canonical validation.
 - **`[4]+assembly-ID` paged rules:** child `0` is
   **RulesHeader** `{id,name,meshes,paged:true,source_model?,creation?,piece_count?}`;
   creation is retained across edits and new headers store the exact current count.
@@ -118,6 +131,8 @@ all 256 hash bits, padded by two bits and split into 86 octants.
 
 The collector follows typed tree/history links and application blob links in
 `shared/retention.rs`. Hash-looking strings in comments are not implicit links.
+Packed-page entries additionally retain the embedded Piece's Birth, assembly and
+mesh links. Old accepted roots keep their original projection versions.
 
 ## `cache/read-views/v1/<hash>.cbor`: discardable read packet
 

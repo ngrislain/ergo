@@ -56,15 +56,15 @@ impl Geometry {
                 data: Vec::new(),
             }
         });
+        let spec = crate::part_lod::RenderPart::resolve(mesh).and_then(|part| part.rectangular());
         Self {
             gl: gl.clone(),
             vertex_buffer,
             vertices: (mesh.vertices.len() / 9) as i32,
-            stud_mode: ergo_world::geometry::part_spec(&mesh.part)
+            stud_mode: spec
                 .filter(|p| p.studs)
                 .map_or(0, |_| if mesh.quality == "body_lod" { 2 } else { 1 }),
-            stud_offset: ergo_world::geometry::part_spec(&mesh.part)
-                .map_or([0., 0.], |p| [p.width as f32 * 0.5, p.depth as f32 * 0.5]),
+            stud_offset: spec.map_or([0., 0.], |p| [p.width as f32 * 0.5, p.depth as f32 * 0.5]),
             instances,
         }
     }

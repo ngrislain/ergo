@@ -91,15 +91,87 @@ def main():
                         page = browser.new_page(viewport={'width': 1440, 'height': 950})
                         errors = []
                         page.on('pageerror', lambda error: errors.append(str(error)))
-                        page.goto(base + f"/app?shared_world={head['id']}&x=0&y=0&z=0")
+                        held=[]
+                        progress={'stage':'discovering','completed':12,'total':27,'found_pieces':1234}
+                        hold_first=[True]
+                        status_revision=[head['revision']]
+                        fail_status=[False]
+                        deny_read=[False]
+                        def loading_route(route):
+                            if 'status=true' in route.request.url:
+                                if fail_status[0]:route.abort()
+                                else:route.fulfill(json={'revision':status_revision[0],'phase':'working','progress':dict(progress)})
+                            elif deny_read[0]:
+                                route.fulfill(status=403,json={'error':'Read access revoked by test'})
+                            elif hold_first[0]:
+                                held.append(route)
+                            else:
+                                route.continue_()
+                        page.route('**/api/shared-worlds/*/view?*',loading_route)
+                        page.goto(base + f"/app?shared_world={head['id']}&x=0&y=0&z=0",wait_until='domcontentloaded')
+                        expect(page.locator('.loading-stage')).to_have_text('Finding nearby bricks',timeout=30000)
+                        expect(page.locator('.loading-detail')).to_contain_text('1,234 bricks found')
+                        assert page.get_by_role('progressbar').get_attribute('value') is None
+                        progress.update(stage='pieces',completed=2000,total=6000,found_pieces=None)
+                        expect(page.locator('.loading-percent')).to_have_text('33%',timeout=15000)
+                        expect(page.locator('.loading-detail')).to_have_text('2,000 of 6,000 bricks')
+                        page.screenshot(path=str(ROOT/'target/loading-progress.png'))
+                        status_revision[0]='unrelated-revision'
+                        progress.update(completed=1000)
+                        page.wait_for_timeout(2500)
+                        expect(page.locator('.loading-percent')).to_have_text('33%')
+                        status_revision[0]=head['revision']
+                        progress.update(completed=5000)
+                        expect(page.locator('.loading-percent')).to_have_text('83%',timeout=15000)
+                        assert len(held)==1
+                        assert 'revision='+head['revision'] in held[0].request.url
+                        fail_status[0]=True
+                        page.wait_for_timeout(2500)
+                        expect(page.locator('.loading-percent')).to_have_text('83%')
+                        hold_first[0]=False
+                        held[0].continue_()
                         expect(page.locator('.status-bar')).to_contain_text(re.compile(r'6,?000 bricks'), timeout=60000)
                         expect(page.locator('.status-bar')).to_contain_text(re.compile(r'[1-9]\d* draw calls'), timeout=60000)
                         expect(page.locator('.status-message')).to_contain_text('Shared-world region loaded', timeout=60000)
+                        expect(page.locator('.loading-panel')).to_be_hidden(timeout=15000)
+                        canvas=page.locator('#world-canvas')
+                        quality=page.get_by_role('combobox',name='Render detail',exact=True)
+                        expect(quality).to_have_value('auto')
+                        quality.select_option('high')
+                        expect(canvas).to_have_attribute('data-detail-scale','1')
+                        page.wait_for_function("JSON.parse(document.querySelector('#world-canvas').dataset.shadowLodCounts).slice(1).every(count=>count===0)")
+                        quality.select_option('performance')
+                        page.wait_for_function("JSON.parse(document.querySelector('#world-canvas').dataset.shadowLodCounts).slice(1).some(count=>count>0)")
+                        quality.select_option('auto')
+                        expect(page.locator('.status-bar')).to_contain_text(re.compile(r'6,?000 bricks'))
                         requests = []
                         page.on('request', lambda outgoing: requests.append(outgoing.url))
                         page.locator(f'[data-assembly-id="{names[0]}"]').click()
                         expect(page.locator('.status-message')).to_contain_text('Focused resident construction')
                         assert not any('/view?' in url or url.endswith('/location') for url in requests)
+                        # Local construction/index bytes survive reload, but a
+                        # fresh server permission/version check still runs.
+                        responses=[]
+                        page.on('response',lambda response: responses.append((response.url,response.status)))
+                        page.reload(wait_until='domcontentloaded')
+                        expect(page.locator('.status-message')).to_contain_text('Shared-world region loaded',timeout=60000)
+                        assert any('/view?' in url and status==304 for url,status in responses),responses
+                        # A corrupted local packet must become a cache miss.
+                        assert page.evaluate('''async () => {
+                          const cache=await caches.open('ergo-read-packets-v1');
+                          const keys=await cache.keys();
+                          const key=keys.find(key=>key.url.includes('x=0&y=0&z=0'));
+                          if(!key)return false;
+                          const response=await cache.match(key);
+                          const bytes=new Uint8Array(await response.arrayBuffer());bytes[0]^=1;
+                          await cache.put(key,new Response(bytes,{headers:response.headers}));return true;
+                        }''')
+                        page.reload(wait_until='domcontentloaded')
+                        expect(page.locator('.status-message')).to_contain_text('Shared-world region loaded',timeout=60000)
+                        deny_read[0]=True
+                        page.reload(wait_until='domcontentloaded')
+                        expect(page.get_by_role('alert')).to_contain_text('Read access revoked by test',timeout=30000)
+                        assert '6,000 bricks' not in page.locator('.status-bar').inner_text()
                         assert not errors, errors
                     finally:
                         browser.close()
@@ -107,7 +179,7 @@ def main():
                 server.terminate()
                 server.wait(timeout=15)
                 assert server.returncode == 0, 'Dense-view server did not shut down cleanly'
-    print('Dense-region browser check passed: 6,000 rendered pieces, ordinary bounded imports, resident focus without geometry requests.')
+    print('Dense-region browser check passed: honest discovery and brick percentages, 6,000 rendered pieces, loading cleanup and resident focus without geometry requests.')
 
 
 if __name__ == '__main__':

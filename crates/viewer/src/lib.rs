@@ -5,7 +5,11 @@ mod construction_list;
 #[cfg(target_arch = "wasm32")]
 mod landing;
 #[cfg(any(target_arch = "wasm32", test))]
+mod loading;
+#[cfg(any(target_arch = "wasm32", test))]
 mod location;
+#[cfg(target_arch = "wasm32")]
+mod read_cache;
 #[cfg(target_arch = "wasm32")]
 mod session;
 

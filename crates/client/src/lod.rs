@@ -3,19 +3,38 @@ pub const STUD_FLAT_PX: f64 = 1.25;
 pub const STUD_FULL_PX: f64 = 6.0;
 pub const GROUND_STUD_RADIUS: f64 = 94.0;
 pub const GROUND_GRID_RADIUS: i64 = 96;
+pub const INTERACTIVE_TRIANGLE_BUDGET: usize = 2_000_000;
+pub const MAX_DETAIL_SCALE: f64 = 8.;
 /// Twelve-percent hysteresis avoids rebuilding batches at a detail boundary.
 pub fn body_level(pixels: f64, previous: Option<u8>) -> u8 {
-    let thresholds = [24., 8., 2.];
+    discrete_level(pixels, previous, &[24., 8., 2.])
+}
+pub fn shadow_level(stud_pixels: f64, previous: Option<u8>) -> u8 {
+    discrete_level(stud_pixels, previous, &[6., STUD_FLAT_PX])
+}
+fn discrete_level(pixels: f64, previous: Option<u8>, thresholds: &[f64]) -> u8 {
     let mut level = previous
         .unwrap_or_else(|| thresholds.iter().filter(|&&t| pixels < t).count() as u8)
-        .min(3);
+        .min(thresholds.len() as u8);
     while level > 0 && pixels >= thresholds[level as usize - 1] * 1.12 {
         level -= 1;
     }
-    while level < 3 && pixels < thresholds[level as usize] * 0.88 {
+    while level < thresholds.len() as u8 && pixels < thresholds[level as usize] * 0.88 {
         level += 1;
     }
     level
+}
+/// Global, power-of-two screen-detail bias. Refinement needs 25% spare budget
+/// to avoid oscillation; protected/unsimplifiable geometry can exceed the target.
+pub fn budget_scale(previous: f64, budget: usize, mut estimate: impl FnMut(f64) -> usize) -> f64 {
+    let mut scale = previous.clamp(1., MAX_DETAIL_SCALE);
+    while scale < MAX_DETAIL_SCALE && estimate(scale) > budget {
+        scale *= 2.;
+    }
+    while scale > 1. && estimate(scale / 2.) < budget.saturating_mul(3) / 4 {
+        scale /= 2.;
+    }
+    scale
 }
 fn smoothstep(a: f64, b: f64, x: f64) -> f64 {
     let t = ((x - a) / (b - a)).clamp(0., 1.);
@@ -40,6 +59,16 @@ mod tests {
         assert_eq!(body_level(20., Some(0)), 1);
         assert_eq!(body_level(1., Some(0)), 3);
         assert_eq!(body_level(100., Some(3)), 0);
+    }
+    #[test]
+    fn global_budget_coarsens_and_refines_with_headroom() {
+        assert_eq!(budget_scale(1., 100, |scale| (400. / scale) as usize), 4.);
+        assert_eq!(budget_scale(4., 100, |_| 80), 4.);
+        assert_eq!(budget_scale(4., 100, |_| 50), 1.);
+        assert_eq!(budget_scale(1., 1, |_| 100), MAX_DETAIL_SCALE);
+        assert_eq!(shadow_level(8., None), 0);
+        assert_eq!(shadow_level(3., None), 1);
+        assert_eq!(shadow_level(0.5, None), 2);
     }
     #[test]
     fn stud_transition_is_continuous_monotonic_and_not_a_body_size_cutoff() {

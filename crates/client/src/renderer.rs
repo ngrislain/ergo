@@ -5,7 +5,7 @@ use crate::{
 };
 use ergo_world::{
     Aabb, Brick,
-    geometry::{Mesh, fallback_mesh, mesh_ray},
+    geometry::{Mesh, mesh_ray},
     spatial::{Octree, Relation, relation},
 };
 use glam::{DMat4, DVec3, Mat4};
@@ -65,6 +65,10 @@ pub struct Renderer {
     pub triangles: usize,
     pub gpu_bytes: usize,
     pub ground_stud_instances: usize,
+    pub detail_scale: f64,
+    pub shadow_lod_counts: [usize; 3],
+    pub estimated_shadow_triangles: usize,
+    pub color_budget_exceeded: bool,
 }
 
 impl Renderer {
@@ -144,6 +148,10 @@ impl Renderer {
             triangles: 0,
             gpu_bytes: 0,
             ground_stud_instances: 0,
+            detail_scale: 1.,
+            shadow_lod_counts: [0; 3],
+            estimated_shadow_triangles: 0,
+            color_budget_exceeded: false,
         })
     }
 
@@ -163,6 +171,11 @@ impl Renderer {
     pub fn changed(&mut self) {
         self.dirty = true;
     }
+    pub fn set_policy(&mut self, policy: RenderPolicy) {
+        self.policy = policy;
+        self.planner.clear();
+        self.dirty = true;
+    }
     /// Replacing prototypes invalidates derived LODs and GPU geometry, not just
     /// instance transforms. All entry points use this same invalidation path.
     pub fn set_meshes(&mut self, meshes: BTreeMap<String, Mesh>) {
@@ -180,6 +193,9 @@ impl Renderer {
             .map(|(part, _)| part.clone())
             .collect();
         self.gpu.invalidate_parts(&changed);
+        if !changed.is_empty() || meshes.keys().any(|part| !self.meshes.contains_key(part)) {
+            self.planner.invalidate_meshes();
+        }
         self.lod_meshes
             .retain(|key, _| !matches!(key,GeometryKey::Part(part,_) if changed.contains(part)));
         self.meshes = meshes;
@@ -694,6 +710,11 @@ impl Renderer {
         self.triangles = triangles;
         for (name, value) in [
             ("data-color-instances", instances),
+            ("data-color-triangles", self.triangles),
+            (
+                "data-brick-shadow-triangles-estimate",
+                self.estimated_shadow_triangles,
+            ),
             ("data-shadow-draw-calls", shadow_calls),
             (
                 "data-instance-upload-bytes",
@@ -701,6 +722,25 @@ impl Renderer {
             ),
         ] {
             let value = value.to_string();
+            if self.canvas.get_attribute(name).as_deref() != Some(value.as_str()) {
+                let _ = self.canvas.set_attribute(name, &value);
+            }
+        }
+        for (name, value) in [
+            ("data-detail-scale", self.detail_scale.to_string()),
+            (
+                "data-lod-counts",
+                serde_json::to_string(&self.lod_counts).unwrap(),
+            ),
+            (
+                "data-shadow-lod-counts",
+                serde_json::to_string(&self.shadow_lod_counts).unwrap(),
+            ),
+            (
+                "data-color-budget-estimate-exceeded",
+                self.color_budget_exceeded.to_string(),
+            ),
+        ] {
             if self.canvas.get_attribute(name).as_deref() != Some(value.as_str()) {
                 let _ = self.canvas.set_attribute(name, &value);
             }
@@ -719,9 +759,18 @@ impl Renderer {
                 selected: self.selected,
                 highlighted: &self.highlighted,
                 explode: self.explode,
+                shadow_resolution: self
+                    .policy
+                    .triangle_budget
+                    .map(|_| self.lighting.size as f64),
+                reuse_shadow: true,
             },
         );
         self.lod_counts = plan.lod_counts;
+        self.detail_scale = plan.detail_scale;
+        self.shadow_lod_counts = plan.shadow_lod_counts;
+        self.estimated_shadow_triangles = plan.estimated_shadow_triangles;
+        self.color_budget_exceeded = plan.budget_exceeded;
         self.ground_stud_instances = 0;
         if self.ground_visible {
             let (instances, count) = ground::plan(camera, self.fog_distance, &self.ground);
@@ -751,9 +800,10 @@ impl Renderer {
                                 *segments,
                             ))
                         }
-                        GeometryKey::Part(part, 1) => fallback_mesh(part),
-                        GeometryKey::Part(part, _) => {
-                            ergo_world::geometry::body_mesh(part, self.meshes[part].body_bounds)
+                        GeometryKey::Part(part, level) => {
+                            crate::part_lod::RenderPart::resolve(&self.meshes[part])
+                                .expect("Planned part LOD must have a reviewed display profile")
+                                .mesh(*level)
                         }
                     }),
             };

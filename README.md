@@ -26,6 +26,14 @@ Read-only regions have independent budgets, defaulting to 50,000 pieces and
 64 MiB of charged reads, for denser neighborhoods.
 Storage operators can [warm an accepted region's discardable cache](docs/loading-and-cache.md#operator-warm-up)
 without publishing or changing constructions.
+The loading overlay shows the current stage, elapsed time and known-total stage
+percentages; discovery reports counts while its final brick total is still unknown.
+Packed spatial pages bulk-load block metadata for local traversal. The browser
+keeps checksum-verified construction/index packets locally and revalidates access
+and versions before reuse; brick specifications and meshes are cached separately.
+The navigator's [Render detail control](docs/3d-display-indexing.md#scene-wide-budget-and-quality-controls)
+adds scene-wide distance LOD with soft triangle targets and independent shadow
+detail; full geometry remains available for editing, picking and collisions.
 
 The server owns authorization, static acceptance and persistence. Dynamic gravity,
 earthquake/drop tests, editing feedback and actual image rendering run locally in

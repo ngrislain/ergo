@@ -1,7 +1,7 @@
 # Paging, history and maintenance
 
 All hosted operations target the one configured Sandbox. Current storage requires
-transaction format 3, indexed accepted history and paged application layout 2.
+transaction format 3, indexed accepted history and spatial layout 2 or 3.
 
 ## Bounded reads
 
@@ -55,6 +55,18 @@ history installation. They have no public HTTP mutation endpoint. See
 the normal bounded reader and confirms its discardable cache packet. It does not
 advance the world head or publish geometry. See [cache warm-up](loading-and-cache.md#operator-warm-up)
 for the source-built command and required storage configuration.
+
+### Packed-block backfill
+
+Source-built servers after v0.5.11 support
+`shared-pack-block WORLD_ID X Y Z`. This is an explicit storage-only commit, not
+a read-cache warm-up: it packs one allocated block and, when necessary, promotes
+Metadata from spatial layout 2 to layout 3. Use existing storage credentials and
+the same read budgets as the viewer. A whole-root watch rejects concurrent changes.
+No geometry, births, ownership, geographic reference or frozen physics is changed.
+Stop old writers before promotion and keep all subsequent writers page-aware;
+layout-2-only servers reject the new metadata instead of leaving stale projections.
+Other legacy blocks retain the reference fallback until explicitly packed.
 
 ### Current history installation
 

@@ -42,20 +42,22 @@ precompressed response. Both representations describe the same accepted scene.
 
 Gzip was already enabled for HTTP before this optimization. CBOR additionally
 reduces expanded numeric geometry and avoids the shared route's intermediate
-`serde_json::Value` tree. JSON and CBOR, compressed and identity representations
-are encoded once for a cache entry, rather than rebuilt per visit.
+`serde_json::Value` tree. The cache retains CBOR and gzip-CBOR; JSON compatibility
+responses are generated only when requested, rather than prepared for browser
+CBOR requests. Both formats still describe the same accepted scene.
 
 ## Revision-safe read caching
 
 Each cache key includes world, accepted revision, centre cell and effective
-piece/encoded-read budgets. A 64 MiB byte-budgeted server LRU shares the encoded
+piece/encoded-read budgets. A 64 MiB byte-budgeted server LRU shares the CBOR/gzip-CBOR
 responses among requests; concurrent identical misses share one build.
 
 A discardable gzip-CBOR packet is also saved under the application prefix:
 `cache/read-views/v1/<region-and-limits-hash>.cbor`. There is at most one latest
 packet for an occupied region/configuration, rather than another large object
 for every edit. Empty regions are not persisted. Historical reads do not replace
-the persistent packet. Conditional writes resolve concurrent cache-write races
+the persistent packet. Explicit reads pinned to the current revision remain eligible
+for persistence; older historical reads do not. Conditional writes resolve concurrent cache-write races
 without unconditional overwrites; failed writes leave authoritative reads available.
 The exact accepted revision is always checked, even if an older in-flight request
 finishes after a newer one.
@@ -65,6 +67,18 @@ bytes, decoded size, gzip bytes and their SHA-256 checksum. Cache loading checks
 all bounds and decompresses through a 64 MiB limit. Missing, stale, corrupt or
 unavailable packets fall back to the accepted tree. Cache output still obeys the
 original operation budget; cache hits do not authorize larger fragments.
+After verification and typed schema/count checks, the already stored CBOR and
+gzip bytes are reused directly. Loading a persistent packet does not recompress
+it or regenerate JSON. The district's two retained representations total about
+39.9 MB and fit the existing 64 MiB memory budget; retaining every JSON/CBOR/gzip
+representation could previously prevent that admission.
+
+The viewer can supply its previous centre as `from_x`, `from_y`, `from_z`. A
+one-cell camera move reuses the previous packet only for the exact same accepted
+revision and budgets, when all its occupied blocks remain inside the new region
+and every newly included cell has no allocated-block directory entry. Otherwise
+the normal read runs. Allocated-but-empty cells conservatively prevent reuse.
+The hint never authorizes missing geometry or avoids the current permission check.
 
 **Current read permission and accepted-history membership are checked before
 every cache hit and HTTP 304.** Weak ETags vary with revision, region, format and
@@ -72,10 +86,18 @@ limits; `Cache-Control: private, no-cache` requires revalidation. Revoked users
 cannot obtain a cached historical response through the API. Read packets never
 feed commit validation, permission decisions or authoritative state recovery.
 
-The canonical world layout and existing object hashes/history are unchanged.
-These read packets can be discarded without losing constructions.
+Read-packet caching does not change canonical geometry hashes or accepted history.
+These packets can be discarded without losing constructions. The separately
+versioned, optional spatial projection below has its own layout-3 writer fence.
 
 ## Fewer storage round trips
+
+Layout-3 blocks marked `packed:true` use bulk spatial pages rather than the
+per-brick reference walk. Pages contain complete Piece metadata plus mesh CIDs;
+their records are deduplicated and charged to the same logical piece/byte budgets.
+Each fetched page is at most 1 MiB/1,024 records. Unpacked/legacy blocks retain the
+reference path below; existing worlds need an explicit one-time backfill to gain
+the packed path. See [spatial packing](persistence-indexing.md#bulk-spatial-reads-and-local-traversal).
 
 Visual enumeration decodes the complete piece birth ID from each validated
 layout-2 spatial key, without downloading its unused bounding-box payload.
@@ -105,7 +127,42 @@ complete generic value tree at the dense-view encoding peak. It is ordinary CBOR
 not a new canonical world-record encoding; authoritative record hashes and cache
 key canonicalization are unchanged.
 
+## Local construction, index and specification caches
+
+The viewer's origin-local CacheStorage `ergo-read-packets-v1` persists decoded
+CBOR construction packets and their block/assembly indexes: at most 64 MiB per
+entry, 128 MiB total, with oldest-entry eviction. SHA-256 and byte-length checks
+turn corrupted entries into misses. Camera-only cache hints are removed from
+local keys; accepted revision and region remain. Every use still sends a fresh
+conditional request: bytes are displayed only after an authorized HTTP 304, never
+as an offline/error fallback. Read denial evicts that entry; logout clears origin
+storage. Cache availability/quota failures do not prevent ordinary network reads.
+The renderer retains its local spatial octree while resident and rebuilds it
+from locally cached records after reload, rather than downloading an index again.
+
+Brick descriptions and decoded meshes have a shared process-local 64 MiB LRU with
+60-second description revalidation. Only sourced assets with descriptions are
+admitted; temporary proxy/failure responses are not. Public part HTTP responses
+use weak description/content-version ETags and a 60-second browser cache lifetime;
+uncached fallbacks use `no-store`. Native filesystem part caches remain supported.
+These caches never replace server-owned physical normalization or validation.
+
 ## Observe and measure
+
+### Loading overlay
+
+The browser shows discovery, brick reading, construction checks, download,
+decoding and display preparation, with elapsed time. Only known-total stages
+show a percentage. Discovery shows the bricks found and cells checked with an
+indeterminate bar; cell counts are not presented as a time estimate. Percentages
+refer to the named stage, not an estimated overall completion time.
+
+Progress polls are optional, at most one outstanding every two seconds, and pinned
+to the same accepted revision as the read. Generation/request guards ignore stale
+responses, and delayed server status cannot replace download/display stages.
+Refreshes keep existing geometry usable. Failed polling does not abort or retry
+the main read. Errors and completed loads remove the progress panel. Reduced motion
+and native accessible progress semantics are retained.
 
 ### Operator warm-up
 
@@ -131,11 +188,12 @@ Warm-up does not make cold reconstruction intrinsically fast or raise read limit
 ### HTTP diagnostics
 
 The same authorized view URL with `status=true` returns the accepted revision and
-an ephemeral build phase (or null when no matching build is active). It is
+an ephemeral `phase` and optional structured `progress` containing `stage`,
+`completed`, `total`, and `found_pieces` (null when not relevant). It is
 `private, no-store`, exposes no geometry, and does not start a build. Progress is
 removed when the request completes, fails or is cancelled.
 
-`X-Ergo-Read-Cache` reports `miss`, `memory`, `persistent` or `revalidated`;
+`X-Ergo-Read-Cache` reports `miss`, `memory`, `persistent`, `neighbor` or `revalidated`;
 `Server-Timing: view;dur=...` reports server-side request duration. Use:
 
 ```sh
@@ -148,6 +206,10 @@ revalidation. It prints timing/size/header summaries, not private geometry.
 Measurements depend on server warmth, network and construction. Transfer timing
 does not measure WebGL frame time; resident-focus tests separately verify that
 cached navigation issues no location/region request.
+Rebuilt/persistent responses also report `view_cache`, `view_discovering`,
+`view_pieces`, `view_membership`, and `view_encoding` durations when those stages
+run. The profiling script separates time to headers, body transfer and server
+phase durations. These do not measure GPU frame time.
 
 The 2026-10-28 district check covered 91,265 pieces in 15 assemblies. A direct
 storage-operator cold materialization took 1,866.98 seconds; this is still slow.
@@ -157,6 +219,17 @@ that run; a separate HTTP/decode/exact pose-colour-part verification took 8.053
 seconds. Every expected assembly was fully resident, and the live UI displayed
 all 91,265 pieces without console errors. These are scenario measurements, not
 a general latency guarantee. Later edits can invalidate the revision-keyed cache.
+
+The cold log's ten-second samples put spatial discovery at roughly 1,200 seconds
+(64% of the run) and brick/mesh reading at roughly 660 seconds (35%). The remaining
+last-record/membership/encoding/persistence tail was only several seconds; that
+sampling cannot give exact substage durations. A separate cached request measured
+7.279 seconds to headers, 0.245 seconds reading the 4.2 MB body, and 6.962 seconds
+of reported server work. This identifies storage traversal for cold reads and
+avoidable decode/re-encoding for warm reads, not transfer or distant drawing, as
+the dominant costs. The CBOR-cache and neighboring-view changes address warm
+costs; cache-only changes do not eliminate the cold canonical-reference walk.
+The packed-page path described above addresses that walk for backfilled blocks.
 
 Source: `crates/server/src/shared/{read_cache,view}.rs`,
 `crates/transactions/src/lib.rs`, and `crates/viewer/src/{common,app}.rs`.

@@ -49,6 +49,43 @@ upstream requests. Known standard shapes can use labeled nominal parametric
 geometry when a source is unavailable. Nonstandard parts never become fake boxes.
 The renderer retains arbitrary source silhouettes through medium distance tiers.
 
+## Reviewed display-detail library
+
+`crates/client/src/part_lod.rs` contains disposable **render-only** meshes, separate
+from the source assets and physical profiles. The district inventory contains no
+unlisted catalogue IDs; its missing support was optimized display geometry:
+
+- Standard rectangular bricks/plates/tiles have an eight-sided-stud medium mesh
+  and a body-only far mesh. Their nominal dimensions, 0.6-stud stud diameter and
+  1/6-brick stud height match the existing parametric geometry; the source asset
+  and the 12-sided parametric import fallback are unchanged.
+- Window frames **60594** and **60592** have four-bar meshes preserving the open
+  aperture, plus the two top studs in medium detail. Glazing recesses, hollow-stud
+  bores, underside tubes and clip pockets are omitted from these display proxies.
+  Front-aperture coordinates are derived from the official LDraw sources:
+  [60594, J.C. Tchang](https://library.ldraw.org/library/official/parts/60594.dat)
+  and [60592, Michael Heidemann / LEGO Universe Team](https://library.ldraw.org/library/official/parts/60592.dat).
+- Round brick **87081** has a 24-sided medium or 12-sided far annulus, preserving
+  its round outline and central pinhole; medium detail retains all twelve top
+  studs. Radius 40 LDU, body height 24 LDU, central opening radius 7 LDU and stud
+  positions come from [87081](https://library.ldraw.org/library/official/parts/87081.dat)
+  and [87081s01](https://library.ldraw.org/library/official/parts/s/87081s01.dat),
+  Magnus Forsberg / Orion Pobursky. Underside moulding and snap details remain
+  source-only at close range.
+
+The specialty display definitions retain source URLs/authors and CC BY 4.0
+attribution. They were reviewed on 2026-10-28. They do not make a missing source
+asset publishable or create new masses, colliders or connector capacities.
+Near/capture geometry, picking and physical tests still use the original mesh/body
+models. Other unreviewed specialty parts retain their source silhouettes.
+
+Generated `view/.../<part>` and `readback-variants/.../<part>` aliases can recover
+rectangular display support only when their **parametric vertices and nominal
+body bounds exactly match** that known part. A filename suffix or a bounding box
+alone is not proof of shape. The alias and frozen source geometry remain intact.
+Use `profile_scene --inventory` (see [render profiling](3d-display-indexing.md#measurements-and-repeatable-profiling))
+to list a construction's parts, source triangle cost and display-profile coverage.
+
 ## Physical and material limits
 
 `crates/world/src/part_profiles.rs` adds reviewed catalogue-average masses and

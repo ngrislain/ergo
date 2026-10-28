@@ -26,14 +26,21 @@ shader retains filtered stud relief and fades that detail only as it becomes
 subpixel. The cap body color is unchanged; this is not alpha-fading whole bricks.
 
 The passes share one stud-deformation helper and Rust-generated thresholds.
-Interactive color geometry morphs; shadow parts retain full source detail so
-camera-driven LOD does not remove or flatten resident casters. Ground studs use
-the same morphed instances in both passes. Source meshes, saved
+Interactive color geometry morphs. Auto/Performance shadow parts have an
+independent **light-buffer** LOD: source, reviewed medium mesh or far mesh at
+6/1.25-texel projected stud thresholds, with hysteresis. Camera-color clipping
+does not remove resident offscreen casters. Unreviewed/source-only, selected and highlighted
+shadow pieces keep source geometry; High, capture and illustration policies keep
+all shadow parts at source detail. Ground studs use the same morphed instances
+in both passes. The global color-budget bias does not replace the actual stud
+pixel size: a standard studded part retains stud-capable geometry until that
+transition reaches its flat endpoint. Source meshes, saved
 transforms, body bounds, picking and physics are unchanged. Full near detail keeps
 nominal physical proportions. As with any LOD, the far image is an approximation.
 Automatic analytic stud relief applies only to the known rectangular studded
 catalog parts and virtual ground, not arbitrary specialty geometry or tiles.
-Body proxies apply to known rectangular parts; arbitrary imported silhouettes remain
+Body boxes apply to known rectangular parts; reviewed window-frame and round-brick
+proxies retain their open/round silhouettes. Arbitrary imported silhouettes remain
 canonical through the medium tiers. Subpixel aggregate LOD still exists; this is not a guarantee of seamless
 cross-fading of every nonstandard model feature.
 

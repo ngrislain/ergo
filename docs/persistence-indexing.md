@@ -38,6 +38,35 @@ Within a cell, adaptive reference nodes retain large split-crossing extents near
 their parent. Child `0` holds own references; `1/q` descends by octant, up to ten
 local levels. An allocated-cell directory supports sparse bounded enumeration.
 
+## Bulk spatial reads and local traversal
+
+Spatial layout 3 adds a complete read projection per packed block, alongside the
+unchanged edit/contact index. Up to 256 bounded pages hold full brick metadata
+and shared-mesh references. A region reader bulk-downloads pages, deduplicates
+boundary replicas, then builds/traverses the resident octree locally. It avoids
+one path lookup and payload GET for every brick. Page bytes and index nodes reuse
+the server's verified 256 MiB object LRU by immutable CID.
+
+Only touched hash shards are read/updated during an edit. The projection and
+canonical records publish in the same head CAS; colour/mesh changes, moves and
+deletions cannot leave a separately published stale page. Mechanical discovery
+and validation still use canonical pieces and their original spatial predicates.
+Projection updates have a separate bounded 64 MiB allowance for loaded pages and
+added record bytes; overflow
+falls back to the reference index rather than rejecting otherwise valid geometry.
+
+New worlds use layout 3. Layout 2 remains readable/writable without packed pages.
+`shared-pack-block WORLD_ID X Y Z` performs an explicit one-block backfill and
+promotes metadata to layout 3 under a whole-root optimistic watch. It changes no
+Piece payload, birth, pose, geographic origin or physical model. Older layout-2-only
+writers reject layout 3, preventing writes that would omit page maintenance.
+Run only page-aware servers/operators after promotion; backfill refuses concurrent
+world changes. Untouched legacy blocks still use the normal fallback reader.
+
+The 4,096-brick cold-store test observed 574 GETs for packed reads versus 25,263
+for the reference/per-piece path, with identical scene geometry. This measures
+request-count reduction in an isolated store, not a production latency guarantee.
+
 ## Rules and dependencies
 
 Assembly headers link native model descriptions and mesh blobs. Membership,
@@ -58,4 +87,4 @@ a complete physics domain. Native asset, terrain and account caches have separat
 namespaces and retention rules.
 
 Source: `crates/transactions/src/{path,tree,lib}.rs`,
-`crates/server/src/shared/{address,spatial,paged,working}.rs`.
+`crates/server/src/shared/{address,spatial,bulk,paged,working}.rs`.

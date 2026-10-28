@@ -6,6 +6,7 @@ macro_rules! ensure {
 pub(crate) mod address;
 mod administration;
 mod authoring;
+mod bulk;
 pub(crate) mod catalog;
 mod events;
 mod group_commit;
@@ -313,7 +314,7 @@ impl SharedWorlds {
             name: request.name,
             geo: request.geo,
             model,
-            layout: 2,
+            layout: 3,
         };
         let policy = Policy {
             owner: actor.into(),
@@ -668,6 +669,7 @@ impl SharedWorlds {
         validation: Option<ergo_world::validation::ValidationReport>,
         mut ws: Working,
     ) -> SharedResult<Prepared> {
+        ws.flush_bulk().await?;
         let audit = Audit {
             actor: actor.into(),
             actor_name: self.actor_name(actor).await?,
@@ -1230,10 +1232,15 @@ async fn blocks(
         .await?;
     let mut blocks = Vec::new();
     for (path, _) in page.leaves {
-        blocks.push(spatial::BlockHeader {
-            coord: spatial::coordinate(&path)?,
-            paged: true,
-        });
+        let header: spatial::BlockHeader = snapshot
+            .get_limited(&path, s.shared.limits.bytes)
+            .await?
+            .context("Missing allocated block header")?;
+        ensure!(
+            header.coord == spatial::coordinate(&path)?,
+            "Block directory mismatch"
+        );
+        blocks.push(header);
     }
     Ok(Json(BlockPage {
         revision: q.revision,

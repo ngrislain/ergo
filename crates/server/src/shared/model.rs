@@ -76,9 +76,9 @@ pub struct Metadata {
 }
 fn current_layout<'de, D: serde::Deserializer<'de>>(deserializer: D) -> Result<u32, D::Error> {
     let layout = u32::deserialize(deserializer)?;
-    if layout != 2 {
+    if ![2, 3].contains(&layout) {
         return Err(serde::de::Error::custom(
-            "Only shared spatial layout 2 is supported",
+            "Only shared spatial layouts 2 and 3 are supported",
         ));
     }
     Ok(layout)
