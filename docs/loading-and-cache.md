@@ -95,6 +95,11 @@ parallel readers, decoding and response encodings also consume memory.
 
 ## Observe and measure
 
+The same authorized view URL with `status=true` returns the accepted revision and
+an ephemeral build phase (or null when no matching build is active). It is
+`private, no-store`, exposes no geometry, and does not start a build. Progress is
+removed when the request completes, fails or is cancelled.
+
 `X-Ergo-Read-Cache` reports `miss`, `memory`, `persistent` or `revalidated`;
 `Server-Timing: view;dur=...` reports server-side request duration. Use:
 

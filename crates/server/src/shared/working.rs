@@ -343,6 +343,52 @@ impl Working {
         }
         Ok(visited)
     }
+    /// Conservative read-only dependency guard. Complete assembly reads already
+    /// have every member, so one compact spatial query replaces one per brick.
+    /// Explicit peers/joints are still checked, including remote endpoints.
+    pub async fn has_external_dependencies(
+        &mut self,
+        ids: &BTreeSet<ContentId>,
+        bounds: Option<Aabb>,
+    ) -> SharedResult<bool> {
+        let Some(bounds) = bounds else {
+            return Ok(false);
+        };
+        if bounds.size().max_element() > ergo_world::BLOCK_SIZE {
+            return Ok(self.discover(ids).await?.iter().any(|id| !ids.contains(id)));
+        }
+        let halo = self
+            .model
+            .tolerances
+            .position_brick_units
+            .max(INFERRED_JOINT_HALO);
+        if self
+            .neighbors(bounds.expanded(halo))
+            .await?
+            .iter()
+            .any(|id| !ids.contains(id))
+        {
+            return Ok(true);
+        }
+        for id in ids {
+            if let Some(piece) = self.piece(id).await? {
+                if self
+                    .piece_rules(&piece)
+                    .await?
+                    .iter()
+                    .any(|peer| !ids.contains(peer))
+                    || self
+                        .external(id)
+                        .await?
+                        .iter()
+                        .any(|peer| !ids.contains(peer))
+                {
+                    return Ok(true);
+                }
+            }
+        }
+        Ok(false)
+    }
     pub async fn swept(&mut self, old: &Piece, new: &Piece) -> SharedResult<()> {
         let a = self.brick(old, 1).await?;
         let b = self.brick(new, 1).await?;

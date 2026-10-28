@@ -138,6 +138,12 @@ production tool schema.
 
 ## Acceptance, conflicts, and cache recovery
 
+For compact whole-assembly reads, the external-dependency guard uses one
+conservative bounding query plus explicit peer/joint checks, rather than one
+spatial query per member. Nearby unrelated candidates can conservatively block a
+clipped local simulation. Remote explicit joint endpoints are still checked;
+authoritative publication continues to discover/validate the complete affected domain.
+
 Prefer gradual edits to the same assembly in small supported batches. Server
 publication validates the affected domain, so avoid a duplicate standalone
 pre-validation/dynamics chain by default. Additional diagnostics are for explicit

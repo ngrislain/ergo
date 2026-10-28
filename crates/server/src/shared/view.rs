@@ -71,6 +71,8 @@ pub(super) struct ViewQuery {
     revision: Option<ContentId>,
     #[serde(default)]
     format: ViewFormat,
+    #[serde(default)]
+    status: bool,
 }
 
 pub(super) async fn view(
@@ -95,6 +97,13 @@ pub(super) async fn view(
         read_bytes: s.shared.view_limits.bytes,
     };
     let memory_key = key.memory_key()?;
+    if query.status {
+        let mut response=Json(serde_json::json!({"revision":key.revision,"phase":s.shared.read_cache.progress(&memory_key)})).into_response();
+        response
+            .headers_mut()
+            .insert("cache-control", "private, no-store".parse().unwrap());
+        return Ok(response);
+    }
     let etag = format!(
         "W/\"{}\"",
         ContentId::of(&canonical_cbor(&(&memory_key, query.format))?)
@@ -137,6 +146,8 @@ pub(super) async fn view(
             started,
         ));
     }
+    let progress = cache.start_progress(&memory_key);
+    progress.report("persistent cache lookup");
     let (stored, write_mode) = cache.persistent(&s.shared.store, &key).await;
     if let Some(value) = stored {
         cache.insert(memory_key, value.clone());
@@ -149,7 +160,8 @@ pub(super) async fn view(
             started,
         ));
     }
-    let (packet, read_bytes) = build(&snapshot, &query, &key).await?;
+    let (packet, read_bytes) = build(&snapshot, &query, &key, &progress).await?;
+    progress.report("encoding JSON/CBOR and gzip representations");
     let encoding_key = key.clone();
     let value = Arc::new(
         tokio::task::spawn_blocking(move || {
@@ -277,6 +289,7 @@ async fn build(
     snapshot: &Snapshot,
     query: &ViewQuery,
     key: &ViewKey,
+    progress: &super::read_cache::ReadProgress<'_>,
 ) -> SharedResult<(ViewPacket, usize)> {
     let metadata: Metadata = snapshot
         .get_limited(&root(2), key.read_bytes)
@@ -292,6 +305,11 @@ async fn build(
         for dy in -1..=1 {
             for dz in -1..=1 {
                 let coord: BlockCoord = [query.x + dx, query.y + dy, query.z + dz].into();
+                progress.report(format!(
+                    "spatial index: block {:?}, {} unique pieces",
+                    <[i64; 3]>::from(coord),
+                    ids.len()
+                ));
                 let mut after = None;
                 loop {
                     let page = snapshot
@@ -313,6 +331,10 @@ async fn build(
                             .checked_sub(canonical_cbor(&row)?.len())
                             .ok_or_else(|| SharedError::working_limit("browser view bytes"))?;
                         ids.insert(row.piece);
+                        if ids.len() % 2048 == 0 {
+                            progress
+                                .report(format!("spatial references: {} unique pieces", ids.len()));
+                        }
                         if ids.len() > key.pieces {
                             return Err(SharedError::working_limit("browser view pieces"));
                         }
@@ -329,6 +351,8 @@ async fn build(
         }
     }
     let mut bricks = Vec::new();
+    let total = ids.len();
+    progress.report(format!("piece records: 0/{total}"));
     let mut meshes = BTreeMap::new();
     let mut mesh_ids = BTreeMap::<ContentId, String>::new();
     let mut assemblies = BTreeMap::new();
@@ -369,6 +393,12 @@ async fn build(
         bricks.push(geometry.brick(local, &meshes[&part])?);
         assemblies.insert(local, piece.assembly);
         index += 1;
+        if index % 1024 == 0 {
+            progress.report(format!(
+                "piece records: {index}/{total}, {} meshes",
+                meshes.len()
+            ));
+        }
     }
     let scene = WorldExport {
         schema: ergo_world::SCHEMA_VERSION,
@@ -387,6 +417,7 @@ async fn build(
         *visible.entry(assembly.clone()).or_default() += 1;
     }
     let mut fully_resident_assemblies = BTreeSet::new();
+    progress.report("checking complete visual membership");
     for (assembly, count) in visible {
         let header: paged::RulesHeader = snapshot
             .get_limited(&paged::rule_path(&assembly, 0), remaining)

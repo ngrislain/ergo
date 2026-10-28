@@ -138,10 +138,8 @@ impl SharedWorlds {
             None
         } else {
             Some(
-                ws.discover(&ids)
-                    .await?
-                    .iter()
-                    .any(|cid| !ids.contains(cid)),
+                ws.has_external_dependencies(&ids, ergo_world::bounds(&bricks))
+                    .await?,
             )
         };
         let source = if let Some(cid) = &rules.source_model {

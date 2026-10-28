@@ -109,6 +109,20 @@ mod tests {
         assert!(cache.get("second").is_some());
         assert!(cache.memory.lock().unwrap().bytes <= MEMORY_BYTES);
     }
+    #[test]
+    fn progress_lives_only_for_the_active_builder() {
+        let cache = ReadCache::default();
+        assert!(cache.progress("view").is_none());
+        {
+            let active = cache.start_progress("view");
+            active.report("piece records: 1024/5000");
+            assert_eq!(
+                cache.progress("view").as_deref(),
+                Some("piece records: 1024/5000")
+            );
+        }
+        assert!(cache.progress("view").is_none());
+    }
 }
 impl ViewKey {
     pub fn memory_key(&self) -> Result<String> {
@@ -198,8 +212,38 @@ struct Memory {
 pub(super) struct ReadCache {
     memory: Mutex<Memory>,
     gates: Mutex<HashMap<String, Weak<tokio::sync::Mutex<()>>>>,
+    progress: Mutex<HashMap<String, String>>,
+}
+pub(super) struct ReadProgress<'a> {
+    cache: &'a ReadCache,
+    key: String,
+}
+impl ReadProgress<'_> {
+    pub fn report(&self, phase: impl Into<String>) {
+        self.cache
+            .progress
+            .lock()
+            .unwrap()
+            .insert(self.key.clone(), phase.into());
+    }
+}
+impl Drop for ReadProgress<'_> {
+    fn drop(&mut self) {
+        self.cache.progress.lock().unwrap().remove(&self.key);
+    }
 }
 impl ReadCache {
+    pub fn progress(&self, key: &str) -> Option<String> {
+        self.progress.lock().unwrap().get(key).cloned()
+    }
+    pub fn start_progress(&self, key: &str) -> ReadProgress<'_> {
+        let progress = ReadProgress {
+            cache: self,
+            key: key.into(),
+        };
+        progress.report("starting");
+        progress
+    }
     pub fn get(&self, key: &str) -> Option<Arc<EncodedView>> {
         let mut memory = self.memory.lock().unwrap();
         let (value, old) = memory.values.get(key)?.clone();

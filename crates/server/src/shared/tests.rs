@@ -1156,6 +1156,36 @@ async fn compressed_cbor_views_cache_revalidate_and_invalidate_on_appearance_edi
 }
 
 #[tokio::test]
+async fn read_progress_is_authorized_ephemeral_and_contains_no_geometry() {
+    let service = service();
+    let (head, _) = seeded(&service, scene(100.)).await;
+    let key = read_cache::ViewKey {
+        world: head.id.clone(),
+        revision: head.revision.clone(),
+        coord: [0; 3],
+        pieces: service.view_limits.pieces,
+        read_bytes: service.view_limits.bytes,
+    }
+    .memory_key()
+    .unwrap();
+    let progress = service.read_cache.start_progress(&key);
+    progress.report("piece records: 1024/5000");
+    let (app, alice) = http(&service);
+    let (_, bob) = crate::auth::Auth::test_session("bob");
+    let url = format!("/api/shared-worlds/{}/view?status=true", head.id);
+    let (status, result) = json(&app, "GET", &url, &alice, None).await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(result["phase"], "piece records: 1024/5000");
+    assert!(result.get("scene").is_none());
+    assert_eq!(
+        json(&app, "GET", &url, &bob, None).await.0,
+        StatusCode::FORBIDDEN
+    );
+    drop(progress);
+    assert!(json(&app, "GET", &url, &alice, None).await.1["phase"].is_null());
+}
+
+#[tokio::test]
 async fn cached_historical_views_recheck_revoked_grants_before_304_or_body() {
     use axum::{body::Body, http::Request};
     use tower::ServiceExt;
@@ -2245,6 +2275,80 @@ async fn cross_assembly_joints_track_both_ends_and_prevent_dangling_deletions() 
         .publish()
         .await
         .unwrap();
+}
+
+#[tokio::test]
+async fn compact_authoring_guard_keeps_remote_explicit_dependencies() {
+    let mut service = service();
+    service.store.measurements = Arc::new(ergo_world::physical::ConnectionMeasurements {
+        parts: vec![],
+        entries: vec![ergo_world::physical::ConnectionMeasurement {
+            part_a: "3003.dat".into(),
+            part_b: "3003.dat".into(),
+            kind: "fixed".into(),
+            overlap_studs: [0, 2],
+            conservative_force_limit_n: 100.,
+            conservative_torque_limit_nm: 100.,
+            source: "synthetic test-only fixture".into(),
+            samples: 1,
+        }],
+    });
+    let mut one = scene(100.);
+    one.bricks.truncate(1);
+    let (head, first) = seeded(&service, one).await;
+    let mut far = scene(100_000.);
+    far.bricks.truncate(1);
+    let second = service
+        .import(
+            &head.id,
+            "alice",
+            ImportRequest {
+                base: head.revision,
+                scene: far,
+            },
+        )
+        .await
+        .unwrap();
+    let independent = service
+        .authoring_scene(
+            &head.id,
+            "alice",
+            &first.assembly,
+            &second.accepted.revision,
+        )
+        .await
+        .unwrap();
+    assert_eq!(independent["external_dependencies"], false);
+    let linked = service
+        .prepare(
+            &head.id,
+            "alice",
+            CommitRequest {
+                base: second.accepted.revision,
+                pieces: vec![],
+                rules: vec![],
+                message: "remote dependency fixture".into(),
+                joints: vec![joints::JointEdit {
+                    id: None,
+                    value: Some(joints::JointInput {
+                        a: first.pieces[&1].clone(),
+                        b: second.pieces[&1].clone(),
+                        anchor: glam::DVec3::ZERO,
+                        kind: ergo_world::JointKind::Fixed,
+                    }),
+                }],
+            },
+        )
+        .await
+        .unwrap()
+        .publish()
+        .await
+        .unwrap();
+    let guarded = service
+        .authoring_scene(&head.id, "alice", &first.assembly, &linked.revision)
+        .await
+        .unwrap();
+    assert_eq!(guarded["external_dependencies"], true);
 }
 
 #[tokio::test]
