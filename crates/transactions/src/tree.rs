@@ -99,6 +99,18 @@ impl Tree {
         let mut frontier = ids;
         for _ in 0..4 {
             let repo = &self.repo;
+            let mut next = Vec::new();
+            for id in &frontier {
+                if let Some(node) = self.nodes.get(id) {
+                    match node {
+                        Node::Extension { child, .. } => next.push(child.clone()),
+                        Node::Branch { children, .. } => {
+                            next.extend(children.iter().flatten().cloned())
+                        }
+                        _ => {}
+                    }
+                }
+            }
             let loaded: Vec<_> = stream::iter(
                 frontier
                     .into_iter()
@@ -117,7 +129,7 @@ impl Tree {
             .buffered(64)
             .collect()
             .await;
-            frontier = Vec::new();
+            frontier = next;
             for (id, node) in loaded.into_iter().flatten() {
                 if Self::validate_node(&node).is_err() {
                     continue;

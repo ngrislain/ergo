@@ -26,6 +26,7 @@ struct FaultStore {
     delayed_reads: AtomicBool,
     active_reads: AtomicUsize,
     peak_reads: AtomicUsize,
+    isolated_reads: AtomicUsize,
     read_objects: std::sync::Mutex<Vec<String>>,
 }
 impl fmt::Display for FaultStore {
@@ -102,6 +103,9 @@ impl ObjectStore for FaultStore {
             if self.delayed_reads.load(Ordering::SeqCst) {
                 let active = self.active_reads.fetch_add(1, Ordering::SeqCst) + 1;
                 self.peak_reads.fetch_max(active, Ordering::SeqCst);
+                if active == 1 {
+                    self.isolated_reads.fetch_add(1, Ordering::SeqCst);
+                }
                 tokio::task::yield_now().await;
                 let result = self.inner.get_opts(p, o).await;
                 self.active_reads.fetch_sub(1, Ordering::SeqCst);
@@ -176,6 +180,45 @@ async fn prefetched_snapshot_pages_are_ordered_parallel_and_never_follow_value_l
             "Node lookahead must never read application payloads"
         );
     }
+}
+
+#[tokio::test]
+async fn decoded_lookahead_still_follows_cached_parents_to_uncached_descendants() {
+    use ergo_transactions::OctreePath;
+    let store = Arc::new(FaultStore::default());
+    let writer = Repository::new(store.clone(), "deep-prefetch").unwrap();
+    writer.create("main").await.unwrap();
+    let mut tx = writer.begin("main").await.unwrap();
+    let region = OctreePath::new(vec![3]).unwrap();
+    for index in 0..4096u32 {
+        let mut path = region.octants().to_vec();
+        path.extend((0..4).rev().map(|shift| ((index >> (shift * 3)) & 7) as u8));
+        path.extend([0; 10]);
+        tx.put(&OctreePath::new(path).unwrap(), &index)
+            .await
+            .unwrap();
+    }
+    tx.commit("test", "packed leaf fixture", Default::default())
+        .await
+        .unwrap();
+    let reader = Repository::new(store.clone(), "deep-prefetch")
+        .unwrap()
+        .with_cache_capacity(16 * 1024 * 1024);
+    let snapshot = reader.checkout("main").await.unwrap();
+    store.object_reads.store(0, Ordering::SeqCst);
+    store.isolated_reads.store(0, Ordering::SeqCst);
+    store.delayed_reads.store(true, Ordering::SeqCst);
+    let page = snapshot
+        .scan_page_prefetched(&region, None, 10000)
+        .await
+        .unwrap();
+    assert_eq!(page.leaves.len(), 4096);
+    assert!(page.next.is_none());
+    let reads = store.object_reads.load(Ordering::SeqCst);
+    assert!(
+        store.isolated_reads.load(Ordering::SeqCst) < reads / 4,
+        "Previously decoded parents must not turn their uncached packed leaves into serial GETs"
+    );
 }
 
 #[tokio::test]

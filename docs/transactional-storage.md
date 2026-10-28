@@ -309,7 +309,8 @@ overwritten or deleted by an edit.
   `Snapshot::scan_page_prefetched` optionally looks ahead four immutable-node levels
   with 64 concurrent GETs, a 64 KiB node bound and two-second speculative
   timeout. Validated decoded nodes are reused within the page rather than fetched
-  and decoded by overlapping lookahead repeatedly. It never follows application-value
+  and decoded by overlapping lookahead repeatedly. Lookahead still follows those
+  cached parents to uncached descendants, including packed leaf edges. It never follows application-value
   links; invalid speculative nodes fall back to required traversal and its ordinary
   errors. Transaction predicate registration is unchanged.
 - Nodes are also cached within a transaction; staged values and serialization
