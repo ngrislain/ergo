@@ -2,7 +2,7 @@
 
 Bond/floor source: https://brickbuildershandbook.com/basic-lego-techniques/
 """
-from scripts.build.monument_models import BASE, COURSES, PITCH, Masonry, rectangles, stair, tower_walls
+from scripts.build.monument_models import BASE, COURSES, PITCH, Masonry, rectangles, stair, tower_route, tower_walls
 from scripts.native_model import yaw
 import math
 
@@ -42,6 +42,16 @@ def required_parts(name):
 def origin(spec):
     east, north = spec['cell']
     return [ORIGIN[0] + east * 96, ORIGIN[1] + north * 96, ORIGIN[2]]
+
+
+def walking_route(spec):
+    """Visit all ten storeys and return through the actual district foundation."""
+    route = tower_route(origin(spec))
+    north = -18 if spec['kind'] in ['pyramid', 'court'] else -3
+    route['start'] = [16, north, BASE]
+    route['waypoints'][-1]['feet'] = [16, north, BASE]
+    route['waypoints'][-1]['name'] = 'exit building'
+    return route
 
 
 def footprint(spec):

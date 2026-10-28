@@ -20,6 +20,9 @@ actual accepted receipts for publication progress and published storey counts.
 Slab-house wings are hollow, with full-width standard 2×16 plate beams bearing on
 both perimeter walls and a thinner upper plate layer. This preserves the silhouette
 while reducing brick count compared with solid infill.
+`district_models.walking_route(spec)` visits rooms on all ten storeys and returns
+through the entrance. Its start/end positions use the district foundation and
+pyramid/courtyard entrance depths rather than the original monument's wider base.
 
 `--site --through finished --publish` uses the same journalled MCP path for a
 separately named boulevard/furniture assembly and two footbridges. Those are
