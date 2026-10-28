@@ -140,7 +140,7 @@ def main():
         plan=recipes.stages(spec)
         if args.through=='finished':return plan
         if args.through:return plan[:plan.index(args.through)+1] if args.through in plan else []
-        requested=args.stage or ('roads' if args.site else 'foundation')
+        requested=args.stage or plan[0]
         return [requested] if requested in plan else []
     binary = shutil.which(args.binary)
     if not binary:

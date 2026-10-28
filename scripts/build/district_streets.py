@@ -6,7 +6,7 @@ from scripts.native_model import Model
 
 CENTRE_TOWER=buildings.CENTRE_TOWER
 CENTRE=[buildings.ORIGIN[0]+16,buildings.ORIGIN[1]+16,0]
-STAGES=['roads','furniture','bridge']
+STAGES=['street-anchor','roads','furniture','bridge']
 SPECS=[{'key':'streets','name':'Boulevards and Street Life'},
        {'key':'bridge-west','name':'West Canal Footbridge'},
        {'key':'bridge-east','name':'East Canal Footbridge'}]
@@ -21,7 +21,7 @@ def origin(spec):
     return [CENTRE[0]+dx,CENTRE[1]+dn,0]
 
 
-def stages(spec):return ['roads','furniture'] if spec['key']=='streets' else ['bridge']
+def stages(spec):return ['street-anchor','roads','furniture'] if spec['key']=='streets' else ['bridge']
 def required_parts(stage):return details.PARTS if stage=='furniture' else ['3633'] if stage=='bridge' else []
 
 
@@ -76,6 +76,14 @@ def roads():
     return model
 
 
+def street_layer(anchor):
+    """Publish one existing grounded paving instance before the larger road edit."""
+    model=roads()
+    instances=model.definitions['main']
+    model.definitions['main']=instances[:1] if anchor else instances[1:]
+    return model
+
+
 def mount(model,name,prototype,x,n,height):
     prefix=name+'/'
     if prefix+'main' not in model.definitions:
@@ -116,7 +124,8 @@ def bridge():
 
 
 def stage(spec,name):
-    return roads() if name=='roads' else furniture() if name=='furniture' else bridge()
+    if name in ['street-anchor','roads']:return street_layer(name=='street-anchor')
+    return furniture() if name=='furniture' else bridge()
 
 
 def walking_route(spec):

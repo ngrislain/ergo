@@ -31,6 +31,9 @@ one-stud modular joints and bridge footprints. The furniture recipe uses catalog
 wheel/tyre units and genuine factory minifigure components; vehicle displays do
 not claim rolling/steering or calibrated axle retention. The recorded `decorations`
 and `buildings` sections distinguish actual accepted work from planned stages.
+The boulevard first publishes one already-planned, grounded paving instance as
+`street-anchor`, establishing its assembly identity before the larger road edit.
+The remaining road stage excludes that same instance; this adds no extra bricks.
 `district_streets.walking_route(spec)` describes a continuous two-way crossing of
 either bridge for `check_walk`, including both stair flights. Local prototype
 walking evidence does not establish that those assemblies have been published or
