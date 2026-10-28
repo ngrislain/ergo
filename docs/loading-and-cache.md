@@ -149,6 +149,15 @@ Measurements depend on server warmth, network and construction. Transfer timing
 does not measure WebGL frame time; resident-focus tests separately verify that
 cached navigation issues no location/region request.
 
+The 2026-10-28 district check covered 91,265 pieces in 15 assemblies. A direct
+storage-operator cold materialization took 1,866.98 seconds; this is still slow.
+Its packet contained 39,946,154 logical read bytes and 35,688,077 CBOR bytes,
+compressed to 4,196,490 bytes. The warmed browser request took 4.247 seconds in
+that run; a separate HTTP/decode/exact pose-colour-part verification took 8.053
+seconds. Every expected assembly was fully resident, and the live UI displayed
+all 91,265 pieces without console errors. These are scenario measurements, not
+a general latency guarantee. Later edits can invalidate the revision-keyed cache.
+
 Source: `crates/server/src/shared/{read_cache,view}.rs`,
 `crates/transactions/src/lib.rs`, and `crates/viewer/src/{common,app}.rs`.
 Increment the read-packet format/key version when changing cache semantics or
