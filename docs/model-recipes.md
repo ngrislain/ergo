@@ -5,13 +5,33 @@
 `scripts/build/district.py` authors through the real stdio MCP client. Its durable
 `target/district-mcp/progress.json` records stable assembly IDs and each attempted
 `place_submodel` publication; unknown outcomes require reconciliation before retry.
+Authoring recipes share `scripts/mcp_client.py`; they do not import a demo program
+for transport behavior.
 It uses publication's authoritative validation without a duplicate diagnostics gate.
 The eleven-site layout surrounds the existing cell-19 tower. The recipe implements
 foundations, ten nine-course structural storeys with the accepted tower's open
 switchback stairs, and supported roof decks. `--through roof --publish` grows the
-same assemblies in supported stages. Specialty facades, stepped extensions and
-street details remain subsequent stages, not claimed completed work. Consult
+same assemblies in supported stages. `--through finished --publish` additionally
+authors applicable stepped or slab-like extensions, genuine window frames,
+round-column details and roof slopes/railings. These stages resolve actual nominal
+datums through MCP before generating placements. Street details remain a separate
+workflow. Implemented recipes are not claims that every stage is published; consult
 actual accepted receipts for publication progress and published storey counts.
+Slab-house wings are hollow, with full-width standard 2×16 plate beams bearing on
+both perimeter walls and a thinner upper plate layer. This preserves the silhouette
+while reducing brick count compared with solid infill.
+
+`--site --through finished --publish` uses the same journalled MCP path for a
+separately named boulevard/furniture assembly and two footbridges. Those are
+decorations, not extra buildings. Road/curb masks reserve existing foundations,
+one-stud modular joints and bridge footprints. The furniture recipe uses catalogue
+wheel/tyre units and genuine factory minifigure components; vehicle displays do
+not claim rolling/steering or calibrated axle retention. The recorded `decorations`
+and `buildings` sections distinguish actual accepted work from planned stages.
+`district_streets.walking_route(spec)` describes a continuous two-way crossing of
+either bridge for `check_walk`, including both stair flights. Local prototype
+walking evidence does not establish that those assemblies have been published or
+that the final combined district route has been verified.
 
 The standalone monument drivers below live in `scripts/build/`. They generate
 nominal standard-size parts, consult `get_building_techniques`, and preflight through

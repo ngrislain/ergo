@@ -7,7 +7,6 @@ Uncertain outcomes stop the run and are never automatically retried.
 import argparse
 from collections import Counter
 import hashlib
-import importlib.util
 import json
 import os
 from pathlib import Path
@@ -17,11 +16,9 @@ import sys
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT))
 from scripts.build import district_models as models
-
-specification = importlib.util.spec_from_file_location('district_mcp_transport', ROOT / 'scripts/demo-mcp.py')
-assert specification and specification.loader
-transport = importlib.util.module_from_spec(specification)
-specification.loader.exec_module(transport)
+from scripts.build import district_streets
+from scripts.native_model import register_catalog_part
+from scripts import mcp_client as transport
 
 
 def write(path, value):
@@ -76,7 +73,8 @@ def combine(stages):
 def batches(stages, limit):
     result = []
     for stage in stages:
-        if result and stage.startswith('floor-') and all(item.startswith('floor-') for item in result[-1]) and len(result[-1]) < limit:
+        prefix=stage.split('-',1)[0]
+        if result and prefix in ['floor','exterior'] and all(item.startswith(prefix+'-') for item in result[-1]) and len(result[-1]) < limit:
             result[-1].append(stage)
         else:
             result.append([stage])
@@ -84,7 +82,7 @@ def batches(stages, limit):
 
 
 def reconcile(args, binary, spec, journal, journal_path):
-    progress = journal['buildings'][spec['key']]
+    progress = journal['decorations' if args.site else 'buildings'][spec['key']]
     stage = args.reconcile
     operation = progress['stages'][stage]
     group = operation.get('batch_stages', [stage])
@@ -127,24 +125,32 @@ def main():
     parser.add_argument('--binary', default='ergo-mcp')
     parser.add_argument('--url', default='https://ergosandbox.com')
     parser.add_argument('--token-file', type=Path, default=Path.home() / '.config/ergo/ergo-mcp-token')
+    parser.add_argument('--site', action='store_true', help='Author street/bridge assemblies separately from the eleven buildings')
+    stage_choices=[*models.STAGES,*district_streets.STAGES]
     selection = parser.add_mutually_exclusive_group()
-    selection.add_argument('--stage', choices=models.STAGES)
-    selection.add_argument('--through', choices=models.STAGES, help='Publish missing stages in order, preserving each assembly')
+    selection.add_argument('--stage', choices=stage_choices)
+    selection.add_argument('--through', choices=[*stage_choices,'finished'], help='Publish missing applicable stages in order, preserving each assembly')
     parser.add_argument('--only', help='One exact building key; omitted selects all eleven')
     parser.add_argument('--batch-floors', type=int, choices=[1, 2, 3], default=3, help='At most three self-supporting storeys per published edit')
-    parser.add_argument('--reconcile', choices=[*models.STAGES, 'roof-bearing'], help='Read-only MCP reopen and exact geometry comparison for an uncertain stage; requires --only')
+    parser.add_argument('--reconcile', choices=[*stage_choices, 'roof-bearing'], help='Read-only MCP reopen and exact geometry comparison for an uncertain stage; requires --only')
     parser.add_argument('--publish', action='store_true')
     args = parser.parse_args()
-    stages = models.STAGES[:models.STAGES.index(args.through) + 1] if args.through else [args.stage or 'foundation']
+    recipes=district_streets if args.site else models
+    def selected_stages(spec):
+        plan=recipes.stages(spec)
+        if args.through=='finished':return plan
+        if args.through:return plan[:plan.index(args.through)+1] if args.through in plan else []
+        requested=args.stage or ('roads' if args.site else 'foundation')
+        return [requested] if requested in plan else []
     binary = shutil.which(args.binary)
     if not binary:
         parser.error('Installed MCP executable is required')
-    selected = [spec for spec in models.SPECS if not args.only or spec['key'] == args.only]
+    selected = [spec for spec in recipes.SPECS if not args.only or spec['key'] == args.only]
     if not selected:
         parser.error('Unknown building key')
     if not args.publish and not args.reconcile:
-        print(json.dumps({'stages': stages, 'published': False, 'buildings': [
-            {'key': spec['key'], 'name': spec['name'], 'origin': models.origin(spec), 'planned_storeys': 10}
+        print(json.dumps({'published': False, 'buildings': [
+            {'key': spec['key'], 'name': spec['name'], 'origin': recipes.origin(spec), 'planned_storeys': 0 if args.site else 10,'stages':selected_stages(spec)}
             for spec in selected]}, indent=2))
         return
     if not args.token_file.is_file():
@@ -162,7 +168,9 @@ def main():
         reconcile(args, binary, selected[0], journal, journal_path)
         return
     for spec in selected:
-        progress = journal['buildings'].setdefault(spec['key'], {'name': spec['name'], 'stages': {}})
+        plan=recipes.stages(spec)
+        stages=selected_stages(spec)
+        progress = journal.setdefault('decorations' if args.site else 'buildings',{}).setdefault(spec['key'], {'name': spec['name'], 'stages': {}})
         pending = []
         for stage in stages:
             previous = progress['stages'].get(stage)
@@ -177,7 +185,7 @@ def main():
         if not workspace.exists():
             if progress.get('assembly_id'):
                 raise RuntimeError('Bound workspace missing; reopen its recorded assembly instead of importing again')
-            write(workspace, empty_workspace('District ' + spec['key'][:2] + ' · ' + spec['name']))
+            write(workspace, empty_workspace('District ' + ('' if args.site else spec['key'][:2]+' ') + '· ' + spec['name']))
         mcp = transport.Mcp(binary, workspace, args.url, args.token_file)
         try:
             allowance = mcp.call('get_edit_allowance')['structuredContent']
@@ -186,7 +194,12 @@ def main():
             if not (args.output / 'techniques.json').exists():
                 write(args.output / 'techniques.json', mcp.call('get_building_techniques')['structuredContent'])
             if progress.get('assembly_id'):
-                mcp.call('open_shared_construction', assembly_id=progress['assembly_id'])
+                # Native startup already reloads a bound cache authoritatively.
+                # Reopen only if a missing/different binding needs repair.
+                sidecar=workspace.with_suffix('.shared.json')
+                binding=json.loads(sidecar.read_text()) if sidecar.exists() else {}
+                if binding.get('assembly_id')!=progress['assembly_id']:
+                    mcp.call('open_shared_construction', assembly_id=progress['assembly_id'])
             resolved_parts = set()
             for group in batches(pending, args.batch_floors):
                 if (args.output / 'stop-requested').exists():
@@ -194,10 +207,19 @@ def main():
                     return
                 individual = {}
                 for stage in group:
-                    prerequisites = models.STAGES[:models.STAGES.index(stage)]
+                    prerequisites = plan[:plan.index(stage)]
                     if any(prior not in group and progress['stages'].get(prior, {}).get('state') != 'accepted' for prior in prerequisites):
                         raise RuntimeError('Complete earlier supported stages first')
-                    individual[stage] = models.stage(spec, stage).export(models.origin(spec))
+                    for part in recipes.required_parts(stage):
+                        canonical=part+'.dat'
+                        if canonical not in resolved_parts:
+                            description=mcp.call('get_catalog',part=canonical)['structuredContent']['requested_part']
+                            if not description.get('mass_kg') or 'body_bounds' not in description:
+                                raise RuntimeError('Use the updated MCP client with sourced nominal profiles for '+canonical)
+                            register_catalog_part(part,description)
+                            write(args.output/('resolved-'+part+'.json'),description)
+                            resolved_parts.add(canonical)
+                    individual[stage] = recipes.stage(spec, stage).export(recipes.origin(spec))
                     write(args.output / (spec['key'] + '-' + stage + '.model.json'), individual[stage])
                 model = combine(individual)
                 if len(json.dumps({'name': 'place_submodel', 'arguments': {'model': model}}).encode()) > 1_000_000:
