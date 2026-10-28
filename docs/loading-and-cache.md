@@ -95,6 +95,10 @@ are never skipped based on an LRU hit, preserving GC/orphan safety.
 The encoded read budget is enforced on the final operation, including the
 additional membership headers. It is not a complete allocator-RSS bound; bounded
 parallel readers, decoding and response encodings also consume memory.
+Transport CBOR is serialized directly from the typed packet to avoid a second
+complete generic value tree at the dense-view encoding peak. It is ordinary CBOR,
+not a new canonical world-record encoding; authoritative record hashes and cache
+key canonicalization are unchanged.
 
 ## Observe and measure
 

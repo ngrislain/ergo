@@ -165,7 +165,11 @@ impl EncodedView {
             logical_read_bytes <= key.read_bytes,
             "Cached region exceeds read budget"
         );
-        let cbor = canonical_cbor(packet)?;
+        // Read packets are discardable transport, not content-addressed world
+        // records. Serialize the typed packet directly: building a second full
+        // ciborium::Value tree adds a large avoidable peak for dense scenes.
+        let mut cbor = Vec::new();
+        ciborium::into_writer(packet, &mut cbor)?;
         ensure!(cbor.len() <= MAX_PACKET_BYTES, "Read packet too large");
         let json = serde_json::to_vec(packet)?;
         let gzip = |data: &[u8]| -> Result<Bytes> {
