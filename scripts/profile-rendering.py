@@ -11,9 +11,11 @@ def main():
     parser.add_argument('construction',type=Path)
     parser.add_argument('--output',type=Path,required=True)
     parser.add_argument('--qualities',nargs='+',choices=['auto','performance','high'],default=['auto','performance'])
+    parser.add_argument('--view-packet',action='store_true',help='Input is a captured shared-view JSON packet, with original prototype variants')
+    parser.add_argument('--night',action='store_true',help='Profile the moving camera headlamp as well as color geometry')
     args=parser.parse_args();args.construction=args.construction.resolve()
     if not args.construction.is_file() or not args.output.parent.is_dir():parser.error('Construction and output parent must exist')
-    scene=subprocess.check_output(['cargo','run','--release','-p','ergo-client','--example','profile_scene','--','--scene-json',str(args.construction)],cwd=ROOT)
+    scene=subprocess.check_output(['cargo','run','--release','-p','ergo-client','--example','profile_scene','--',*(['--view-packet'] if args.view_packet else []),'--scene-json',str(args.construction)],cwd=ROOT)
     preview=b'{"scene":'+scene+b',"notes":[]}'
     with socket.socket() as sock:sock.bind(('127.0.0.1',0));port=sock.getsockname()[1]
     base=f'http://127.0.0.1:{port}'
@@ -35,7 +37,7 @@ def main():
                 browser=playwright.chromium.launch(channel='chrome',headless=True,args=['--enable-unsafe-swiftshader'])
                 try:
                     page=browser.new_page(viewport={'width':1440,'height':1000},device_scale_factor=1)
-                    page.add_init_script('const clockStart=performance.now();Date.now=()=>Date.UTC(2026,5,21,12)+performance.now()-clockStart')
+                    page.add_init_script('const clockStart=performance.now();Date.now=()=>Date.UTC(2026,5,21,HOUR)+performance.now()-clockStart'.replace('HOUR','0' if args.night else '12'))
                     errors=[];page.on('pageerror',lambda error:errors.append(str(error)))
                     # The readback may contain aliases that are intentionally not
                     # valid authoring-import IDs. Only the test transport is
@@ -81,16 +83,28 @@ def main():
                           'data-detail-scale','data-lod-counts','data-shadow-lod-counts',
                           'data-color-budget-estimate-exceeded','data-shadow-draw-calls',
                           'data-instance-upload-bytes'].map(name=>[name,canvas.getAttribute(name)]))''')
+                        metrics.update(canvas.evaluate('canvas=>Object.fromEntries(["data-scene-plan-ms","data-surface-pieces","data-shadow-detail-scale","data-shadow-budget-estimate-exceeded"].map(name=>[name,canvas.getAttribute(name)]))'))
                         frames.sort();metrics.update(quality=quality,presentation_samples=len(frames),
                             median_presentation_ms=frames[len(frames)//2] if frames else None,
                             p95_presentation_ms=frames[min(len(frames)-1,int(len(frames)*.95))] if frames else None)
                         results.append(metrics)
                         page.screenshot(path=str(args.output.with_name(args.output.stem+'-'+quality+'.png')),timeout=60000)
                     assert not errors,errors
+                    idle=None
+                    if canvas.get_attribute('data-rendered-frames') is not None:
+                        page.wait_for_timeout(250)
+                        before=int(canvas.get_attribute('data-rendered-frames'))
+                        page.wait_for_timeout(350)
+                        after=int(canvas.get_attribute('data-rendered-frames'))
+                        assert after==before,('Idle view must not continuously redraw',before,after)
+                        page.get_by_role('checkbox',name='Base grid',exact=True).uncheck()
+                        page.wait_for_function('before=>Number(document.querySelector("#world-canvas").dataset.renderedFrames)>before',arg=after)
+                        page.get_by_role('checkbox',name='Base grid',exact=True).check()
+                        idle={'drawn_frames_during_350ms_idle':after-before,'grid_change_redraw_verified':True}
                     driver=canvas.evaluate("canvas=>{const gl=canvas.getContext('webgl2'),ext=gl.getExtension('WEBGL_debug_renderer_info');return {renderer:ext?gl.getParameter(ext.UNMASKED_RENDERER_WEBGL):gl.getParameter(gl.RENDERER),error:gl.getError()};}")
-                    assert driver['error']==0,driver
-                    args.output.write_text(json.dumps({'construction':str(args.construction),'backend':'actual headless Chrome WebGL2, read-only fixture transport; hardware dependent; no world publication','driver':driver,'motion':'One complete warm-up round; UI pointer orbit, then 2s warm-up and 4s presentation sampling per mode','results':results,'page_errors':errors},indent=2)+'\n')
+                    args.output.write_text(json.dumps({'construction':str(args.construction),'backend':'actual headless Chrome WebGL2, read-only fixture transport; hardware dependent; no world publication','driver':driver,'motion':'One complete warm-up round; UI pointer orbit, then 2s warm-up and 4s presentation sampling per mode','results':results,'idle':idle,'page_errors':errors},indent=2)+'\n')
                     print(json.dumps({'output':str(args.output),'results':results}))
+                    assert driver['error']==0,driver
                 finally:browser.close()
         finally:server.terminate();server.wait(timeout=15)
 

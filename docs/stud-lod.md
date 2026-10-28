@@ -28,7 +28,9 @@ subpixel. The cap body color is unchanged; this is not alpha-fading whole bricks
 The passes share one stud-deformation helper and Rust-generated thresholds.
 Interactive color geometry morphs. Auto/Performance shadow parts have an
 independent **light-buffer** LOD: source, reviewed medium mesh or far mesh at
-6/1.25-texel projected stud thresholds, with hysteresis. Camera-color clipping
+6/1.25-texel projected stud thresholds before its independent per-pass budget
+divisor, with hysteresis. Shadow-budget pressure can omit geometric stud shadows
+so that a moving headlamp does not submit every tiny stud. Camera-color clipping
 does not remove resident offscreen casters. Unreviewed/source-only, selected and highlighted
 shadow pieces keep source geometry; High, capture and illustration policies keep
 all shadow parts at source detail. Ground studs use the same morphed instances
@@ -43,8 +45,13 @@ Body boxes apply to known rectangular parts; reviewed window-frame and round-bri
 proxies retain their open/round silhouettes. Arbitrary imported silhouettes remain
 canonical through the medium tiers. Subpixel aggregate LOD still exists; this is not a guarantee of seamless
 cross-fading of every nonstandard model feature.
+Large static views also cache merged exterior body surfaces when actual color
+stud size is below 1.25×0.88 px. They remove internal faces and merge coplanar
+same-material quads without filling the body's gaps; source stud/picking/physical
+geometry remains separately available. Chunk-detail tests and shadow eligibility
+are described in [the display pipeline](3d-display-indexing.md#cached-greedy-surfaces-hidden-faces-and-coplanar-merging).
 
-Implementation: `crates/client/src/lod.rs`, `scene.rs`, `scene/ground.rs`, `renderer.rs`,
+Implementation: `crates/client/src/lod.rs`, `scene.rs`, `scene/{ground,surfaces}.rs`, `renderer.rs`,
 `renderer/{shaders,illumination}.rs`, and `crates/world/src/geometry.rs`.
 The GLSL transition constants are emitted from Rust at shader compilation. Tests check
 continuity/monotonicity, real WebGL main/shadow passes and browser navigation.

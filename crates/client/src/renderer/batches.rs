@@ -119,6 +119,15 @@ impl Batches {
             keep
         });
     }
+    pub fn invalidate_surfaces(&mut self) {
+        self.geometry.retain(|key, mesh| {
+            let keep = !matches!(key, GeometryKey::Surface(_));
+            if !keep && !mesh.instances[Pass::Shadow as usize].data.is_empty() {
+                self.pending_shadow_invalidation = true;
+            }
+            keep
+        });
+    }
     pub fn begin(&mut self, plan: &FramePlan) {
         self.uploaded_bytes = 0;
         self.shadow_changed = std::mem::take(&mut self.pending_shadow_invalidation);

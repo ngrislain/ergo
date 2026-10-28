@@ -18,6 +18,7 @@ serde.workspace = true
 serde_json.workspace = true
 glam.workspace = true
 anyhow.workspace = true
+sha2 = "0.10"
 wasm-bindgen = "0.2.129"
 js-sys = "0.3"
 console_error_panic_hook = "0.1"

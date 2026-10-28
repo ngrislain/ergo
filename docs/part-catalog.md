@@ -80,11 +80,20 @@ Near/capture geometry, picking and physical tests still use the original mesh/bo
 models. Other unreviewed specialty parts retain their source silhouettes.
 
 Generated `view/.../<part>` and `readback-variants/.../<part>` aliases can recover
-rectangular display support only when their **parametric vertices and nominal
-body bounds exactly match** that known part. A filename suffix or a bounding box
-alone is not proof of shape. The alias and frozen source geometry remain intact.
+rectangular display support when their **parametric vertices and nominal body
+bounds exactly match** that known part, or when a sourced variant matches a reviewed
+whole-vertex SHA-256 and its nominal body bounds. The current source fingerprints
+cover official [3001](https://library.ldraw.org/library/official/parts/3001.dat) and
+[3022](https://library.ldraw.org/library/official/parts/3022.dat), James Jessiman,
+CC BY 4.0, reviewed 2026-10-28. The digest hashes every internal float32 vertex
+component in little-endian order, independent of mass/physical-record variants.
+A filename suffix, attribution or bounding box alone is not proof of shape;
+unknown/modified streams remain source-only. The alias, physical metadata and
+frozen source geometry remain intact.
 Use `profile_scene --inventory` (see [render profiling](3d-display-indexing.md#measurements-and-repeatable-profiling))
-to list a construction's parts, source triangle cost and display-profile coverage.
+to list parts, source triangle cost, vertex fingerprints and display-profile coverage.
+The independent [greedy surface cache](3d-display-indexing.md#cached-greedy-surfaces-hidden-faces-and-coplanar-merging)
+can merge distant upright standard bodies without creating new catalogue pieces.
 
 ## Physical and material limits
 

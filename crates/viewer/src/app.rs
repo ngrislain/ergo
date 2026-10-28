@@ -2071,7 +2071,7 @@ fn ConstructionBrowser() -> impl IntoView {
             }).collect_view()}</div></Show>
             <Show when=move ||ui.shared_cursor.get().is_some()><button class="text-button" on:click=move |_|more_shared_regions(handle)>"More shared regions"</button></Show>
         </div>
-        <div class="dock-section"><h2>"Viewport"</h2><label class="toggle-row"><span>"Base grid"</span><input type="checkbox" checked on:change=move |e|with_client(handle,|c|{if let Some(r)=&mut c.renderer{r.grid=event_target_checked(&e);}})/></label>
+        <div class="dock-section"><h2>"Viewport"</h2><label class="toggle-row"><span>"Base grid"</span><input type="checkbox" checked on:change=move |e|with_client(handle,|c|{if let Some(r)=&mut c.renderer{r.grid=event_target_checked(&e);r.changed();}})/></label>
             <NavigationModes/>
             <p class="subtle compact">{move ||ui.navigation.get().mode.instructions()}</p>
             <Show when=move ||ui.navigation.get().mode!=NavigationMode::Orbit><p class="subtle compact">"Focus the canvas for keyboard controls."</p><p class="subtle compact">{move ||format!("Speed: {:.1} studs/s",ui.navigation.get().speed)}</p></Show>

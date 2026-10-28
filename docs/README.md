@@ -32,7 +32,7 @@ designs live in `todo/` and are indexed by [TODO.md](../TODO.md).
 ## Engine and validation
 
 - [Architecture and execution boundaries](architecture.md)
-- [Block display pipeline, scene-wide LOD and rendering benchmarks](3d-display-indexing.md)
+- [Block display pipeline, greedy surface LOD and rendering benchmarks](3d-display-indexing.md)
 - [Lighting and shadows](lighting.md)
 - [Stud-specific LOD](stud-lod.md)
 - [Ground, coordinates and placement snapping](ground-and-coordinates.md)

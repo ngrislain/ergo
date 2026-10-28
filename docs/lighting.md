@@ -110,14 +110,21 @@ Shadow casters come from an **independent light-frustum query** of the resident
 octree. Camera clipping and color-body LOD do not remove a resident caster.
 Auto/Performance navigator policies select source/medium/far display geometry
 for reviewed parts according to projected stud size in the shadow
-buffer (6/1.25 texels, 12% hysteresis). Parts without a reviewed display profile
+buffer (6/1.25 texels before its adaptive detail divisor, 12% hysteresis).
+Each budgeted pass targets 2,000,000 brick triangles in Auto or 500,000 in
+Performance. The shadow budget can reduce stud detail independently of color;
+it remains a soft target. Cached greedy chunk surfaces can replace eligible
+standard bodies in the light volume while preserving body-surface occlusion.
+Parts without a reviewed display profile
 retain source shadow geometry, as do
 selected and highlighted pieces. Window-frame far meshes retain their apertures
 and the round-brick far mesh retains its annular silhouette. High, MCP captures and the homepage retain
 full source shadow parts. This is visual LOD, not a change to collision bodies.
 The caster-instance plan is reused while the light volume/origin/resolution,
 scene/meshes, selected/highlighted IDs, explosion and quality policy are unchanged;
-the existing GPU map reuse then skips the depth draw when appropriate.
+the existing GPU map reuse then skips the depth draw when appropriate. Unlike a
+scene-fixed sun map, a moving night headlamp often needs a new map every frame,
+so a triangle budget and merged caster geometry are important in that case.
 Ground studs retain their bounded camera-local detail region.
 This is not a whole-world occlusion query: unloaded or light-volume-clipped
 casters can still be absent. Full-detail shadow prototypes share GPU geometry
@@ -126,6 +133,9 @@ Bias/filtering trade contact detail against self-shadowing artifacts. Existing
 geometry/instance counters are not a complete GPU-memory account; the depth map
 adds roughly four bytes per texel plus driver overhead. GPU resources are
 released when the renderer is dropped.
+The navigator skips the color pass too while camera/scene/viewport/light are
+unchanged; captures still request actual draws. Input controls explicitly
+invalidate the view rather than relying on continuous redraw.
 
 Lighting never changes the [server commit checks](validation-gates.md) or makes
 a rendered model physically valid.

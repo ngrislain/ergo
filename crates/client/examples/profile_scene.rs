@@ -11,7 +11,11 @@ use std::{
     time::Instant,
 };
 
-fn triangles(plan: &BTreeMap<GeometryKey, Vec<f32>>, scene: &WorldExport) -> usize {
+fn triangles(
+    plan: &BTreeMap<GeometryKey, Vec<f32>>,
+    scene: &WorldExport,
+    planner: &ScenePlanner,
+) -> usize {
     plan.iter()
         .map(|(key, instances)| {
             let per_instance = match key {
@@ -24,29 +28,48 @@ fn triangles(plan: &BTreeMap<GeometryKey, Vec<f32>>, scene: &WorldExport) -> usi
                         .len()
                         / 27
                 }
+                GeometryKey::Surface(index) => planner.surface_mesh(*index).vertices.len() / 27,
                 _ => 12,
             };
             per_instance * (instances.len() / 20)
         })
         .sum()
 }
-fn summarize(plan: FramePlan, scene: &WorldExport, ms: f64) -> serde_json::Value {
-    serde_json::json!({"color_triangles":triangles(&plan.color,scene),"shadow_triangles":triangles(&plan.shadow,scene),
+fn summarize(
+    plan: FramePlan,
+    scene: &WorldExport,
+    planner: &ScenePlanner,
+    ms: f64,
+    cold_ms: f64,
+) -> serde_json::Value {
+    serde_json::json!({"color_triangles":triangles(&plan.color,scene,planner),"shadow_triangles":triangles(&plan.shadow,scene,planner),
         "color_instances":plan.color.values().map(|list|list.len()/20).sum::<usize>(),
         "shadow_instances":plan.shadow.values().map(|list|list.len()/20).sum::<usize>(),
         "lod_counts":plan.lod_counts,"shadow_lod_counts":plan.shadow_lod_counts,"global_detail_scale":plan.detail_scale,
-        "conservative_triangle_estimate_exceeds_target":plan.budget_exceeded,"warm_plan_cpu_ms":ms})
+        "conservative_triangle_estimate_exceeds_target":plan.budget_exceeded,"shadow_detail_scale":plan.shadow_detail_scale,
+        "surface_pieces":plan.surface_pieces,"warm_plan_cpu_ms":ms,"cold_plan_cpu_ms":cold_ms})
 }
 fn main() -> Result<()> {
-    let args: Vec<_> = std::env::args().skip(1).collect();
+    let mut args: Vec<_> = std::env::args().skip(1).collect();
+    let view_packet = args.iter().any(|arg| arg == "--view-packet");
+    args.retain(|arg| arg != "--view-packet");
     let materialize = args.first().is_some_and(|arg| arg == "--scene-json");
     let inventory = args.first().is_some_and(|arg| arg == "--inventory");
     let option = materialize || inventory;
     ensure!(
         args.len() == if option { 2 } else { 1 },
-        "Usage: profile_scene [--scene-json|--inventory] CONSTRUCTION.ergo.json"
+        "Usage: profile_scene [--view-packet] [--scene-json|--inventory] INPUT.json"
     );
-    let scene = ergo_world::storage::decode(&std::fs::read(&args[usize::from(option)])?)?;
+    let bytes = std::fs::read(&args[usize::from(option)])?;
+    let scene = if view_packet {
+        #[derive(serde::Deserialize)]
+        struct Packet {
+            scene: WorldExport,
+        }
+        serde_json::from_slice::<Packet>(&bytes)?.scene
+    } else {
+        ergo_world::storage::decode(&bytes)?
+    };
     if materialize {
         // Local diagnostic transport, not an import or publication certificate.
         serde_json::to_writer(std::io::stdout().lock(), &scene)?;
@@ -65,6 +88,7 @@ fn main() -> Result<()> {
                 "source_triangles":mesh.vertices.len()/27*count,
                 "rectangular_lod":ergo_world::geometry::part_spec(part).is_some(),
                 "reviewed_display_lod":ergo_client::part_lod::RenderPart::resolve(mesh).is_some(),
+                "vertex_sha256":ergo_client::part_lod::vertex_hash(mesh),
                 "recommended":ergo_world::catalog::PARTS.iter().any(|(id,_)|*id==part)})
             })
             .collect();
@@ -101,7 +125,11 @@ fn main() -> Result<()> {
         let eye = centre + DVec3::new(0.8, 0.65, 1.).normalize() * extent * multiplier;
         let camera = Camera::new(eye, centre, 1280., 720., 45., extent * multiplier * 5.);
         let mut results = serde_json::Map::new();
-        for (name, budgeted) in [("per_brick", false), ("budgeted", true)] {
+        for (name, budgeted, merge_surfaces) in [
+            ("per_brick", false, false),
+            ("budgeted_unmerged", true, false),
+            ("budgeted", true, true),
+        ] {
             let mut planner = ScenePlanner::default();
             let options = || SceneOptions {
                 policy: if budgeted {
@@ -117,7 +145,9 @@ fn main() -> Result<()> {
                 explode: 0.,
                 shadow_resolution: budgeted.then_some(2048.),
                 reuse_shadow: budgeted,
+                merge_surfaces,
             };
+            let cold = Instant::now();
             planner.plan(
                 &scene.bricks,
                 &tree,
@@ -126,6 +156,7 @@ fn main() -> Result<()> {
                 &shadow,
                 options(),
             );
+            let cold_ms = cold.elapsed().as_secs_f64() * 1000.;
             let start = Instant::now();
             let plan = planner.plan(
                 &scene.bricks,
@@ -137,7 +168,13 @@ fn main() -> Result<()> {
             );
             results.insert(
                 name.into(),
-                summarize(plan, &scene, start.elapsed().as_secs_f64() * 1000.),
+                summarize(
+                    plan,
+                    &scene,
+                    &planner,
+                    start.elapsed().as_secs_f64() * 1000.,
+                    cold_ms,
+                ),
             );
         }
         cases.push(serde_json::json!({"camera_distance_multiplier":multiplier,"results":results}));

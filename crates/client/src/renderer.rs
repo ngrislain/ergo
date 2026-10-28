@@ -69,6 +69,11 @@ pub struct Renderer {
     pub shadow_lod_counts: [usize; 3],
     pub estimated_shadow_triangles: usize,
     pub color_budget_exceeded: bool,
+    pub shadow_detail_scale: f64,
+    pub shadow_budget_exceeded: bool,
+    pub surface_pieces: usize,
+    pub scene_plan_ms: f64,
+    pub rendered_frames: u64,
 }
 
 impl Renderer {
@@ -152,10 +157,16 @@ impl Renderer {
             shadow_lod_counts: [0; 3],
             estimated_shadow_triangles: 0,
             color_budget_exceeded: false,
+            shadow_detail_scale: 1.,
+            shadow_budget_exceeded: false,
+            surface_pieces: 0,
+            scene_plan_ms: 0.,
+            rendered_frames: 0,
         })
     }
 
     pub fn set_bricks(&mut self, bricks: Vec<Brick>) {
+        self.gpu.invalidate_surfaces();
         self.planner.retain(&bricks);
         self.tree = Octree::new(bricks.iter().map(|b| b.render_bounds).collect());
         self.bricks = bricks;
@@ -173,7 +184,7 @@ impl Renderer {
     }
     pub fn set_policy(&mut self, policy: RenderPolicy) {
         self.policy = policy;
-        self.planner.clear();
+        self.planner.reset_detail();
         self.dirty = true;
     }
     /// Replacing prototypes invalidates derived LODs and GPU geometry, not just
@@ -195,6 +206,7 @@ impl Renderer {
         self.gpu.invalidate_parts(&changed);
         if !changed.is_empty() || meshes.keys().any(|part| !self.meshes.contains_key(part)) {
             self.planner.invalidate_meshes();
+            self.gpu.invalidate_surfaces();
         }
         self.lod_meshes
             .retain(|key, _| !matches!(key,GeometryKey::Part(part,_) if changed.contains(part)));
@@ -578,6 +590,12 @@ impl Renderer {
         };
         let light = self.lighting.prepare(&observer);
         let replan = self.dirty || light.shadow_changed;
+        if !replan && !light.updated && !self.capture_mode {
+            let _ = self.canvas.set_attribute("data-frame-redrawn", "false");
+            let _ = self.canvas.set_attribute("data-shadow-draw-calls", "0");
+            let _ = self.canvas.set_attribute("data-instance-upload-bytes", "0");
+            return;
+        }
         if replan {
             let shadow = Visibility::new(
                 light.matrix.as_dmat4() * DMat4::from_scale(DISPLAY_SCALE),
@@ -708,8 +726,14 @@ impl Renderer {
                 .draw(gl, &self.program, Pass::Color, self.policy.full_detail);
         self.draw_calls = calls;
         self.triangles = triangles;
+        self.rendered_frames += 1;
+        let _ = self.canvas.set_attribute("data-frame-redrawn", "true");
+        let _ = self
+            .canvas
+            .set_attribute("data-rendered-frames", &self.rendered_frames.to_string());
         for (name, value) in [
             ("data-color-instances", instances),
+            ("data-surface-pieces", self.surface_pieces),
             ("data-color-triangles", self.triangles),
             (
                 "data-brick-shadow-triangles-estimate",
@@ -728,6 +752,15 @@ impl Renderer {
         }
         for (name, value) in [
             ("data-detail-scale", self.detail_scale.to_string()),
+            (
+                "data-shadow-detail-scale",
+                self.shadow_detail_scale.to_string(),
+            ),
+            ("data-scene-plan-ms", format!("{:.3}", self.scene_plan_ms)),
+            (
+                "data-shadow-budget-estimate-exceeded",
+                self.shadow_budget_exceeded.to_string(),
+            ),
             (
                 "data-lod-counts",
                 serde_json::to_string(&self.lod_counts).unwrap(),
@@ -748,6 +781,7 @@ impl Renderer {
     }
 
     fn upload(&mut self, camera: &Camera, shadow: &Visibility) {
+        let start = js_sys::Date::now();
         let mut plan = self.planner.plan(
             &self.bricks,
             &self.tree,
@@ -764,13 +798,18 @@ impl Renderer {
                     .triangle_budget
                     .map(|_| self.lighting.size as f64),
                 reuse_shadow: true,
+                merge_surfaces: true,
             },
         );
+        self.scene_plan_ms = js_sys::Date::now() - start;
         self.lod_counts = plan.lod_counts;
         self.detail_scale = plan.detail_scale;
         self.shadow_lod_counts = plan.shadow_lod_counts;
         self.estimated_shadow_triangles = plan.estimated_shadow_triangles;
         self.color_budget_exceeded = plan.budget_exceeded;
+        self.shadow_detail_scale = plan.shadow_detail_scale;
+        self.shadow_budget_exceeded = plan.shadow_budget_exceeded;
+        self.surface_pieces = plan.surface_pieces;
         self.ground_stud_instances = 0;
         if self.ground_visible {
             let (instances, count) = ground::plan(camera, self.fog_distance, &self.ground);
@@ -788,6 +827,7 @@ impl Renderer {
         for key in keys {
             let cpu = match &key {
                 GeometryKey::Part(part, 0) => &self.meshes[part],
+                GeometryKey::Surface(index) => self.planner.surface_mesh(*index),
                 _ => self
                     .lod_meshes
                     .entry(key.clone())
@@ -805,6 +845,7 @@ impl Renderer {
                                 .expect("Planned part LOD must have a reviewed display profile")
                                 .mesh(*level)
                         }
+                        GeometryKey::Surface(_) => unreachable!(),
                     }),
             };
             self.gpu.update(&self.gl, key, cpu, &plan);

@@ -4,6 +4,16 @@ use ergo_world::{
     geometry::{self, GeometryCredit, Mesh, PartSpec},
 };
 use glam::{DVec3, Vec3};
+use sha2::{Digest, Sha256};
+
+/// Platform-independent identity of the complete internal float32 vertex stream.
+pub fn vertex_hash(mesh: &Mesh) -> String {
+    let mut hash = Sha256::new();
+    for value in &mesh.vertices {
+        hash.update(value.to_le_bytes());
+    }
+    format!("{:x}", hash.finalize())
+}
 
 #[derive(Clone, Copy)]
 pub struct RenderPart {
@@ -37,12 +47,30 @@ impl RenderPart {
             .find(|(id, _)| *id == canonical)?
             .0;
         let shape = if let Some(spec) = geometry::part_spec(id) {
-            // An alias string or its nominal box alone is not proof of shape.
-            // Only exact known parametric geometry may recover a standard LOD.
+            // An alias string, attribution or nominal box alone is not proof of
+            // shape. Match complete parametric vertices or a reviewed exact
+            // source fingerprint, independently of physical-record variants.
             if alias {
                 let expected = geometry::fallback_mesh(id);
-                if mesh.quality != "parametric"
-                    || mesh.vertices != expected.vertices
+                let known = if mesh.quality == "parametric" {
+                    mesh.vertices == expected.vertices
+                } else if mesh.quality == "source" {
+                    let fingerprint = match id {
+                        // James Jessiman, official LDraw 3001.dat / 3022.dat,
+                        // CC BY 4.0. Reviewed frozen vertices, 2026-10-28.
+                        "3001.dat" => {
+                            Some("6eb31ee3206edad1b494924cbc52813d7cbe6a192dba00c708580da5398d8161")
+                        }
+                        "3022.dat" => {
+                            Some("c22f3af60bafe9812958c45ba944ad1d708052064a1c6c9ad54601b02b412349")
+                        }
+                        _ => None,
+                    };
+                    fingerprint.is_some_and(|expected| vertex_hash(mesh) == expected)
+                } else {
+                    false
+                };
+                if !known
                     || mesh.body_bounds.min != expected.body_bounds.min
                     || mesh.body_bounds.max != expected.body_bounds.max
                 {

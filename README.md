@@ -34,6 +34,8 @@ and versions before reuse; brick specifications and meshes are cached separately
 The navigator's [Render detail control](docs/3d-display-indexing.md#scene-wide-budget-and-quality-controls)
 adds scene-wide distance LOD with soft triangle targets and independent shadow
 detail; full geometry remains available for editing, picking and collisions.
+Large static regions cache merged exterior surfaces, removing internal faces and
+combining coplanar same-color quads. Idle navigator views stop resubmitting draws.
 
 The server owns authorization, static acceptance and persistence. Dynamic gravity,
 earthquake/drop tests, editing feedback and actual image rendering run locally in

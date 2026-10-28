@@ -26,6 +26,8 @@ and lighting parameters; background transparency does not select geometry policy
   frusta and pick-ray unprojection, shared by drawing, streaming and picking.
 - `scene.rs` produces deterministic part/LOD batches and **separate camera and
   light-space instance lists** from the resident octree.
+- `scene/surfaces.rs` caches greedy, material-preserving exterior meshes of distant
+  upright standard-body chunks, independently of authoritative/picking geometry.
 - `scene/ground.rs` produces bounded baseplate/stud instances without a browser/GPU
   dependency. The same CPU planner is usable in native regression tests.
 - `renderer/batches.rs` owns immutable prototype buffers, per-pass instance buffers,
@@ -171,8 +173,8 @@ colored envelopes would create overlapping bounds and damage the architecture.
 
 The navigator's **Render detail** control selects an explicit policy:
 
-- **Auto (balanced)** targets 2,000,000 estimated visible-brick triangles.
-- **Performance** targets 500,000.
+- **Auto (balanced)** targets 2,000,000 estimated brick triangles **per pass**.
+- **Performance** targets 500,000 per pass.
 - **High (per-brick LOD)** retains the original per-brick thresholds without a
   scene-wide target, and uses full source meshes for resident shadow casters.
 
@@ -182,46 +184,109 @@ fits or reaches 8, then refines only with 25% spare budget. The per-piece 12%
 hysteresis still applies. This is a fixed **soft triangle target**, not a frame-time
 controller or a guaranteed cap. Source-only/custom silhouettes, selected pieces,
 individual highlighted pieces and the stud transition can keep it above target.
-Ground is outside this brick target; aggregate costs conservatively count each
-candidate before merging. Picking, collision, resident piece count and saved
+Ground is outside these targets. Greedy surfaces use their actual triangle cost;
+subpixel bounding aggregates conservatively count each candidate before merging.
+Picking, collision, resident piece count and saved
 models retain their full geometry. Captures and the homepage illustration keep
 their full-detail policies independently of the navigator control.
 
 Shadow LOD uses the light buffer's projected stud size, rather than the color
 camera's distance: source mesh at 6 texels or more, reviewed medium mesh from
-1.25 texels, otherwise a reviewed far mesh, with 12% hysteresis. Source-only, selected
+1.25 texels, otherwise a reviewed far mesh, with 12% hysteresis. Its own 1/2/4/8
+detail divisor can coarsen that projected size to meet the separate pass target.
+Source-only, selected
 and highlighted pieces remain source geometry. The independent light-frustum
 query still includes resident offscreen casters. Its instance plan is cached
 until the light matrix/origin/resolution, scene/meshes, selection, explosion or
 policy changes. Camera-only color replans can reuse it; the existing GPU depth-map
-reuse remains separate. There is no separate global shadow-triangle cap.
+reuse remains separate. The shadow target is soft too: protected source geometry
+may exceed it. This matters especially at night, when a moving camera headlamp
+changes the shadow matrix on every view update.
 The [display part library](part-catalog.md#reviewed-display-detail-library) adds
 open-aperture window frames 60594/60592, annular round brick 87081 and verified
 parametric aliases; these specialties do not turn into solid body boxes. Its
 eight-sided standard studs also reduce the cost of medium and shadow detail.
 
+### Cached greedy surfaces: hidden faces and coplanar merging
+
+For static resident regions of at least **10,000 pieces**, budgeted policies can
+replace far standard rectangular bodies with derived chunk meshes:
+
+1. Group upright, axis-aligned, reviewed standard bodies by the 32-unit cell
+   containing each body's center. Quantize only bodies already aligned within
+   1e-5 grid units to the existing **1-stud × 1-plate × 1-stud** grid.
+2. Fill a temporary material grid. Reject ambiguous overlaps or oversized chunks;
+   ineligible pieces retain their ordinary individual LODs.
+3. Remove faces between occupied cells, including internal material boundaries.
+   Greedily combine adjacent exposed coplanar cells of the **same RGB material**
+   into rectangles. Emit two triangles per rectangle. Air apertures stay open;
+   unlike coarse bounding envelopes, this does not fill gaps between bodies.
+4. Keep a derived mesh only when it beats the individual boxes. A chunk's grid is
+   bounded to 1,048,576 cells; retained derived vertex bytes total at most 64 MiB.
+   These are logical buffers, not a complete allocator/GPU-memory quota.
+
+The meshes are built once per scene/mesh edit and shared by color/depth passes.
+Neither camera motion nor quality tier changes rebuild their vertices. Chunk-level
+culling/detail tests run before individual candidate/matrix generation, avoiding
+tens of thousands of per-brick allocations, projections and instance uploads.
+The render planner's part-cache hits also avoid allocating a temporary part-ID
+string for each piece.
+
+Auto uses a conservative fixed chunk-detail divisor of 4; Performance uses 8.
+Color chunks require their largest member's projected size divided by that value
+to be below 8×0.88 px, and the **actual** projected stud diameter below 1.25×0.88 px.
+Shadow chunks use the light-buffer stud diameter divided by the same value.
+These chunk guards are separate from the remaining per-brick adaptive budgets.
+The chunk bounds include all members, so culling may submit offscreen members
+of an intersecting chunk; the GPU still clips them. LOD piece counters therefore
+report represented members, not an exact count of individually visible bricks.
+
+Selecting/highlighting a member restores individual rendering for that chunk.
+Explosion, High, captures and the homepage bypass merged surfaces. Pose/color or
+prototype changes invalidate both derived CPU meshes and their GPU buffers.
+Specialty/custom shapes remain separate; source vertices/IDs, authoring exports,
+triangle picking and walking/physics bodies are not replaced. This is an exterior
+LOD of the existing body proxies, not an exact hollow-solid reconstruction.
+The 10,000-piece threshold also excludes the bounded 5,000-body dynamic simulator.
+
+### Idle rendering
+
+The navigator reuses its composited canvas while geometry, camera, viewport and
+lighting are unchanged. It no longer continuously submits the same large color
+pass at rest. Input/material controls mark the renderer dirty; solar updates and
+capture requests still redraw. Shadow-map caching is independent. The static
+preview's point/studio-light path and full-detail capture policies remain explicit.
+`data-rendered-frames` counts actual draws; callback/FPS labels are not GPU timers.
+
 ### Measurements and repeatable profiling
 
-On the accepted **91,265-piece** district readback, the native planner comparison
-at the nearer 1280×720 overview reduced color submission from **37,494,790 to
-1,979,926 triangles (95%)** versus per-brick LOD using the same updated display
-library, and its fixed 2048² light-volume casters from
-**130,259,476 to 33,599,614 (74%)**. At three times the camera distance, color
-triangles fell from 6,495,792 to 1,330,224. Auto fits its soft target in these cases;
-selected/protected source geometry can still exceed it in other views. No pieces
-are discarded to force a lower count.
-These are submitted triangle counts, not GPU timings or an FPS speedup ratio.
+The 2026-10-28 comparison uses the **actual shared-view packet**, revision
+`a569bdf47ce1dac69528a7be04161e7ab37677e4e078f857a257d289ab41ead5`,
+with **91,265 pieces**. This preserves the live prototype names and frozen source
+variants. The earlier combined construction readback normalized aliases differently
+and understated the live cost: 26,413 source brick/plate instances were still at
+full detail. Reviewed whole-vertex fingerprints now recognize those variants.
 
-An actual headless Chrome WebGL2 check on an Apple M4 Max/ANGLE Metal renderer,
-1440×1000 window at device scale 1, gave **16.7–33.3 ms median presentation
-intervals** during warmed district orbit in the budgeted modes. Its different
-fitted camera/light submitted about 1.59 million color triangles and estimated
-35.3 million brick-shadow triangles. Auto used divisor 4; Performance used 8 and
-could not meet its lower target. Their final fitted-frame counts were identical;
-interval samples also include changing-camera work and hardware scheduling. This is
-a local presentation measurement, not a portable FPS guarantee. Repeated full
-High-policy stress caused a WebGL context loss in one benchmark run, so there is
-no reliable like-for-like browser FPS ratio against the old policy.
+On an Apple M4 Max/ANGLE Metal backend in actual headless Chrome WebGL2, at
+1440×1000/device scale 1, the same warmed **night-time UI orbit** changed from
+**83.3 ms median presentation intervals (about 12 FPS) to 16.7 ms (about 60 FPS)**.
+P95 intervals also changed from 83.4 to 16.7 ms in that run. Auto's fitted-frame
+color triangles fell from **17,759,210 to 1,611,344 (91%)** and planned brick-shadow
+triangles from **42,116,294 to 944,676 (98%)**. 86,346 bodies were represented by
+cached surfaces. Performance submitted 654,336 color / 654,324 shadow triangles
+and also reached the presentation limit; its protected-geometry floor remained
+above its 500,000 target. All original piece records remain resident. These are
+local scenario measurements, not portable FPS or latency guarantees.
+
+The native 1280×720 planner ablation separates the effects, on the same packet:
+with reviewed aliases and per-pass budgets but **no merging**, near color/depth
+work was 1,979,926 / 1,497,550 triangles and a warm plan took 30.7 ms. Enabling
+cached surfaces gave **1,398,604 / 986,668 triangles**, 26,968 color instances
+instead of 91,183, and **7.2 ms** warm planning. At three times the distance it
+used 514,922 color triangles and 1.5 ms warm planning. Cold surface construction
+plus first planning took roughly 87–96 ms in these native cases. Native timings
+are CPU-only and do not measure browser/GPU frame time; the cameras/light volumes
+differ from the browser measurement above.
 
 After building the viewer WASM and local server, with Playwright/Chrome installed:
 
@@ -229,6 +294,9 @@ After building the viewer WASM and local server, with Playwright/Chrome installe
 cargo run --release -p ergo-client --example profile_scene -- construction.ergo.json
 cargo run --release -p ergo-client --example profile_scene -- --inventory construction.ergo.json
 python3 scripts/profile-rendering.py construction.ergo.json --output target/render-profile.json
+# Preserve the original live aliases in a captured shared-view JSON packet:
+cargo run --release -p ergo-client --example profile_scene -- --view-packet view.json
+python3 scripts/profile-rendering.py view.json --view-packet --night --qualities auto performance --output target/live-render-profile.json
 ```
 
 The native example uses the actual scene planner without a GPU. The browser
@@ -238,13 +306,22 @@ public authoring importer intentionally rejects. It runs the actual WASM/WebGL
 renderer, primes the selected policies, then drives UI pointer orbit, writes
 per-mode PNGs and reports canvas metrics/presentation intervals. It never saves
 or publishes the preview. The JSON records the actual graphics backend and GL
-errors; `--qualities` selects the policies to exercise.
+errors; `--qualities` selects the policies to exercise. `--view-packet` reads a
+captured JSON view packet without rebuilding/renaming its prototypes; `--night`
+exercises moving headlamp shadows rather than only a scene-fixed daylight map.
+Only one measured browser should render during a comparison. Browser checks also
+verify idle draw suppression and explicit grid-control redraw.
 
 Canvas diagnostics include `data-color-triangles` (submitted color geometry,
 including ground), `data-brick-shadow-triangles-estimate` (resident brick casters,
 not necessarily redrawn that frame), `data-detail-scale`, `data-lod-counts`,
 `data-shadow-lod-counts` and `data-color-budget-estimate-exceeded`. The last flag
 describes the conservative brick estimate, not a GPU timeout or a world limit.
+`data-shadow-detail-scale` and `data-shadow-budget-estimate-exceeded` cover the
+remaining per-brick shadow budget. `data-surface-pieces` reports members represented
+by color chunks; `data-scene-plan-ms` reports the last CPU plan only, not draw/GPU
+time. `data-frame-redrawn` and `data-rendered-frames` distinguish actual rendering
+from idle timer callbacks.
 
 ### Relation to Nanite
 
@@ -255,12 +332,13 @@ compressed geometry pages as needed. That makes the selected work depend on the
 visible image rather than submitting every source triangle in a huge scene.
 
 Ergo implements the smaller WebGL2-compatible steps above: shared part prototypes,
-resident-octree culling, a scene-wide screen-detail bias, light-space LOD and pass
-reuse. It does **not** implement Nanite cluster hierarchies, GPU occlusion culling,
+resident-octree culling, cached greedy body-surface chunks, per-pass screen-detail
+budgets, light-space LOD and pass reuse. It does **not** implement Nanite triangle
+cluster hierarchies, GPU occlusion culling,
 error-bounded arbitrary-mesh simplification or virtualized geometry streaming.
-Construction/cell HLOD proxies and finer-grained source-mesh clusters are future
-ways to reduce the protected-geometry floor; they would need revision-bound
-representations while preserving real geometry for editing and collisions.
+General building/arbitrary-mesh hierarchies and finer-grained source-mesh clusters
+remain future extensions; coarse-first loading would need revision-bound summaries
+while preserving real geometry for editing and collisions.
 
 ### Rendering detail versus loading detail
 

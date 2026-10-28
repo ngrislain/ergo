@@ -1,5 +1,5 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="1040" height="400" viewBox="0 0 1040 400" role="img" aria-labelledby="title desc">
-  <title id="title">Shared block display pipeline and three caches</title><desc id="desc">A camera selects nearby persisted blocks. A resident octree independently selects camera-visible objects and light-volume shadow casters, and supplies full-geometry picking candidates. Scene-wide color budgets and light-space shadow LOD select shared prototypes in WebGL2. Download, CPU, and GPU caches have separate budgets.</desc>
+  <title id="title">Shared block display pipeline and three caches</title><desc id="desc">A camera selects nearby persisted blocks. A resident octree independently selects camera-visible objects and light-volume shadow casters, and supplies full-geometry picking candidates. Per-pass budgets select shared prototypes or cached greedy exterior surfaces, removing internal faces without changing editable or collision geometry. Download, CPU, and GPU caches have separate budgets.</desc>
   <defs><marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0L10 5L0 10Z" fill="#678296"/></marker></defs>
   <rect width="1040" height="400" rx="14" fill="#f5f9fc"/>
   <g font-family="Arial, sans-serif" fill="#263e50"><text x="30" y="40" font-size="21" font-weight="bold">The camera bounds the working set; the octree bounds local queries.</text>
@@ -10,7 +10,7 @@
     <g transform="translate(593 144)"><rect x="0" y="0" width="56" height="42" rx="4" fill="#62a5ab"/><circle cx="15" cy="12" r="6" fill="#8dc6c9"/><circle cx="40" cy="12" r="6" fill="#8dc6c9"/><g stroke="#b7cbd8"><path d="M78 4H143M78 17H143M78 30H143M78 43H143M78 56H143M78 69H143M78 82H143"/></g><text x="0" y="108" font-size="12">One mesh, many poses</text></g>
     <g transform="translate(842 145)" fill="#70a6ad"><path d="M0 0H51V31H0Z M63 0H114V31H63Z M0 43H51V74H0Z M63 43H114V74H63Z"/><g fill="#b0d1d3"><circle cx="13" cy="9" r="5"/><circle cx="36" cy="9" r="5"/><circle cx="76" cy="9" r="5"/><circle cx="99" cy="9" r="5"/></g></g>
     <g stroke="#678296" stroke-width="2" marker-end="url(#arrow)"><path d="M261 186H291"/><path d="M531 186H561"/><path d="M771 186H801"/></g>
-    <g font-size="12" fill="#607f94"><text x="48" y="280">Fetch frustum / fog cells</text><text x="319" y="280">Camera / light / ray queries</text><text x="588" y="280">Color budget / shadow LOD</text><text x="829" y="280">Depth + sky + color</text></g>
+    <g font-size="12" fill="#607f94"><text x="48" y="280">Fetch frustum / fog cells</text><text x="319" y="280">Camera / light / ray queries</text><text x="588" y="280">Budgets / greedy surfaces</text><text x="829" y="280">Depth + sky + color</text></g>
     <g font-size="13"><text x="50" y="343">Persistent cache</text><text x="318" y="343">Decoded CPU working set</text><text x="710" y="343">GPU buffers</text></g>
     <g font-size="12" fill="#718b9d"><text x="50" y="365">Immutable CBOR downloads</text><text x="318" y="365">Packed block pages + shared meshes</text><text x="710" y="365">Shared geometry + instances</text></g>
   </g>
