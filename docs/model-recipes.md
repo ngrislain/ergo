@@ -1,6 +1,19 @@
 # Walkable monument recipes
 
-## District construction in progress
+## District recipes and accepted construction
+
+On 2026-10-28 the eleven new ten-storey buildings and three separate site assemblies
+were accepted in the common Sandbox around the unchanged cell-19 tower:
+https://ergosandbox.com/app?x=19&y=0&z=0. The new buildings contain 81,305 pieces;
+streets, furniture and two footbridges contain 4,998. Including the original
+4,962-piece tower, the district contains 91,265 pieces. Street life includes eight
+cars, 24 figures, twelve benches and twelve lampposts.
+
+The viewer's native walking engine passed 1,499 explicit waypoints against the
+accepted cached geometry: 126 per new building, a 103-waypoint continuous district
+route visiting all entrances and crossing both bridges, and two five-waypoint
+two-way bridge checks. These used neither jumping nor teleporting. Walking,
+accepted static validation, image rendering and dynamics remain separate evidence.
 
 `scripts/build/district.py` authors through the real stdio MCP client. Its durable
 `target/district-mcp/progress.json` records stable assembly IDs and each attempted
