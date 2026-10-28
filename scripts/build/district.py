@@ -132,12 +132,12 @@ def main():
     selection.add_argument('--through', choices=[*stage_choices,'finished'], help='Publish missing applicable stages in order, preserving each assembly')
     parser.add_argument('--only', help='One exact building key; omitted selects all eleven')
     parser.add_argument('--batch-floors', type=int, choices=[1, 2, 3], default=3, help='At most three self-supporting storeys per published edit')
-    parser.add_argument('--reconcile', choices=[*stage_choices, 'roof-bearing'], help='Read-only MCP reopen and exact geometry comparison for an uncertain stage; requires --only')
+    parser.add_argument('--reconcile', choices=[*stage_choices, 'roads', 'roof-bearing'], help='Read-only MCP reopen and exact geometry comparison for an uncertain stage; requires --only')
     parser.add_argument('--publish', action='store_true')
     args = parser.parse_args()
     recipes=district_streets if args.site else models
-    def selected_stages(spec):
-        plan=recipes.stages(spec)
+    def selected_stages(spec,plan=None):
+        plan=recipes.stages(spec) if plan is None else plan
         if args.through=='finished':return plan
         if args.through:return plan[:plan.index(args.through)+1] if args.through in plan else []
         requested=args.stage or plan[0]
@@ -168,9 +168,12 @@ def main():
         reconcile(args, binary, selected[0], journal, journal_path)
         return
     for spec in selected:
-        plan=recipes.stages(spec)
-        stages=selected_stages(spec)
         progress = journal.setdefault('decorations' if args.site else 'buildings',{}).setdefault(spec['key'], {'name': spec['name'], 'stages': {}})
+        plan=recipes.stages(spec)
+        if args.site and spec['key']=='streets' and progress['stages'].get('roads',{}).get('state')=='accepted':
+            # A previously completed monolithic road stage must never be placed again as chunks.
+            plan=[*(['street-anchor'] if 'street-anchor' in progress['stages'] else []),'roads','furniture']
+        stages=selected_stages(spec,plan)
         pending = []
         for stage in stages:
             previous = progress['stages'].get(stage)

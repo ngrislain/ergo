@@ -33,7 +33,10 @@ not claim rolling/steering or calibrated axle retention. The recorded `decoratio
 and `buildings` sections distinguish actual accepted work from planned stages.
 The boulevard first publishes one already-planned, grounded paving instance as
 `street-anchor`, establishing its assembly identity before the larger road edit.
-The remaining road stage excludes that same instance; this adds no extra bricks.
+The remaining `roads-01`… stages exclude that same instance and preserve the
+original construction order, with at most 600 expanded leaves per chunk (or a
+single indivisible reusable instance). Ground masonry precedes the paving it
+supports. Chunking adds no extra bricks or separate street assemblies.
 `district_streets.walking_route(spec)` describes a continuous two-way crossing of
 either bridge for `check_walk`, including both stair flights. Local prototype
 walking evidence does not establish that those assemblies have been published or

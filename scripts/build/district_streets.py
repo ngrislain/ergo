@@ -6,7 +6,6 @@ from scripts.native_model import Model
 
 CENTRE_TOWER=buildings.CENTRE_TOWER
 CENTRE=[buildings.ORIGIN[0]+16,buildings.ORIGIN[1]+16,0]
-STAGES=['street-anchor','roads','furniture','bridge']
 SPECS=[{'key':'streets','name':'Boulevards and Street Life'},
        {'key':'bridge-west','name':'West Canal Footbridge'},
        {'key':'bridge-east','name':'East Canal Footbridge'}]
@@ -21,7 +20,7 @@ def origin(spec):
     return [CENTRE[0]+dx,CENTRE[1]+dn,0]
 
 
-def stages(spec):return ['street-anchor','roads','furniture'] if spec['key']=='streets' else ['bridge']
+def stages(spec):return ['street-anchor',*ROAD_STAGES,'furniture'] if spec['key']=='streets' else ['bridge']
 def required_parts(stage):return details.PARTS if stage=='furniture' else ['3633'] if stage=='bridge' else []
 
 
@@ -84,6 +83,29 @@ def street_layer(anchor):
     return model
 
 
+def road_chunks(model):
+    """Keep construction order: ground masonry precedes its supported paving."""
+    counts={}
+    def leaves(instance):
+        target=instance['target']
+        if target['kind']=='part':return 1
+        name=target['id']
+        if name not in counts:counts[name]=sum(leaves(item) for item in model.definitions[name])
+        return counts[name]
+    chunks=[];size=0
+    for instance in model.definitions['main'][1:]:
+        count=leaves(instance)
+        if not chunks or size+count>600:chunks.append([]);size=0
+        chunks[-1].append(instance);size+=count
+    return chunks
+
+
+def road_chunk(index):
+    model=roads()
+    model.definitions['main']=road_chunks(model)[index]
+    return model
+
+
 def mount(model,name,prototype,x,n,height):
     prefix=name+'/'
     if prefix+'main' not in model.definitions:
@@ -125,6 +147,7 @@ def bridge():
 
 def stage(spec,name):
     if name in ['street-anchor','roads']:return street_layer(name=='street-anchor')
+    if name.startswith('roads-'):return road_chunk(int(name.removeprefix('roads-'))-1)
     return furniture() if name=='furniture' else bridge()
 
 
@@ -140,3 +163,7 @@ def walking_route(spec):
                 (2, deck, 'west stair ascent'), (8, deck, 'deck centre'),
                 (14, deck, 'east deck'), (26, 1, 'east stair descent'),
                 (-10, 1, 'return west')]]}
+
+
+ROAD_STAGES=[f'roads-{index+1:02}' for index in range(len(road_chunks(roads())))]
+STAGES=['street-anchor',*ROAD_STAGES,'furniture','bridge']
