@@ -93,35 +93,44 @@ impl Tree {
         self.read_prefetch = self.repo.cache_stats().capacity_bytes > 0;
         self
     }
-    async fn prefetch_nodes(&self, ids: Vec<ContentId>) {
+    async fn prefetch_nodes(&mut self, ids: Vec<ContentId>) {
         // Read only four immutable node levels, never application payloads.
         // Failed/oversized speculative reads are misses, not page failures.
         let mut frontier = ids;
         for _ in 0..4 {
             let repo = &self.repo;
-            let loaded: Vec<_> = stream::iter(frontier)
-                .map(|id| async move {
-                    tokio::time::timeout(
-                        std::time::Duration::from_secs(2),
-                        repo.object_limited(&id, 64 * 1024),
-                    )
-                    .await
-                    .ok()
-                    .and_then(Result::ok)
-                })
-                .buffered(64)
-                .collect()
-                .await;
-            frontier = loaded
-                .into_iter()
-                .flatten()
-                .filter_map(|bytes| decode::<Node>(&bytes).ok())
-                .flat_map(|node| match node {
-                    Node::Extension { child, .. } => vec![child],
-                    Node::Branch { children, .. } => children.into_iter().flatten().collect(),
-                    _ => vec![],
-                })
-                .collect();
+            let loaded: Vec<_> = stream::iter(
+                frontier
+                    .into_iter()
+                    .filter(|id| !self.nodes.contains_key(id)),
+            )
+            .map(|id| async move {
+                let bytes = tokio::time::timeout(
+                    std::time::Duration::from_secs(2),
+                    repo.object_limited(&id, 64 * 1024),
+                )
+                .await
+                .ok()
+                .and_then(Result::ok)?;
+                Some((id, decode::<Node>(&bytes).ok()?))
+            })
+            .buffered(64)
+            .collect()
+            .await;
+            frontier = Vec::new();
+            for (id, node) in loaded.into_iter().flatten() {
+                if Self::validate_node(&node).is_err() {
+                    continue;
+                }
+                match &node {
+                    Node::Extension { child, .. } => frontier.push(child.clone()),
+                    Node::Branch { children, .. } => {
+                        frontier.extend(children.iter().flatten().cloned())
+                    }
+                    _ => {}
+                }
+                self.nodes.insert(id, node);
+            }
             if frontier.is_empty() {
                 break;
             }
@@ -143,7 +152,12 @@ impl Tree {
             return Ok(n.clone());
         }
         let node: Node = decode(&self.repo.object(id).await?)?;
-        match &node {
+        Self::validate_node(&node)?;
+        self.nodes.insert(id.clone(), node.clone());
+        Ok(node)
+    }
+    fn validate_node(node: &Node) -> Result<()> {
+        match node {
             Node::Branch { children, .. } if children.iter().all(Option::is_none) => {
                 return Err(Error::Corrupt(
                     "empty branch requires absence or a tombstone".into(),
@@ -158,8 +172,7 @@ impl Tree {
             }
             _ => {}
         }
-        self.nodes.insert(id.clone(), node.clone());
-        Ok(node)
+        Ok(())
     }
     async fn extension(&mut self, mut path: Vec<u8>, mut child: ContentId) -> Result<ContentId> {
         if path.is_empty() {

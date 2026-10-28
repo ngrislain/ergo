@@ -2,6 +2,7 @@
 //! Replacements preserve creation identities and publish as one validated CAS.
 use super::*;
 use ergo_world::{SCHEMA_VERSION, WorldExport};
+use futures::{StreamExt, TryStreamExt};
 
 #[derive(Deserialize)]
 pub struct ReplaceRequest {
@@ -87,6 +88,58 @@ impl SharedWorlds {
         } else {
             self.working(id, actor, revision).await?
         };
+        // Reopening a cold assembly must not serialize one object-store round
+        // trip per member and then another per piece. Warm only this accepted
+        // assembly's bounded records; Working still performs and charges every
+        // ordinary read below, with its original dependency/identity checks.
+        let snapshot = self.repo(id)?.accepted_snapshot("main", revision).await?;
+        let header: paged::RulesHeader = snapshot
+            .get_limited(&paged::rule_path(assembly, 0), ws.remaining())
+            .await?
+            .context("Missing paged assembly header")?;
+        if header
+            .piece_count
+            .is_some_and(|count| count > ws.piece_limit())
+        {
+            return Err(SharedError::working_limit("authoring assembly"));
+        }
+        let mut after = None;
+        let mut warm_bytes = ws.remaining();
+        let mut count = 0;
+        loop {
+            let page = snapshot
+                .scan_page_prefetched(&paged::rule_path(assembly, 1), after.as_ref(), 512)
+                .await?;
+            let limit = warm_bytes;
+            let mut records = futures::stream::iter(page.leaves)
+                .map(|(_, cid)| {
+                    let snapshot = &snapshot;
+                    async move {
+                        let member: paged::MemberRow = snapshot.blob_limited(&cid, limit).await?;
+                        let piece: Piece = snapshot
+                            .get_limited(&entity_path(3, &member.piece), limit)
+                            .await?
+                            .context("Missing assembly piece")?;
+                        Ok::<_, SharedError>(
+                            canonical_cbor(&member)?.len() + canonical_cbor(&piece)?.len(),
+                        )
+                    }
+                })
+                .buffered(64);
+            while let Some(bytes) = records.try_next().await? {
+                count += 1;
+                if count > ws.piece_limit() {
+                    return Err(SharedError::working_limit("authoring assembly"));
+                }
+                warm_bytes = warm_bytes
+                    .checked_sub(bytes)
+                    .ok_or_else(|| SharedError::working_limit("CBOR byte budget"))?;
+            }
+            after = page.next;
+            if after.is_none() {
+                break;
+            }
+        }
         let rules = ws.rules(assembly).await?;
         if rules.pieces.len() > ws.piece_limit() {
             return Err(SharedError::working_limit("authoring assembly"));

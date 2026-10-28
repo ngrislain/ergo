@@ -138,9 +138,16 @@ production tool schema.
 
 ## Acceptance, conflicts, and cache recovery
 
+Cold whole-assembly reads warm member and piece records from the accepted snapshot
+in bounded 512-member pages with at most 64 reads in flight. The ordinary working
+read still charges every record and verifies identities/dependencies; this is not
+a trusted client cache or an alternative authoring path.
+
 For compact whole-assembly reads, the external-dependency guard uses one
 conservative bounding query plus explicit peer/joint checks, rather than one
-spatial query per member. Nearby unrelated candidates can conservatively block a
+spatial query per member. Its own members are excluded using their full IDs in
+validated spatial keys, avoiding unused self-reference payloads.
+Nearby unrelated candidates can conservatively block a
 clipped local simulation. Remote explicit joint endpoints are still checked;
 authoritative publication continues to discover/validate the complete affected domain.
 

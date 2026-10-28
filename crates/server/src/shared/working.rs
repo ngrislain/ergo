@@ -363,7 +363,7 @@ impl Working {
             .position_brick_units
             .max(INFERRED_JOINT_HALO);
         if self
-            .neighbors(bounds.expanded(halo))
+            .spatial_neighbors_excluding(bounds.expanded(halo), ids)
             .await?
             .iter()
             .any(|id| !ids.contains(id))

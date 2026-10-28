@@ -2278,6 +2278,42 @@ async fn cross_assembly_joints_track_both_ends_and_prevent_dangling_deletions() 
 }
 
 #[tokio::test]
+async fn compact_authoring_guard_excludes_members_but_keeps_touching_other_assemblies() {
+    let service = service();
+    let mut one = scene(100.);
+    one.bricks.truncate(1);
+    let (head, first) = seeded(&service, one).await;
+    let independent = service
+        .authoring_scene(&head.id, "alice", &first.assembly, &head.revision)
+        .await
+        .unwrap();
+    assert_eq!(independent["external_dependencies"], false);
+    let mut adjacent = scene(102.);
+    adjacent.bricks.truncate(1);
+    let second = service
+        .import(
+            &head.id,
+            "alice",
+            ImportRequest {
+                base: head.revision,
+                scene: adjacent,
+            },
+        )
+        .await
+        .unwrap();
+    let guarded = service
+        .authoring_scene(
+            &head.id,
+            "alice",
+            &first.assembly,
+            &second.accepted.revision,
+        )
+        .await
+        .unwrap();
+    assert_eq!(guarded["external_dependencies"], true);
+}
+
+#[tokio::test]
 async fn compact_authoring_guard_keeps_remote_explicit_dependencies() {
     let mut service = service();
     service.store.measurements = Arc::new(ergo_world::physical::ConnectionMeasurements {

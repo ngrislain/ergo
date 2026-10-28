@@ -308,8 +308,10 @@ overwritten or deleted by an edit.
   Explicit uncached verification still bypasses the cache and read-coalescing gates.
   `Snapshot::scan_page_prefetched` optionally looks ahead four immutable-node levels
   with 64 concurrent GETs, a 64 KiB node bound and two-second speculative
-  timeout. It never follows application-value links; required traversal still
-  verifies/decodes nodes normally. Transaction predicate registration is unchanged.
+  timeout. Validated decoded nodes are reused within the page rather than fetched
+  and decoded by overlapping lookahead repeatedly. It never follows application-value
+  links; invalid speculative nodes fall back to required traversal and its ordinary
+  errors. Transaction predicate registration is unchanged.
 - Nodes are also cached within a transaction; staged values and serialization
   buffers remain in memory. There is no whole-process heap quota, streaming CBOR
   encoder, or automatic chunker. `scan` is an unbounded compatibility convenience;

@@ -84,6 +84,68 @@ pub fn record(piece: &Piece, coord: BlockCoord, bounds: Aabb) -> (OctreePath, Sp
     )
 }
 
+/// Layout-2 spatial keys already contain the full birth ID. A bounded visual
+/// enumeration needs that ID, not the separate bounding-box payload.
+pub(super) fn reference_piece(path: &OctreePath, coord: BlockCoord) -> SharedResult<ContentId> {
+    let block = block_path(coord);
+    let suffix = path
+        .octants()
+        .strip_prefix(block.octants())
+        .context("Spatial block mismatch")?;
+    ensure!(suffix.len() >= 87, "Invalid spatial reference path");
+    let (cell, identity) = suffix.split_at(suffix.len() - 86);
+    ensure!(
+        cell.len() <= 21
+            && cell.len() % 2 == 1
+            && cell.last() == Some(&0)
+            && cell[..cell.len() - 1]
+                .chunks_exact(2)
+                .all(|pair| pair[0] == 1)
+            && identity[0] <= 1,
+        "Invalid spatial reference path"
+    );
+    let mut bytes = [0u8; 32];
+    for bit in 0..256 {
+        let offset = bit + 2;
+        bytes[bit / 8] |= ((identity[offset / 3] >> (2 - offset % 3)) & 1) << (7 - bit % 8);
+    }
+    Ok(hex::encode(bytes).parse()?)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    #[test]
+    fn spatial_keys_round_trip_complete_birth_ids_at_every_depth() {
+        for id in [
+            "00".repeat(32),
+            "ff".repeat(32),
+            hex::encode((0..32).collect::<Vec<u8>>()),
+        ] {
+            let id: ContentId = id.parse().unwrap();
+            for coord in [[0, 0, 0], [-1, 19, 0], [19, -1, -1]] {
+                let coord: BlockCoord = coord.into();
+                let block = block_path(coord);
+                let mut cell = block.clone();
+                for depth in 0..=10 {
+                    let key =
+                        paged::append(&cell.child(0).unwrap(), &entity_path(0, &id).octants()[1..]);
+                    assert_eq!(reference_piece(&key, coord).unwrap(), id);
+                    if depth < 10 {
+                        cell = cell.child(1).unwrap().child((depth % 8) as u8).unwrap();
+                    }
+                }
+                assert!(reference_piece(&block, coord).is_err());
+                let invalid = paged::append(
+                    &block.child(2).unwrap(),
+                    &entity_path(0, &id).octants()[1..],
+                );
+                assert!(reference_piece(&invalid, coord).is_err());
+            }
+        }
+    }
+}
+
 impl Working {
     pub async fn replace_spatial(
         &mut self,
@@ -139,6 +201,14 @@ impl Working {
         Ok(())
     }
     pub async fn spatial_neighbors(&mut self, bounds: Aabb) -> SharedResult<BTreeSet<ContentId>> {
+        self.spatial_neighbors_excluding(bounds, &BTreeSet::new())
+            .await
+    }
+    pub(super) async fn spatial_neighbors_excluding(
+        &mut self,
+        bounds: Aabb,
+        excluded: &BTreeSet<ContentId>,
+    ) -> SharedResult<BTreeSet<ContentId>> {
         let mut result = BTreeSet::new();
         let (query_lo, query_hi) = public(bounds);
         for region in address::cover(bounds)? {
@@ -175,7 +245,12 @@ impl Working {
                         let mut cursor = None;
                         loop {
                             let refs = self.tx.scan_page(&own, cursor.as_ref(), 128).await?;
-                            for (_, cid) in refs.leaves {
+                            for (path, cid) in refs.leaves {
+                                if !excluded.is_empty()
+                                    && excluded.contains(&reference_piece(&path, h.coord)?)
+                                {
+                                    continue;
+                                }
                                 let r = self.spatial_ref(&cid).await?;
                                 if r.bounds.intersects(bounds)
                                     && let Some(piece) = self.piece(&r.piece).await?

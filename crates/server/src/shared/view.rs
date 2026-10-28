@@ -318,19 +318,8 @@ async fn build(
                     if !page.leaves.is_empty() && !blocks.contains(&coord) {
                         blocks.push(coord);
                     }
-                    let limit = remaining;
-                    let mut rows = futures::stream::iter(page.leaves)
-                        .map(|(_, cid)| async move {
-                            snapshot
-                                .blob_limited::<spatial::SpatialRef>(&cid, limit)
-                                .await
-                        })
-                        .buffered(READ_CONCURRENCY);
-                    while let Some(row) = rows.try_next().await? {
-                        remaining = remaining
-                            .checked_sub(canonical_cbor(&row)?.len())
-                            .ok_or_else(|| SharedError::working_limit("browser view bytes"))?;
-                        ids.insert(row.piece);
+                    for (path, _) in page.leaves {
+                        ids.insert(spatial::reference_piece(&path, coord)?);
                         if ids.len() % 2048 == 0 {
                             progress
                                 .report(format!("spatial references: {} unique pieces", ids.len()));
