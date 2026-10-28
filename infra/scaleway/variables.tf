@@ -85,6 +85,16 @@ variable "max_scale" {
   }
 }
 
+variable "request_timeout_seconds" {
+  description = "Container processing deadline; increase for diagnosed long validated operations. Client deadlines are independent."
+  type        = number
+  default     = 300
+  validation {
+    condition     = var.request_timeout_seconds >= 1 && var.request_timeout_seconds <= 1800 && floor(var.request_timeout_seconds) == var.request_timeout_seconds
+    error_message = "request_timeout_seconds must be an integer from 1 to 1800."
+  }
+}
+
 variable "s3_access_key_id" {
   description = "Application S3 access key with read/list/write/delete access to the existing bucket."
   type        = string

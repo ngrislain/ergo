@@ -9,6 +9,8 @@ s3_prefix     = "ergo"
 common_world_id = "fde184c4-222b-4a16-8a1f-c320da8a2f35"
 world_prefix = "world"
 max_scale     = 1
+# Increase only for diagnosed long operations; client deadlines are independent.
+request_timeout_seconds = 300
 free_bricks_per_period = 5000
 edit_period_seconds   = 86400
 

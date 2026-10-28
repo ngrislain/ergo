@@ -164,7 +164,9 @@ impl Publisher {
             base,
             token,
             client: Client::builder()
-                .timeout(Duration::from_secs(300))
+                .timeout(http_timeout(
+                    env::var("ERGO_MCP_HTTP_TIMEOUT_SECONDS").ok().as_deref(),
+                )?)
                 .retry(reqwest::retry::never())
                 .redirect(reqwest::redirect::Policy::none())
                 .build()?,
@@ -183,7 +185,7 @@ impl Publisher {
     ) -> Result<Value> {
         let mut request = self
             .client
-            .request(method, self.url(path)?)
+            .request(method.clone(), self.url(path)?)
             .header("X-Ergo-Request", "1");
         if let Some(token) = &self.token {
             request = request.bearer_auth(token);
@@ -198,7 +200,16 @@ impl Publisher {
                 .header("Content-Type", "application/json")
                 .body(bytes);
         }
-        let mut response = request.send().await.map_err(|e| e.without_url())?;
+        let mut response = request.send().await.map_err(|error| {
+            let kind = if error.is_timeout() {
+                "timed out"
+            } else {
+                "failed"
+            };
+            anyhow::Error::from(error.without_url()).context(format!(
+                "Publication {method} request {kind}; no automatic retry"
+            ))
+        })?;
         let status = response.status();
         ensure!(
             response
@@ -407,8 +418,25 @@ impl Publisher {
     }
 }
 
+fn http_timeout(value: Option<&str>) -> Result<Duration> {
+    let seconds = value.map(str::parse::<u64>).transpose()?.unwrap_or(300);
+    ensure!(
+        (1..=1800).contains(&seconds),
+        "ERGO_MCP_HTTP_TIMEOUT_SECONDS must be 1..1800"
+    );
+    Ok(Duration::from_secs(seconds))
+}
+
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn http_deadlines_are_explicit_and_bounded() {
+        assert_eq!(super::http_timeout(None).unwrap().as_secs(), 300);
+        assert_eq!(super::http_timeout(Some("600")).unwrap().as_secs(), 600);
+        for value in ["0", "1801", "invalid"] {
+            assert!(super::http_timeout(Some(value)).is_err());
+        }
+    }
     use super::*;
     use axum::{
         Json, Router,

@@ -34,7 +34,7 @@ resource "scaleway_container" "api" {
   memory_limit_bytes = 2148 * 1000 * 1000
   min_scale          = 0
   max_scale          = var.max_scale
-  timeout            = 300
+  timeout            = var.request_timeout_seconds
 
   scaling_option {
     concurrent_requests_threshold = 10

@@ -141,7 +141,7 @@ async fn update(
             )
             .await;
         let saved = atomic_write(&shared::state_path(&path), &*binding);
-        remote = Some(result.map_err(http_error)?);
+        remote = Some(result.map_err(|error| http_error(format!("{error:#}")))?);
         if let Err(error) = saved {
             cache_warning = Some(format!(
                 "Shared edit confirmed; local binding cache could not be flushed: {error}"
