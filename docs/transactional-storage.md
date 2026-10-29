@@ -405,6 +405,13 @@ row reads/predicates for business data. `scan_level` pages directory prefixes at
 logical depth without scanning all descendant leaves. Pinned snapshots also expose
 `scan_level_prefetched` with bounded immutable-node lookahead and identical ordered
 rows/cursors; it never prefetches value payloads or changes transaction predicates.
+Transactions memoize repeated ordinary/prefetched ordered pages within one exact
+working-root hash, bounded to 512 pages and 8 MiB of conservatively charged index
+rows/path overhead. Every call still observes the whole-prefix phantom predicate
+before lookup. A changed pending/rebased root clears the memoized pages; values,
+mutable heads and publication outcomes are not memoized. This removes repeated
+spatial-index walks during large connected-domain discovery without narrowing the
+discovered domain or changing physical validation.
 A page traversal has a
 100,000-node budget. Narrow the region or compact it when that operation budget is
 exceeded; it is not a world-size limit.

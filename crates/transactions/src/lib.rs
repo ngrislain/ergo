@@ -616,6 +616,7 @@ impl Repository {
             metadata: None,
             refreshed: false,
             attachments: BTreeSet::new(),
+            page_cache: TransactionPages::default(),
         }
     }
 
@@ -765,6 +766,66 @@ pub struct Transaction {
     metadata: Option<ContentId>,
     refreshed: bool,
     attachments: BTreeSet<ContentId>,
+    page_cache: TransactionPages,
+}
+
+type PageQuery = (OctreePath, Option<OctreePath>, usize);
+#[derive(Default)]
+struct TransactionPages {
+    root: Option<ContentId>,
+    entries: BTreeMap<PageQuery, (ScanPage, usize, u64)>,
+    bytes: usize,
+    clock: u64,
+}
+impl TransactionPages {
+    fn get(&mut self, root: &Option<ContentId>, query: &PageQuery) -> Option<ScanPage> {
+        if self.root != *root {
+            self.root = root.clone();
+            self.entries.clear();
+            self.bytes = 0;
+        }
+        self.clock += 1;
+        let (page, _, used) = self.entries.get_mut(query)?;
+        *used = self.clock;
+        Some(page.clone())
+    }
+    fn insert(&mut self, query: PageQuery, page: &ScanPage) {
+        // Include conservative path/string/container overhead, not just CBOR
+        // payload bytes. This cache stores index rows, never geometry payloads.
+        const MAX_BYTES: usize = 8 * 1024 * 1024;
+        const MAX_PAGES: usize = 512;
+        let bytes = 256
+            + query.0.octants().len()
+            + query.1.as_ref().map_or(0, |path| path.octants().len())
+            + page.next.as_ref().map_or(0, |path| path.octants().len())
+            + page
+                .leaves
+                .iter()
+                .map(|(path, _)| 256 + path.octants().len())
+                .sum::<usize>();
+        if bytes > MAX_BYTES {
+            return;
+        }
+        while self.bytes + bytes > MAX_BYTES || self.entries.len() >= MAX_PAGES {
+            let Some(key) = self
+                .entries
+                .iter()
+                .min_by_key(|(_, (_, _, used))| used)
+                .map(|(key, _)| key.clone())
+            else {
+                break;
+            };
+            self.bytes -= self.entries.remove(&key).unwrap().1;
+        }
+        self.clock += 1;
+        if let Some((_, previous, _)) = self
+            .entries
+            .insert(query, (page.clone(), bytes, self.clock))
+        {
+            self.bytes -= previous;
+        }
+        self.bytes += bytes;
+    }
 }
 
 impl Transaction {
@@ -892,9 +953,16 @@ impl Transaction {
         limit: usize,
     ) -> Result<ScanPage> {
         self.observe(path).await?;
-        self.tree
+        let query = (path.clone(), after.cloned(), limit);
+        if let Some(page) = self.page_cache.get(&self.working_root, &query) {
+            return Ok(page);
+        }
+        let page = self
+            .tree
             .scan_page(self.working_root.as_ref(), path, after, limit)
-            .await
+            .await?;
+        self.page_cache.insert(query, &page);
+        Ok(page)
     }
 
     /// Ordered paging with node-only lookahead, including read-your-writes and
@@ -906,9 +974,16 @@ impl Transaction {
         limit: usize,
     ) -> Result<ScanPage> {
         self.observe(path).await?;
-        self.tree
+        let query = (path.clone(), after.cloned(), limit);
+        if let Some(page) = self.page_cache.get(&self.working_root, &query) {
+            return Ok(page);
+        }
+        let page = self
+            .tree
             .scan_page_prefetched(self.working_root.as_ref(), path, after, limit)
-            .await
+            .await?;
+        self.page_cache.insert(query, &page);
+        Ok(page)
     }
 
     /// Protect an entire subtree, including its absence, without downloading payloads.

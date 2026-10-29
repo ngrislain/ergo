@@ -84,6 +84,45 @@ async fn pagination_is_complete_ordered_and_protects_empty_predicates() {
 }
 
 #[tokio::test]
+async fn repeated_pages_reuse_reads_but_pending_edits_and_phantoms_stay_visible() {
+    let repo = Repository::new(Arc::new(InMemory::new()), "repeat-pages")
+        .unwrap()
+        .with_cache_capacity(64 * 1024);
+    repo.create("main").await.unwrap();
+    let mut seed = repo.begin("main").await.unwrap();
+    seed.put(&p("1/0"), &10_u32).await.unwrap();
+    seed.commit("a", "seed", Default::default()).await.unwrap();
+    let mut tx = repo.begin("main").await.unwrap();
+    let first = tx.scan_page_prefetched(&p("1"), None, 4).await.unwrap();
+    let hits = repo.cache_stats().hits;
+    let repeated = tx.scan_page(&p("1"), None, 4).await.unwrap();
+    assert_eq!(first.leaves, repeated.leaves);
+    assert_eq!(
+        repo.cache_stats().hits,
+        hits,
+        "A repeated ordered page should not walk the immutable index again"
+    );
+    tx.put(&p("1/1"), &11_u32).await.unwrap();
+    let changed = tx.scan_page_prefetched(&p("1"), None, 4).await.unwrap();
+    assert_eq!(
+        changed.leaves.len(),
+        2,
+        "Working-root changes invalidate memoized pages"
+    );
+    let mut competing = repo.begin("main").await.unwrap();
+    competing.put(&p("1/2"), &12_u32).await.unwrap();
+    competing
+        .commit("b", "phantom", Default::default())
+        .await
+        .unwrap();
+    assert!(matches!(
+        tx.commit("a", "must still conflict", Default::default())
+            .await,
+        Err(Error::Conflict { .. })
+    ));
+}
+
+#[tokio::test]
 async fn shared_lru_obeys_byte_budget_and_never_caches_heads_or_crosses_namespaces() {
     let root = Repository::new(Arc::new(InMemory::new()), "cache")
         .unwrap()
