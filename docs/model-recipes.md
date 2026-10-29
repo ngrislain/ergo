@@ -2,11 +2,15 @@
 
 ## District recipes and accepted construction
 
+The current accepted district has **91,543 pieces in the same 15 assemblies**
+(2026-10-29). The building-link/street revisions below supersede the original
+road-bridge and figure/car details in the 2026-10-28 baseline record.
+
 On 2026-10-28 the eleven new ten-storey buildings and three separate site assemblies
 were accepted in the common Sandbox around the unchanged cell-19 tower:
 https://ergosandbox.com/app?x=19&y=0&z=0. The new buildings contain 81,305 pieces;
 streets, furniture and two footbridges contain 4,998. Including the original
-4,962-piece tower, the district contains 91,265 pieces. Street life includes eight
+4,962-piece tower, that initial district contained 91,265 pieces. Street life included eight
 cars, 24 figures, twelve benches and twelve lampposts.
 
 The viewer's native walking engine passed 1,499 explicit waypoints against the
@@ -83,6 +87,53 @@ adds a gravity-supported chassis and uses the existing factory tyre units.
 Figures use genuine **3901** hair. Vehicle/hair collision proxies and unmeasured
 interfaces are described in [the part catalogue](part-catalog.md); neither source
 attribution nor walking diagnostics certify dynamic or calibrated clutch strength.
+
+### Accepted 2026-10-29 revision and verification
+
+The four doorway edits, both atomic bridge relocations and the street replacement
+were accepted through authenticated MCP, preserving their existing assembly IDs
+and unchanged local occurrences. The completed bridges were then renamed through
+MCP. The final accepted revision is
+`2c6d3d3a102ae9294bd86f6ad7f7e3387516f6f116ed4c93913c24b2c450eb31`.
+
+Copper Needle contains 4,585 pieces, White Slab 7,750, Colonnade Exchange 4,628
+and North Arch 7,750. Each skybridge contains 140 pieces; the existing boulevard
+assembly contains 4,964. The eleven newer buildings total 81,337 pieces; site
+assemblies total 5,244. The original 4,962-piece tower retains its existing assembly.
+There remain twelve buildings overall, including that original tower; bridges and
+street details are separate decorations, not additional buildings.
+
+The pinned public 91,543-piece region contains all fifteen district assemblies
+fully resident. Its actual street inventory includes eight each of the genuine
+4211 chassis, 3788 mudguard, 3823 windscreen, 4083 roll bar and 3829c01 steering
+units, thirty-two 4624c01 factory wheel/tyre units and twenty-four 3901 hair pieces.
+The two retired bridge intersections are filled with supported road masonry and
+markings; the links connect the buildings at third-storey height.
+
+Complete-region walking checks passed **546 explicit waypoints**: 126 for each of
+the four modified buildings, sixteen for each two-way skybridge crossing and five
+for each two-way restored-road crossing. The same native viewer engine checked
+four-unit clearance, arrival floors and continuous movement, with no jumping or
+teleporting. Actual local WASM/WebGL2 studio images of the accepted public packet
+confirmed both links, the classic open-cabin cars and genuine hair.
+
+The public CBOR packet SHA-256 is
+`c593a05084fbfa7d6b8e0ee03fe5f5a4238af7551af81584f44c3f1d3b292009`.
+Its derived read-only native walking interchange SHA-256 is
+`112a715b03eb7767de6cbf13ae3647933db5e660298560fc99d3fdb6158ae586`.
+The combined file is diagnostic interchange, not a new editable assembly or a
+combined dynamics/calibrated-strength certificate. Authoritative static acceptance,
+walking and image evidence remain separate.
+
+A five-minute gateway failure during the White Slab edit was reconciled by an
+authoritative read confirming the original state before an explicit retry. Long
+edits subsequently used the same released API on loopback with unchanged deployed
+S3/common-world, policy, signing, pacing and frozen physics settings and a valid
+human-issued delegation. Full affected assemblies were warmed by read-only MCP
+opens before further writes. Actual edits still passed the authoritative API's
+ordinary validation/CAS path, exact readbacks and a final public-region read;
+local JSON changes were not used as shared commits. The temporary API workers were
+stopped after all requests and verification completed.
 
 The standalone monument drivers below live in `scripts/build/`. They generate
 nominal standard-size parts, consult `get_building_techniques`, and preflight through

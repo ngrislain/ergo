@@ -195,6 +195,7 @@ cache data falls back to ordinary discovery. Current revision checks never trust
 an older slot. This survives process restarts without retaining one object for
 every historical revision/query; a genuinely uncached page still needs its first
 index traversal and becomes reusable after successful persistence.
+`X-Ergo-Metadata-Cache` distinguishes `miss`, `memory`, `persistent` and `revalidated`.
 
 The browser starts list loading as soon as configuration is available, in parallel
 with account/head setup, and retains verified list/location bytes in IndexedDB.
@@ -324,6 +325,30 @@ cold metadata refresh took 8.840 seconds and its immediately repeated authorized
 transferred 4,201,683 wire bytes in 17.075 seconds during that workload, completed
 its overlay and displayed without browser errors. These distinguish cold work,
 authorization revalidation and rendering; they are not latency guarantees.
+
+The v0.5.13 live follow-up reproduced a 15-second catalogue abort without active
+geometry edits. Recovery eventually populated all 30 rows without an alert, but
+the first cold browser load still took 87.557 seconds; a subsequent different
+page-limit cache miss took 916 ms. This motivated revision-only catalogue keys
+and persistent catalogue packets, rather than treating retries as a speed fix.
+
+For v0.5.14, building the uncached catalogue through a production-backed loopback
+worker took 304.443 seconds. After that worker was restarted with empty process
+caches, the same 30-item page loaded from its verified persistent packet in
+869 ms. The newly deployed public API's first catalogue request reported
+`X-Ergo-Metadata-Cache: persistent` and took 118 ms. A fresh browser load fetched
+current application assets, populated all 30 rows at 2.223 seconds including
+startup, and showed no global alert or browser error. All these checks used
+accepted revision `53ef52c364aed87a0a974722ab1dc2db7ddf218b5fdfedb27f28c031b18ff8c8`
+without changing geometry. First traversal cost is not eliminated for an actually
+uncached revision; persistence and permission/version revalidation avoid repeating
+it just because a process restarted or a minute elapsed.
+After the district edits and bridge names advanced the world to
+`2c6d3d3a102ae9294bd86f6ad7f7e3387516f6f116ed4c93913c24b2c450eb31`,
+a live list refresh returned HTTP 200 from the memory cache in 79 ms, displayed
+both new bridge names and all 30 global rows, and showed no alert. A preceding
+unchanged-revision refresh returned an authorized HTTP 304 in 112 ms across the
+former minute-bucket boundary.
 
 Source: `crates/server/src/shared/{read_cache,view}.rs`,
 `metadata_cache.rs`, `authoring.rs`, `crates/transactions/src/lib.rs`, and
