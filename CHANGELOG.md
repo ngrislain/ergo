@@ -1,5 +1,13 @@
 # Changelog
 
+## v0.5.14
+
+- Revalidate construction catalogues by accepted revision rather than invalidating
+  them every minute. Legacy fallback author labels are best-effort snapshot labels.
+- Persist small checksum/revision-verified catalogue packets in sixteen bounded
+  discardable slots per world, so a restarted API can reuse a warmed list.
+  Authorization still precedes every conditional response and cache lookup.
+
 ## v0.5.13
 
 - Speed construction discovery with bounded directory lookahead, one legacy-name

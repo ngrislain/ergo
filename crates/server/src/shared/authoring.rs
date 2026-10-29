@@ -594,22 +594,16 @@ pub(super) async fn list(
         .map(str::parse::<OctreePath>)
         .transpose()?;
     let limit = q.limit.unwrap_or(32).clamp(1, 128);
-    // Snapshot identity invalidates geometry/membership metadata immediately;
-    // legacy profile-name lookups are revalidated at most 60 seconds later.
-    let minute = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .unwrap_or_default()
-        .as_secs()
-        / 60;
+    // Catalogue labels belong to this accepted snapshot. Do not expire an
+    // unchanged catalogue every minute and force a cold object-store traversal.
     let etag = format!(
         "W/\"catalog-{}\"",
         ContentId::of(&canonical_cbor(&(
-            "assembly-list-v3",
+            "assembly-list-v4",
             &id,
             snapshot.id(),
             &after,
-            limit,
-            minute
+            limit
         ))?)
     );
     if super::metadata_cache::unchanged(&h, &etag) {
@@ -629,6 +623,21 @@ pub(super) async fn list(
             Some(bytes),
             &etag,
             "memory",
+        ));
+    }
+    if let Some(bytes) =
+        super::metadata_cache::load(&s.shared.store, &id, snapshot.id(), &etag).await
+    {
+        s.shared
+            .read_cache
+            .metadata
+            .lock()
+            .unwrap()
+            .insert(etag.clone(), bytes.clone());
+        return Ok(super::metadata_cache::response(
+            Some(bytes),
+            &etag,
+            "persistent",
         ));
     }
     let page = snapshot
@@ -724,6 +733,7 @@ pub(super) async fn list(
         .lock()
         .unwrap()
         .insert(etag.clone(), bytes.clone());
+    super::metadata_cache::persist(&s.shared.store, &id, snapshot.id(), &etag, &bytes).await;
     Ok(super::metadata_cache::response(Some(bytes), &etag, "miss"))
 }
 

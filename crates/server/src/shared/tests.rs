@@ -414,6 +414,14 @@ async fn discovery_metadata_revalidates_before_storage_walks_and_rechecks_permis
             .unwrap();
         assert!([StatusCode::UNAUTHORIZED, StatusCode::FORBIDDEN].contains(&denied.status()));
     }
+    let cold = SharedWorlds::new(service.store.clone()).unwrap();
+    let (cold_app, cold_headers) = http(&cold);
+    let mut request = Request::get(&paths[0]).body(Body::empty()).unwrap();
+    request.headers_mut().extend(cold_headers);
+    let persistent = cold_app.oneshot(request).await.unwrap();
+    assert_eq!(persistent.status(), StatusCode::OK);
+    assert_eq!(persistent.headers()["x-ergo-metadata-cache"], "persistent");
+    assert_eq!(persistent.headers()["etag"], versions[0]);
     let mut changed = scene(120.);
     changed.name = "Changed metadata".into();
     service

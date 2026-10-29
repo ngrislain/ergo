@@ -171,8 +171,11 @@ from locally cached records after reload, rather than downloading an index again
 
 Assembly pages and location hints return weak ETags and `private, no-cache`.
 Authorization precedes every 304 or 4 MiB process-local metadata-LRU hit. Page keys
-include world, accepted revision, cursor and limit, plus a 60-second bucket for
-legacy current-profile name lookups; locations include assembly and revision.
+include world, accepted revision, cursor and limit; locations include assembly and
+revision. There is no periodic catalogue invalidation for an unchanged snapshot.
+Creation-v2 author labels remain frozen creation metadata. Legacy profile-name
+fallbacks are best-effort labels captured when that snapshot's page is built;
+they can refresh on a new accepted revision or an uncached rebuild, not every minute.
 Membership/geometry changes invalidate immediately through the accepted revision.
 Cold page rows use bounded ordered parallel reads rather than serial per-model
 S3 walks. Live membership is still probed even when a summary count exists, since
@@ -182,6 +185,16 @@ rows without `piece_count` return an unknown size (`—` in the viewer), rather 
 walking up to 5,000 member keys just to populate a navigation label. A normal
 assembly edit records a size summary. Legacy current-profile names are fetched
 once per distinct actor within a page request, not once per construction.
+
+The API also persists catalogue JSON in sixteen hash-selected discardable object
+slots per world. Each page is at most 512 KiB and its JSON envelope at most
+1,052,672 bytes; slot collisions merely miss. Loads verify format, ETag, accepted
+revision, body revision and checksum after authorization. Optional cache reads
+are bounded to 750 ms and writes to one second; malformed, oversized or unavailable
+cache data falls back to ordinary discovery. Current revision checks never trust
+an older slot. This survives process restarts without retaining one object for
+every historical revision/query; a genuinely uncached page still needs its first
+index traversal and becomes reusable after successful persistence.
 
 The browser starts list loading as soon as configuration is available, in parallel
 with account/head setup, and retains verified list/location bytes in IndexedDB.
