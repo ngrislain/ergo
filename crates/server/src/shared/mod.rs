@@ -11,6 +11,7 @@ pub(crate) mod catalog;
 mod events;
 mod group_commit;
 mod joints;
+mod metadata_cache;
 mod model;
 pub(crate) mod pacing;
 mod paged;

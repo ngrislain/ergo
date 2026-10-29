@@ -210,6 +210,7 @@ struct Memory {
 }
 #[derive(Default)]
 pub(super) struct ReadCache {
+    pub metadata: Mutex<super::metadata_cache::MetadataCache>,
     memory: Mutex<Memory>,
     gates: Mutex<HashMap<String, Weak<tokio::sync::Mutex<()>>>>,
     progress: Mutex<HashMap<String, ProgressState>>,

@@ -104,7 +104,7 @@ fn load_page(handle: Handle, reset: bool) {
                     }
                     c.ui.common_more.set(page.next);
                 }
-                Err(error) => c.ui.fail(error),
+                Err(error) => c.ui.error.set(Some(error.to_string())),
             }
         });
     });
@@ -113,9 +113,30 @@ pub(super) fn open(handle: Handle, assembly: String) {
     let Some(id) = with_client(handle, |c| c.ui.common_world.get_untracked()) else {
         return;
     };
-    if with_client(handle, |c| c.ui.busy.get_untracked()) {
+    let Some(request_id) = with_client(handle, |c| {
+        if c.ui.busy.get_untracked() && !c.ui.navigating.get_untracked() {
+            return None;
+        }
+        c.navigation_request += 1;
+        c.region_request += 1;
+        if let Some(controller) = c.region_abort.take() {
+            controller.abort();
+        }
+        if let Some(shared) = &mut c.shared {
+            shared.loading = false;
+            shared.failed_coord = None;
+        }
+        c.ui.navigating.set(true);
+        c.ui.busy.set(true);
+        c.ui.error.set(None);
+        let mut loading = crate::loading::Loading::new(js_sys::Date::now());
+        loading.client_stage("Finding construction", "Checking its current location…");
+        c.ui.loading.set(Some(loading));
+        Some(c.navigation_request)
+    }) else {
         return;
-    }
+    };
+    crate::read_cache::request_persistence();
     let resident = with_client(handle, |c| {
         let Some(shared) = c.shared.as_ref().filter(|s| s.id == id) else {
             return false;
@@ -146,18 +167,26 @@ pub(super) fn open(handle: Handle, assembly: String) {
         renderer.fit(bounds);
         c.ui.message
             .set("Focused resident construction · reused loaded geometry".into());
+        c.ui.busy.set(false);
+        c.ui.navigating.set(false);
+        c.ui.loading.set(None);
         true
     });
     if resident {
         return;
     }
-    with_client(handle, |c| c.ui.busy.set(true));
     spawn_local(async move {
-        match json::<Location>(&format!(
+        let result = json::<Location>(&format!(
             "/api/shared-worlds/{id}/assemblies/{assembly}/location"
         ))
-        .await
-        {
+        .await;
+        if !with_client(handle, |c| {
+            c.navigation_request == request_id
+                && c.ui.common_world.get_untracked().as_deref() == Some(id.as_str())
+        }) {
+            return;
+        }
+        match result {
             Ok(location) => {
                 if location.world_id != id || location.assembly_id != assembly {
                     with_client(handle, |c| c.ui.fail("Wrong shared construction location"));
@@ -166,17 +195,30 @@ pub(super) fn open(handle: Handle, assembly: String) {
                 let position =
                     ergo_world::coordinates::internal(DVec3::from(location.position_world));
                 let coord = BlockCoord::at(position);
-                open_shared(
-                    handle,
-                    SharedLocation {
-                        world: id,
-                        metadata: location.metadata,
-                        coord: Some(coord),
-                    },
-                );
+                if with_client(handle, |c| {
+                    c.shared.as_ref().is_some_and(|shared| shared.id == id)
+                }) {
+                    // Keep the previous scene usable until the replacement has
+                    // actually arrived; selecting another row cancels this read.
+                    with_client(handle, |c| {
+                        c.ui.focused_assembly.set(Some(assembly.clone()))
+                    });
+                    request_shared_region(handle, id.clone(), coord.into(), true);
+                } else {
+                    open_shared(
+                        handle,
+                        SharedLocation {
+                            world: id,
+                            metadata: location.metadata,
+                            coord: Some(coord),
+                        },
+                    );
+                }
                 with_client(handle, |c| {
                     c.ui.focused_assembly.set(Some(assembly));
-                    if let Some(renderer) = &mut c.renderer {
+                    if !c.ready
+                        && let Some(renderer) = &mut c.renderer
+                    {
                         renderer.set_navigation(NavigationMode::Orbit);
                         renderer.teleport(position);
                     }

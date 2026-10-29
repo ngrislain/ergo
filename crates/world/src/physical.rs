@@ -127,6 +127,8 @@ pub fn mass_kg(part: &str) -> Result<f64> {
         "3032.dat" => 3.30,
         "3035.dat" => 4.70,
         "41539.dat" => 9.40,
+        // BrickLink Plate 6 x 24, reviewed 2026-10-29.
+        "3026.dat" => 19.43,
         "3070b.dat" => 0.16,
         "3069b.dat" => 0.26,
         "3068b.dat" => 0.49,

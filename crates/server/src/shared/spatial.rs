@@ -218,6 +218,24 @@ impl Working {
         bounds: Aabb,
         excluded: &BTreeSet<ContentId>,
     ) -> SharedResult<BTreeSet<ContentId>> {
+        self.query_spatial_neighbors(bounds, excluded, false).await
+    }
+    pub(super) async fn has_spatial_neighbor_excluding(
+        &mut self,
+        bounds: Aabb,
+        excluded: &BTreeSet<ContentId>,
+    ) -> SharedResult<bool> {
+        Ok(!self
+            .query_spatial_neighbors(bounds, excluded, true)
+            .await?
+            .is_empty())
+    }
+    async fn query_spatial_neighbors(
+        &mut self,
+        bounds: Aabb,
+        excluded: &BTreeSet<ContentId>,
+        first_only: bool,
+    ) -> SharedResult<BTreeSet<ContentId>> {
         let mut result = BTreeSet::new();
         let (query_lo, query_hi) = public(bounds);
         for region in address::cover(bounds)? {
@@ -275,6 +293,11 @@ impl Working {
                                     && self.brick(&piece, 1).await?.bounds.intersects(bounds)
                                 {
                                     result.insert(r.piece.clone());
+                                    // Read-only guards need one external witness,
+                                    // not every building inside street bounds.
+                                    if first_only {
+                                        return Ok(result);
+                                    }
                                 }
                             }
                             cursor = refs.next;

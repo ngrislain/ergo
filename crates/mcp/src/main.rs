@@ -1,5 +1,6 @@
 //! Thin stdio/REST bridge. Rendering and all time-integrated simulations execute
 //! in the dedicated local browser WASM client, never in this process.
+mod models;
 mod publish;
 mod shared;
 use anyhow::{Context, Result, ensure};
@@ -55,6 +56,11 @@ struct Bridge {
 type HttpError = (StatusCode, Json<Value>);
 fn tool_schemas(common: bool) -> Value {
     let mut value = ergo_world::mcp::tools();
+    for tool in value["tools"].as_array_mut().unwrap() {
+        if tool["name"] == "get_lego_models" {
+            tool["annotations"]["openWorldHint"] = json!(true);
+        }
+    }
     if common {
         for tool in value["tools"].as_array_mut().unwrap() {
             if tool["name"] == "publish_construction" {
@@ -294,11 +300,7 @@ fn normalize(scene: &mut WorldExport, measurements: &ConnectionMeasurements) -> 
             })
             .reduce(ergo_world::Aabb::union)
             .unwrap();
-        mesh.body_bounds = if ergo_world::geometry::part_spec(part).is_some() {
-            ergo_world::geometry::fallback_mesh(part).body_bounds
-        } else {
-            mesh.bounds
-        };
+        mesh.body_bounds = ergo_world::geometry::nominal_body_bounds(part).unwrap_or(mesh.bounds);
         mesh.physical = measurements
             .parts
             .iter()
@@ -318,6 +320,40 @@ fn normalize(scene: &mut WorldExport, measurements: &ConnectionMeasurements) -> 
         ergo_world::partition(&scene.bricks)?;
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod normalization_tests {
+    use super::*;
+    #[test]
+    fn reopening_catalogue_specialties_preserves_nominal_bodies_not_visual_studs() {
+        // Synthetic meshes isolate cache normalization; no source geometry or
+        // physical acceptance is claimed by this fixture.
+        for part in ["60594", "3901", "3829c01"] {
+            let mut demo = ergo_world::demo::Demo::new();
+            demo.add(part, 14, 0., 0., 0.);
+            let mut scene = WorldExport {
+                schema: ergo_world::SCHEMA_VERSION,
+                name: "Normalization fixture".into(),
+                geo: Default::default(),
+                bricks: demo.bricks,
+                meshes: demo.meshes,
+                joints: vec![],
+                fixed_bricks: vec![],
+                ground: vec![],
+                groups: vec![],
+                model: None,
+            };
+            normalize(&mut scene, &Default::default()).unwrap();
+            let id = format!("{part}.dat");
+            let expected = ergo_world::geometry::nominal_body_bounds(&id).unwrap();
+            assert_eq!(scene.meshes[&id].body_bounds.min, expected.min);
+            assert_eq!(scene.meshes[&id].body_bounds.max, expected.max);
+            let positioned =
+                expected.transformed(scene.bricks[0].transform, scene.bricks[0].position);
+            assert_eq!(scene.bricks[0].bounds.max, positioned.max);
+        }
+    }
 }
 
 struct Browser(Option<Child>);
@@ -650,6 +686,12 @@ fn main() -> Result<()> {
                             &tool["inputSchema"],
                             "arguments",
                         )?;
+                        if name == "get_lego_models" {
+                            let value = runtime.block_on(models::call(arguments.clone()))?;
+                            return Ok(
+                                json!({"content":[{"type":"text","text":value.to_string()}],"structuredContent":value,"isError":false}),
+                            );
+                        }
                         if name == "open_shared_construction" {
                             let publisher = publisher
                                 .as_ref()

@@ -38,9 +38,9 @@ through the entrance. Its start/end positions use the district foundation and
 pyramid/courtyard entrance depths rather than the original monument's wider base.
 
 `--site --through finished --publish` uses the same journalled MCP path for a
-separately named boulevard/furniture assembly and two footbridges. Those are
+separately named boulevard/furniture assembly and two bridge assemblies. Those are
 decorations, not extra buildings. Road/curb masks reserve existing foundations,
-one-stud modular joints and bridge footprints. The furniture recipe uses catalogue
+and one-stud modular joints. The furniture recipe uses catalogue
 wheel/tyre units and genuine factory minifigure components; vehicle displays do
 not claim rolling/steering or calibrated axle retention. The recorded `decorations`
 and `buildings` sections distinguish actual accepted work from planned stages.
@@ -50,10 +50,39 @@ The remaining `roads-01`… stages exclude that same instance and preserve the
 original construction order, with at most 600 expanded leaves per chunk (or a
 single indivisible reusable instance). Ground masonry precedes the paving it
 supports. Chunking adds no extra bricks or separate street assemblies.
-`district_streets.walking_route(spec)` describes a continuous two-way crossing of
-either bridge for `check_walk`, including both stair flights. Local prototype
-walking evidence does not establish that those assemblies have been published or
-that the final combined district route has been verified.
+The original two stair-flight crossings remain available as
+`district_streets.legacy_bridge()` and `legacy_walking_route(spec)` for interpreting
+the 2026-10-28 receipts. Current `district_streets.walking_route(spec)` delegates
+to the building-link route described below. Local prototype walking evidence does
+not establish that a revision has been published or that the final combined
+district route has been verified.
+
+### Building-link and street-detail revisions
+
+`scripts/build/district_skybridges.py` defines two third-storey links: Copper
+Needle–White Slab and Colonnade–North Arch. Six-stud-wide, two-layer decks use genuine
+6×24 plates with staggered upper seams, standard guardrails and split piers on
+the pavements. Their routes traverse both complete endpoint buildings and return
+without stairs in the traffic lanes.
+
+`scripts/build/district_revisions.py` derives bounded atomic replacements from
+complete authoritative construction caches. Portal edits preserve the surrounding
+walls and add supported lintels; street edits replace exactly eight old cars and
+24 plate caps, and restore road surfaces after the old stair bridges are removed.
+Unchanged occurrences retain their IDs. A fresh district build must also apply
+the endpoint portal edits before its links are usable; the base building stages
+do not create these openings automatically. Replacement files are proposals, not
+shared commits: use authenticated MCP `place_submodel(replace_ids=..., model=...)`
+and retain accepted receipts/readbacks before recording a revision as live.
+
+The cars adapt LEGO **6505 Fire Chief's Car**, modeled by **Robert Paciorek
+[bercik]** in the [official LDraw OMR](https://library.ldraw.org/omr/sets/610),
+under its dual CCAL 2.0 / BSD-MIT license. Genuine chassis, mudguards, windscreen,
+roll bar and steering retain the classic open-cabin silhouette; the derivative
+adds a gravity-supported chassis and uses the existing factory tyre units.
+Figures use genuine **3901** hair. Vehicle/hair collision proxies and unmeasured
+interfaces are described in [the part catalogue](part-catalog.md); neither source
+attribution nor walking diagnostics certify dynamic or calibrated clutch strength.
 
 The standalone monument drivers below live in `scripts/build/`. They generate
 nominal standard-size parts, consult `get_building_techniques`, and preflight through

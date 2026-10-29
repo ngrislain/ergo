@@ -79,6 +79,11 @@ revision and budgets, when all its occupied blocks remain inside the new region
 and every newly included cell has no allocated-block directory entry. Otherwise
 the normal read runs. Allocated-but-empty cells conservatively prevent reuse.
 The hint never authorizes missing geometry or avoids the current permission check.
+If no useful hint is supplied, the server probes the 27 allocated-block directory
+entries and tries one deterministic nearby center, computed from their coordinate
+extrema. The same empty-added-cell / retained-occupied-cell proof must pass before
+reuse. Clicking a construction whose first piece crosses a cell boundary can
+therefore find an already-warmed packet instead of starting another per-piece walk.
 
 **Current read permission and accepted-history membership are checked before
 every cache hit and HTTP 304.** Weak ETags vary with revision, region, format and
@@ -129,16 +134,54 @@ key canonicalization are unchanged.
 
 ## Local construction, index and specification caches
 
-The viewer's origin-local CacheStorage `ergo-read-packets-v1` persists decoded
-CBOR construction packets and their block/assembly indexes: at most 64 MiB per
-entry, 128 MiB total, with oldest-entry eviction. SHA-256 and byte-length checks
-turn corrupted entries into misses. Camera-only cache hints are removed from
-local keys; accepted revision and region remain. Every use still sends a fresh
-conditional request: bytes are displayed only after an authorized HTTP 304, never
-as an offline/error fallback. Read denial evicts that entry; logout clears origin
-storage. Cache availability/quota failures do not prevent ordinary network reads.
+The viewer's origin-local IndexedDB **`ergo-local-data-v2`** persists construction
+CBOR/index packets and revalidatable discovery/location/part JSON. Its `entries`
+store maps normalized request URLs to ETag, SHA-256, byte length and last-use time;
+`blobs` stores immutable `Blob` data once per content hash. Identical packets for
+several camera cells therefore share one copy rather than duplicating 35 MB each.
+Camera-only hints are removed and query parameters sorted; accepted revision and
+region remain in geometry keys.
+
+Entries have no age-based expiry: reads update last-use metadata, and pressure
+evicts least-recently-used URLs and only then unreferenced blobs. The data budget
+is 10% of the reported origin quota, clamped to **64–512 MiB**, at most **64 MiB per
+entry / 1,024 URLs**. Active region leases are refreshed every 30 seconds and last
+75 seconds, protecting data in active tabs. If protected data leaves insufficient
+space, an optional write is skipped rather than evicting active data. These are
+logical cache limits; browser storage eviction and actual quota remain browser-owned.
+Construction selection makes a best-effort persistent-storage request.
+
+SHA-256 verification uses native asynchronous Web Crypto, rather than hashing
+large buffers synchronously in WASM. Corruption invalidates all aliases of the
+bad blob and becomes a network miss. Cache writes run **after decoding in the
+background**, outside the display completion path; bounded database operations,
+quota errors and unavailable storage never keep the loading overlay waiting.
+Old `ergo-read-packets-v1` CacheStorage entries migrate lazily after verification:
+an old entry is removed only after its replacement commits. No blanket cache or
+local-storage reset is required.
+
+Every use still sends a fresh conditional request: bytes are displayed only after
+an authorized HTTP 304, never as an offline/error fallback. Read denial evicts that
+URL; logout suspends pending writes and clears origin storage. Cache failures do
+not prevent ordinary network reads.
 The renderer retains its local spatial octree while resident and rebuilds it
 from locally cached records after reload, rather than downloading an index again.
+
+### Construction-list metadata
+
+Assembly pages and location hints return weak ETags and `private, no-cache`.
+Authorization precedes every 304 or 4 MiB process-local metadata-LRU hit. Page keys
+include world, accepted revision, cursor and limit, plus a 60-second bucket for
+legacy current-profile name lookups; locations include assembly and revision.
+Membership/geometry changes invalidate immediately through the accepted revision.
+Cold page rows use bounded ordered parallel reads rather than serial per-model
+S3 walks. Live membership is still probed even when a summary count exists, since
+individual deletions can leave a rule header behind.
+
+The browser starts list loading as soon as configuration is available, in parallel
+with account/head setup, and retains verified list/location bytes in IndexedDB.
+Cached JSON is revalidated before use. A corrupt typed cached response gets one
+unconditional **read** recovery; no mutation retry is introduced.
 
 Brick descriptions and decoded meshes have a shared process-local 64 MiB LRU with
 60-second description revalidation. Only sourced assets with descriptions are
@@ -146,6 +189,12 @@ admitted; temporary proxy/failure responses are not. Public part HTTP responses
 use weak description/content-version ETags and a 60-second browser cache lifetime;
 uncached fallbacks use `no-store`. Native filesystem part caches remain supported.
 These caches never replace server-owned physical normalization or validation.
+
+Complete authoring reads retain canonical member/identity and byte-budget checks.
+Their conservative external-dependency guard stops after its first verified
+external spatial witness instead of materializing every nearby building inside a
+street assembly's broad bounds. A negative result still traverses the full query
+and checks remote explicit dependencies; edit validation is unchanged.
 
 ## Observe and measure
 
@@ -163,6 +212,12 @@ responses, and delayed server status cannot replace download/display stages.
 Refreshes keep existing geometry usable. Failed polling does not abort or retry
 the main read. Errors and completed loads remove the progress panel. Reduced motion
 and native accessible progress semantics are retained.
+Read-only navigation can be superseded by another construction selection: the
+previous scene remains visible while a replacement loads, old fetches are aborted,
+and generation/request guards reject late head/location/body callbacks. Authoring
+mutations remain exclusive. Discovery reads have a 15-second deadline and region
+reads a 180-second deadline; a failed region is not immediately retried in a loop.
+Select it again or choose another construction to recover without reloading the app.
 
 ### Operator warm-up
 
@@ -232,6 +287,7 @@ costs; cache-only changes do not eliminate the cold canonical-reference walk.
 The packed-page path described above addresses that walk for backfilled blocks.
 
 Source: `crates/server/src/shared/{read_cache,view}.rs`,
-`crates/transactions/src/lib.rs`, and `crates/viewer/src/{common,app}.rs`.
+`metadata_cache.rs`, `authoring.rs`, `crates/transactions/src/lib.rs`, and
+`crates/viewer/src/{common,app,read_cache}.rs` / `browser_cache.js`.
 Increment the read-packet format/key version when changing cache semantics or
 incompatible transport normalization.

@@ -7,7 +7,7 @@ shared Sandbox. The bridge never grants itself acceptance or direct agent S3 acc
 ## Install and configure
 
 ```sh
-npm install --global --ignore-scripts 'https://github.com/ngrislain/ergo/releases/download/v0.5.11/ngrislain-ergo-mcp-0.5.11.tgz'
+npm install --global --ignore-scripts 'https://github.com/ngrislain/ergo/releases/download/v0.5.12/ngrislain-ergo-mcp-0.5.12.tgz'
 ergo-mcp --login --publish-url https://ergosandbox.com
 ```
 
@@ -42,6 +42,11 @@ expire and are origin/purpose-bound. They are not S3 credentials.
 
 ## Position and current state
 
+- `get_lego_models` searches/retrieves similar official LDraw or configured custom
+  models before new design work, returning sources, licences, thumbnails, part
+  inventories and reusable documents. Rebrickable API metadata and BrickLink
+  catalogue references are explicitly distinguished from spatial model data.
+  See [model-library workflow](model-library.md).
 - `get_user_position` reads the caller's private last S3 camera/target and returns
   snapped integer-horizontal `ground_position_world` plus native `model_transform`
   for new standing models. Saved camera/target coordinates remain continuous.
@@ -50,7 +55,8 @@ expire and are origin/purpose-bound. They are not S3 credentials.
 - `get_edit_allowance` returns pacing capacity/refill and the authoring piece limit;
   god mode reports `unlimited:true`, `god_mode:true`, `authoring_piece_limit:null`.
 - MCP initialization, `get_catalog` discovery and its returned `building_guidance`
-  share one part-choice policy: use minifigure scale by default and inspect available model-library examples first,
+  share one part-choice policy: use minifigure scale by default and call
+  `get_lego_models` to retrieve/inspect similar official or custom references first,
   follow their demonstrated part choices/construction patterns and retain applicable
   source attribution; prefer common standard studded bricks over plates, normally
   upright with their studs facing up (+Z). Reserve sideways or inverted orientations
@@ -103,6 +109,16 @@ indices. New models can pass the saved `model_transform` to `place_submodel`.
 Existing construction edits preserve their absolute accepted positions.
 
 ## Native construction and editing
+
+`place_submodel` optionally accepts `replace_ids`: remove those local piece IDs
+and place the replacement in **one WASM update / one accepted shared edit**.
+Unchanged pieces retain their IDs; new IDs exceed the previous high-water mark.
+Incident joints, anchors and group references are removed consistently. Invalid
+overlap/geometry leaves the original scene intact. Replacements use the exact
+supplied catalogue poses rather than snapping a hair/socket datum to a new
+overall bounding-box corner; authoritative ground/support checks still apply.
+This supports replacing cars/hair or wall sections without publishing an
+unsupported intermediate state. Ordinary additions retain coherent snapping.
 
 Repository authoring recipes use the shared `scripts/mcp_client.py` stdio client;
 demo, monument and district drivers share its request/error/close handling.

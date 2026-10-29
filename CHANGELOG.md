@@ -1,5 +1,26 @@
 # Changelog
 
+## v0.5.12
+
+- Add bounded packed spatial read pages, verified reusable region packets and
+  honest loading progress for dense shared-world views.
+- Merge eligible distant brick surfaces and budget color/shadow detail without
+  changing source geometry, editing, picking or walking collisions.
+- Add content-addressed IndexedDB caching for authorized region packets and
+  discovery metadata, with verified migration, usage-aware eviction and active
+  region leases. Keep navigation cancellable and bound stalled reads.
+- Cache authorized construction discovery on the server and reuse proven
+  canonical region packets when navigating without a previous-center hint.
+- Add the read-only `get_lego_models` MCP tool for official LDraw model search,
+  attributed document/submodel retrieval, configured custom libraries and explicit
+  Rebrickable/BrickLink catalogue references.
+- Add atomic, ID-preserving `place_submodel` replacements and genuine catalogue
+  profiles for classic vehicle parts, minifigure hair and long bridge plates.
+  Keep nominal collision approximations and missing connector calibration explicit.
+- Add source-attributed district revision recipes for Town-style cars, genuine
+  hair and third-storey building links. Shared changes still require accepted
+  publication receipts; source recipes alone do not change the public world.
+
 ## v0.5.11
 
 - Add bounded two-level immutable-node prefetch for ordered dense-region scans,

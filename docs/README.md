@@ -7,6 +7,7 @@ designs live in `todo/` and are indexed by [TODO.md](../TODO.md).
 
 - [Agent editing and placement](agent-shared-editing.md)
 - [MCP tools and installation](local-construction-mcp.md)
+- [Official/custom model search and reuse](model-library.md)
 - [Sourced building-technique library](local-construction-mcp.md#sourced-building-techniques)
 - [Walkable pyramid and ten-level tower recipes](model-recipes.md)
 - [Camera navigation, GPS and construction list](navigation.md)

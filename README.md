@@ -29,8 +29,10 @@ without publishing or changing constructions.
 The loading overlay shows the current stage, elapsed time and known-total stage
 percentages; discovery reports counts while its final brick total is still unknown.
 Packed spatial pages bulk-load block metadata for local traversal. The browser
-keeps checksum-verified construction/index packets locally and revalidates access
-and versions before reuse; brick specifications and meshes are cached separately.
+keeps checksum-verified construction/index and discovery data in an IndexedDB LRU,
+deduplicates identical content, protects active data and revalidates access/version
+before reuse. Cache writes do not delay display; stale or stalled navigation can
+be replaced by another construction selection.
 The navigator's [Render detail control](docs/3d-display-indexing.md#scene-wide-budget-and-quality-controls)
 adds scene-wide distance LOD with soft triangle targets and independent shadow
 detail; full geometry remains available for editing, picking and collisions.
@@ -47,7 +49,7 @@ The prebuilt bundle includes native binaries and WASM assets; consumers need
 Node.js 20+ and Chrome/Chromium, not Rust.
 
 ```sh
-npm install --global --ignore-scripts 'https://github.com/ngrislain/ergo/releases/download/v0.5.11/ngrislain-ergo-mcp-0.5.11.tgz'
+npm install --global --ignore-scripts 'https://github.com/ngrislain/ergo/releases/download/v0.5.12/ngrislain-ergo-mcp-0.5.12.tgz'
 ergo-mcp --login --publish-url https://ergosandbox.com
 ```
 
@@ -71,6 +73,9 @@ Call `get_building_techniques` to propose sourced wall, junction, opening, floor
 and roof patterns before building. Placements snap complete models coherently to
 the stud/plate grid. The server independently checks ground registration and
 proper metric isometries (translation + rotation, no scale/shear/reflection).
+Before a new design, [search/retrieve similar models](docs/model-library.md) with
+`get_lego_models`, reuse or adapt useful official/custom references, and retain
+their source/author/licence attribution.
 
 See [agent workflows](docs/agent-shared-editing.md), [MCP tools](docs/local-construction-mcp.md)
 and [distribution](docs/distribution.md).

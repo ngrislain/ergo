@@ -182,6 +182,13 @@ impl Renderer {
     pub fn changed(&mut self) {
         self.dirty = true;
     }
+    /// Attribute/topology edits must invalidate derived surfaces as well as the
+    /// frame; camera-only invalidation deliberately retains those caches.
+    pub fn scene_changed(&mut self) {
+        self.planner.retain(&self.bricks);
+        self.gpu.invalidate_surfaces();
+        self.dirty = true;
+    }
     pub fn set_policy(&mut self, policy: RenderPolicy) {
         self.policy = policy;
         self.planner.reset_detail();

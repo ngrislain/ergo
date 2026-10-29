@@ -3,11 +3,12 @@
 There is one **public Ergo Sandbox**. Anyone can view it; signed-in users can
 edit it, subject to pacing and physical validation. Current MCP clients commit
 accepted edits to that same S3-backed world automatically. A working file is a
-cache, not a private world. Use MCP **v0.5.11** for sourced building techniques,
+cache, not a private world. Use MCP **v0.5.12** for sourced model references and building techniques,
 coherent grid snapping, proper-isometry checks, per-piece stability diagnostics,
 explicit estimated connector tests and long shared operations.
 
-Inspect available model-library examples first and follow their demonstrated
+Call `get_lego_models` to search and retrieve similar official/custom examples
+first; inspect their poses, parts and source attribution, and follow their demonstrated
 part choices and construction patterns, adapting them to the requested shape and
 retaining source attribution where applicable. Prefer common standard bricks with studs over plates. Use plates sparingly when
 thin layers are needed, and smooth stud-less tiles for deliberate finishing

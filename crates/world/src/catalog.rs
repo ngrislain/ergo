@@ -34,6 +34,7 @@ pub const PARTS: &[(&str, &str)] = &[
     ("3032.dat", "Plate 4 × 6"),
     ("3035.dat", "Plate 4 × 8"),
     ("41539.dat", "Plate 8 × 8"),
+    ("3026.dat", "Plate 6 × 24"),
     ("3070b.dat", "Tile 1 × 1"),
     ("3069b.dat", "Tile 1 × 2"),
     ("3068b.dat", "Tile 2 × 2"),
@@ -55,6 +56,12 @@ pub const PARTS: &[(&str, &str)] = &[
     ("3626a.dat", "Minifigure head, solid stud"),
     ("3626ap01.dat", "Minifigure head, classic grin"),
     ("4624c01.dat", "Wheel rim with tyre assembly"),
+    ("3901.dat", "Minifigure hair, male smooth"),
+    ("4211.dat", "Classic vehicle base 4 × 5"),
+    ("3788.dat", "Studded vehicle mudguard 2 × 4"),
+    ("3823.dat", "Windscreen 2 × 4 × 2"),
+    ("4083.dat", "Open-stud roll bar 1 × 4 × 2"),
+    ("3829c01.dat", "Steering stand with black wheel"),
 ];
 
 pub const COLORS: &[(u32, &str)] = &[

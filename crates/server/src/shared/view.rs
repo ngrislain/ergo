@@ -168,11 +168,18 @@ pub(super) async fn view(
         .zip(query.from_z)
         .map(|((x, y), z)| [x, y, z]);
     progress.report("nearby cache lookup");
-    let reused = if let Some(previous) = previous {
+    let mut reused = if let Some(previous) = previous {
         reuse_neighbor(&s.shared, &snapshot, &key, previous).await
     } else {
         None
     };
+    if reused.is_none()
+        && let Some(preferred) = preferred_cached_center(&snapshot, key.coord).await?
+    {
+        if preferred != key.coord && Some(preferred) != previous {
+            reused = reuse_neighbor(&s.shared, &snapshot, &key, preferred).await;
+        }
+    }
     let source = if reused.is_some() { "neighbor" } else { "miss" };
     let value = if let Some(value) = reused {
         value
@@ -221,6 +228,44 @@ fn with_work_timing(
 
 fn in_region(block: [i64; 3], centre: [i64; 3]) -> bool {
     (0..3).all(|axis| (i128::from(block[axis]) - i128::from(centre[axis])).abs() <= 1)
+}
+
+/// A construction's first member often lies across a cell boundary from its
+/// warmed region. Probe only 27 directory predicates, then try one deterministic
+/// nearby cache key; never start a per-piece walk just to discover that alias.
+async fn preferred_cached_center(
+    snapshot: &Snapshot,
+    centre: [i64; 3],
+) -> SharedResult<Option<[i64; 3]>> {
+    let mut cells = Vec::new();
+    for x in -1..=1 {
+        for y in -1..=1 {
+            for z in -1..=1 {
+                cells.push([centre[0] + x, centre[1] + y, centre[2] + z]);
+            }
+        }
+    }
+    let occupied: Vec<_> = futures::stream::iter(cells)
+        .map(|coord| async move {
+            Ok::<_, SharedError>(
+                snapshot
+                    .value_id(&spatial::directory(coord.into()))
+                    .await?
+                    .map(|_| coord),
+            )
+        })
+        .buffered(READ_CONCURRENCY)
+        .try_collect()
+        .await?;
+    let occupied: Vec<_> = occupied.into_iter().flatten().collect();
+    if occupied.is_empty() {
+        return Ok(None);
+    }
+    Ok(Some(std::array::from_fn(|axis| {
+        let min = occupied.iter().map(|coord| coord[axis]).min().unwrap();
+        let max = occupied.iter().map(|coord| coord[axis]).max().unwrap();
+        (min + max) / 2
+    })))
 }
 
 /// Reuse geometry only when the removed cells were empty and the added cells

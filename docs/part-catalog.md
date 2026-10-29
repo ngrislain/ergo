@@ -21,7 +21,7 @@ The resolver verifies hash, schema and part identity when reading cached geometr
 
 ## Resolution
 
-The catalog recommends 31 standard brick/plate/tile geometries, 17 source-only
+The catalog recommends 32 standard brick/plate/tile geometries, 23 source-only
 architectural/figure/vehicle entries and 20 opaque colors. It exposes the sourced
 complete color palette and resolves other
 part IDs when actual geometry is available. These recommendations help minimize
@@ -38,6 +38,10 @@ For solid monument interiors, real standard bricks 4201 (8×8, 16.30g) and 4204
 and catalogue weights are sourced from BrickLink
 [4201](https://www.bricklink.com/v2/catalog/catalogitem.page?P=4201) and
 [4204](https://www.bricklink.com/v2/catalog/catalogitem.page?P=4204).
+
+Long pedestrian spans can use genuine **3026 Plate 6×24**, 19.43g, rather than
+scaled smaller plates. Its nominal dimensions and catalogue mass are sourced from
+[BrickLink 3026](https://www.bricklink.com/v2/catalog/catalogitem.page?P=3026).
 
 Resolution is cache-first. An import adapter can read a configured local source
 library or retrieve a missing source, bake it into Ergo geometry, and store its
@@ -103,6 +107,21 @@ fence 3633, round bricks 3062b/3941/87081, lamppost 2039, round plate 4073, dish
 4740, centre-stud plate 87580, minifigure units 970c00/76382p00/3626a/3626ap01,
 and wheel/tyre unit 4624c01. Their original source geometry and credits remain
 required; a failed resolution never substitutes a generic rectangular brick.
+
+Reviewed additions on 2026-10-29 support genuine **3901 hair** (0.30g) and classic
+vehicle parts **4211 base** (2.71g), **3788 mudguard** (1.41g), **3823 windscreen**
+(2.19g), **4083 roll bar** (0.74g) and **3829c01 steering unit** (0.60g). Each profile
+links its individual BrickLink item record; local datums follow official LDraw
+geometry. These are source-only parts, not fabricated box assets.
+
+Hair's nominal collider is its upper load-bearing cap; strands wrapping the head
+remain visual. Vehicle shells use their lower structural floors as bearing
+cores, excluding wheel arches/passenger cavities from filled collision boxes.
+The steering factory unit uses its baseplate core; the stem/wheel remain rendered.
+Windscreen/roll-bar boxes remain nominal hollow/wedge proxies, not exact solids.
+No axle retention, steering articulation, exact hollow contact or new calibrated
+connector strength is claimed. Agents should use demonstrated model datums and
+avoid loading empty apertures. Source geometry and full catalogue mass remain.
 
 Bounds use catalogue dimensions and the official LDraw local datum, including
 the slope's offset footprint. `get_catalog(part=...)` returns both render `bounds`

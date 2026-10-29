@@ -5,7 +5,7 @@
 The current prebuilt client is the GitHub Release tarball:
 
 ```sh
-npm install --global --ignore-scripts 'https://github.com/ngrislain/ergo/releases/download/v0.5.11/ngrislain-ergo-mcp-0.5.11.tgz'
+npm install --global --ignore-scripts 'https://github.com/ngrislain/ergo/releases/download/v0.5.12/ngrislain-ergo-mcp-0.5.12.tgz'
 ergo-mcp --version
 ```
 

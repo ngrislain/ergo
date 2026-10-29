@@ -13,6 +13,8 @@ cargo build --locked -p ergo-server -p ergo-mcp
 python3 scripts/check-docs.py
 python3 scripts/test-distribution.py
 python3 scripts/test-mcp.py
+python3 scripts/test-model-library.py
+python3 scripts/test-mcp-atomic-replace.py
 ```
 
 With Playwright/Chrome/Pillow installed:
@@ -20,6 +22,7 @@ With Playwright/Chrome/Pillow installed:
 ```sh
 python3 scripts/test-common-world.py
 python3 scripts/test-dense-world.py
+python3 scripts/test-web-isolated.py --script scripts/test-browser-cache.py
 python3 scripts/test-web-isolated.py --script scripts/test-headlamp.py
 npm ci --prefix site --ignore-scripts
 npm run build --prefix site
@@ -51,7 +54,7 @@ prove an asset or image was published.
 
 ```sh
 gh run list --repo ngrislain/ergo --workflow release.yml --limit 5
-gh release view v0.5.11 --repo ngrislain/ergo
+gh release view v0.5.12 --repo ngrislain/ergo
 ```
 
 Verify the public tarball version/checksum, consumer install and actual MCP smoke
@@ -62,7 +65,7 @@ After publication, set the public Pages variable and rebuild:
 
 ```sh
 gh variable set ERGO_MCP_PACKAGE --repo ngrislain/ergo \
-  --body 'https://github.com/ngrislain/ergo/releases/download/v0.5.11/ngrislain-ergo-mcp-0.5.11.tgz'
+  --body 'https://github.com/ngrislain/ergo/releases/download/v0.5.12/ngrislain-ergo-mcp-0.5.12.tgz'
 gh workflow run pages.yml --repo ngrislain/ergo --ref main
 ```
 

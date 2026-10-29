@@ -77,6 +77,16 @@ def main():
                                        {'base': head['revision'], 'scene': scene})
                     head['revision'] = accepted['accepted']['revision']
                     names.append(accepted['assembly'])
+                remote_scene=json.loads(json.dumps(scene))
+                remote_scene['name']='Distant loading cancellation fixture'
+                remote_scene['bricks']=remote_scene['bricks'][:1]
+                brick=remote_scene['bricks'][0]
+                delta=4096-brick['bounds']['min'][0]
+                brick['position'][0]+=delta
+                for field in ['bounds','render_bounds']:
+                    for edge in ['min','max']:brick[field][edge][0]+=delta
+                remote=request(base+f"/api/shared-worlds/{head['id']}/assemblies",{'base':head['revision'],'scene':remote_scene})
+                head['revision']=remote['accepted']['revision']
                 # Reopen the same disposable accepted namespace as the one
                 # common world, so the browser follows the production list path.
                 server.terminate()
@@ -156,15 +166,53 @@ def main():
                         page.reload(wait_until='domcontentloaded')
                         expect(page.locator('.status-message')).to_contain_text('Shared-world region loaded',timeout=60000)
                         assert any('/view?' in url and status==304 for url,status in responses),responses
+                        # A slow remote read must retain this scene and remain
+                        # cancellable by another construction selection.
+                        remote_reads=[]
+                        def hold_remote(route):
+                            if 'status=true' in route.request.url:route.fulfill(json={'revision':head['revision'],'phase':'working'})
+                            else:remote_reads.append(route)
+                        page.route('**/view?x=4&*',hold_remote)
+                        page.locator(f'[data-assembly-id="{remote["assembly"]}"]').click()
+                        expect(page.locator('.loading-panel')).to_be_visible(timeout=15000)
+                        page.wait_for_timeout(300)
+                        expect(page.locator('.status-bar')).to_contain_text(re.compile(r'6,?000 bricks'))
+                        expect(page.locator(f'[data-assembly-id="{names[0]}"]')).to_be_enabled()
+                        page.locator(f'[data-assembly-id="{names[0]}"]').click()
+                        expect(page.locator('.status-message')).to_contain_text('Focused resident construction')
+                        expect(page.locator('.loading-panel')).to_be_hidden()
+                        for route in remote_reads:
+                            try:route.abort()
+                            except Exception:pass
+                        page.unroute('**/view?x=4&*',hold_remote)
+                        page.evaluate('''() => {const original=window.setTimeout.bind(window);window.__shortReadTimeout=true;window.setTimeout=(callback,delay,...args)=>original(callback,window.__shortReadTimeout&&delay===15000?80:delay,...args);}''')
+                        stalled_locations=[]
+                        def hold_location(route):stalled_locations.append(route)
+                        pattern=f'**/assemblies/{remote["assembly"]}/location'
+                        page.route(pattern,hold_location)
+                        page.locator(f'[data-assembly-id="{remote["assembly"]}"]').click()
+                        expect(page.get_by_role('alert')).to_contain_text('timed out',timeout=5000)
+                        expect(page.locator('.loading-panel')).to_be_hidden()
+                        page.evaluate('window.__shortReadTimeout=false')
+                        page.locator(f'[data-assembly-id="{names[0]}"]').click()
+                        expect(page.locator('.status-message')).to_contain_text('Focused resident construction')
+                        for route in stalled_locations:
+                            try:route.abort()
+                            except Exception:pass
+                        page.unroute(pattern,hold_location)
                         # A corrupted local packet must become a cache miss.
                         assert page.evaluate('''async () => {
-                          const cache=await caches.open('ergo-read-packets-v1');
-                          const keys=await cache.keys();
-                          const key=keys.find(key=>key.url.includes('x=0&y=0&z=0'));
-                          if(!key)return false;
-                          const response=await cache.match(key);
-                          const bytes=new Uint8Array(await response.arrayBuffer());bytes[0]^=1;
-                          await cache.put(key,new Response(bytes,{headers:response.headers}));return true;
+                          const req=request=>new Promise((resolve,reject)=>{request.onsuccess=()=>resolve(request.result);request.onerror=()=>reject(request.error);});
+                          const db=await req(indexedDB.open('ergo-local-data-v2',1));
+                          const read=db.transaction(['entries','blobs'],'readonly');
+                          const entries=await req(read.objectStore('entries').getAll());
+                          const entry=entries.find(entry=>{const url=new URL(entry.url);return url.pathname.endsWith('/view')&&url.searchParams.get('x')==='0'&&url.searchParams.get('y')==='0';});
+                          if(!entry){db.close();return false;}
+                          const blob=await req(read.objectStore('blobs').get(entry.hash));
+                          const bytes=new Uint8Array(await blob.data.arrayBuffer());bytes[0]^=1;
+                          const write=db.transaction('blobs','readwrite');
+                          const done=new Promise((resolve,reject)=>{write.oncomplete=resolve;write.onerror=()=>reject(write.error);});
+                          write.objectStore('blobs').put({hash:entry.hash,data:new Blob([bytes])});await done;db.close();return true;
                         }''')
                         page.reload(wait_until='domcontentloaded')
                         expect(page.locator('.status-message')).to_contain_text('Shared-world region loaded',timeout=60000)

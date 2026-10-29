@@ -7,14 +7,14 @@ import math
 from scripts.native_model import Model, SPECIAL_BOUNDS, instance, yaw
 
 PARTS=['60594','3037','3039','3633','3062b','3941','87081','2039','4073','4740',
-       '970c00','76382p00','3626ap01','4624c01']
+       '970c00','76382p00','3626ap01','4624c01','3901','4211','3788','3823','4083','3829c01']
 
 
-def rooted(model,part,color,position):
-    model.definitions['main'].append(instance('part',part+'.dat',position,color))
+def rooted(model,part,color,position,rotation=None):
+    model.definitions['main'].append(instance('part',part+'.dat',position,color,rotation))
 
 
-def person(torso=321,legs=272,hat=0):
+def person(torso=321,legs=272,hair=0):
     model=Model();model.part('3031',71,0,0,0)
     height=1/3
     for part,color in [('970c00',legs),('76382p00',torso),('3626ap01',14)]:
@@ -22,7 +22,7 @@ def person(torso=321,legs=272,hat=0):
         root=height-box['min'][2]
         rooted(model,part,color,[2,1.5,root])
         height=root+box['max'][2]
-    model.part('3070b',hat,1.5,1,height)
+    rooted(model,'3901',hair,[2,1.5,height])
     return model
 
 
@@ -45,22 +45,34 @@ def lamppost():
 
 
 def car(color=4,pedestal=False):
-    """Parked brick-built coupe with real factory wheel/tyre units.
+    """Classic Town car adapted from the official LEGO 6505 OMR model.
 
-    Wheels and chassis are gravity-supported display bodies. Rolling/steering
-    mechanics and calibrated axle retention are not claimed.
+    Robert Paciorek [bercik], https://library.ldraw.org/omr/sets/610 ; model
+    https://library.ldraw.org/media/omr_models/671/6505-1.mpd , dual CCAL 2.0 / BSD-MIT.
+    Preserve this attribution. Genuine 4211/3788 shells, 3823 windscreen, 4083
+    roll bar and 3829c01 steering follow its part choices and orthogonal poses.
+    Adaptations: a full-width gravity-supported chassis, existing factory tyre
+    units and upright front lights/support plates. Retain the official open
+    cabin/roll-bar silhouette rather than adding an oversized flat plate roof.
+    Rolling/steering mechanics and calibrated axle retention are not claimed.
     """
     model=Model();base=0
     if pedestal:
         model.part('3035',71,0,0,0);model.floor(8,4,72,0,0,1/3);base=2/3
     wheel=SPECIAL_BOUNDS['4624c01'];wheel_root=base-wheel['min'][2]
-    for x in [1.5,6.5]:
+    for x in [2,6]:
         for north in [0.4,3.6]:rooted(model,'4624c01',7,[x,north,wheel_root])
     height=wheel_root+wheel['max'][2]
-    model.part('3035',color,0,0,height);height+=1/3
-    for x in [0,6]:model.part('3001',color,x,0,height,turn=True)
-    model.part('3001',color,2,1,height)
-    for x,angle in [(2,math.pi/2),(4,-math.pi/2)]:model.part('3039',0,x,1,height+1,rotation=yaw(angle))
-    for x,shade in [(0,14),(7,4)]:
-        for north in [0,3]:model.part('3024',shade,x,north,height+1)
+    model.part('3035',0,0,0,height);height+=1/3
+    for part,x,north,z,angle,shade in [
+        ('4211',6,2,2/3,-math.pi/2,color),('3788',2,2,2/3,-math.pi/2,color),
+        ('3829c01',3.5,2,2/3,math.pi/2,0),
+        ('3023',4,.5,2/3,0,color),('3023',4,3.5,2/3,0,color),
+        ('3024',7.5,.5,2/3,0,36),('3024',7.5,3.5,2/3,0,36),
+        ('3710',1.5,2,1,-math.pi/2,color),
+        ('3666',5,.5,1,math.pi,color),('3666',5,3.5,1,math.pi,color),
+        ('3823',3.5,2,3,math.pi/2,43),('4083',7.5,2,3,math.pi/2,color),
+    ]:rooted(model,part,shade,[x,north,height+z],yaw(angle))
+    for north in [0,2]:model.part('3023',color,1,north,height+1/3,turn=True)
+    for north in [0,3]:model.part('3024',14,1,north,height+1)
     return model

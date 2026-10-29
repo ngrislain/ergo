@@ -585,91 +585,150 @@ pub(super) async fn list(
     h: HeaderMap,
     Path(id): Path<String>,
     Query(q): Query<AssemblyQuery>,
-) -> SharedResult<Json<serde_json::Value>> {
+) -> SharedResult<Response> {
     let snapshot = snapshot(&s, &id, &h, None).await?;
     let after = q
         .after
         .as_deref()
         .map(str::parse::<OctreePath>)
         .transpose()?;
-    let page = snapshot
-        .scan_level(
-            &root(4),
-            87,
-            after.as_ref(),
-            q.limit.unwrap_or(32).clamp(1, 128),
-        )
-        .await?;
-    let mut items = Vec::new();
-    for (path, _) in page.leaves {
-        if let Some(header) = snapshot
-            .get_limited::<paged::RulesHeader>(&path.child(0)?, s.shared.limits.bytes)
-            .await?
-        {
-            let members = snapshot.scan_page(&path.child(1)?, None, 1).await?;
-            if !members.leaves.is_empty() {
-                let creation = if let Some(creation) = &header.creation {
-                    Some(creation.clone())
-                } else {
-                    // The immutable assembly birth identifies its real creator;
-                    // historical births did not record a creation timestamp.
-                    let birth: Vec<serde_json::Value> =
-                        snapshot.blob_limited(&header.id, 64 * 1024).await?;
-                    match birth.first().and_then(|v| v.as_str()) {
-                        Some("assembly-birth-v1") => {
-                            let actor = birth
-                                .get(2)
-                                .and_then(|v| v.as_str())
-                                .context("Invalid assembly birth")?;
-                            Some(Creation {
-                                created_by: actor.into(),
-                                created_by_name: s.shared.actor_name(actor).await?,
-                                created_at: None,
-                            })
-                        }
-                        Some("assembly-birth-v2") => Some(
-                            serde_json::from_value(
-                                birth.get(4).context("Invalid assembly birth")?.clone(),
-                            )
-                            .context("Invalid creation metadata")?,
-                        ),
-                        _ => None,
-                    }
-                };
-                let count = if let Some(count) = header.piece_count {
-                    Some(count)
-                } else {
-                    let mut count = 0;
-                    let mut cursor = None;
-                    loop {
-                        let rows = snapshot
-                            .scan_page(&path.child(1)?, cursor.as_ref(), 128)
-                            .await?;
-                        count += rows.leaves.len();
-                        if count > 5000 {
-                            break None;
-                        }
-                        cursor = rows.next;
-                        if cursor.is_none() {
-                            break Some(count);
-                        }
-                    }
-                };
-                let mut item =
-                    serde_json::to_value(header).context("Cannot encode assembly header")?;
-                item["piece_count"] = serde_json::json!(count);
-                item["created_by"] = serde_json::json!(creation.as_ref().map(|c| &c.created_by));
-                item["created_by_name"] =
-                    serde_json::json!(creation.as_ref().and_then(|c| c.created_by_name.as_deref()));
-                item["created_at"] =
-                    serde_json::json!(creation.as_ref().and_then(|c| c.created_at));
-                items.push(item);
-            }
-        }
+    let limit = q.limit.unwrap_or(32).clamp(1, 128);
+    // Snapshot identity invalidates geometry/membership metadata immediately;
+    // legacy profile-name lookups are revalidated at most 60 seconds later.
+    let minute = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_secs()
+        / 60;
+    let etag = format!(
+        "W/\"catalog-{}\"",
+        ContentId::of(&canonical_cbor(&(
+            "assembly-list-v2",
+            &id,
+            snapshot.id(),
+            &after,
+            limit,
+            minute
+        ))?)
+    );
+    if super::metadata_cache::unchanged(&h, &etag) {
+        return Ok(super::metadata_cache::response(None, &etag, "revalidated"));
     }
-    Ok(Json(
-        serde_json::json!({"items":items,"next":page.next.map(|p|p.to_string()),"revision":snapshot.id()}),
-    ))
+    if let Some(bytes) = s.shared.read_cache.metadata.lock().unwrap().get(&etag) {
+        return Ok(super::metadata_cache::response(
+            Some(bytes),
+            &etag,
+            "memory",
+        ));
+    }
+    let gate = s.shared.read_cache.gate(&etag);
+    let _guard = gate.lock().await;
+    if let Some(bytes) = s.shared.read_cache.metadata.lock().unwrap().get(&etag) {
+        return Ok(super::metadata_cache::response(
+            Some(bytes),
+            &etag,
+            "memory",
+        ));
+    }
+    let page = snapshot
+        .scan_level(&root(4), 87, after.as_ref(), limit)
+        .await?;
+    use futures::{StreamExt, TryStreamExt};
+    let items: Vec<Option<serde_json::Value>> = futures::stream::iter(page.leaves)
+        .map(|(path, _)| {
+            let s = &s;
+            let snapshot = &snapshot;
+            async move {
+                if let Some(header) = snapshot
+                    .get_limited::<paged::RulesHeader>(&path.child(0)?, s.shared.limits.bytes)
+                    .await?
+                {
+                    // Rule-header counts are summaries; individual deletions can
+                    // leave the header in place. The live membership probe remains
+                    // authoritative for whether this construction is still placed.
+                    let populated = !snapshot
+                        .scan_page_prefetched(&path.child(1)?, None, 1)
+                        .await?
+                        .leaves
+                        .is_empty();
+                    if populated {
+                        let creation = if let Some(creation) = &header.creation {
+                            Some(creation.clone())
+                        } else {
+                            // The immutable assembly birth identifies its real creator;
+                            // historical births did not record a creation timestamp.
+                            let birth: Vec<serde_json::Value> =
+                                snapshot.blob_limited(&header.id, 64 * 1024).await?;
+                            match birth.first().and_then(|v| v.as_str()) {
+                                Some("assembly-birth-v1") => {
+                                    let actor = birth
+                                        .get(2)
+                                        .and_then(|v| v.as_str())
+                                        .context("Invalid assembly birth")?;
+                                    Some(Creation {
+                                        created_by: actor.into(),
+                                        created_by_name: s.shared.actor_name(actor).await?,
+                                        created_at: None,
+                                    })
+                                }
+                                Some("assembly-birth-v2") => Some(
+                                    serde_json::from_value(
+                                        birth.get(4).context("Invalid assembly birth")?.clone(),
+                                    )
+                                    .context("Invalid creation metadata")?,
+                                ),
+                                _ => None,
+                            }
+                        };
+                        let count = if let Some(count) = header.piece_count {
+                            Some(count)
+                        } else {
+                            let mut count = 0;
+                            let mut cursor = None;
+                            loop {
+                                let rows = snapshot
+                                    .scan_page_prefetched(&path.child(1)?, cursor.as_ref(), 128)
+                                    .await?;
+                                count += rows.leaves.len();
+                                if count > 5000 {
+                                    break None;
+                                }
+                                cursor = rows.next;
+                                if cursor.is_none() {
+                                    break Some(count);
+                                }
+                            }
+                        };
+                        let mut item = serde_json::to_value(header)
+                            .context("Cannot encode assembly header")?;
+                        item["piece_count"] = serde_json::json!(count);
+                        item["created_by"] =
+                            serde_json::json!(creation.as_ref().map(|c| &c.created_by));
+                        item["created_by_name"] = serde_json::json!(
+                            creation.as_ref().and_then(|c| c.created_by_name.as_deref())
+                        );
+                        item["created_at"] =
+                            serde_json::json!(creation.as_ref().and_then(|c| c.created_at));
+                        return Ok(Some(item));
+                    }
+                }
+                Ok::<_, SharedError>(None)
+            }
+        })
+        .buffered(16)
+        .try_collect()
+        .await?;
+    let items: Vec<_> = items.into_iter().flatten().collect();
+    let bytes = bytes::Bytes::from(serde_json::to_vec(
+        &serde_json::json!({"items":items,"next":page.next.map(|p|p.to_string()),"revision":snapshot.id()}),
+    ).context("Cannot encode construction list")?);
+    s.shared
+        .read_cache
+        .metadata
+        .lock()
+        .unwrap()
+        .insert(etag.clone(), bytes.clone());
+    Ok(super::metadata_cache::response(Some(bytes), &etag, "miss"))
 }
 
 #[derive(Default, Deserialize)]
@@ -687,8 +746,27 @@ pub(super) async fn location(
     State(s): State<AppState>,
     h: HeaderMap,
     Path((id, assembly)): Path<(String, ContentId)>,
-) -> SharedResult<Json<serde_json::Value>> {
+) -> SharedResult<Response> {
     let snapshot = snapshot(&s, &id, &h, None).await?;
+    let etag = format!(
+        "W/\"location-{}\"",
+        ContentId::of(&canonical_cbor(&(
+            "assembly-location-v1",
+            &id,
+            &assembly,
+            snapshot.id()
+        ))?)
+    );
+    if super::metadata_cache::unchanged(&h, &etag) {
+        return Ok(super::metadata_cache::response(None, &etag, "revalidated"));
+    }
+    if let Some(bytes) = s.shared.read_cache.metadata.lock().unwrap().get(&etag) {
+        return Ok(super::metadata_cache::response(
+            Some(bytes),
+            &etag,
+            "memory",
+        ));
+    }
     let metadata: Metadata = snapshot
         .get_limited(&root(2), 64 * 1024)
         .await?
@@ -709,10 +787,17 @@ pub(super) async fn location(
         .await?
         .context("Missing construction member")?;
     ensure!(piece.assembly == assembly, "Construction member mismatch");
-    Ok(Json(
-        serde_json::json!({"world_id":id,"assembly_id":assembly,"revision":snapshot.id(),
+    let bytes = bytes::Bytes::from(serde_json::to_vec(
+        &serde_json::json!({"world_id":id,"assembly_id":assembly,"revision":snapshot.id(),
         "metadata":metadata,"position_world":ergo_world::coordinates::public(piece.geometry.position).to_array()}),
-    ))
+    ).context("Cannot encode construction location")?);
+    s.shared
+        .read_cache
+        .metadata
+        .lock()
+        .unwrap()
+        .insert(etag.clone(), bytes.clone());
+    Ok(super::metadata_cache::response(Some(bytes), &etag, "miss"))
 }
 pub(super) async fn locate(
     State(s): State<AppState>,

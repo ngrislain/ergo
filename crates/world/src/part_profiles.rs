@@ -220,6 +220,61 @@ pub fn profile(part: &str) -> Option<Profile> {
             vec![],
             "4624c01",
         ),
+        // Reviewed 2026-10-29: genuine geometry remains source-only. Hair uses
+        // its upper load-bearing cap; strands wrapping the head are visual,
+        // like the arm/hand overhangs of the existing factory torso profile.
+        "3901" => (
+            [-0.65, 0., -0.65],
+            [0.65, 0.25, 0.65],
+            0.30,
+            Some(grid(1, 1, [0., 0.], 0.)),
+            vec![],
+            "3901",
+        ),
+        // Classic vehicle shells use their lower structural floor as a nominal
+        // bearing core, not filled wheel arches/passenger cavities. Upper
+        // mouldings and their detailed interfaces remain visual, not certified
+        // colliders or assumed connector capacities.
+        "4211" => (
+            [-2., -2. / 3., -2.],
+            [2., -1. / 3., 3.],
+            2.71,
+            Some(grid(4, 5, [-1.5, -1.5], -2. / 3.)),
+            vec![],
+            "4211",
+        ),
+        "3788" => (
+            [-2., -2. / 3., -1.],
+            [2., -1. / 3., 1.],
+            1.41,
+            Some(grid(4, 2, [-1.5, -0.5], -2. / 3.)),
+            vec![],
+            "3788",
+        ),
+        "3823" => (
+            [-2., -2., -1.5],
+            [2., 0., 0.5],
+            2.19,
+            Some(grid(4, 2, [-1.5, -1.], -2.)),
+            vec![DVec3::new(-1.5, 0., 0.), DVec3::new(1.5, 0., 0.)],
+            "3823",
+        ),
+        "4083" => (
+            [-2., -2., -0.5],
+            [2., 0., 0.5],
+            0.74,
+            Some(grid(4, 1, [-1.5, 0.], -2.)),
+            centres(4, 1, [-1.5, 0.]),
+            "4083",
+        ),
+        "3829c01" => (
+            [-1., -1. / 3., -0.5],
+            [1., 0., 0.5],
+            0.60,
+            Some(grid(2, 1, [-0.5, 0.], -1. / 3.)),
+            vec![],
+            "3829c01",
+        ),
         _ => return None,
     };
     let source = if id == "76382p00" {

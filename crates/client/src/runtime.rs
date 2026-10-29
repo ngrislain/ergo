@@ -420,6 +420,11 @@ impl LocalClientRuntime {
                 Ok(text(feedback))
             }
             "place_submodel" => {
+                let replace_ids: HashSet<u32> = args
+                    .get("replace_ids")
+                    .map(|ids| serde_json::from_value(ids.clone()))
+                    .transpose()?
+                    .unwrap_or_default();
                 ensure!(
                     args.get("model").is_some() != args.get("document").is_some(),
                     "Supply exactly one native model or imported document"
@@ -463,12 +468,27 @@ impl LocalClientRuntime {
                     .unwrap_or(71);
                 let mut snap_delta = DVec3::ZERO;
                 let mut feedback = self.update(|scene| {
+                    let high_water = scene.bricks.iter().map(|brick| brick.id).max().unwrap_or(0);
+                    ensure!(
+                        replace_ids
+                            .iter()
+                            .all(|id| scene.bricks.iter().any(|brick| brick.id == *id)),
+                        "A replacement brick is absent"
+                    );
+                    scene
+                        .bricks
+                        .retain(|brick| !replace_ids.contains(&brick.id));
+                    scene.joints.retain(|joint| {
+                        !replace_ids.contains(&joint.a) && !replace_ids.contains(&joint.b)
+                    });
+                    scene.fixed_bricks.retain(|id| !replace_ids.contains(id));
+                    ergo_world::groups::remove_piece_references(&mut scene.groups, &replace_ids);
                     let base = ergo_world::assembly::Model::for_scene(scene);
                     let mut combined = base.clone();
                     combined.append(&model, matrix, color)?;
                     let references = combined.references()?;
                     let first = scene.bricks.len();
-                    let mut next_id = scene.bricks.iter().map(|b| b.id).max().unwrap_or(0);
+                    let mut next_id = high_water;
                     for r in references.iter().skip(scene.bricks.len()) {
                         if !scene.meshes.contains_key(&r.name) {
                             let mut mesh = ergo_world::ldraw::bake_mesh(
@@ -505,7 +525,11 @@ impl LocalClientRuntime {
                         .map(|b| b.bounds)
                         .reduce(ergo_world::Aabb::union)
                     {
-                        snap_delta = ergo_world::placement::snapping_delta(bounds);
+                        snap_delta = if replace_ids.is_empty() {
+                            ergo_world::placement::snapping_delta(bounds)
+                        } else {
+                            DVec3::ZERO
+                        };
                         if snap_delta != DVec3::ZERO {
                             for brick in &mut scene.bricks[first..] {
                                 brick.translated(snap_delta);
@@ -527,6 +551,9 @@ impl LocalClientRuntime {
                 })?;
                 feedback["placement"] =
                     json!({"snap_delta_world":ergo_world::coordinates::public(snap_delta)});
+                if !replace_ids.is_empty() {
+                    feedback["replacement"] = json!({"removed_ids":replace_ids,"atomic":true,"remaining_ids_preserved":true});
+                }
                 Ok(text(feedback))
             }
             "move_brick" => {

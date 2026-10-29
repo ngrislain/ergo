@@ -370,6 +370,97 @@ async fn construction_metadata_survives_replacement_and_downloads_export_the_who
 }
 
 #[tokio::test]
+async fn discovery_metadata_revalidates_before_storage_walks_and_rechecks_permissions() {
+    use axum::{body::Body, http::Request};
+    use tower::ServiceExt;
+    let service = service();
+    let (head, imported) = seeded(&service, scene(100.)).await;
+    let (app, headers) = http(&service);
+    let paths = [
+        format!("/api/shared-worlds/{}/assemblies", head.id),
+        format!(
+            "/api/shared-worlds/{}/assemblies/{}/location",
+            head.id, imported.assembly
+        ),
+    ];
+    let mut versions = Vec::new();
+    for path in &paths {
+        let mut request = Request::get(path).body(Body::empty()).unwrap();
+        request.headers_mut().extend(headers.clone());
+        let first = app.clone().oneshot(request).await.unwrap();
+        assert_eq!(first.status(), StatusCode::OK);
+        assert_eq!(first.headers()["cache-control"], "private, no-cache");
+        let etag = first.headers()["etag"].clone();
+        versions.push(etag.clone());
+        let mut request = Request::get(path)
+            .header("if-none-match", etag.clone())
+            .body(Body::empty())
+            .unwrap();
+        request.headers_mut().extend(headers.clone());
+        let fresh = app.clone().oneshot(request).await.unwrap();
+        assert!([StatusCode::NOT_MODIFIED, StatusCode::OK].contains(&fresh.status()));
+        if fresh.status() == StatusCode::NOT_MODIFIED {
+            assert_eq!(fresh.headers()["x-ergo-metadata-cache"], "revalidated");
+        }
+        let denied = app
+            .clone()
+            .oneshot(
+                Request::get(path)
+                    .header("if-none-match", etag)
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert!([StatusCode::UNAUTHORIZED, StatusCode::FORBIDDEN].contains(&denied.status()));
+    }
+    let mut changed = scene(120.);
+    changed.name = "Changed metadata".into();
+    service
+        .replace_assembly(
+            &head.id,
+            "alice",
+            &imported.assembly,
+            authoring::ReplaceRequest {
+                base: head.revision,
+                scene: changed,
+            },
+        )
+        .await
+        .unwrap();
+    for (path, etag) in paths.iter().zip(versions) {
+        let mut request = Request::get(path)
+            .header("if-none-match", etag.clone())
+            .body(Body::empty())
+            .unwrap();
+        request.headers_mut().extend(headers.clone());
+        let changed = app.clone().oneshot(request).await.unwrap();
+        assert_eq!(changed.status(), StatusCode::OK);
+        assert_ne!(changed.headers()["etag"], etag);
+    }
+}
+
+#[tokio::test]
+async fn navigation_without_a_previous_hint_finds_the_canonical_warm_region() {
+    use axum::{body::Body, http::Request};
+    use tower::ServiceExt;
+    let service = service();
+    let (head, _) = seeded(&service, scene(100.)).await;
+    let (app, headers) = http(&service);
+    let path = format!("/api/shared-worlds/{}/view?x=0&y=-1&z=0", head.id);
+    let (status, packet) = json(&app, "GET", &path, &headers, None).await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(packet["scene"]["bricks"].as_array().unwrap().len(), 1);
+    let mut request = Request::get(format!("/api/shared-worlds/{}/view?x=0&y=0&z=0", head.id))
+        .body(Body::empty())
+        .unwrap();
+    request.headers_mut().extend(headers);
+    let response = app.oneshot(request).await.unwrap();
+    assert_eq!(response.status(), StatusCode::OK);
+    assert_eq!(response.headers()["x-ergo-read-cache"], "neighbor");
+}
+
+#[tokio::test]
 async fn construction_download_preserves_per_instance_geometry_variants() {
     use axum::{
         body::{Body, to_bytes},
@@ -2443,6 +2534,43 @@ async fn compact_authoring_guard_excludes_members_but_keeps_touching_other_assem
         .await
         .unwrap();
     assert_eq!(guarded["external_dependencies"], true);
+}
+
+#[tokio::test]
+async fn authoring_dependency_guard_stops_at_the_first_verified_external_piece() {
+    let mut service = service();
+    let mut owner = scene(100.);
+    let delta = glam::DVec3::X * (130. - owner.bricks[1].position.x);
+    owner.bricks[1].translated(delta);
+    let (head, imported) = seeded(&service, owner).await;
+    let mut neighbors = scene(110.);
+    let delta = glam::DVec3::X * (114. - neighbors.bricks[1].position.x);
+    neighbors.bricks[1].translated(delta);
+    let other = service
+        .import(
+            &head.id,
+            "alice",
+            ImportRequest {
+                base: head.revision,
+                scene: neighbors,
+            },
+        )
+        .await
+        .unwrap();
+    // Two owned pieces fit with one external witness. Materializing the whole
+    // neighborhood would unnecessarily exceed this authoring read budget.
+    service.limits.pieces = 3;
+    let guarded = service
+        .authoring_scene(
+            &head.id,
+            "alice",
+            &imported.assembly,
+            &other.accepted.revision,
+        )
+        .await
+        .unwrap();
+    assert_eq!(guarded["external_dependencies"], true);
+    assert_eq!(guarded["scene"]["bricks"].as_array().unwrap().len(), 2);
 }
 
 #[tokio::test]

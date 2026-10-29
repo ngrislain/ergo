@@ -48,6 +48,7 @@ struct SharedPage {
     next: Option<String>,
 }
 struct SharedView {
+    failed_coord: Option<[i64; 3]>,
     assemblies: BTreeMap<u32, String>,
     fully_resident_assemblies: HashSet<String>,
     id: String,
@@ -92,6 +93,7 @@ struct Ui {
     first: RwSignal<Option<u32>>,
     joint_count: RwSignal<usize>,
     busy: RwSignal<bool>,
+    navigating: RwSignal<bool>,
     loading: RwSignal<Option<crate::loading::Loading>>,
     user: RwSignal<String>,
     google: RwSignal<bool>,
@@ -183,6 +185,7 @@ impl Ui {
             first: RwSignal::new(None),
             joint_count: RwSignal::new(0),
             busy: RwSignal::new(false),
+            navigating: RwSignal::new(false),
             loading: RwSignal::new(None),
             user: RwSignal::new("Connecting…".into()),
             google: RwSignal::new(false),
@@ -206,6 +209,7 @@ impl Ui {
     fn fail(self, error: impl ToString) {
         self.error.set(Some(error.to_string()));
         self.busy.set(false);
+        self.navigating.set(false);
         self.loading.set(None);
     }
 }
@@ -228,6 +232,8 @@ struct Client {
     default_geo: ergo_world::GeoReference,
     generation: u64,
     region_request: u64,
+    navigation_request: u64,
+    region_abort: Option<web_sys::AbortController>,
     ready: bool,
     load_all: bool,
     start_when_loaded: bool,
@@ -262,6 +268,8 @@ impl Client {
             known_cells: HashSet::new(),
             generation: 0,
             region_request: 0,
+            navigation_request: 0,
+            region_abort: None,
             ready: false,
             load_all: false,
             start_when_loaded: false,
@@ -483,12 +491,66 @@ fn act(handle: Handle, f: impl FnOnce(&mut Client) -> anyhow::Result<()>) {
     });
 }
 
-async fn json<T: serde::de::DeserializeOwned>(url: &str) -> anyhow::Result<T> {
-    let response = Request::get(url).send().await?;
-    if !response.ok() {
-        anyhow::bail!(response.text().await?);
+struct ReadDeadline {
+    controller: web_sys::AbortController,
+    _timer: gloo_timers::callback::Timeout,
+}
+impl ReadDeadline {
+    fn new(ms: u32) -> anyhow::Result<Self> {
+        let controller = web_sys::AbortController::new()
+            .map_err(|_| anyhow::anyhow!("Cannot start network read"))?;
+        let abort = controller.clone();
+        Ok(Self {
+            controller,
+            _timer: gloo_timers::callback::Timeout::new(ms, move || abort.abort()),
+        })
     }
-    Ok(response.json().await?)
+}
+async fn json<T: serde::de::DeserializeOwned>(url: &str) -> anyhow::Result<T> {
+    let deadline = ReadDeadline::new(15_000)?;
+    let cacheable = url.contains("/assemblies?")
+        || url.contains("/assemblies/") && url.ends_with("/location")
+        || url.starts_with("/api/parts/");
+    let mut cached = if cacheable {
+        crate::read_cache::get(url).await
+    } else {
+        None
+    };
+    for _ in 0..2 {
+        let mut request = Request::get(url).abort_signal(Some(&deadline.controller.signal()));
+        if let Some(value) = &cached {
+            request = request.header("If-None-Match", &value.etag);
+        }
+        let response = request
+            .send()
+            .await
+            .context("Read interrupted or timed out; retry or choose another construction")?;
+        if response.status() == 304 {
+            let value = cached
+                .take()
+                .context("Missing locally revalidated metadata")?;
+            match serde_json::from_slice(&value.bytes) {
+                Ok(value) => return Ok(value),
+                Err(_) => {
+                    crate::read_cache::forget(url);
+                    continue;
+                }
+            }
+        }
+        if !response.ok() {
+            if [401, 403, 404].contains(&response.status()) {
+                crate::read_cache::forget(url);
+            }
+            anyhow::bail!(response.text().await?);
+        }
+        let text = response.text().await?;
+        let value = serde_json::from_str(&text)?;
+        if cacheable && let Some(etag) = response.headers().get("etag") {
+            crate::read_cache::put_background(url.into(), etag, text.into_bytes());
+        }
+        return Ok(value);
+    }
+    anyhow::bail!("Could not read construction metadata")
 }
 
 fn logout(ui: Ui) {
@@ -579,6 +641,10 @@ fn open_shared(handle: Handle, location: SharedLocation) {
         c.common_fenced = false;
         c.ui.editing_shared.set(false);
         c.generation += 1;
+        c.navigation_request += 1;
+        if let Some(controller) = c.region_abort.take() {
+            controller.abort();
+        }
         c.ui.loading.set(None);
         c.blocks.clear();
         c.pending.clear();
@@ -621,6 +687,7 @@ fn open_shared(handle: Handle, location: SharedLocation) {
         c.ui.group_selection.set(Vec::new());
         c.ui.busy.set(true);
         c.shared = Some(SharedView {
+            failed_coord: None,
             assemblies: BTreeMap::new(),
             fully_resident_assemblies: HashSet::new(),
             id: location.world.clone(),
@@ -634,8 +701,23 @@ fn open_shared(handle: Handle, location: SharedLocation) {
 }
 
 fn request_shared_region(handle: Handle, id: String, coord: [i64; 3], fit_view: bool) {
+    let deadline = match ReadDeadline::new(180_000) {
+        Ok(deadline) => deadline,
+        Err(error) => {
+            with_client(handle, |c| c.ui.fail(error));
+            return;
+        }
+    };
     let (generation, request_id, previous) = with_client(handle, |c| {
+        if let Some(controller) = c.region_abort.replace(deadline.controller.clone()) {
+            controller.abort();
+        }
         c.region_request += 1;
+        c.ui.navigating.set(true);
+        if let Some(shared) = &mut c.shared {
+            shared.failed_coord = None;
+            shared.loading = true;
+        }
         c.ui.loading
             .set(Some(crate::loading::Loading::new(js_sys::Date::now())));
         (
@@ -645,6 +727,7 @@ fn request_shared_region(handle: Handle, id: String, coord: [i64; 3], fit_view: 
         )
     });
     spawn_local(async move {
+        let deadline = deadline;
         let mut url = format!(
             "/api/shared-worlds/{id}/view?x={}&y={}&z={}&format=cbor",
             coord[0], coord[1], coord[2]
@@ -672,11 +755,11 @@ fn request_shared_region(handle: Handle, id: String, coord: [i64; 3], fit_view: 
         }
         let result: anyhow::Result<SharedRegion> = async {
             let cached = crate::read_cache::get(&url).await;
-            let mut request = Request::get(&url).header("Accept", "application/cbor");
+            let mut request = Request::get(&url).header("Accept", "application/cbor").abort_signal(Some(&deadline.controller.signal()));
             if let Some(cached) = &cached {
                 request = request.header("If-None-Match", &cached.etag);
             }
-            let response = request.send().await?;
+            let response = request.send().await.context("Construction read interrupted or timed out; choose it again or select another construction")?;
             if response.status() == 304 {
                 let cached =
                     cached.context("Server revalidated an unavailable local construction")?;
@@ -692,7 +775,7 @@ fn request_shared_region(handle: Handle, id: String, coord: [i64; 3], fit_view: 
             }
             if !response.ok() {
                 if [401, 403].contains(&response.status()) {
-                    crate::read_cache::forget(&url).await;
+                    crate::read_cache::forget(&url);
                 }
                 anyhow::bail!(response.text().await?);
             }
@@ -724,7 +807,7 @@ fn request_shared_region(handle: Handle, id: String, coord: [i64; 3], fit_view: 
                             && c.region_request == request_id
                             && !c.ui.signing_out.get_untracked()
                     }) {
-                        crate::read_cache::put(&url, &etag, &bytes).await;
+                        crate::read_cache::put_background(url.clone(), etag, bytes);
                     }
                 }
                 Ok(region)
@@ -764,14 +847,17 @@ fn request_shared_region(handle: Handle, id: String, coord: [i64; 3], fit_view: 
                 return;
             }
             c.ui.loading.set(None);
+            c.ui.navigating.set(false);
+            c.region_abort = None;
             if let Some(shared) = &mut c.shared {
                 shared.loading = false;
                 shared.last_check = js_sys::Date::now();
-                shared.coord = coord;
             }
             match result {
                 Ok(region) => {
                     if let Some(shared) = &mut c.shared {
+                        shared.coord = coord;
+                        shared.failed_coord = None;
                         shared.assemblies = region.assemblies;
                         shared.fully_resident_assemblies = region.fully_resident_assemblies;
                         shared.revision = region.revision.clone();
@@ -823,6 +909,7 @@ fn request_shared_region(handle: Handle, id: String, coord: [i64; 3], fit_view: 
                         }
                     }
                     c.ready = true;
+                    crate::read_cache::pin(&url);
                     c.ui.current.set(Some(manifest));
                     c.ui.selected.set(None);
                     c.ui.busy.set(false);
@@ -831,7 +918,12 @@ fn request_shared_region(handle: Handle, id: String, coord: [i64; 3], fit_view: 
                         &region.revision[..region.revision.len().min(12)]
                     ));
                 }
-                Err(error) => c.ui.fail(error),
+                Err(error) => {
+                    if let Some(shared) = &mut c.shared {
+                        shared.failed_coord = Some(coord);
+                    }
+                    c.ui.fail(error)
+                }
             }
         });
     });
@@ -899,10 +991,14 @@ fn poll_region_progress(
 
 fn pump_shared(handle: Handle) {
     let request = with_client(handle, |c| {
+        if c.ui.navigating.get_untracked() {
+            return None;
+        }
         let eye = c.renderer.as_ref()?.eye();
         let shared = c.shared.as_mut()?;
         let coord: [i64; 3] = BlockCoord::at(eye).into();
         if shared.loading
+            || shared.failed_coord == Some(coord)
             || (coord == shared.coord && js_sys::Date::now() - shared.last_check < 5000.)
         {
             return None;
@@ -915,9 +1011,10 @@ fn pump_shared(handle: Handle) {
             same_region,
             c.generation,
             shared.revision.clone(),
+            c.region_request,
         ))
     });
-    if let Some((id, coord, same_region, generation, revision)) = request {
+    if let Some((id, coord, same_region, generation, revision, request_id)) = request {
         if !same_region {
             request_shared_region(handle, id, coord, false);
             return;
@@ -929,12 +1026,14 @@ fn pump_shared(handle: Handle) {
             }
             match json::<HeadRevision>(&format!("/api/shared-worlds/{id}")).await {
                 Ok(head) if head.revision != revision => {
-                    if with_client(handle, |c| c.generation == generation) {
+                    if with_client(handle, |c| {
+                        c.generation == generation && c.region_request == request_id
+                    }) {
                         request_shared_region(handle, id, coord, false);
                     }
                 }
                 result => with_client(handle, |c| {
-                    if c.generation != generation {
+                    if c.generation != generation || c.region_request != request_id {
                         return;
                     }
                     if let Some(shared) = &mut c.shared {
@@ -1583,6 +1682,13 @@ pub fn App() -> impl IntoView {
                 google_enabled: bool,
                 signed_in: bool,
             }
+            spawn_local(async move {
+                if let Ok(me) = json::<Me>("/api/auth/me").await {
+                    ui.user.set(me.name);
+                    ui.google.set(me.google_enabled);
+                    ui.signed_in.set(me.signed_in);
+                }
+            });
             if let Ok(config) = json::<Config>("/api/config").await {
                 ui.common_world.set(config.common_world);
                 ui.storage.set(config.storage);
@@ -1590,11 +1696,10 @@ pub fn App() -> impl IntoView {
                     c.default_geo = config.geo;
                     c.ground_provider = config.ground_provider;
                 });
-            }
-            if let Ok(me) = json::<Me>("/api/auth/me").await {
-                ui.user.set(me.name);
-                ui.google.set(me.google_enabled);
-                ui.signed_in.set(me.signed_in);
+                if ui.common_world.get_untracked().is_some() {
+                    ui.navigating.set(true);
+                    common::refresh(handle);
+                }
             }
             if let Some(common) = ui.common_world.get_untracked() {
                 let query = web_sys::window()
@@ -1611,8 +1716,12 @@ pub fn App() -> impl IntoView {
                 struct Head {
                     metadata: SharedMetadata,
                 }
+                let navigation = with_client(handle, |c| c.navigation_request);
                 match json::<Head>(&format!("/api/shared-worlds/{common}")).await {
                     Ok(head) => {
+                        if !with_client(handle, |c| c.navigation_request == navigation) {
+                            return;
+                        }
                         ui.shared_locations.set(vec![SharedLocation {
                             world: common.clone(),
                             metadata: head.metadata.clone(),
@@ -1626,7 +1735,6 @@ pub fn App() -> impl IntoView {
                                 coord: Some(coord),
                             },
                         );
-                        common::refresh(handle);
                     }
                     Err(error) => ui.fail(error),
                 }
@@ -2120,7 +2228,7 @@ fn CommonConstructionList() -> impl IntoView {
                 let id=assembly.id;let active=id.clone();
                 let attribute=id.clone();let name=assembly.name;let title=name.clone();
                 view!{<li><button class="world-item" data-assembly-id=attribute class:active=move ||ui.focused_assembly.get().as_ref()==Some(&active)
-                    title=title disabled=move ||ui.busy.get() on:click=move |_|common::open(handle,id.clone())>
+                    title=title disabled=move ||ui.busy.get()&&!ui.navigating.get() on:click=move |_|common::open(handle,id.clone())>
                     <span class="world-thumbnail" aria-hidden="true">"▦"</span><span class="construction-summary"><strong>{name}</strong><small class="construction-author" title=author.clone()>{author.clone()}</small><time class="construction-date">{date}</time></span><small class="construction-size" title="Piece count">{size}</small>
                 </button></li>}
             }).collect_view()}}
@@ -2145,7 +2253,7 @@ fn BrickInspector() -> impl IntoView {
             <Show when=move ||ui.selected.get().is_some() fallback=move ||view!{<div class="empty-inspector"><span class="catalog-brick-outline" inner_html=ergo_world::illustration::brick_outline("3003.dat").unwrap_or_default()></span><strong>"Every brick has a story."</strong><p>"Select one in the scene to inspect its geometry and connections."</p></div>}>
                 <div class="selected-part"><span class="part-color" style:background=move ||ui.selected.get().map(|b|format!("#{:06x}",b.rgb)).unwrap_or_default()></span><div><h3>{move ||ui.selected.get().map(|b|catalog::part_name(&b.part).to_owned()).unwrap_or_default()}</h3><p>{move ||ui.selected.get().map(|b|format!("{} · #{}",b.part.trim_end_matches(".dat"),b.id)).unwrap_or_default()}</p></div></div>
                 <dl class="part-properties"><dt>"Color"</dt><dd>{move ||ui.selected.get().map(|b|catalog::color_name(b.color)).unwrap_or_default()}</dd><dt>"Origin (X,Y,Z)"</dt><dd>{move ||ui.selected.get().map(|b|format!("{:.1}, {:.1}, {:.1}",b.position.x,-b.position.z,b.position.y)).unwrap_or_default()}</dd><dt>"Base height Z"</dt><dd>{move ||ui.selected.get().map(|b|format!("{:.3}",b.bounds.min.y)).unwrap_or_default()}</dd><dt>"Connections"</dt><dd>{move ||ui.relations.get().iter().filter(|r|r.certainty=="inferred").count()}</dd></dl>
-                <div class="swatches" aria-label="Available brick colors">{catalog::COLORS.iter().map(|&(code,name)|view!{<button class="swatch" title=name aria-label=name style:background=format!("#{:06x}",ergo_world::color_rgb(code)) on:click=move |_|act(handle,|c|{c.remember()?;c.freeze_simulation();let r=c.renderer.as_mut().unwrap();if let Some(id)=r.selected{for b in &mut r.bricks{if b.id==id{b.color=code;b.rgb=ergo_world::color_rgb(code);}}r.changed();}c.refresh_selection();Ok(())})></button>}).collect_view()}</div>
+                <div class="swatches" aria-label="Available brick colors">{catalog::COLORS.iter().map(|&(code,name)|view!{<button class="swatch" title=name aria-label=name style:background=format!("#{:06x}",ergo_world::color_rgb(code)) on:click=move |_|act(handle,|c|{c.remember()?;c.freeze_simulation();let r=c.renderer.as_mut().unwrap();if let Some(id)=r.selected{for b in &mut r.bricks{if b.id==id{b.color=code;b.rgb=ergo_world::color_rgb(code);}}r.scene_changed();}c.refresh_selection();Ok(())})></button>}).collect_view()}</div>
                 <div class="inspector-actions"><button class="button quiet small" on:click=move |_|{ui.first.set(ui.selected.get_untracked().map(|b|b.id));ui.message.set("First brick selected. Select a second brick, then add a connection".into());}>"Use as first brick"</button><button class="button quiet small" disabled=move ||ui.first.get().is_none() on:click=move |_|show_dialog("constraint-dialog")>"Connect…"</button><button class="button quiet small" on:click=move |_|{if let Some(brick)=ui.selected.get_untracked(){ui.group_selection.update(|ids|{if !ids.contains(&brick.id){ids.push(brick.id);}});ui.message.set(format!("{} pieces selected for grouping",ui.group_selection.get_untracked().len()));}}>"Add to group selection"</button></div>
                 <label class="toggle-row"><span>"Pull in simulation"</span><input type="checkbox" on:change=move |e|pull.set(event_target_checked(&e))/></label>
                 <div class="move-grid" aria-label="Move selected connected group">{[("−X",DVec3::NEG_X),("+X",DVec3::X),("−Y",DVec3::Z),("+Y",DVec3::NEG_Z),("−Z",DVec3::NEG_Y),("+Z",DVec3::Y)].into_iter().map(|(label,delta)|view!{<button class="button quiet small" on:click=move |_|act(handle,|c|c.move_selected(delta, pull.get_untracked()))>{label}</button>}).collect_view()}</div>

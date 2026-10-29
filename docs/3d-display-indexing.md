@@ -442,7 +442,7 @@ full offline operation. Logout clears model caches.
 Shared-region URLs use a separate, permission-revalidated path: typed CBOR/gzip,
 server revision-keyed encoded/persistent read caches, and ordinary HTTP ETags.
 They are not added to the service-worker immutable-object cache. The viewer's
-separate local packet CacheStorage retains construction/index bytes only for use
+separate content-addressed IndexedDB cache retains construction/index bytes only for use
 after a fresh authorized HTTP 304. Region refreshes
 retain unchanged GPU prototypes, and selecting a snapshot-certified fully
 resident assembly focuses it without a location/view fetch. See

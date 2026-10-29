@@ -228,11 +228,7 @@ pub fn validate_export(scene: &mut WorldExport) -> Result<()> {
             .reduce(ergo_world::Aabb::union)
             .unwrap();
         mesh.bounds = bounds;
-        mesh.body_bounds = if ergo_world::geometry::part_spec(name).is_some() {
-            fallback_mesh(name).body_bounds
-        } else {
-            bounds
-        };
+        mesh.body_bounds = ergo_world::geometry::nominal_body_bounds(name).unwrap_or(bounds);
     }
     for brick in &mut scene.bricks {
         ergo_world::physical::validate_affine_pose(brick)?;
