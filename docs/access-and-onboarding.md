@@ -20,7 +20,7 @@ control. Sign-out does not revoke an already-issued delegated token.
 Install the current prebuilt client from its GitHub Release:
 
 ```sh
-npm install --global --ignore-scripts 'https://github.com/ngrislain/ergo/releases/download/v0.5.12/ngrislain-ergo-mcp-0.5.12.tgz'
+npm install --global --ignore-scripts 'https://github.com/ngrislain/ergo/releases/download/v0.5.13/ngrislain-ergo-mcp-0.5.13.tgz'
 ergo-mcp --login --publish-url https://ergosandbox.com
 ```
 

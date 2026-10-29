@@ -402,7 +402,10 @@ that an operation never happened. No historical-format traversal fallback is use
 `directory_exists` tracks structural presence and replacement generations rather
 than every descendant version. A true directory can contain tombstones; use actual
 row reads/predicates for business data. `scan_level` pages directory prefixes at a
-logical depth without scanning all descendant leaves. A page traversal has a
+logical depth without scanning all descendant leaves. Pinned snapshots also expose
+`scan_level_prefetched` with bounded immutable-node lookahead and identical ordered
+rows/cursors; it never prefetches value payloads or changes transaction predicates.
+A page traversal has a
 100,000-node budget. Narrow the region or compact it when that operation budget is
 exceeded; it is not a world-size limit.
 

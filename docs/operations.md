@@ -24,6 +24,7 @@ python3 scripts/test-common-world.py
 python3 scripts/test-dense-world.py
 python3 scripts/test-web-isolated.py --script scripts/test-browser-cache.py
 python3 scripts/test-web-isolated.py --script scripts/test-headlamp.py
+python3 scripts/test-web-isolated.py --script scripts/test-navigation-lighting.py
 npm ci --prefix site --ignore-scripts
 npm run build --prefix site
 npm test --prefix site
@@ -54,18 +55,24 @@ prove an asset or image was published.
 
 ```sh
 gh run list --repo ngrislain/ergo --workflow release.yml --limit 5
-gh release view v0.5.12 --repo ngrislain/ergo
+gh release view v0.5.13 --repo ngrislain/ergo
 ```
 
 Verify the public tarball version/checksum, consumer install and actual MCP smoke
 before changing the displayed installation source. Registry publication remains
 disabled; the supported client source is the GitHub Release asset.
 
+When verifying an upgrade in an existing browser, fetch the current application
+JavaScript/WASM assets as well as checking `/api/config`. A hard reload can bypass
+an old HTTP code-cache entry while retaining IndexedDB/CacheStorage model data for
+verified migration. Do not treat old application code as evidence that model
+storage is corrupt or clear the user's model state just to upgrade the viewer.
+
 After publication, set the public Pages variable and rebuild:
 
 ```sh
 gh variable set ERGO_MCP_PACKAGE --repo ngrislain/ergo \
-  --body 'https://github.com/ngrislain/ergo/releases/download/v0.5.12/ngrislain-ergo-mcp-0.5.12.tgz'
+  --body 'https://github.com/ngrislain/ergo/releases/download/v0.5.13/ngrislain-ergo-mcp-0.5.13.tgz'
 gh workflow run pages.yml --repo ngrislain/ergo --ref main
 ```
 

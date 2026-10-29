@@ -648,6 +648,19 @@ pub struct ScanPage {
 }
 
 impl Snapshot {
+    /// Logical-depth directory paging with bounded immutable-node lookahead.
+    /// Returned rows and cursors match scan_level; payloads are never prefetched.
+    pub async fn scan_level_prefetched(
+        &self,
+        region: &OctreePath,
+        depth: usize,
+        after: Option<&OctreePath>,
+        limit: usize,
+    ) -> Result<ScanPage> {
+        Tree::new(self.repo.clone())
+            .scan_level_prefetched(self.commit.root.as_ref(), region, depth, after, limit)
+            .await
+    }
     pub async fn scan_level(
         &self,
         region: &OctreePath,

@@ -2,7 +2,7 @@ use super::{
     batches::{Batches, Pass},
     link, shaders,
 };
-use crate::lighting::{SolarPosition, solar_position};
+use crate::lighting::{ShadowView, SolarPosition, solar_position};
 use ergo_world::GeoReference;
 use glam::{DVec3, Mat4, Vec3};
 use wasm_bindgen::JsValue;
@@ -24,9 +24,9 @@ pub(super) struct Observer {
     pub geo: GeoReference,
     pub eye: DVec3,
     pub target: DVec3,
+    pub shadow: ShadowView,
     pub origin: DVec3,
     pub display_scale: DVec3,
-    pub distance: f64,
     pub studio: bool,
     pub point_light: Option<DVec3>,
 }
@@ -97,7 +97,7 @@ impl LightPass {
     }
 
     pub fn prepare(&mut self, observer: &Observer) -> LightFrame {
-        let gps = observer.geo.to_gps(observer.target);
+        let gps = observer.geo.to_gps(observer.shadow.target);
         let seconds = (js_sys::Date::now() / 60000.0).floor() * 60.0;
         let key = [
             (gps[0] * 10000.0).round() as i64,
@@ -121,6 +121,8 @@ impl LightPass {
         };
         let eye = ((observer.eye - observer.origin) * observer.display_scale).as_vec3();
         let target = ((observer.target - observer.origin) * observer.display_scale).as_vec3();
+        let shadow_target =
+            ((observer.shadow.target - observer.origin) * observer.display_scale).as_vec3();
         let (matrix, position, forward) = if let Some(position) = observer.point_light {
             let position = ((position - observer.origin) * observer.display_scale).as_vec3();
             let forward = (target - position).normalize();
@@ -139,16 +141,16 @@ impl LightPass {
             let span = if observer.studio {
                 32.
             } else {
-                (observer.distance * 0.7).clamp(18.0, 180.0) as f32
+                (observer.shadow.distance * 0.7).clamp(18.0, 180.0) as f32
             };
             let direction = sun.direction.as_vec3();
-            let position = target + direction * span * 2.0;
+            let position = shadow_target + direction * span * 2.0;
             let up = if direction.y.abs() > 0.98 {
                 Vec3::Z
             } else {
                 Vec3::Y
             };
-            let view = Mat4::look_at_rh(position, target, up);
+            let view = Mat4::look_at_rh(position, shadow_target, up);
             (
                 Mat4::orthographic_rh_gl(-span, span, -span, span, 0.1, span * 4.0) * view,
                 position,
@@ -171,7 +173,7 @@ impl LightPass {
                     64_f32.to_radians(),
                     1.0,
                     0.1,
-                    ((target - eye).length() * 3.0).clamp(100.0, 1600.0),
+                    (observer.shadow.reach * 3.0).clamp(100.0, 1600.0) as f32,
                 ) * view,
                 position,
                 forward,

@@ -42,6 +42,25 @@ async fn pagination_is_complete_ordered_and_protects_empty_predicates() {
         }
     }
     assert_eq!(leaves, expected);
+    for depth in [1, 2] {
+        let mut cursor = None;
+        loop {
+            let serial = snapshot
+                .scan_level(&p("/"), depth, cursor.as_ref(), 3)
+                .await
+                .unwrap();
+            let prefetched = snapshot
+                .scan_level_prefetched(&p("/"), depth, cursor.as_ref(), 3)
+                .await
+                .unwrap();
+            assert_eq!(prefetched.leaves, serial.leaves);
+            assert_eq!(prefetched.next, serial.next);
+            cursor = serial.next;
+            if cursor.is_none() {
+                break;
+            }
+        }
+    }
     assert!(matches!(
         snapshot.scan_page(&p("2"), Some(&p("3/1")), 1).await,
         Err(Error::InvalidCursor)

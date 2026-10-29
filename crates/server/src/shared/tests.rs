@@ -441,6 +441,34 @@ async fn discovery_metadata_revalidates_before_storage_walks_and_rechecks_permis
 }
 
 #[tokio::test]
+async fn legacy_discovery_returns_unknown_size_instead_of_counting_every_member() {
+    let service = service();
+    let (head, imported) = seeded(&service, scene(100.)).await;
+    let repo = service.repo(&head.id).unwrap();
+    let mut tx = repo.begin("main").await.unwrap();
+    let path = paged::rule_path(&imported.assembly, 0);
+    let mut header: paged::RulesHeader = tx.get(&path).await.unwrap().unwrap();
+    header.piece_count = None;
+    tx.put(&path, &header).await.unwrap();
+    tx.commit("alice", "Legacy discovery fixture", Default::default())
+        .await
+        .unwrap();
+    let (app, headers) = http(&service);
+    let (status, page) = json(
+        &app,
+        "GET",
+        &format!("/api/shared-worlds/{}/assemblies", head.id),
+        &headers,
+        None,
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(page["items"].as_array().unwrap().len(), 1);
+    assert_eq!(page["items"][0]["id"], imported.assembly.to_string());
+    assert!(page["items"][0]["piece_count"].is_null());
+}
+
+#[tokio::test]
 async fn navigation_without_a_previous_hint_finds_the_canonical_warm_region() {
     use axum::{body::Body, http::Request};
     use tower::ServiceExt;

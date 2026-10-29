@@ -429,6 +429,30 @@ impl Tree {
         after: Option<&OctreePath>,
         limit: usize,
     ) -> Result<crate::ScanPage> {
+        self.scan_level_inner(root, region, depth, after, limit, false)
+            .await
+    }
+    pub async fn scan_level_prefetched(
+        &mut self,
+        root: Option<&ContentId>,
+        region: &OctreePath,
+        depth: usize,
+        after: Option<&OctreePath>,
+        limit: usize,
+    ) -> Result<crate::ScanPage> {
+        let enabled = self.repo.cache_stats().capacity_bytes > 0;
+        self.scan_level_inner(root, region, depth, after, limit, enabled)
+            .await
+    }
+    async fn scan_level_inner(
+        &mut self,
+        root: Option<&ContentId>,
+        region: &OctreePath,
+        depth: usize,
+        after: Option<&OctreePath>,
+        limit: usize,
+        read_prefetch: bool,
+    ) -> Result<crate::ScanPage> {
         if !(1..=10_000).contains(&limit)
             || depth < region.octants().len()
             || depth > crate::MAX_DEPTH
@@ -466,6 +490,10 @@ impl Tree {
             }
             match node {
                 Node::Branch { children, .. } => {
+                    if read_prefetch {
+                        self.prefetch_nodes(children.iter().flatten().cloned().collect())
+                            .await;
+                    }
                     for (q, c) in children.into_iter().enumerate().rev() {
                         if let Some(c) = c {
                             stack.push((path.child(q as u8)?, c));

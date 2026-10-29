@@ -49,6 +49,7 @@ struct SharedPage {
 }
 struct SharedView {
     failed_coord: Option<[i64; 3]>,
+    head_retry_ms: f64,
     assemblies: BTreeMap<u32, String>,
     fully_resident_assemblies: HashSet<String>,
     id: String,
@@ -94,6 +95,7 @@ struct Ui {
     joint_count: RwSignal<usize>,
     busy: RwSignal<bool>,
     navigating: RwSignal<bool>,
+    common_error: RwSignal<Option<String>>,
     loading: RwSignal<Option<crate::loading::Loading>>,
     user: RwSignal<String>,
     google: RwSignal<bool>,
@@ -186,6 +188,7 @@ impl Ui {
             joint_count: RwSignal::new(0),
             busy: RwSignal::new(false),
             navigating: RwSignal::new(false),
+            common_error: RwSignal::new(None),
             loading: RwSignal::new(None),
             user: RwSignal::new("Connecting…".into()),
             google: RwSignal::new(false),
@@ -233,6 +236,8 @@ struct Client {
     generation: u64,
     region_request: u64,
     navigation_request: u64,
+    common_request: u64,
+    common_retry_ms: u32,
     region_abort: Option<web_sys::AbortController>,
     ready: bool,
     load_all: bool,
@@ -269,6 +274,8 @@ impl Client {
             generation: 0,
             region_request: 0,
             navigation_request: 0,
+            common_request: 0,
+            common_retry_ms: 5000,
             region_abort: None,
             ready: false,
             load_all: false,
@@ -506,7 +513,46 @@ impl ReadDeadline {
         })
     }
 }
+#[derive(Debug)]
+struct MetadataReadFailure {
+    status: Option<u16>,
+    message: String,
+}
+impl std::fmt::Display for MetadataReadFailure {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(&self.message)
+    }
+}
+impl std::error::Error for MetadataReadFailure {}
+fn transient_read(error: &anyhow::Error) -> bool {
+    error
+        .downcast_ref::<MetadataReadFailure>()
+        .is_some_and(|failure| {
+            failure
+                .status
+                .is_none_or(|status| status == 408 || status >= 500)
+        })
+}
+fn interrupted_read(error: impl std::fmt::Display) -> anyhow::Error {
+    MetadataReadFailure {
+        status: None,
+        message: format!(
+            "Read interrupted or timed out; retry or choose another construction ({error})"
+        ),
+    }
+    .into()
+}
 async fn json<T: serde::de::DeserializeOwned>(url: &str) -> anyhow::Result<T> {
+    let result = json_once(url).await;
+    if result.as_ref().err().is_some_and(transient_read) {
+        // Only idempotent GETs use this helper. Permissions/protocol errors do
+        // not retry, and each attempt still requires fresh HTTP revalidation.
+        gloo_timers::future::TimeoutFuture::new(250).await;
+        return json_once(url).await;
+    }
+    result
+}
+async fn json_once<T: serde::de::DeserializeOwned>(url: &str) -> anyhow::Result<T> {
     let deadline = ReadDeadline::new(15_000)?;
     let cacheable = url.contains("/assemblies?")
         || url.contains("/assemblies/") && url.ends_with("/location")
@@ -521,10 +567,7 @@ async fn json<T: serde::de::DeserializeOwned>(url: &str) -> anyhow::Result<T> {
         if let Some(value) = &cached {
             request = request.header("If-None-Match", &value.etag);
         }
-        let response = request
-            .send()
-            .await
-            .context("Read interrupted or timed out; retry or choose another construction")?;
+        let response = request.send().await.map_err(interrupted_read)?;
         if response.status() == 304 {
             let value = cached
                 .take()
@@ -541,9 +584,17 @@ async fn json<T: serde::de::DeserializeOwned>(url: &str) -> anyhow::Result<T> {
             if [401, 403, 404].contains(&response.status()) {
                 crate::read_cache::forget(url);
             }
-            anyhow::bail!(response.text().await?);
+            let status = response.status();
+            return Err(MetadataReadFailure {
+                status: Some(status),
+                message: response
+                    .text()
+                    .await
+                    .unwrap_or_else(|_| format!("Metadata read failed (HTTP {status})")),
+            }
+            .into());
         }
-        let text = response.text().await?;
+        let text = response.text().await.map_err(interrupted_read)?;
         let value = serde_json::from_str(&text)?;
         if cacheable && let Some(etag) = response.headers().get("etag") {
             crate::read_cache::put_background(url.into(), etag, text.into_bytes());
@@ -688,6 +739,7 @@ fn open_shared(handle: Handle, location: SharedLocation) {
         c.ui.busy.set(true);
         c.shared = Some(SharedView {
             failed_coord: None,
+            head_retry_ms: 5000.,
             assemblies: BTreeMap::new(),
             fully_resident_assemblies: HashSet::new(),
             id: location.world.clone(),
@@ -858,6 +910,7 @@ fn request_shared_region(handle: Handle, id: String, coord: [i64; 3], fit_view: 
                     if let Some(shared) = &mut c.shared {
                         shared.coord = coord;
                         shared.failed_coord = None;
+                        shared.head_retry_ms = 5000.;
                         shared.assemblies = region.assemblies;
                         shared.fully_resident_assemblies = region.fully_resident_assemblies;
                         shared.revision = region.revision.clone();
@@ -968,7 +1021,7 @@ fn poll_region_progress(
                 return;
             }
             if let Ok(status) =
-                json::<crate::loading::ReadStatus>(&format!("{url}&status=true")).await
+                json_once::<crate::loading::ReadStatus>(&format!("{url}&status=true")).await
             {
                 with_client(handle, |c| {
                     if c.generation == generation
@@ -999,7 +1052,8 @@ fn pump_shared(handle: Handle) {
         let coord: [i64; 3] = BlockCoord::at(eye).into();
         if shared.loading
             || shared.failed_coord == Some(coord)
-            || (coord == shared.coord && js_sys::Date::now() - shared.last_check < 5000.)
+            || (coord == shared.coord
+                && js_sys::Date::now() - shared.last_check < shared.head_retry_ms)
         {
             return None;
         }
@@ -1036,12 +1090,29 @@ fn pump_shared(handle: Handle) {
                     if c.generation != generation || c.region_request != request_id {
                         return;
                     }
+                    let mut recovered = false;
                     if let Some(shared) = &mut c.shared {
                         shared.loading = false;
                         shared.last_check = js_sys::Date::now();
+                        if result.as_ref().err().is_some_and(transient_read) {
+                            shared.head_retry_ms = (shared.head_retry_ms * 2.).min(60_000.);
+                        } else {
+                            recovered = shared.head_retry_ms > 5000. && result.is_ok();
+                            shared.head_retry_ms = 5000.;
+                        }
+                    }
+                    if recovered {
+                        c.ui.message.set(
+                            "Shared-world connection restored · current construction retained"
+                                .into(),
+                        );
                     }
                     if let Err(error) = result {
-                        c.ui.fail(error);
+                        if transient_read(&error) {
+                            c.ui.message.set("Connection slow · keeping the current view and retrying automatically".into());
+                        } else {
+                            c.ui.fail(error);
+                        }
                     }
                 }),
             }
@@ -2233,6 +2304,8 @@ fn CommonConstructionList() -> impl IntoView {
                 </button></li>}
             }).collect_view()}}
         </ul>
+        <Show when=move ||ui.common_loading.get()><p class="subtle compact" role="status">"Refreshing constructions…"</p></Show>
+        <Show when=move ||ui.common_error.get().is_some()><p class="subtle compact construction-list-status" role="status">{move ||ui.common_error.get().unwrap_or_default()}</p></Show>
         <div class="construction-list-actions">
             <button class="text-button" disabled=move ||ui.common_loading.get() on:click=move |_|common::refresh(handle)>"Refresh list"</button>
             <Show when=move ||ui.common_more.get().is_some()><button class="text-button" disabled=move ||ui.common_loading.get() on:click=move |_|common::more(handle)>"Load more"</button></Show>

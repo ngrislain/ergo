@@ -13,7 +13,7 @@ this projection; they are not hand-drawn differently proportioned bricks.
 
 `crates/client/src/lighting.rs` computes apparent solar declination and equation
 of time with NOAA/Meeus Julian-century formulas. Its inputs are the loaded
-construction's `GeoReference`, the view target converted with `to_gps`, and the
+construction's `GeoReference`, the lighting focus converted with `to_gps`, and the
 browser clock's UTC Unix timestamp. The solar calculation refreshes at minute
 granularity or when the target enters another approximately 0.0001-degree cell.
 Browser time-zone offsets are not used.
@@ -47,6 +47,15 @@ lumen/exposure model or a physics force.
 
 The navigator and ordinary MCP captures render the time-dependent sky and use
 a camera-mounted night headlamp.
+
+Orbit, fly and walk share the same shadow coverage. Leaving orbit retains its
+lighting focus, sun-map span and night-shadow reach instead of using the free
+camera's one-unit aiming distance. Entering walk can lower the eye to a surface
+without moving that footprint underground. Subsequent camera translation moves
+the lighting footprint by the same displacement; looking around does not move
+the sun map. Returning to orbit recaptures its current pivot and zoom. The night
+lamp still starts at the actual eye and follows the actual view ray; its cone,
+attenuation and brightness are unchanged.
 
 ## Homepage cursor light and drag orbit
 
@@ -105,6 +114,12 @@ percentage-closer filter and depth bias. The shadow map is 1024² when the canva
 is initially at most 600 CSS pixels wide, otherwise 2048². Sunlight uses a bounded
 orthographic volume near the target; the flashlight uses a bounded perspective
 volume. The map is reused while its matrix and uploaded geometry stay unchanged.
+The sun half-span remains `clamp(0.7 × orbit distance, 18, 180)` display units;
+the night far plane remains `clamp(3 × orbit eye/focus metric distance, 100, 1600)`.
+Free navigation preserves those fitted values across mode switches. This retains
+orbit's off-camera caster coverage rather than clipping tall/distant casters to
+a small volume around the free-camera aim point. It remains bounded resident
+coverage, not cascaded or whole-world shadows.
 
 Shadow casters come from an **independent light-frustum query** of the resident
 octree. Camera clipping and color-body LOD do not remove a resident caster.
@@ -153,11 +168,15 @@ npm run build --prefix site
 npm test --prefix site
 # With Playwright/Chrome installed:
 python3 scripts/test-web-isolated.py --script scripts/test-headlamp.py
+python3 scripts/test-web-isolated.py --script scripts/test-navigation-lighting.py
 python3 scripts/test-site-orbit.py --url http://127.0.0.1:4173
 ```
 
 Browser checks use fixed UTC daytime/nighttime clocks, actual WebGL main/depth
 draw passes, GL-error inspection, studio-lit front/rear views and navigator flashlight.
+Navigation-lighting checks inspect the actual WebGL shadow matrices across
+orbit→fly→walk→fly and steering, retaining sunlight's world footprint and the
+night lamp's depth reach. Native focus tests additionally cover subsequent movement.
 They also cover orbit/zoom/keyboard controls, reduced motion, fallback, the navigator's sky path, and root
 login/viewer routing. Canvas diagnostics include `data-renderer`, `data-lighting`,
 `data-sun-elevation`, `data-sun-azimuth`, and `data-shadow-map`.

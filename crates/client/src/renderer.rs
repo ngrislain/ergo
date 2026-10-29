@@ -1,4 +1,5 @@
 use crate::{
+    lighting::ShadowFocus,
     navigation::{MAX_FRAME_DT, Navigation, NavigationInput, NavigationMode, TURN_RATE},
     scene::{Camera, GeometryKey, RenderPolicy, SceneOptions, ScenePlanner, ground},
     walking::{Scene as CollisionScene, Walker},
@@ -26,6 +27,7 @@ pub struct Renderer {
     gl: Gl,
     program: WebGlProgram,
     lighting: LightPass,
+    shadow_focus: ShadowFocus,
     pub geo: ergo_world::GeoReference,
     pub ground_visible: bool,
     /// Studio fill/environment with a fixed key unless point_light overrides it.
@@ -118,6 +120,7 @@ impl Renderer {
             gl,
             program,
             lighting,
+            shadow_focus: ShadowFocus::default(),
             geo: Default::default(),
             ground_visible: true,
             studio_lighting: transparent_background,
@@ -397,6 +400,10 @@ impl Renderer {
         )
     }
     pub fn set_navigation(&mut self, mode: NavigationMode) {
+        if self.navigation.mode() == NavigationMode::Orbit && mode != NavigationMode::Orbit {
+            self.shadow_focus
+                .update(true, self.eye(), self.target, self.distance);
+        }
         if !self.navigation.set_mode(mode) {
             return;
         }
@@ -426,6 +433,7 @@ impl Renderer {
             self.distance = 1.0;
             self.set_eye(eye);
         }
+        self.shadow_focus.reanchor(self.eye());
         self.dirty = true;
     }
     pub fn teleport(&mut self, position: DVec3) {
@@ -584,13 +592,19 @@ impl Renderer {
             self.origin = origin;
             self.dirty = true;
         }
+        let shadow_view = self.shadow_focus.update(
+            self.navigation.mode() == NavigationMode::Orbit,
+            self.eye(),
+            self.target,
+            self.distance,
+        );
         let observer = Observer {
             geo: self.geo,
             eye: self.eye(),
             target: self.target,
+            shadow: shadow_view,
             origin: self.origin,
             display_scale: DISPLAY_SCALE,
-            distance: self.distance,
             projection_pixels: camera.projection_pixels,
             studio: self.studio_lighting,
             point_light: self.point_light,

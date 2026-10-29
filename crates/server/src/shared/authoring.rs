@@ -3,6 +3,7 @@
 use super::*;
 use ergo_world::{SCHEMA_VERSION, WorldExport};
 use futures::{StreamExt, TryStreamExt};
+use std::sync::Arc;
 
 #[derive(Deserialize)]
 pub struct ReplaceRequest {
@@ -603,7 +604,7 @@ pub(super) async fn list(
     let etag = format!(
         "W/\"catalog-{}\"",
         ContentId::of(&canonical_cbor(&(
-            "assembly-list-v2",
+            "assembly-list-v3",
             &id,
             snapshot.id(),
             &after,
@@ -631,13 +632,18 @@ pub(super) async fn list(
         ));
     }
     let page = snapshot
-        .scan_level(&root(4), 87, after.as_ref(), limit)
+        .scan_level_prefetched(&root(4), 87, after.as_ref(), limit)
         .await?;
     use futures::{StreamExt, TryStreamExt};
+    let names = tokio::sync::Mutex::new(BTreeMap::<
+        String,
+        Arc<tokio::sync::OnceCell<Option<String>>>,
+    >::new());
     let items: Vec<Option<serde_json::Value>> = futures::stream::iter(page.leaves)
         .map(|(path, _)| {
             let s = &s;
             let snapshot = &snapshot;
+            let names = &names;
             async move {
                 if let Some(header) = snapshot
                     .get_limited::<paged::RulesHeader>(&path.child(0)?, s.shared.limits.bytes)
@@ -665,9 +671,14 @@ pub(super) async fn list(
                                         .get(2)
                                         .and_then(|v| v.as_str())
                                         .context("Invalid assembly birth")?;
+                                    let name =
+                                        names.lock().await.entry(actor.into()).or_default().clone();
                                     Some(Creation {
                                         created_by: actor.into(),
-                                        created_by_name: s.shared.actor_name(actor).await?,
+                                        created_by_name: name
+                                            .get_or_try_init(|| s.shared.actor_name(actor))
+                                            .await?
+                                            .clone(),
                                         created_at: None,
                                     })
                                 }
@@ -680,25 +691,10 @@ pub(super) async fn list(
                                 _ => None,
                             }
                         };
-                        let count = if let Some(count) = header.piece_count {
-                            Some(count)
-                        } else {
-                            let mut count = 0;
-                            let mut cursor = None;
-                            loop {
-                                let rows = snapshot
-                                    .scan_page_prefetched(&path.child(1)?, cursor.as_ref(), 128)
-                                    .await?;
-                                count += rows.leaves.len();
-                                if count > 5000 {
-                                    break None;
-                                }
-                                cursor = rows.next;
-                                if cursor.is_none() {
-                                    break Some(count);
-                                }
-                            }
-                        };
+                        // Discovery must not walk thousands of legacy members
+                        // merely to display a size. Missing summaries stay
+                        // explicitly unknown until a normal edit records one.
+                        let count = header.piece_count;
                         let mut item = serde_json::to_value(header)
                             .context("Cannot encode assembly header")?;
                         item["piece_count"] = serde_json::json!(count);

@@ -177,6 +177,11 @@ Membership/geometry changes invalidate immediately through the accepted revision
 Cold page rows use bounded ordered parallel reads rather than serial per-model
 S3 walks. Live membership is still probed even when a summary count exists, since
 individual deletions can leave a rule header behind.
+Logical-depth catalogue paging also uses bounded immutable-node lookahead. Legacy
+rows without `piece_count` return an unknown size (`—` in the viewer), rather than
+walking up to 5,000 member keys just to populate a navigation label. A normal
+assembly edit records a size summary. Legacy current-profile names are fetched
+once per distinct actor within a page request, not once per construction.
 
 The browser starts list loading as soon as configuration is available, in parallel
 with account/head setup, and retains verified list/location bytes in IndexedDB.
@@ -215,9 +220,17 @@ and native accessible progress semantics are retained.
 Read-only navigation can be superseded by another construction selection: the
 previous scene remains visible while a replacement loads, old fetches are aborted,
 and generation/request guards reject late head/location/body callbacks. Authoring
-mutations remain exclusive. Discovery reads have a 15-second deadline and region
-reads a 180-second deadline; a failed region is not immediately retried in a loop.
+mutations remain exclusive. Each discovery GET attempt has a 15-second deadline;
+transport interruptions, HTTP 408 and 5xx responses get one idempotent retry after
+250 ms. Permission and protocol failures do not retry. Region reads retain a
+180-second deadline; a failed region is not immediately retried in a loop.
 Select it again or choose another construction to recover without reloading the app.
+Transient catalogue-refresh failures keep already loaded rows and show a scoped
+retry status. Automatic list retries back off from 5 to 60 seconds; a manual
+refresh supersedes an older scheduled retry. Background revision polling backs off
+to at most 60 seconds and retains the current scene without a global timeout
+alert; a successful poll reports recovery. These are GET-only recovery paths,
+not mutation retries or permission-free/offline cache reuse.
 
 ### Operator warm-up
 
@@ -285,6 +298,19 @@ avoidable decode/re-encoding for warm reads, not transfer or distant drawing, as
 the dominant costs. The CBOR-cache and neighboring-view changes address warm
 costs; cache-only changes do not eliminate the cold canonical-reference walk.
 The packed-page path described above addresses that walk for backfilled blocks.
+
+On 2026-10-29 the v0.5.12 existing-browser check preserved model storage and
+verified/migrated all five legacy packet entries. Identical content shared blobs
+in the new database; eight retained URL entries referenced five unique blobs
+(72,014,659 bytes at that observation, including historical revisions). Current
+application assets were fetched explicitly so the check exercised the new cache.
+The 30-row construction list appeared at 3.135 seconds including startup; its
+initial list HTTP request took 1.861 seconds. Under concurrent authoring, a later
+cold metadata refresh took 8.840 seconds and its immediately repeated authorized
+304 refresh took 77 ms. The 91,269-piece region after the first doorway edit
+transferred 4,201,683 wire bytes in 17.075 seconds during that workload, completed
+its overlay and displayed without browser errors. These distinguish cold work,
+authorization revalidation and rendering; they are not latency guarantees.
 
 Source: `crates/server/src/shared/{read_cache,view}.rs`,
 `metadata_cache.rs`, `authoring.rs`, `crates/transactions/src/lib.rs`, and

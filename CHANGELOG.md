@@ -1,5 +1,19 @@
 # Changelog
 
+## v0.5.13
+
+- Speed construction discovery with bounded directory lookahead, one legacy-name
+  lookup per actor/page, and unknown legacy sizes instead of full member counts.
+- Retry transient metadata GET failures once, then recover list refreshes and
+  background revision polls with backoff while retaining loaded content. Keep
+  authorization/version checks and mutation non-retry guarantees intact.
+- Keep orbit-sized sunlight coverage and night-shadow reach when switching to
+  walking or flying. Preserve the lighting footprint on walking entry, follow
+  subsequent movement, and keep sunlight stable while looking around.
+- Preserve the night headlamp's actual eye origin, view-ray alignment, cone and
+  brightness. Verify both daylight and night mode changes through real WebGL
+  shadow matrices in addition to the camera-alignment regression.
+
 ## v0.5.12
 
 - Add bounded packed spatial read pages, verified reusable region packets and

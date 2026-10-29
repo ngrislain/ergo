@@ -166,6 +166,40 @@ def main():
                         page.reload(wait_until='domcontentloaded')
                         expect(page.locator('.status-message')).to_contain_text('Shared-world region loaded',timeout=60000)
                         assert any('/view?' in url and status==304 for url,status in responses),responses
+                        # Transient metadata failures retain the visible list
+                        # and scene, retry bounded GETs, and recover automatically
+                        # without turning ordinary polling into a global alert.
+                        metadata_faults={'remaining':2,'requests':0}
+                        def flaky_list(route):
+                            metadata_faults['requests']+=1
+                            if metadata_faults['remaining']:
+                                metadata_faults['remaining']-=1
+                                route.fulfill(status=503,json={'error':'Temporary catalogue unavailability'})
+                            else:route.continue_()
+                        page.route('**/assemblies?*',flaky_list)
+                        page.get_by_role('button',name='Refresh list',exact=True).click()
+                        expect(page.locator('.construction-list-status')).to_contain_text('retrying automatically',timeout=5000)
+                        expect(page.locator(f'[data-assembly-id="{names[0]}"]')).to_be_visible()
+                        expect(page.get_by_role('alert')).to_be_hidden()
+                        expect(page.locator('.status-bar')).to_contain_text(re.compile(r'6,?000 bricks'))
+                        expect(page.locator('.construction-list-status')).to_be_hidden(timeout=15000)
+                        expect(page.get_by_role('button',name='Refresh list',exact=True)).to_be_enabled()
+                        assert metadata_faults['requests']==3,metadata_faults
+                        page.unroute('**/assemblies?*',flaky_list)
+                        head_faults={'remaining':2}
+                        def flaky_head(route):
+                            path=__import__('urllib.parse',fromlist=['urlsplit']).urlsplit(route.request.url).path
+                            if path==f'/api/shared-worlds/{head["id"]}' and head_faults['remaining']:
+                                head_faults['remaining']-=1
+                                route.fulfill(status=503,json={'error':'Temporary head unavailability'})
+                            else:route.continue_()
+                        head_pattern=base+f'/api/shared-worlds/{head["id"]}*'
+                        page.route(head_pattern,flaky_head)
+                        expect(page.locator('.status-message')).to_contain_text('Connection slow',timeout=15000)
+                        expect(page.get_by_role('alert')).to_be_hidden()
+                        expect(page.locator('.status-bar')).to_contain_text(re.compile(r'6,?000 bricks'))
+                        expect(page.locator('.status-message')).to_contain_text('connection restored',timeout=20000)
+                        page.unroute(head_pattern,flaky_head)
                         # A slow remote read must retain this scene and remain
                         # cancellable by another construction selection.
                         remote_reads=[]

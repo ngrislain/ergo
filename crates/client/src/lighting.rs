@@ -2,6 +2,47 @@
 //! NOAA/Meeus solar coordinates; geometric elevation (no weather/refraction).
 use glam::DVec3;
 
+/// Lighting coverage is independent of the free camera's one-unit aiming ray.
+/// Retain the orbit footprint on entry, then follow actual camera translation.
+#[derive(Clone, Copy, Debug)]
+#[cfg(any(target_arch = "wasm32", test))]
+pub(crate) struct ShadowView {
+    pub target: DVec3,
+    pub distance: f64,
+    pub reach: f64,
+}
+
+#[derive(Default)]
+#[cfg(any(target_arch = "wasm32", test))]
+pub(crate) struct ShadowFocus(Option<(DVec3, ShadowView)>);
+
+#[cfg(any(target_arch = "wasm32", test))]
+impl ShadowFocus {
+    pub fn update(&mut self, orbit: bool, eye: DVec3, target: DVec3, distance: f64) -> ShadowView {
+        let view = match self.0 {
+            Some((previous_eye, view)) if !orbit => ShadowView {
+                target: view.target + (eye - previous_eye),
+                ..view
+            },
+            _ => ShadowView {
+                target,
+                distance,
+                reach: ((target - eye) * crate::scene::DISPLAY_SCALE).length(),
+            },
+        };
+        self.0 = Some((eye, view));
+        view
+    }
+
+    /// A mode transition can lower the eye to a walking surface. Keep the
+    /// existing world-space lighting footprint instead of moving it underground.
+    pub fn reanchor(&mut self, eye: DVec3) {
+        if let Some((previous_eye, _)) = &mut self.0 {
+            *previous_eye = eye;
+        }
+    }
+}
+
 #[derive(Clone, Copy, Debug)]
 pub struct SolarPosition {
     /// Unit direction toward the sun, in the renderer's east/up/south axes.
@@ -64,6 +105,39 @@ pub fn solar_position(latitude: f64, longitude: f64, unix_seconds: f64) -> Solar
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn free_camera_aim_and_turning_do_not_shrink_or_recenter_orbit_shadows() {
+        let mut focus = ShadowFocus::default();
+        let eye = DVec3::new(100., 80., 120.);
+        let target = DVec3::new(10., 30., 20.);
+        focus.update(true, eye, target, 160.);
+        let reach = ((target - eye) * crate::scene::DISPLAY_SCALE).length();
+        for aim in [DVec3::X, DVec3::NEG_Z, DVec3::NEG_Y] {
+            let view = focus.update(false, eye, eye + aim, 1.);
+            assert_eq!(view.target, target);
+            assert_eq!(view.distance, 160.);
+            assert_eq!(view.reach, reach);
+        }
+    }
+
+    #[test]
+    fn walking_entry_keeps_the_world_footprint_and_movement_then_follows() {
+        let mut focus = ShadowFocus::default();
+        let target = DVec3::new(19968., 50., 64.);
+        let original = focus.update(true, DVec3::new(20080., 180., 140.), target, 200.);
+        let eye = DVec3::new(20080., 3.5, 140.);
+        focus.reanchor(eye);
+        assert_eq!(focus.update(false, eye, eye + DVec3::X, 1.).target, target);
+        let movement = DVec3::new(4., 1., -8.);
+        let view = focus.update(false, eye + movement, eye + movement + DVec3::X, 1.);
+        assert_eq!(view.target, target + movement);
+        assert_eq!(view.distance, 200.);
+        assert_eq!(view.reach, original.reach);
+        let orbit = focus.update(true, eye + movement, target, 40.);
+        assert_eq!(orbit.target, target);
+        assert_eq!(orbit.distance, 40.);
+    }
 
     #[test]
     fn matches_the_nrel_spa_reference_observation() {

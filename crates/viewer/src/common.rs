@@ -58,7 +58,7 @@ pub(super) fn more(handle: Handle) {
     load_page(handle, false);
 }
 fn load_page(handle: Handle, reset: bool) {
-    let Some((id, cursor)) = with_client(handle, |c| {
+    let Some((id, cursor, request)) = with_client(handle, |c| {
         if c.ui.common_loading.get_untracked() {
             return None;
         }
@@ -69,7 +69,9 @@ fn load_page(handle: Handle, reset: bool) {
             Some(c.ui.common_more.get_untracked()?)
         };
         c.ui.common_loading.set(true);
-        Some((id, cursor))
+        c.ui.common_error.set(None);
+        c.common_request += 1;
+        Some((id, cursor, c.common_request))
     }) else {
         return;
     };
@@ -84,13 +86,16 @@ fn load_page(handle: Handle, reset: bool) {
             ));
         }
         let result = json::<Page>(&url).await;
-        with_client(handle, |c| {
-            c.ui.common_loading.set(false);
-            if c.ui.common_world.get_untracked().as_deref() != Some(id.as_str()) {
-                return;
+        let retry = with_client(handle, |c| {
+            if c.common_request != request
+                || c.ui.common_world.get_untracked().as_deref() != Some(id.as_str())
+            {
+                return None;
             }
+            c.ui.common_loading.set(false);
             match result {
                 Ok(page) => {
+                    c.common_retry_ms = 5000;
                     if reset {
                         c.ui.common_assemblies.set(page.items);
                     } else {
@@ -104,9 +109,35 @@ fn load_page(handle: Handle, reset: bool) {
                     }
                     c.ui.common_more.set(page.next);
                 }
-                Err(error) => c.ui.error.set(Some(error.to_string())),
+                Err(error) if transient_read(&error) => {
+                    c.ui.common_error.set(Some("Construction list delayed · keeping loaded items and retrying automatically".into()));
+                    let delay = c.common_retry_ms;
+                    c.common_retry_ms = (delay * 2).min(60_000);
+                    return Some(delay);
+                }
+                Err(error) => {
+                    if error
+                        .downcast_ref::<MetadataReadFailure>()
+                        .is_some_and(|failure| matches!(failure.status, Some(401 | 403 | 404)))
+                    {
+                        c.ui.common_assemblies.set(Vec::new());
+                        c.ui.common_more.set(None);
+                    }
+                    c.ui.common_error.set(Some(error.to_string()));
+                }
             }
+            None
         });
+        if let Some(delay) = retry {
+            gloo_timers::future::TimeoutFuture::new(delay).await;
+            if with_client(handle, |c| {
+                c.common_request == request
+                    && c.ui.common_world.get_untracked().as_deref() == Some(id.as_str())
+                    && !c.ui.signing_out.get_untracked()
+            }) {
+                load_page(handle, reset);
+            }
+        }
     });
 }
 pub(super) fn open(handle: Handle, assembly: String) {
