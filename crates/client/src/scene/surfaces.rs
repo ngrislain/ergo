@@ -43,7 +43,8 @@ impl Surfaces {
             .collect();
         let mut groups = BTreeMap::<[i64; 3], Vec<Body>>::new();
         for (index, brick) in bricks.iter().enumerate() {
-            if parts.get(brick.part.as_str()).is_none_or(Option::is_none)
+            if ergo_world::catalog::color_alpha(brick.color) < 255
+                || parts.get(brick.part.as_str()).is_none_or(Option::is_none)
                 || (brick.transform.y_axis - DVec3::Y).length() > 1e-6
                 || (brick.transform.x_axis.length_squared() - 1.).abs() > 1e-6
                 || (brick.transform.z_axis.length_squared() - 1.).abs() > 1e-6

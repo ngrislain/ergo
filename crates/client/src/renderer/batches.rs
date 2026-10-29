@@ -1,5 +1,5 @@
 //! Shared immutable geometry, with independently culled color/depth instances.
-use crate::scene::{FramePlan, GeometryKey};
+use crate::scene::{FramePlan, GeometryKey, TransparentDraw};
 use ergo_world::geometry::Mesh;
 use std::collections::{BTreeMap, HashSet};
 use web_sys::{WebGl2RenderingContext as Gl, WebGlBuffer, WebGlVertexArrayObject};
@@ -8,6 +8,8 @@ use web_sys::{WebGl2RenderingContext as Gl, WebGlBuffer, WebGlVertexArrayObject}
 pub(super) enum Pass {
     Color = 0,
     Shadow = 1,
+    Transparent = 2,
+    TransparentShadow = 3,
 }
 
 struct Instances {
@@ -21,15 +23,16 @@ pub(super) struct Geometry {
     vertices: i32,
     stud_mode: i32,
     stud_offset: [f32; 2],
-    instances: [Instances; 2],
+    instances: [Instances; 4],
 }
 impl Geometry {
     fn new(gl: &Gl, mesh: &Mesh) -> Self {
         let vertex_buffer = gl.create_buffer().expect("WebGL geometry allocation");
         gl.bind_buffer(Gl::ARRAY_BUFFER, Some(&vertex_buffer));
+        let vertices = crate::normals::display_vertices(mesh);
         gl.buffer_data_with_array_buffer_view(
             Gl::ARRAY_BUFFER,
-            &js_sys::Float32Array::from(mesh.vertices.as_slice()),
+            &js_sys::Float32Array::from(vertices.as_slice()),
             Gl::STATIC_DRAW,
         );
         let instances = std::array::from_fn(|_| {
@@ -101,19 +104,30 @@ pub(super) struct Batches {
     pub uploaded_bytes: usize,
     pub shadow_changed: bool,
     pending_shadow_invalidation: bool,
+    transparent_order: Vec<TransparentDraw>,
+    transparent_shadow_order: Vec<TransparentDraw>,
 }
 impl Batches {
     pub fn clear(&mut self) {
-        self.pending_shadow_invalidation |= self
-            .geometry
-            .values()
-            .any(|mesh| !mesh.instances[Pass::Shadow as usize].data.is_empty());
+        self.pending_shadow_invalidation |= self.geometry.values().any(|mesh| {
+            !mesh.instances[Pass::Shadow as usize].data.is_empty()
+                || !mesh.instances[Pass::TransparentShadow as usize]
+                    .data
+                    .is_empty()
+        });
         self.geometry.clear();
+        self.transparent_order.clear();
+        self.transparent_shadow_order.clear();
     }
     pub fn invalidate_parts(&mut self, changed: &HashSet<String>) {
         self.geometry.retain(|key, mesh| {
             let keep = !matches!(key,GeometryKey::Part(part,_) if changed.contains(part));
-            if !keep && !mesh.instances[Pass::Shadow as usize].data.is_empty() {
+            if !keep
+                && (!mesh.instances[Pass::Shadow as usize].data.is_empty()
+                    || !mesh.instances[Pass::TransparentShadow as usize]
+                        .data
+                        .is_empty())
+            {
                 self.pending_shadow_invalidation = true;
             }
             keep
@@ -122,7 +136,12 @@ impl Batches {
     pub fn invalidate_surfaces(&mut self) {
         self.geometry.retain(|key, mesh| {
             let keep = !matches!(key, GeometryKey::Surface(_));
-            if !keep && !mesh.instances[Pass::Shadow as usize].data.is_empty() {
+            if !keep
+                && (!mesh.instances[Pass::Shadow as usize].data.is_empty()
+                    || !mesh.instances[Pass::TransparentShadow as usize]
+                        .data
+                        .is_empty())
+            {
                 self.pending_shadow_invalidation = true;
             }
             keep
@@ -131,9 +150,21 @@ impl Batches {
     pub fn begin(&mut self, plan: &FramePlan) {
         self.uploaded_bytes = 0;
         self.shadow_changed = std::mem::take(&mut self.pending_shadow_invalidation);
+        self.shadow_changed |= self.transparent_shadow_order != plan.transparent_shadow_order;
+        self.transparent_order.clone_from(&plan.transparent_order);
+        self.transparent_shadow_order
+            .clone_from(&plan.transparent_shadow_order);
         self.geometry.retain(|key, mesh| {
-            let keep = plan.color.contains_key(key) || plan.shadow.contains_key(key);
-            if !keep && !mesh.instances[Pass::Shadow as usize].data.is_empty() {
+            let keep = plan.color.contains_key(key)
+                || plan.shadow.contains_key(key)
+                || plan.transparent.contains_key(key)
+                || plan.transparent_shadow.contains_key(key);
+            if !keep
+                && (!mesh.instances[Pass::Shadow as usize].data.is_empty()
+                    || !mesh.instances[Pass::TransparentShadow as usize]
+                        .data
+                        .is_empty())
+            {
                 self.shadow_changed = true;
             }
             keep
@@ -144,11 +175,16 @@ impl Batches {
             .geometry
             .entry(key.clone())
             .or_insert_with(|| Geometry::new(gl, mesh));
-        for (pass, list) in [(Pass::Color, &plan.color), (Pass::Shadow, &plan.shadow)] {
+        for (pass, list) in [
+            (Pass::Color, &plan.color),
+            (Pass::Shadow, &plan.shadow),
+            (Pass::Transparent, &plan.transparent),
+            (Pass::TransparentShadow, &plan.transparent_shadow),
+        ] {
             let data = list.get(&key).map_or(&[][..], Vec::as_slice);
             if gpu.update(pass, data) {
                 self.uploaded_bytes += data.len() * 4;
-                if matches!(pass, Pass::Shadow) {
+                if matches!(pass, Pass::Shadow | Pass::TransparentShadow) {
                     self.shadow_changed = true;
                 }
             }
@@ -178,6 +214,11 @@ impl Batches {
         let mut calls = 0;
         let mut triangles = 0;
         let mut instances = 0;
+        gl.uniform1f(
+            gl.get_uniform_location(program, "material_opacity")
+                .as_ref(),
+            1.,
+        );
         for (key, mesh) in &self.geometry {
             let draw = &mesh.instances[pass as usize];
             let count = (draw.data.len() / 20) as i32;
@@ -210,6 +251,71 @@ impl Batches {
             triangles += mesh.vertices as usize * count as usize / 3;
             instances += count as usize;
         }
+        let (order, transparency_pass) = if matches!(pass, Pass::Color) {
+            (&self.transparent_order, Pass::Transparent)
+        } else {
+            (&self.transparent_shadow_order, Pass::TransparentShadow)
+        };
+        if !order.is_empty() {
+            if matches!(pass, Pass::Color) {
+                gl.enable(Gl::BLEND);
+                gl.blend_func(Gl::ONE, Gl::ONE_MINUS_SRC_ALPHA);
+                gl.depth_mask(false);
+            }
+            for draw in order {
+                let mesh = &self.geometry[&draw.key];
+                let instances_buffer = &mesh.instances[transparency_pass as usize];
+                gl.uniform1f(
+                    gl.get_uniform_location(program, "material_opacity")
+                        .as_ref(),
+                    draw.opacity,
+                );
+                // Transparent source parts retain full geometry and studs.
+                gl.uniform1i(
+                    gl.get_uniform_location(program, "stud_mode").as_ref(),
+                    if mesh.stud_mode == 1 {
+                        3
+                    } else {
+                        mesh.stud_mode
+                    },
+                );
+                if matches!(pass, Pass::Color) {
+                    gl.uniform2f(
+                        gl.get_uniform_location(program, "stud_offset").as_ref(),
+                        mesh.stud_offset[0],
+                        mesh.stud_offset[1],
+                    );
+                    gl.uniform1i(gl.get_uniform_location(program, "floor_mode").as_ref(), 0);
+                }
+                gl.bind_vertex_array(Some(&instances_buffer.vao));
+                gl.bind_buffer(Gl::ARRAY_BUFFER, Some(&instances_buffer.buffer));
+                let base = (draw.first * 80) as i32;
+                for column in 0..4 {
+                    gl.vertex_attrib_pointer_with_i32(
+                        3 + column,
+                        4,
+                        Gl::FLOAT,
+                        false,
+                        80,
+                        base + (column * 16) as i32,
+                    );
+                }
+                gl.vertex_attrib_pointer_with_i32(7, 4, Gl::FLOAT, false, 80, base + 64);
+                gl.draw_arrays_instanced(Gl::TRIANGLES, 0, mesh.vertices, 1);
+                calls += 1;
+                triangles += mesh.vertices as usize / 3;
+                instances += 1;
+            }
+            if matches!(pass, Pass::Color) {
+                gl.depth_mask(true);
+                gl.disable(Gl::BLEND);
+            }
+        }
+        gl.uniform1f(
+            gl.get_uniform_location(program, "material_opacity")
+                .as_ref(),
+            1.,
+        );
         gl.bind_vertex_array(None);
         (calls, triangles, instances)
     }

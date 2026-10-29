@@ -1,5 +1,15 @@
 # Changelog
 
+## v0.5.15
+
+- Derive crease-aware, angle-weighted smooth normals per GPU prototype, including
+  existing frozen source meshes, while preserving sharp corners, positions,
+  colours, source hashes, picking and physical geometry.
+- Render catalogue transparent colours and direct transparent LDraw colours with
+  lighting, dielectric highlights, global back-to-front instance ordering and
+  premultiplied alpha. Keep source geometry and approximate partial shadow
+  attenuation with stable light-buffer coverage.
+
 ## v0.5.14
 
 - Revalidate construction catalogues by accepted revision rather than invalidating

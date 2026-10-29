@@ -7,7 +7,7 @@ shared Sandbox. The bridge never grants itself acceptance or direct agent S3 acc
 ## Install and configure
 
 ```sh
-npm install --global --ignore-scripts 'https://github.com/ngrislain/ergo/releases/download/v0.5.14/ngrislain-ergo-mcp-0.5.14.tgz'
+npm install --global --ignore-scripts 'https://github.com/ngrislain/ergo/releases/download/v0.5.15/ngrislain-ergo-mcp-0.5.15.tgz'
 ergo-mcp --login --publish-url https://ergosandbox.com
 ```
 

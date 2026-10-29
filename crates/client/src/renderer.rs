@@ -843,6 +843,8 @@ impl Renderer {
             .color
             .keys()
             .chain(plan.shadow.keys())
+            .chain(plan.transparent.keys())
+            .chain(plan.transparent_shadow.keys())
             .cloned()
             .collect();
         for key in keys {

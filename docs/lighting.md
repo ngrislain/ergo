@@ -102,6 +102,42 @@ base color and material response. Procedural rim shading is suppressed under
 nearby real stud geometry to avoid double-darkening at the detail transition.
 Stud sides and cast shadows can still naturally be darker than their tops.
 
+### Curved-surface normals
+
+GPU prototype upload derives angle-weighted vertex normals from edge-connected
+triangle fans. Dihedral angles are measured in physical display units, including
+the 9.6/8 vertical scale. Source/parametric meshes use a 40° crease limit; reviewed
+render LOD and decorative ground studs use 65° so their reduced cylinder sides
+remain smooth. Cap rims, brick corners and steeper creases stay split. Point-only
+contacts and non-manifold seams do not join, and existing non-flat artist normals
+are retained. Orientation signs accommodate mirrored LDraw primitive winding.
+
+This is a bounded display derivative, built once per resident GPU prototype:
+at most 600,000 triangle corners are processed per prototype. Larger prototypes
+retain their stored normals. Quantized edge matching uses 0.00001 native-unit
+coordinates; positions, colours, triangle counts, source fingerprints, picking,
+collision bounds and published meshes are unchanged. Old frozen parts therefore
+gain smoother lighting without rebuilding or republishing their constructions.
+
+### Lit transparent plastic
+
+Catalogue `ALPHA` and direct LDraw `0x3RRGGBB` colours select transparent instances;
+direct `0x2RRGGBB` colours remain opaque. Transparent pieces retain source geometry
+and are excluded from voxel surfaces/spatial aggregates. Opaque geometry writes
+depth first. Transparent instances are then globally sorted back-to-front by
+camera-space depth across part prototypes, depth-tested with depth writes off,
+and composited with premultiplied alpha. Both instanced paths retain the existing
+20-float instance layout; an ordered per-instance draw supplies material opacity.
+
+Transparent inherited-colour faces keep the same sun/headlamp/studio lighting,
+with dielectric highlights, 0.16 roughness and increasing grazing-angle opacity.
+Opaque plastic retains 0.36 roughness. Baked fixed RGB faces remain opaque: their
+old mesh stream does not contain a separate fixed-face material/alpha code.
+The light-buffer pass uses stable opacity coverage plus PCF to approximate partial
+shadow attenuation. This does not model refraction, caustics, coloured transmitted
+shadows, or exact ordering of intersecting transparent surfaces/triangles inside
+one source part. Material transparency does not remove collision bodies.
+
 These plastic-appearance parameters do not supply physical masses or connector
 capacities and do not imply a construction validation certificate.
 Released MCP packages use their bundled runtime; rebuilding the current source
@@ -169,6 +205,7 @@ npm test --prefix site
 # With Playwright/Chrome installed:
 python3 scripts/test-web-isolated.py --script scripts/test-headlamp.py
 python3 scripts/test-web-isolated.py --script scripts/test-navigation-lighting.py
+python3 scripts/test-render-materials.py
 python3 scripts/test-site-orbit.py --url http://127.0.0.1:4173
 ```
 
@@ -177,6 +214,10 @@ draw passes, GL-error inspection, studio-lit front/rear views and navigator flas
 Navigation-lighting checks inspect the actual WebGL shadow matrices across
 orbit→fly→walk→fly and steering, retaining sunlight's world footprint and the
 night lamp's depth reach. Native focus tests additionally cover subsequent movement.
+Material checks compare actual WASM/WebGL captures for a visible red object behind
+clear plastic, lighting response and insertion-order-independent overlap between
+different transparent part prototypes. Normal-fan tests preserve vertex positions,
+colours, cap rims, sharp box edges and mirrored winding.
 They also cover orbit/zoom/keyboard controls, reduced motion, fallback, the navigator's sky path, and root
 login/viewer routing. Canvas diagnostics include `data-renderer`, `data-lighting`,
 `data-sun-elevation`, `data-sun-azimuth`, and `data-shadow-map`.

@@ -52,10 +52,21 @@ pub enum GeometryKey {
 }
 pub type Instances = BTreeMap<GeometryKey, Vec<f32>>;
 
+#[derive(Clone, Debug, PartialEq)]
+pub struct TransparentDraw {
+    pub key: GeometryKey,
+    pub first: usize,
+    pub opacity: f32,
+}
+
 #[derive(Default)]
 pub struct FramePlan {
     pub color: Instances,
     pub shadow: Instances,
+    pub transparent: Instances,
+    pub transparent_shadow: Instances,
+    pub transparent_order: Vec<TransparentDraw>,
+    pub transparent_shadow_order: Vec<TransparentDraw>,
     pub lod_counts: [usize; 4],
     pub shadow_lod_counts: [usize; 3],
     pub detail_scale: f64,
@@ -88,6 +99,8 @@ struct ShadowCache {
     highlighted: HashSet<u32>,
     explode: f64,
     instances: Instances,
+    transparent_instances: Instances,
+    transparent_order: Vec<TransparentDraw>,
     lod_counts: [usize; 3],
     triangles: usize,
     detail_scale: f64,
@@ -326,6 +339,7 @@ impl ScenePlanner {
         }
         let flags = color_surfaces(self.surfaces.as_ref(), camera, bricks, &options);
         let mut aggregates = BTreeMap::<(i64, i64, i64, u32), Aabb>::new();
+        let mut transparent = Vec::new();
         let candidates = if options.explode > 0. || !options.policy.cull_camera {
             (0..bricks.len()).collect()
         } else {
@@ -413,6 +427,20 @@ impl ScenePlanner {
                     .and_modify(|b| *b = b.union(bounds))
                     .or_insert(bounds);
             } else {
+                let alpha = ergo_world::catalog::color_alpha(brick.color);
+                if alpha < 255 {
+                    let clip = camera.view_projection
+                        * ((bounds.center() - camera.origin) * DISPLAY_SCALE).extend(1.);
+                    transparent.push((
+                        clip.w,
+                        GeometryKey::Part(brick.part.clone(), lod),
+                        brick_matrix(brick, camera.origin, offset),
+                        brick.rgb,
+                        selected || highlighted,
+                        f32::from(alpha) / 255.,
+                    ));
+                    continue;
+                }
                 instance(
                     plan.color
                         .entry(GeometryKey::Part(brick.part.clone(), lod))
@@ -422,6 +450,19 @@ impl ScenePlanner {
                     selected || highlighted,
                 );
             }
+        }
+        // Sort all transparent instances together, not independently by part:
+        // different glass colours/prototypes can overlap in the same view.
+        transparent.sort_by(|a, b| b.0.total_cmp(&a.0));
+        for (_, key, matrix, rgb, selected, opacity) in transparent {
+            let data = plan.transparent.entry(key.clone()).or_default();
+            let first = data.len() / 20;
+            instance(data, matrix, rgb, selected);
+            plan.transparent_order.push(TransparentDraw {
+                key,
+                first,
+                opacity,
+            });
         }
         plan.budget_exceeded = options
             .policy
@@ -455,6 +496,8 @@ impl ScenePlanner {
             && cached.explode == options.explode
         {
             plan.shadow = cached.instances.clone();
+            plan.transparent_shadow = cached.transparent_instances.clone();
+            plan.transparent_shadow_order = cached.transparent_order.clone();
             plan.shadow_lod_counts = cached.lod_counts;
             plan.estimated_shadow_triangles = cached.triangles;
             plan.shadow_detail_scale = cached.detail_scale;
@@ -542,14 +585,28 @@ impl ScenePlanner {
             plan.estimated_shadow_triangles = plan
                 .estimated_shadow_triangles
                 .saturating_add(candidate.detail.cost(lod));
+            let key = GeometryKey::Part(brick.part.clone(), lod);
+            let alpha = ergo_world::catalog::color_alpha(brick.color);
+            let target = if alpha < 255 {
+                &mut plan.transparent_shadow
+            } else {
+                &mut plan.shadow
+            };
+            let data = target.entry(key.clone()).or_default();
+            let first = data.len() / 20;
             instance(
-                plan.shadow
-                    .entry(GeometryKey::Part(brick.part.clone(), lod))
-                    .or_default(),
+                data,
                 brick_matrix(brick, camera.origin, candidate.offset),
                 brick.rgb,
                 false,
             );
+            if alpha < 255 {
+                plan.transparent_shadow_order.push(TransparentDraw {
+                    key,
+                    first,
+                    opacity: f32::from(alpha) / 255.,
+                });
+            }
         }
         plan.shadow_budget_exceeded = options
             .policy
@@ -565,6 +622,8 @@ impl ScenePlanner {
                 highlighted: options.highlighted.clone(),
                 explode: options.explode,
                 instances: plan.shadow.clone(),
+                transparent_instances: plan.transparent_shadow.clone(),
+                transparent_order: plan.transparent_shadow_order.clone(),
                 lod_counts: plan.shadow_lod_counts,
                 triangles: plan.estimated_shadow_triangles,
                 detail_scale: plan.shadow_detail_scale,
@@ -583,6 +642,7 @@ fn shadow_level(
     options: &SceneOptions<'_>,
 ) -> u8 {
     if options.policy.full_detail
+        || ergo_world::catalog::color_alpha(brick.color) < 255
         || options.selected == Some(brick.id)
         || options.highlighted.contains(&brick.id)
         || candidate.detail.part.is_none()
@@ -600,7 +660,10 @@ fn color_level(
     previous: Option<u8>,
     options: &SceneOptions<'_>,
 ) -> u8 {
-    let mut lod = if options.policy.full_detail || options.selected == Some(brick.id) {
+    let mut lod = if options.policy.full_detail
+        || options.selected == Some(brick.id)
+        || ergo_world::catalog::color_alpha(brick.color) < 255
+    {
         0
     } else {
         crate::lod::body_level(candidate.pixels / scale, previous)
@@ -667,6 +730,57 @@ mod tests {
                 merge_surfaces: true,
             },
         )
+    }
+    #[test]
+    fn transparent_parts_keep_full_geometry_and_sort_across_prototypes() {
+        let mut demo = Demo::new();
+        demo.add("3003", 47, 0., 0., 0.);
+        demo.add("3001", 43, 0., 0., 4.);
+        demo.add("3003", 36, 0., 0., 8.);
+        let camera = Camera::new(
+            DVec3::new(1., 5., 30.),
+            DVec3::new(1., 1., 0.),
+            800.,
+            600.,
+            90.,
+            1000.,
+        );
+        let result = plan(
+            &demo,
+            &camera,
+            &camera.visibility,
+            RenderPolicy::PERFORMANCE,
+        );
+        assert!(result.color.is_empty() && result.shadow.is_empty());
+        assert_eq!(result.transparent_order.len(), 3);
+        assert_eq!(result.transparent_shadow_order.len(), 3);
+        assert_eq!(
+            result
+                .transparent_order
+                .iter()
+                .map(|draw| draw.key.clone())
+                .collect::<Vec<_>>(),
+            vec![
+                GeometryKey::Part("3003.dat".into(), 0),
+                GeometryKey::Part("3001.dat".into(), 0),
+                GeometryKey::Part("3003.dat".into(), 0)
+            ]
+        );
+        assert_eq!(
+            result
+                .transparent_order
+                .iter()
+                .map(|draw| draw.first)
+                .collect::<Vec<_>>(),
+            vec![0, 0, 1]
+        );
+        assert!(
+            result
+                .transparent_order
+                .iter()
+                .all(|draw| (draw.opacity - 128. / 255.).abs() < 1e-6)
+        );
+        assert_eq!(result.lod_counts, [3, 0, 0, 0]);
     }
     #[test]
     fn offscreen_resident_brick_casts_a_shadow_without_a_color_instance() {

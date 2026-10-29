@@ -31,6 +31,7 @@ uniform mat4 shadow_matrix;
 uniform vec3 eye;
 uniform float projection_pixels;
 uniform highp int stud_mode;
+uniform float material_opacity;
 out vec3 v_normal;
 out vec3 v_color;
 out vec3 v_position;
@@ -41,6 +42,7 @@ out vec3 v_local_normal;
 out vec3 v_tangent_x;
 out vec3 v_tangent_z;
 out float v_stud_geometry;
+out float v_opacity;
 /* STUD_WEIGHT */
 /* BLOCK_POSITION */
 void main() {
@@ -55,6 +57,7 @@ void main() {
     v_position = world.xyz;
     v_normal = normalize(transpose(inverse(mat3(physical_model))) * normal);
     v_color = face_color.x < 0.0 ? color.rgb : face_color;
+    v_opacity = face_color.x < 0.0 ? material_opacity : 1.0;
     v_selected = color.a;
     v_shadow = shadow_matrix * world;
     gl_Position = view_projection * world;
@@ -72,6 +75,7 @@ in vec3 v_local_normal;
 in vec3 v_tangent_x;
 in vec3 v_tangent_z;
 in float v_stud_geometry;
+in float v_opacity;
 uniform vec3 eye;
 uniform int floor_mode;
 uniform int grid;
@@ -152,7 +156,7 @@ void main() {
     vec3 half_vector = half_delta/max(length(half_delta),0.0001);
     float nh = max(dot(n,half_vector),0.0);
     float vh = max(dot(view,half_vector),0.0);
-    float roughness = 0.36;
+    float roughness = v_opacity < 0.999 ? 0.16 : 0.36;
     float a2 = pow(roughness,4.0);
     float denominator = nh*nh*(a2-1.0)+1.0;
     float distribution = a2/max(PI*denominator*denominator,0.0001);
@@ -178,29 +182,40 @@ void main() {
     vec3 shaded = pow(radiance/(radiance+vec3(1.0)),vec3(1.0/2.2));
     if (v_selected > 0.5) shaded = mix(shaded,vec3(1.0,0.65,0.13),0.52);
     float fog = smoothstep(fog_limits.x,fog_limits.y,distance(eye,v_position));
-    out_color = vec4(mix(shaded,pow(sky_horizon(),vec3(1.0/2.2)),fog),1.0);
+    float opacity=mix(v_opacity,1.0,pow(1.0-nv,5.0));
+    out_color = vec4(mix(shaded,pow(sky_horizon(),vec3(1.0/2.2)),fog)*opacity,opacity);
 }"#;
 
 pub const SHADOW_VERTEX: &str = r#"#version 300 es
 precision highp float;
 layout(location=0) in vec3 position;
+layout(location=2) in vec3 face_color;
 layout(location=3) in mat4 model;
 uniform mat4 display_scale;
 uniform mat4 shadow_matrix;
 uniform vec3 eye;
 uniform float projection_pixels;
 uniform highp int stud_mode;
+uniform float material_opacity;
+out float v_opacity;
 /* STUD_WEIGHT */
 /* BLOCK_POSITION */
 void main() {
     mat4 physical_model=display_scale*model;
     vec3 local=block_position(position,physical_model);
     gl_Position=shadow_matrix*physical_model*vec4(local,1.0);
+    v_opacity=face_color.x<0.0?material_opacity:1.0;
 }
 "#;
 pub const SHADOW_FRAGMENT: &str = r#"#version 300 es
 precision highp float;
-void main() {}
+in float v_opacity;
+void main() {
+    // Stable light-buffer coverage approximates partial attenuation rather
+    // than making transparent plastic an opaque shadow blocker.
+    float coverage=fract(dot(floor(gl_FragCoord.xy),vec2(0.75487766,0.56984029)));
+    if(v_opacity<1.0 && coverage>=v_opacity)discard;
+}
 "#;
 
 pub const SKY_VERTEX: &str = r#"#version 300 es

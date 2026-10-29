@@ -3,7 +3,7 @@
 There is one **public Ergo Sandbox**. Anyone can view it; signed-in users can
 edit it, subject to pacing and physical validation. Current MCP clients commit
 accepted edits to that same S3-backed world automatically. A working file is a
-cache, not a private world. Use MCP **v0.5.14** for sourced model references and building techniques,
+cache, not a private world. Use MCP **v0.5.15** for sourced model references and building techniques,
 coherent grid snapping, proper-isometry checks, per-piece stability diagnostics,
 explicit estimated connector tests and long shared operations.
 

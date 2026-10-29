@@ -130,6 +130,18 @@ pub fn extended_rgb(color: u32) -> Option<u32> {
         .find(|(code, _, _, _)| *code == color)
         .map(|(_, _, rgb, _)| *rgb)
 }
+/// Catalogue ALPHA, including LDraw's direct transparent-colour encoding.
+/// This is a rendering material property, not a collision or mass override.
+pub fn color_alpha(color: u32) -> u8 {
+    match color >> 24 {
+        2 => 255,
+        3 => 128,
+        _ => ldraw_colors::COLORS
+            .binary_search_by_key(&color, |(code, _, _, _)| *code)
+            .ok()
+            .map_or(255, |index| ldraw_colors::COLORS[index].3),
+    }
+}
 pub fn known_color(color: u32) -> bool {
     matches!(color >> 24, 2 | 3)
         || extended_rgb(color).is_some()
@@ -227,6 +239,20 @@ pub fn preferred_catalog() -> Catalog {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn material_alpha_uses_catalogue_and_direct_colour_semantics() {
+        assert!(
+            ldraw_colors::COLORS
+                .windows(2)
+                .all(|rows| rows[0].0 < rows[1].0)
+        );
+        assert_eq!(color_alpha(43), 128);
+        assert_eq!(color_alpha(47), 128);
+        assert_eq!(color_alpha(1), 255);
+        assert_eq!(color_alpha(0x3123456), 128);
+        assert_eq!(color_alpha(0x2123456), 255);
+        assert_eq!(color_alpha(999_999), 255);
+    }
     #[test]
     fn complete_palette_and_open_parts_keep_standard_recommendations_first() {
         let catalog = catalog();

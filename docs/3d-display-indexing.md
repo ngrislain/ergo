@@ -399,13 +399,19 @@ Color and depth VAOs share the same prototype vertex buffer. A batch uploads its
 instance array only when its contents change; orbiting the complete static
 homepage scene needs no geometry/instance re-upload. Retained CPU copies allow
 these comparisons and are separate from the GPU-byte counter. Draw-call
-count follows the number of visible part/LOD batches, aggregates, and ground draws.
+count follows visible opaque part/LOD batches, aggregates, ground draws and ordered
+transparent instances. Transparent colour/shadow instance arrays use the same
+80-byte layout and shared 36-byte source vertex buffers.
 This is why increasing the number of brick instances is often cheaper than
 increasing the number of unique geometries or materials.
 
-The initial palette is opaque. Adding transparent colors requires ordering or a
-dedicated transparency algorithm; simply enabling blending within an arbitrary
-instance batch is insufficient.
+Catalogue transparent colours use a separate globally depth-sorted, lit,
+premultiplied-alpha pass after opaque depth writers. They retain full source
+geometry, are not surface-merged or spatially aggregated, and use approximate
+opacity coverage in the shadow pass. GPU upload also derives crease-limited
+smooth normals without changing source vertices/fingerprints or geometry counts.
+See [material and normal details](lighting.md#curved-surface-normals), including
+the limits of per-instance sorting and baked fixed-RGB face materials.
 
 ## Floating origin and numerical precision
 
