@@ -26,7 +26,7 @@ Authoring recipes share `scripts/mcp_client.py`; they do not import a demo progr
 for transport behavior.
 It uses publication's authoritative validation without a duplicate diagnostics gate.
 The eleven-site layout surrounds the existing cell-19 tower. The recipe implements
-foundations, ten nine-course structural storeys with the accepted tower's open
+foundations, profile-specific five-to-ten nine-course structural storeys with the accepted tower's open
 switchback stairs, and supported roof decks. `--through roof --publish` grows the
 same assemblies in supported stages. `--through finished --publish` additionally
 authors applicable stepped or slab-like extensions, genuine window frames,
@@ -37,7 +37,7 @@ actual accepted receipts for publication progress and published storey counts.
 Slab-house wings are hollow, with full-width standard 2×16 plate beams bearing on
 both perimeter walls and a thinner upper plate layer. This preserves the silhouette
 while reducing brick count compared with solid infill.
-`district_models.walking_route(spec)` visits rooms on all ten storeys and returns
+`district_models.walking_route(spec)` visits rooms on every retained storey and returns
 through the entrance. Its start/end positions use the district foundation and
 pyramid/courtyard entrance depths rather than the original monument's wider base.
 
@@ -139,6 +139,37 @@ The standalone monument drivers below live in `scripts/build/`. They generate
 nominal standard-size parts, consult `get_building_techniques`, and preflight through
 the real local MCP. They do not publish implicitly. Choose fresh output directories to preserve prior
 checks and publication journals.
+
+### Varied-height and intermediate-terrace refinement recipes
+
+Current `district_models.SPECS` select six core heights from five through ten full
+storeys: Azure eight, Copper ten, White Slab eight, Emerald five, Ochre seven,
+Civic nine, Crimson six, Sandstone nine, Colonnade seven, North Arch eight and
+Silver six. The original tower is a separate unchanged assembly. White Slab's
+side wings end after four/six storeys, Crimson's after two/four and North Arch's
+after three/five. Their existing supported 16×32 next-floor slabs become outdoor
+terraces with three-sided upright catalogue guardrails, supported access lintels
+and doors from the corresponding core floor. Each retained room still has nine
+brick courses. The walking route includes the intermediate terraces.
+
+`scripts/build/district_refinements.py` prepares atomic edits from full accepted
+assembly caches. It removes upper levels, replaces only the changed last-storey
+stair occurrences, closes the shortened roof on the existing stringers and moves
+the original crown. A generated brick matching a removed source occurrence in
+part, colour and pose keeps its original ID instead of being needlessly replaced.
+The bridge-side third-storey openings are below the edits and remain usable.
+Building techniques reuse the existing bonded masonry and overlapping slabs;
+[official OMR **10243 Parisian Restaurant**](https://library.ldraw.org/omr/sets/487), modeled by **Willy Tschager [Holly Wood]**
+under CCAL 2.0, was inspected as a terrace reference. The district proposals are
+original adaptations, not an imported replica of that set.
+
+Opposite skybridge fence rows rotate genuine 3633 sections by 180° about the
+vertical axis. They have fourteen sections each, equal lengths/heights and
+inward-facing matching profiles. Reflection checks against the actual frozen
+catalogue mesh use a 0.002-stud tolerance for rounded LDraw source coordinates
+(observed maximum error 0.0014 stud); no reflected/scaled physical transforms are
+used. Local preview/route checks and source recipes do not establish shared
+acceptance: retain the separate authenticated MCP receipts and accepted readbacks.
 
 ## Pyramid
 

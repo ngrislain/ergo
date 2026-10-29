@@ -4,6 +4,8 @@ Technique source: Brick Builder's Handbook, overlapping slabs and supported
 lintels. Genuine 3026 6x24 plates span the lane between pavement-side piers.
 """
 from scripts.native_model import Model
+from scripts.native_model import yaw
+import math
 from scripts.build import district_models as buildings
 from scripts.build.monument_models import BASE,PITCH
 
@@ -45,7 +47,7 @@ def model(spec):
     result.plate_rectangle(44,6,71,12,0,FLOOR+1/3)
     for north in [0,5]:
         for x in range(0,56,8):result.part('3008',15,x,north,DECK)
-        for x in range(0,56,4):result.part('3633',15,x,north,DECK+1)
+        for x in range(0,56,4):result.part('3633',15,x,north,DECK+1,rotation=yaw(math.pi if north else 0))
     return result
 
 def walking_route(spec):

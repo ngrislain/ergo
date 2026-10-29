@@ -150,7 +150,7 @@ def main():
         parser.error('Unknown building key')
     if not args.publish and not args.reconcile:
         print(json.dumps({'published': False, 'buildings': [
-            {'key': spec['key'], 'name': spec['name'], 'origin': recipes.origin(spec), 'planned_storeys': 0 if args.site else 10,'stages':selected_stages(spec)}
+            {'key': spec['key'], 'name': spec['name'], 'origin': recipes.origin(spec), 'planned_storeys': 0 if args.site else models.storeys(spec),'stages':selected_stages(spec)}
             for spec in selected]}, indent=2))
         return
     if not args.token_file.is_file():

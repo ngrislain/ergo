@@ -122,7 +122,7 @@ def pyramid_route(origin):
         (32,47,'north corridor'),(32,32,'return crossing'),(32,-5,'exit pyramid')]
     return route(origin,(32,-5,BASE),[(x,n,BASE,name) for x,n,name in points],9)
 
-def tower_walls(m,wings,course,height,color,ground):
+def tower_walls(m,wings,course,height,color,ground,extra_holes=()):
     def ring(lo,hi,south,north,holes):
         # Three aligned header courses retain full engagements over openings;
         # the lower running bond and staggered slabs strap these beam segments.
@@ -141,7 +141,7 @@ def tower_walls(m,wings,course,height,color,ground):
         if ground and layer<6:holes.append((14,18,0,2))
         if wings and layer<6:holes += [(0,2,14,18),(30,32,14,18)]
         return holes
-    ring(0,32,0,32,main_holes(course))
+    ring(0,32,0,32,[*main_holes(course),*extra_holes])
     # Interior piers keep their full 4x2 footprint; the floor layers strap them
     # into the bonded perimeter. Do not fragment every pier into tiny end parts.
     for x in [8,24]:m.part('3001',color,x-2,22,height)
@@ -217,9 +217,9 @@ def tower():
         m.part('3003',14,x-1,15,wing_top+7/3)
     return m
 
-def tower_route(origin):
+def tower_route(origin,storeys=10):
     points=[(16,3,BASE,'ground entrance')]
-    for level in range(10):
+    for level in range(storeys):
         base=BASE+level*PITCH
         if level:
             points += [(12,18,BASE+(level-1)*PITCH+4,f'level {level} first flight'),
@@ -228,7 +228,7 @@ def tower_route(origin):
         points += [(4,3,base,f'level {level+1} front hall'),(4,16,base,f'level {level+1} west room'),
                    (4,28,base,f'level {level+1} rear passage'),(28,28,base,f'level {level+1} east room'),
                    (28,3,base,f'level {level+1} return hall'),(12,3,base,f'level {level+1} stair entrance')]
-    for level in reversed(range(9)):
+    for level in reversed(range(storeys-1)):
         base=BASE+level*PITCH
         points += [(20,3,base+PITCH,f'descend from level {level+2}'),(20,18,base+4,'descending half landing'),
                    (12,18,base+4,'descending first flight'),(12,3,base,f'back to level {level+1}')]
