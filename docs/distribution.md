@@ -30,6 +30,9 @@ manifest. Platform checks prevent accidentally packaging a host-only binary.
 The consumer check installs the assembled package outside the checkout and exercises
 real MCP discovery, local WASM editing and images. `scripts/test-distribution.py`
 checks release boundaries; `scripts/test-npm-package.py` checks an actual bundle.
+Canonical-library/retrofit checks launch the package's `bin/ergo-mcp.cjs`
+entrypoint, which supplies its bundled `ERGO_WEB_DIR`; a bare native executable
+does not discover a package's separate WASM directory automatically.
 
 ## Server image
 
