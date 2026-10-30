@@ -126,5 +126,12 @@ The live assembly headers shared **50 canonical part IDs with exactly one mesh C
 per ID**; no construct was removed. This is the library-normalization checkpoint,
 before the separately journalled tower facade and final height/terrace publications.
 
+After those geometry refinements, a second fresh inventory at revision
+`3f185c572b1d8c3c534edb7ca3a4784bf517fa7e5bfd55b2be396de0d60808fd`
+verified **30 constructs / 85,654 pieces**, zero legacy resources and the same fifty
+canonical live part IDs with one mesh CID each. The complete district's accepted
+geometry, 1,242-waypoint walking proof and source hashes are recorded in
+[the final construction verification](model-recipes.md#final-accepted-district-and-canonical-world-verification-2026-10-30).
+
 See [construction encoding](construction-format.md), [S3 resource formats](object-store-formats.md)
 and [part descriptions and physical limits](part-catalog.md).

@@ -2,6 +2,11 @@
 
 ## District recipes and accepted construction
 
+The final accepted district has **73,660 pieces in the same 15 assemblies**
+(2026-10-30), with varied-height cores, accessible intermediate terraces and the
+reworked Seven Sisters facade. The final verification record is below; the older
+counts describe their explicitly dated baseline passes.
+
 The building-link/street baseline has **91,543 pieces in the same 15 assemblies**
 (2026-10-29). Its revisions below supersede the original
 road-bridge and figure/car details in the 2026-10-28 baseline record.
@@ -170,6 +175,54 @@ catalogue mesh use a 0.002-stud tolerance for rounded LDraw source coordinates
 (observed maximum error 0.0014 stud); no reflected/scaled physical transforms are
 used. Local preview/route checks and source recipes do not establish shared
 acceptance: retain the separate authenticated MCP receipts and accepted readbacks.
+
+### Final accepted district and canonical-world verification (2026-10-30)
+
+The completed revision is
+`3f185c572b1d8c3c534edb7ca3a4784bf517fa7e5bfd55b2be396de0d60808fd`.
+All core-height profiles above are accepted, including White Slab's four/six-storey
+wings, Crimson's two/four-storey wings and North Arch's three/five-storey wings.
+Their terrace doors, supported roofs and guardrails remain usable; both skybridges
+still join third-storey rooms. The eleven newer buildings contain 63,265 pieces,
+the revised original tower 5,151, and site assemblies 5,244, totaling **73,660**.
+
+A fresh authoritative inventory verified all **30 existing constructs / 85,654
+pieces** in the common world. Every current resource uses canonical source geometry;
+there are no remaining legacy/proxy constructs. The live headers contain **50
+canonical part IDs, each referring to exactly one immutable mesh CID**. Existing
+assembly identities remain; no construct was deleted. The normalization checkpoint
+is documented separately in [the part library](part-library.md#accepted-normalization-checkpoint-2026-10-30).
+
+The complete pinned public district packet contains all fifteen assemblies fully
+resident and matches the exact intended accepted part/colour/pose multisets. Copper
+Needle and the street assembly retain their earlier part placements and colours.
+The actual street inventory still contains eight classic cars, thirty-two factory
+wheel/tyre units, eight genuine windscreens and twenty-four genuine hair pieces.
+Each bridge's two fourteen-section fence rows mirror to within **0.0014 stud**
+(0.002-stud source-rounding tolerance), using proper rotations rather than reflections.
+
+Against this single complete accepted region, the native viewer walking engine
+passed **1,242 waypoints over 16 routes**: all twelve buildings, both two-way links
+and both restored-road crossings. Room/arrival clearance and continuous movement
+were checked without jumping or teleporting. Actual WASM/WebGL studio images of
+that packet verified the varied skyline, three terrace groups and both symmetric
+bridge fences. The live viewer loaded the same 73,660 pieces/revision without alerts
+or console errors.
+
+The public CBOR packet SHA-256 is
+`e740b2bc5b966c1dc9affd6078fbaecf4f99d14200a1dd80b9ef4ced64b9ccdd`.
+Its derived read-only native diagnostic SHA-256 is
+`d5f44eaba9896ebda03999d741fbeb22aa1f1f4bd853b0831218d476c8489b22`.
+This interchange is not a new editable assembly or a combined dynamics/calibrated
+strength certificate. Static acceptance, walking and image evidence remain separate.
+
+Edits used the deployed authentication/policy, common S3 namespace, frozen physics
+and authoritative validation/CAS path. Upload failures and request-deadline outcomes
+were reconciled by read-only checks before any explicit retry. One long linked-domain
+replacement used the exact WASM-authored candidate with a single delegated REST PUT
+and a longer transport deadline, followed by exact accepted readback. It did not use
+direct bucket writes or skip server validation. Temporary authoritative API workers
+were stopped after all publications and final verification; infrastructure had no drift.
 
 ## Pyramid
 
