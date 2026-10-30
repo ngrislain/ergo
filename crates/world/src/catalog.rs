@@ -2,67 +2,15 @@
 use crate::{Brick, color_rgb};
 use anyhow::{Result, ensure};
 use serde::Serialize;
-use std::collections::BTreeSet;
+use std::{collections::BTreeSet, sync::LazyLock};
 #[path = "ldraw_colors.rs"]
 mod ldraw_colors;
 
-pub const PARTS: &[(&str, &str)] = &[
-    ("3005.dat", "Brick 1 × 1"),
-    ("3004.dat", "Brick 1 × 2"),
-    ("3010.dat", "Brick 1 × 4"),
-    ("3009.dat", "Brick 1 × 6"),
-    ("3008.dat", "Brick 1 × 8"),
-    ("3003.dat", "Brick 2 × 2"),
-    ("3002.dat", "Brick 2 × 3"),
-    ("3001.dat", "Brick 2 × 4"),
-    ("2456.dat", "Brick 2 × 6"),
-    ("3007.dat", "Brick 2 × 8"),
-    ("4201.dat", "Brick 8 × 8"),
-    ("4204.dat", "Brick 8 × 16"),
-    ("3024.dat", "Plate 1 × 1"),
-    ("3023.dat", "Plate 1 × 2"),
-    ("3710.dat", "Plate 1 × 4"),
-    ("3666.dat", "Plate 1 × 6"),
-    ("3022.dat", "Plate 2 × 2"),
-    ("3021.dat", "Plate 2 × 3"),
-    ("3020.dat", "Plate 2 × 4"),
-    ("3795.dat", "Plate 2 × 6"),
-    ("3034.dat", "Plate 2 × 8"),
-    ("3832.dat", "Plate 2 × 10"),
-    ("4282.dat", "Plate 2 × 16"),
-    ("3031.dat", "Plate 4 × 4"),
-    ("3032.dat", "Plate 4 × 6"),
-    ("3035.dat", "Plate 4 × 8"),
-    ("41539.dat", "Plate 8 × 8"),
-    ("3026.dat", "Plate 6 × 24"),
-    ("3070b.dat", "Tile 1 × 1"),
-    ("3069b.dat", "Tile 1 × 2"),
-    ("3068b.dat", "Tile 2 × 2"),
-    ("2431.dat", "Tile 1 × 4"),
-    ("60594.dat", "Window frame 1 × 4 × 3"),
-    ("60592.dat", "Window frame 1 × 2 × 2"),
-    ("3037.dat", "Slope 45° 2 × 4"),
-    ("3039.dat", "Slope 45° 2 × 2"),
-    ("3633.dat", "Lattice fence 1 × 4 × 1"),
-    ("3062b.dat", "Round brick 1 × 1, hollow stud"),
-    ("3941.dat", "Round brick 2 × 2"),
-    ("87081.dat", "Round brick 4 × 4"),
-    ("2039.dat", "Lamppost 2 × 2 × 7"),
-    ("4073.dat", "Round plate 1 × 1"),
-    ("4740.dat", "Inverted dish 2 × 2"),
-    ("87580.dat", "Centre-stud plate 2 × 2"),
-    ("970c00.dat", "Minifigure hips and legs"),
-    ("76382p00.dat", "Minifigure torso, arms and yellow hands"),
-    ("3626a.dat", "Minifigure head, solid stud"),
-    ("3626ap01.dat", "Minifigure head, classic grin"),
-    ("4624c01.dat", "Wheel rim with tyre assembly"),
-    ("3901.dat", "Minifigure hair, male smooth"),
-    ("4211.dat", "Classic vehicle base 4 × 5"),
-    ("3788.dat", "Studded vehicle mudguard 2 × 4"),
-    ("3823.dat", "Windscreen 2 × 4 × 2"),
-    ("4083.dat", "Open-stud roll bar 1 × 4 × 2"),
-    ("3829c01.dat", "Steering stand with black wheel"),
-];
+pub static PARTS: LazyLock<Vec<(&'static str, &'static str)>> = LazyLock::new(|| {
+    crate::part_library::all()
+        .map(|entry| (entry.catalogue.id.as_str(), entry.catalogue.name.as_str()))
+        .collect()
+});
 
 pub const COLORS: &[(u32, &str)] = &[
     (0, "Black"),
@@ -88,12 +36,8 @@ pub const COLORS: &[(u32, &str)] = &[
 ];
 
 pub fn canonical_part(part: &str) -> String {
-    match part {
-        "3070.dat" => "3070b.dat".into(),
-        "3069.dat" => "3069b.dat".into(),
-        "3068.dat" => "3068b.dat".into(),
-        _ => part.to_owned(),
-    }
+    crate::part_library::get(part)
+        .map_or_else(|| part.to_owned(), |entry| entry.catalogue.id.clone())
 }
 
 pub fn part_name(part: &str) -> &str {
@@ -175,6 +119,7 @@ pub fn validate(bricks: &[Brick]) -> Result<()> {
 pub struct Catalog {
     pub parts: Vec<Part>,
     pub colors: Vec<Color>,
+    pub constructs: Vec<crate::constructs::ConstructInfo>,
     pub part_resolution: &'static str,
 }
 #[derive(Serialize)]
@@ -194,6 +139,7 @@ pub struct Color {
 
 pub fn catalog() -> Catalog {
     Catalog {
+        constructs: crate::constructs::catalog(),
         parts: PARTS
             .iter()
             .map(|(id, name)| Part {

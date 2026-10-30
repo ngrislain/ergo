@@ -26,6 +26,16 @@ pub struct Mesh {
     pub physical: Option<crate::physical::PartMeasurement>,
 }
 
+/// Match deterministic CBOR's signed-zero normalization when fingerprinting a
+/// complete float32 stream across public-axis/native storage roundtrips.
+pub fn vertex_bytes(value: f32) -> [u8; 4] {
+    if value == 0. {
+        0f32.to_le_bytes()
+    } else {
+        value.to_le_bytes()
+    }
+}
+
 #[derive(Clone, Copy, Debug)]
 pub struct PartSpec {
     pub width: u32,
@@ -35,47 +45,21 @@ pub struct PartSpec {
 }
 
 pub fn part_spec(part: &str) -> Option<PartSpec> {
-    let (width, depth, height, studs) = match part.trim_end_matches(".dat") {
-        "3005" => (1, 1, 1.0, true),
-        "3004" => (1, 2, 1.0, true),
-        "3010" => (1, 4, 1.0, true),
-        "3009" => (1, 6, 1.0, true),
-        "3008" => (1, 8, 1.0, true),
-        "3003" => (2, 2, 1.0, true),
-        "3002" => (2, 3, 1.0, true),
-        "3001" => (2, 4, 1.0, true),
-        "2456" => (2, 6, 1.0, true),
-        "3007" => (2, 8, 1.0, true),
-        "4201" => (8, 8, 1.0, true),
-        "4204" => (8, 16, 1.0, true),
-        "3024" => (1, 1, 1.0 / 3.0, true),
-        "3023" => (1, 2, 1.0 / 3.0, true),
-        "3710" => (1, 4, 1.0 / 3.0, true),
-        "3666" => (1, 6, 1.0 / 3.0, true),
-        "3022" => (2, 2, 1.0 / 3.0, true),
-        "3021" => (2, 3, 1.0 / 3.0, true),
-        "3020" => (2, 4, 1.0 / 3.0, true),
-        "3795" => (2, 6, 1.0 / 3.0, true),
-        "3034" => (2, 8, 1.0 / 3.0, true),
-        "3832" => (2, 10, 1.0 / 3.0, true),
-        "4282" => (2, 16, 1.0 / 3.0, true),
-        "3031" => (4, 4, 1.0 / 3.0, true),
-        "3032" => (4, 6, 1.0 / 3.0, true),
-        "3035" => (4, 8, 1.0 / 3.0, true),
-        "41539" => (8, 8, 1.0 / 3.0, true),
-        "3026" => (6, 24, 1.0 / 3.0, true),
-        "3070b" | "3070" => (1, 1, 1.0 / 3.0, false),
-        "3069b" | "3069" => (1, 2, 1.0 / 3.0, false),
-        "3068b" | "3068" => (2, 2, 1.0 / 3.0, false),
-        "2431" => (1, 4, 1.0 / 3.0, false),
-        _ => return None,
+    let full;
+    let id = if part.ends_with(".dat") {
+        part
+    } else {
+        full = format!("{part}.dat");
+        &full
     };
+    let entry = &crate::part_library::get(id)?.catalogue;
+    let size = entry.size?;
     Some(PartSpec {
         // LDraw's basic rectangular parts run their long dimension along X.
-        width: depth,
-        depth: width,
-        height,
-        studs,
+        width: size[0],
+        depth: size[1],
+        height: f64::from(size[2]) / 3.,
+        studs: entry.studs.unwrap_or(false),
     })
 }
 

@@ -7,7 +7,7 @@ shared Sandbox. The bridge never grants itself acceptance or direct agent S3 acc
 ## Install and configure
 
 ```sh
-npm install --global --ignore-scripts 'https://github.com/ngrislain/ergo/releases/download/v0.5.15/ngrislain-ergo-mcp-0.5.15.tgz'
+npm install --global --ignore-scripts 'https://github.com/ngrislain/ergo/releases/download/v0.5.16/ngrislain-ergo-mcp-0.5.16.tgz'
 ergo-mcp --login --publish-url https://ergosandbox.com
 ```
 
@@ -79,6 +79,9 @@ expire and are origin/purpose-bound. They are not S3 credentials.
   resolves native Ergo part descriptions by ID.
 - `list_bricks` and `inspect_brick` expose actual IDs, poses, bounds, sourced
   masses and contact/constraint metadata.
+- `get_catalog` also lists versioned common-construct IDs. Reference canonical parts
+  and reusable `minifigure-v1`/`classic-car-v1` models rather than copying definitions.
+  See [the canonical library and source-update workflow](part-library.md).
 
 Gravity reports include `unstable_pieces` with exact IDs/parts, initial/current
 positions, displacement/rotation peaks and nearby piece IDs. Use those IDs for
@@ -109,6 +112,13 @@ indices. New models can pass the saved `model_transform` to `place_submodel`.
 Existing construction edits preserve their absolute accepted positions.
 
 ## Native construction and editing
+
+`retrofit_library` replaces existing legacy aliases/proxy meshes with pinned source
+parts in one ordinary edit. It preserves occurrence IDs, groups, joints and nominal
+world bounds, removes unused duplicate meshes and compacts matching common models.
+Unmapped parts or changed nominal dimensions require an explicit structural retrofit
+or removal; they do not silently become box substitutes. Authoritative shared
+validation and accepted readback still establish publication.
 
 `place_submodel` optionally accepts `replace_ids`: remove those local piece IDs
 and place the replacement in **one WASM update / one accepted shared edit**.

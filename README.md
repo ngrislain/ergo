@@ -49,7 +49,7 @@ The prebuilt bundle includes native binaries and WASM assets; consumers need
 Node.js 20+ and Chrome/Chromium, not Rust.
 
 ```sh
-npm install --global --ignore-scripts 'https://github.com/ngrislain/ergo/releases/download/v0.5.15/ngrislain-ergo-mcp-0.5.15.tgz'
+npm install --global --ignore-scripts 'https://github.com/ngrislain/ergo/releases/download/v0.5.16/ngrislain-ergo-mcp-0.5.16.tgz'
 ergo-mcp --login --publish-url https://ergosandbox.com
 ```
 
@@ -83,10 +83,13 @@ and [distribution](docs/distribution.md).
 ## Native descriptions and assets
 
 [Ergo construction files](docs/construction-format.md) use reusable definitions,
-typed part/definition targets and row-major 4×4 transforms in public east/north/up
+typed part/definition/common-construct targets and row-major 4×4 transforms in public east/north/up
 brick units. They retain occurrence identities, colors, groups and physical metadata.
 Imported files are converted at the boundary. Stored assets are
 [Ergo part descriptions](docs/part-catalog.md) and geometry with source attribution.
+One [pinned canonical library](docs/part-library.md), derived from official LDraw
+and BrickLink, supplies standard parts and reusable minifigure/car references.
+Its compact native pack resolves the complete selected geometry offline.
 
 [S3 organization](docs/object-store-layout.md) separates the authoritative world,
 part/terrain caches, private profiles/positions/plans and operational backups.

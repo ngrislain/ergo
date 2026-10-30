@@ -10,8 +10,10 @@ Coordinate `schema: 2` is a separate version domain.
 A model has `format`, `schema`, `root` and a `definitions` map. Each definition is
 an ordered array of instances. An instance contains:
 
-- `target`: `{kind: "part" | "definition", id: string}`. A part ID identifies an
-  Ergo catalog description; a definition ID identifies another definition.
+- `target`: `{kind: "part" | "definition" | "construct", id: string}`. A part ID
+  identifies the canonical catalogue description; a definition ID identifies a
+  local reusable definition. A construct ID selects an immutable versioned common
+  model such as `minifigure-v1` or `classic-car-v1` from [the shared library](part-library.md).
 - `transform`: a finite row-major 4×4 affine matrix, using column vectors.
 - Optional `color`: a palette/custom color. Omit it to inherit the enclosing
   instance color; no external-format inheritance code is stored in this field.
@@ -46,6 +48,11 @@ Definition names are identifiers, not instructions to open files. Part/definitio
 target mismatches, cycles, missing targets, singular/nonfinite transforms and
 invalid paths are rejected. Expansion is bounded to 200,000 references/leaves,
 64 nested levels and one million expansion visits.
+
+Common-construct instances use the same transform and colour inheritance. Their
+parts are supplied by the versioned client/server library, not copied into every
+model or loaded from an arbitrary URL. Exact local definitions are shared when
+models are appended. An independently edited library definition is saved explicitly.
 
 ## Physical transforms
 
@@ -98,6 +105,10 @@ inline import, exactly one at a time. `transform` is always an Ergo world-space
 Local editing has no 5,000-piece cap; dynamics simulations remain limited to
 5,000 bodies. Server admission uses the caller's plan: god-mode authoring has no
 brick-count cap, while encoded-byte/request budgets and physical checks apply.
+The MCP host resolves all referenced catalogue assets before a submodel is placed;
+missing source geometry no longer creates standard-part box fallbacks. Official
+identity aliases are normalized for new placements. `retrofit_library` explicitly
+converts existing part usage while preserving occurrence IDs and nominal world bounds.
 
 Placement snaps the incoming model with one translation of its nominal bounding
 corner (one stud horizontally, one plate vertically). Internal geometry is not

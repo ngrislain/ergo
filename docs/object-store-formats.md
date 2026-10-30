@@ -19,6 +19,42 @@ Only current persisted formats are supported by the application.
   construction formats are independent version domains.
 - Logical octree paths are arrays of octants 0–7 (maximum depth 192), not S3 keys.
   Sets/ordered sequences encode as arrays; CBOR integer map keys remain integers.
+- S3 object metadata is not a decoder: writers do not uniformly set Content-Type
+  or Content-Encoding. Select the type from the key and the typed reference/schema.
+  Plain `.cbor` resources below are uncompressed unless an envelope explicitly
+  contains gzip bytes. HTTP JSON/CBOR responses and HTTP gzip are separate transport
+  choices; a `.cbor` object is not implicitly a gzip stream or base64 document.
+
+## Resource references: parts, constructs and occurrences
+
+The [canonical library](part-library.md) is compiled from checked-in UTF-8 JSON:
+`sources.lock.json` pins official LDraw geometry/dependencies and BrickLink catalogue
+metadata; `constructs.json` defines immutable common models. It is shipped with the
+client/server, not copied into each S3 construction as another set of part meshes.
+
+- A standard **part ID** such as `3003.dat` selects one canonical description.
+  Official identity aliases resolve to that record. A **library revision** pins
+  its source/metadata, baker and full vertex fingerprint; it is not a world CID.
+- A **common construct ID** such as `classic-car-v1` selects reusable component
+  placements. A native model stores `{kind:"construct",id:"classic-car-v1"}` plus
+  transform/colour, rather than embedding the car's full definition per copy.
+- A placed **occurrence** has an independent local ID and global Birth CID.
+  Materialized Piece records and spatial references still track its component
+  bricks for permissions, editing and physical validation. A prefab reference
+  does not collapse a minifigure or car into one unvalidated rigid body.
+- Mesh vertices are referenced by immutable **mesh CIDs**. Source/prototype
+  sharing and per-occurrence identity are separate; incompatible historical
+  resources must not be merged just because their filenames or boxes are similar.
+
+The lock uses sorted-key, two-space-indented UTF-8 JSON with one final LF for its
+revision inputs. `source_revision` hashes `{catalogue,files}`; `revision` hashes
+`{baker,source_revision,vertex_hash,mesh_hash}`. Source-file hashes use the documented UTF-8/LF
+normalization. `vertex_hash` hashes every internal float32 component in little-endian
+order, normalizing signed zero before the public-axis wire conversion. Mesh CIDs
+instead hash stored CBOR. Distribution `parts.pack` is a concatenation of per-part
+gzip-CBOR members indexed by `{offset,bytes,mesh_hash}` in the lock; it is not a new
+accepted-world object family. The runtime expands a requested entry into the ordinary
+native part cache described below.
 
 ## `world/refs/main.cbor`: Head
 
@@ -122,7 +158,9 @@ all 256 hash bits, padded by two bits and split into 86 octants.
   affected_pieces,watched_regions,validation,loaded_pieces,loaded_cbor_bytes}`.
   Validation may be null for non-geometric operations.
 - **Native Model:** `{format:"ergo-model-1",schema:2,root,definitions}`. Instances
-  have typed targets, optional inherited colors and native row-major 4×4 transforms.
+  have part/local-definition/versioned-construct targets, optional inherited colors
+  and native row-major 4×4 float64 transforms. Referenced common constructs come
+  from the versioned library; local reusable definitions are stored once per model.
   See [construction format](construction-format.md). Current Piece states remain
   live geometry authority; source hierarchy cannot restore stale edited poses.
 - **Mesh:** the Ergo geometry record described below. World meshes are retained
@@ -143,12 +181,26 @@ gzip bytes. Authorization/revision checks and bounded decompression precede use;
 see [loading caches](loading-and-cache.md). Removing this cache does not remove
 accepted history or geometry.
 
+## `read-cache/metadata-v1/<world>/<00..15>.json`: catalogue cache
+
+Uncompressed UTF-8 JSON `{format:1,etag,revision,checksum,text}`. `text` is an encoded
+JSON response string, not a nested response object. Its SHA-256 checksum covers its
+UTF-8 bytes; both the envelope and decoded response must identify the expected
+accepted revision. Sixteen hash-selected slots are reused per world. Response text
+is at most 512 KiB and the stored envelope at most 1,052,672 bytes. These are
+discardable projections, never world-GC roots or publication input. Current
+authorization precedes reuse, including HTTP 304 responses.
+
 ## `assets/parts/<part>.json`: Ergo part description
 
 UTF-8 JSON `{format:"ergo-part-1",schema:2,part,mesh_hash,bounds,body_bounds,
-catalog_mass,credits}`. Catalog mass is optional `{kg,source}`. Credits contain
+catalog_mass,credits,library_revision?}`. Catalog mass is optional `{kg,source}`. Credits contain
 `{file,source_url,author,license}`. The hash selects **application-namespace**
 `objects/<mesh_hash>.cbor`, not `world/objects/`.
+Only the canonical part ID gets a current description; aliases select it rather
+than creating another entry. A stale library revision rebuilds the cache from
+the verified native pack before updating the description. Existing accepted world
+meshes remain frozen until an ordinary validated retrofit is accepted.
 
 ## `objects/<mesh_hash>.cbor`: Ergo Mesh
 
@@ -205,6 +257,33 @@ of the payload. Successful cells have a seven-day TTL; fallback cells retry afte
 
 Actor hashes are SHA-256 of the authenticated ID, not construction IDs. Position
 GET/PUT has no arbitrary user-ID parameter. These records are outside world GC.
+
+## Development/private-snapshot compatibility records
+
+These paths are supported by `store.rs`/`catalog.rs`; the production common-world
+configuration disables creating new private snapshots:
+
+- **`worlds/<owner>/<uuid>/manifest.json`:** uncompressed UTF-8 `WorldManifest`
+  JSON with `schema`, UUID/name/owner/source, total count/bounds/geo, block
+  `{coord,key,brick_count}` references, part-to-mesh `geometry` CID map, proxy-part
+  list, notes, joints/anchors/groups, validation, ground and optional native model.
+  Its objects must exist before publishing the manifest. Owner-scoped lookup
+  checks the authenticated principal; manifest discovery is not authorization.
+- **`objects/<CID>.cbor` Block:** ordinary native CBOR `{schema,coord,bricks}`.
+  The manifest selects this type; the same namespace also holds native Mesh
+  objects. Bounds, transforms and part/colour values use schema-2 coordinates.
+- **`_private_catalog/<owner-hash>/...`:** a transactional repository with
+  `refs/main.cbor`, `maintenance.cbor` and immutable `objects/<CID>.cbor`. Summary
+  leaves contain `{id,name,owner,brick_count,bounds,geo}`. The head/index/node
+  encodings are the same deterministic transaction types described above.
+- **`shared/_catalog/...`:** optional multi-world discovery transaction repositories
+  for actor, geographic-directory and geographic-tile indexes. Advertisement leaves
+  are `{world,coord?}`; directory leaves are quadkey strings. Each advertised result
+  rechecks current world policy and actual allocated data. In the deployed one-world
+  configuration these discovery writes are disabled.
+
+With no common-world prefix override, individual shared-world repositories use
+`shared/<uuid>` instead of `world`; their typed records and encodings are identical.
 
 ## Private operator files
 

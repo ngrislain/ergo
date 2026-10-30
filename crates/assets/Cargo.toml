@@ -20,6 +20,7 @@ hex = "0.4"
 png = "0.17"
 jpeg-decoder = { version = "0.3", default-features = false }
 serde_bytes = "0.11"
+flate2 = "1"
 
 [dev-dependencies]
 tokio = {version="1",features=["macros","rt-multi-thread"]}

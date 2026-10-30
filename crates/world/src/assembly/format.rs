@@ -26,6 +26,7 @@ struct InstanceWire {
 enum Target {
     Part(String),
     Definition(String),
+    Construct(String),
 }
 
 fn import_to_world() -> DMat4 {
@@ -48,14 +49,18 @@ pub(super) fn world_transform(rows: [[f64; 4]; 4]) -> anyhow::Result<Transform> 
 impl Serialize for Model {
     fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
         let units = import_to_world();
+        let (constructs, library_definitions) = crate::constructs::installed(self);
         let definitions = self
             .subparts
             .iter()
+            .filter(|(id, _)| *id == &self.root || !library_definitions.contains(*id))
             .map(|(id, references)| {
                 let instances = references
                     .iter()
                     .map(|reference| InstanceWire {
-                        target: if self.subparts.contains_key(&reference.file) {
+                        target: if let Some(id) = constructs.get(&reference.file) {
+                            Target::Construct(id.clone())
+                        } else if self.subparts.contains_key(&reference.file) {
                             Target::Definition(reference.file.clone())
                         } else {
                             Target::Part(reference.file.clone())
@@ -88,12 +93,25 @@ impl<'de> Deserialize<'de> for Model {
             ));
         }
         let mut subparts = BTreeMap::new();
+        for instances in wire.definitions.values() {
+            for instance in instances {
+                if let Target::Construct(id) = &instance.target {
+                    crate::constructs::install(id, &mut subparts).map_err(D::Error::custom)?;
+                }
+            }
+        }
         for (id, instances) in &wire.definitions {
             let mut references = Vec::with_capacity(instances.len());
             for instance in instances {
                 let file = match &instance.target {
-                    Target::Part(id) if !wire.definitions.contains_key(id) => id,
-                    Target::Definition(id) if wire.definitions.contains_key(id) => id,
+                    Target::Part(id) => {
+                        if wire.definitions.contains_key(id) || subparts.contains_key(id) {
+                            return Err(D::Error::custom("Part/definition target mismatch"));
+                        }
+                        id.clone()
+                    }
+                    Target::Definition(id) if wire.definitions.contains_key(id) => id.clone(),
+                    Target::Construct(id) => crate::constructs::get(id).unwrap().root(),
                     _ => return Err(D::Error::custom("Part/definition target mismatch")),
                 };
                 if instance.color == Some(16) {
@@ -101,12 +119,18 @@ impl<'de> Deserialize<'de> for Model {
                 }
                 let matrix = world_transform(instance.transform).map_err(D::Error::custom)?;
                 references.push(Reference {
-                    file: file.clone(),
+                    file,
                     color: instance.color.unwrap_or(16),
                     matrix,
                 });
             }
-            subparts.insert(id.clone(), references);
+            if let Some(installed) = subparts.get(id) {
+                if installed != &references {
+                    return Err(D::Error::custom("Conflicting common construct definition"));
+                }
+            } else {
+                subparts.insert(id.clone(), references);
+            }
         }
         let model = Self {
             root: wire.root,

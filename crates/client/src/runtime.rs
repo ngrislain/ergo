@@ -51,6 +51,31 @@ impl LocalClientRuntime {
             .get(&p)
             .is_none_or(|m| m.quality != "source")
     }
+    pub fn required_parts(&self, name: &str, arguments: &str) -> Result<String, JsValue> {
+        let args: Value = serde_json::from_str(arguments).map_err(js_error)?;
+        let parts: Result<std::collections::BTreeSet<String>> = match name {
+            "place_submodel" => parse_submodel(&args).and_then(|(model, document)| {
+                Ok(model
+                    .references()?
+                    .into_iter()
+                    .filter(|reference| {
+                        document
+                            .as_ref()
+                            .is_none_or(|doc| !doc.files.contains_key(&reference.name))
+                    })
+                    .map(|reference| reference.name)
+                    .collect())
+            }),
+            "retrofit_library" => self
+                .scene
+                .bricks
+                .iter()
+                .map(|brick| library_part(&brick.part))
+                .collect(),
+            _ => Ok(Default::default()),
+        };
+        serde_json::to_string(&parts.map_err(js_error)?).map_err(js_error)
+    }
     pub fn insert_part(&mut self, asset: &str) -> Result<(), JsValue> {
         let value: Value = serde_json::from_str(asset).map_err(js_error)?;
         let mut mesh: ergo_world::geometry::Mesh =
@@ -62,10 +87,12 @@ impl LocalClientRuntime {
         )?;
         mesh.physical = self
             .measurements
-            .parts
-            .iter()
-            .find(|p| p.part == mesh.part)
-            .cloned();
+            .part_record(&mesh.part)
+            .cloned()
+            .map(|mut record| {
+                record.part = mesh.part.clone();
+                record
+            });
         if let Some(record) = &mesh.physical {
             mesh.body_bounds = record.body_bounds;
         }
@@ -118,6 +145,52 @@ fn canonical(part: &str) -> String {
     } else {
         format!("{part}.dat")
     })
+}
+fn library_part(part: &str) -> Result<String> {
+    let candidate = if part.starts_with("view/") || part.starts_with("readback-variants/") {
+        part.rsplit('/').next().unwrap()
+    } else {
+        part
+    };
+    let id = canonical(candidate);
+    ensure!(
+        ergo_world::part_library::get(&id).is_some(),
+        "No canonical library replacement for {part}"
+    );
+    Ok(id)
+}
+fn parse_submodel(
+    args: &Value,
+) -> Result<(
+    ergo_world::assembly::Model,
+    Option<ergo_world::ldraw::Document>,
+)> {
+    ensure!(
+        args.get("model").is_some() != args.get("document").is_some(),
+        "Supply exactly one native model or imported document"
+    );
+    let document = if let Some(source) = args.get("document") {
+        let source = source.as_str().context("Expected text model document")?;
+        ensure!(
+            source.len() <= 128 * 1024,
+            "Imported document exceeds 128 KiB"
+        );
+        Some(ergo_world::ldraw::Document::parse(source, "model.ldr")?)
+    } else {
+        None
+    };
+    let mut model = if let Some(value) = args.get("model") {
+        ensure!(
+            serde_json::to_vec(value)?.len() <= 768 * 1024,
+            "Native model exceeds 768 KiB"
+        );
+        serde_json::from_value::<ergo_world::assembly::Model>(value.clone())?
+    } else {
+        ergo_world::assembly::Model::from_document(document.as_ref().unwrap())?
+    };
+    model.canonicalize_parts()?;
+    model.validate_isometries()?;
+    Ok((model, document))
 }
 fn vector(args: &Value, key: &str) -> Result<DVec3> {
     let array: [f64; 3] = serde_json::from_value(
@@ -329,7 +402,7 @@ impl LocalClientRuntime {
                 };
                 let part = args["part"].as_str().map(canonical);
                 let asset = part.as_ref().and_then(|p|self.scene.meshes.get(p)).map(|m| {
-                    let record=self.measurements.parts.iter().find(|p|p.part==m.part);
+                    let record=self.measurements.part_record(&m.part);
                     let mass=self.measurements.mass_kg(&m.part).ok();
                     let source=record.map(|p|p.source.clone()).or_else(||mass.map(|_|ergo_world::physical::mass_source(&m.part)));
                     json!({"part":m.part,"quality":m.quality,"bounds":m.bounds,"body_bounds":record.map(|p|p.body_bounds).unwrap_or_else(||ergo_world::placement::body_bounds(m)),"mass_kg":mass,"mass_source":source,"credits":m.credits,"body_model":if record.is_some(){"operator-provided nominal body box; connector calibration is separate"}else if m.part=="76382p00.dat" {"nominal torso core; rendered arms/hands and connector protrusions are outside this collision proxy"} else {"nominal body box and registered connector-grid proxy; not exact hollow/curved geometry or calibrated clutch strength"}})
@@ -385,8 +458,9 @@ impl LocalClientRuntime {
                 let mut feedback = self.update(|scene| {
                     let mesh = scene
                         .meshes
-                        .entry(part.clone())
-                        .or_insert_with(|| ergo_world::geometry::fallback_mesh(&part));
+                        .get(&part)
+                        .filter(|mesh| mesh.quality == "source")
+                        .context("Resolve the genuine catalogue part before placement")?;
                     let rotation = DMat3::from_rotation_y(
                         (a.quarter_turns.rem_euclid(4) as f64) * std::f64::consts::FRAC_PI_2,
                     );
@@ -425,30 +499,7 @@ impl LocalClientRuntime {
                     .map(|ids| serde_json::from_value(ids.clone()))
                     .transpose()?
                     .unwrap_or_default();
-                ensure!(
-                    args.get("model").is_some() != args.get("document").is_some(),
-                    "Supply exactly one native model or imported document"
-                );
-                let document = if let Some(source) = args.get("document") {
-                    let source = source.as_str().context("Expected text model document")?;
-                    ensure!(
-                        source.len() <= 128 * 1024,
-                        "Imported document exceeds 128 KiB"
-                    );
-                    Some(ergo_world::ldraw::Document::parse(source, "model.ldr")?)
-                } else {
-                    None
-                };
-                let model = if let Some(value) = args.get("model") {
-                    ensure!(
-                        serde_json::to_vec(value)?.len() <= 768 * 1024,
-                        "Native model exceeds 768 KiB"
-                    );
-                    serde_json::from_value::<ergo_world::assembly::Model>(value.clone())?
-                } else {
-                    ergo_world::assembly::Model::from_document(document.as_ref().unwrap())?
-                };
-                model.validate_isometries()?;
+                let (model, document) = parse_submodel(&args)?;
                 let colors = document
                     .as_ref()
                     .map(|d| d.colors.clone())
@@ -496,13 +547,11 @@ impl LocalClientRuntime {
                                 &|name| document.as_ref().and_then(|d| d.files.get(name)).cloned(),
                                 &colors,
                             )
-                            .or_else(|error| {
-                                ensure!(
-                                    ergo_world::geometry::part_spec(&r.name).is_some(),
-                                    "Resolve geometry for {} first: {error}",
+                            .with_context(|| {
+                                format!(
+                                    "Resolve genuine catalogue geometry for {} before placement",
                                     r.name
-                                );
-                                Ok(ergo_world::geometry::fallback_mesh(&r.name))
+                                )
                             })?;
                             if ergo_world::geometry::part_spec(&r.name).is_some() {
                                 mesh.body_bounds =
@@ -555,6 +604,36 @@ impl LocalClientRuntime {
                     feedback["replacement"] = json!({"removed_ids":replace_ids,"atomic":true,"remaining_ids_preserved":true});
                 }
                 Ok(text(feedback))
+            }
+            "retrofit_library" => {
+                let before = self.scene.meshes.len();
+                let feedback=self.update(|scene| {
+                    let mut model=ergo_world::assembly::Model::for_scene(scene);
+                    let definitions=model.subparts.keys().cloned().collect::<HashSet<_>>();
+                    for references in model.subparts.values_mut() {
+                        for reference in references {
+                            if !definitions.contains(&reference.file) {reference.file=library_part(&reference.file)?;}
+                        }
+                    }
+                    model.use_common_constructs()?;
+                    let mut meshes=BTreeMap::new();
+                    for brick in &mut scene.bricks {
+                        let id=library_part(&brick.part)?;
+                        let mesh=scene.meshes.get(&id).filter(|mesh|mesh.quality=="source").context("Resolve every canonical source part before retrofitting")?;
+                        let old_bounds=brick.bounds;
+                        let new_bounds=mesh.body_bounds.transformed(brick.transform,brick.position);
+                        ensure!((old_bounds.size()-new_bounds.size()).abs().max_element()<1e-5,"Canonical part dimensions differ for {}; use an explicit structural retrofit",brick.part);
+                        brick.position+=old_bounds.min-new_bounds.min;
+                        brick.part=id.clone();
+                        brick.bounds=mesh.body_bounds.transformed(brick.transform,brick.position);
+                        brick.render_bounds=mesh.bounds.transformed(brick.transform,brick.position).union(brick.bounds);
+                        meshes.entry(id).or_insert_with(||mesh.clone());
+                    }
+                    scene.meshes=meshes;scene.model=Some(model);Ok(())
+                })?;
+                Ok(text(
+                    json!({"retrofit":true,"piece_ids_preserved":true,"previous_meshes":before,"canonical_meshes":self.scene.meshes.len(),"feedback":feedback}),
+                ))
             }
             "move_brick" => {
                 let selected = id(&args, "id")?;

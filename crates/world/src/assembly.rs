@@ -68,7 +68,7 @@ impl Transform {
     }
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct Reference {
     pub file: String,
     #[serde(default = "current_color")]
@@ -87,6 +87,89 @@ pub struct Model {
 }
 
 impl Model {
+    /// Normalize only catalogue leaves; local definitions keep their identity.
+    pub fn canonicalize_parts(&mut self) -> Result<()> {
+        let definitions = self
+            .subparts
+            .keys()
+            .cloned()
+            .collect::<std::collections::BTreeSet<_>>();
+        for references in self.subparts.values_mut() {
+            for reference in references {
+                if !definitions.contains(&reference.file) {
+                    let canonical = crate::catalog::canonical_part(&reference.file);
+                    ensure!(
+                        !definitions.contains(&canonical),
+                        "Canonical part conflicts with a local definition"
+                    );
+                    reference.file = canonical;
+                }
+            }
+        }
+        self.references()?;
+        Ok(())
+    }
+
+    /// Replace matching local prototypes with a versioned library reference.
+    /// Fixed colours and every pose must match; only the inherited body colour
+    /// may become an instance parameter. Independent edits remain explicit.
+    pub fn use_common_constructs(&mut self) -> Result<usize> {
+        self.references()?;
+        let mut replacements = Vec::new();
+        for (name, references) in &self.subparts {
+            for entry in crate::constructs::all() {
+                if *name == entry.root() {
+                    continue;
+                }
+                let expected = entry.references();
+                if references.len() != expected.len() {
+                    continue;
+                }
+                let mut color = None;
+                let matches = references.iter().zip(&expected).all(|(actual, expected)| {
+                    if actual.file != expected.file
+                        || actual
+                            .matrix
+                            .0
+                            .to_cols_array()
+                            .iter()
+                            .zip(expected.matrix.0.to_cols_array())
+                            .any(|(a, b)| (a - b).abs() > 1e-9)
+                    {
+                        return false;
+                    }
+                    if expected.color == 16 {
+                        match color {
+                            Some(previous) => previous == actual.color,
+                            None => {
+                                color = Some(actual.color);
+                                true
+                            }
+                        }
+                    } else {
+                        actual.color == expected.color
+                    }
+                });
+                if matches {
+                    replacements.push((name.clone(), entry.id.clone(), color.unwrap_or(16)));
+                    break;
+                }
+            }
+        }
+        for (name, id, color) in &replacements {
+            let root = crate::constructs::install(id, &mut self.subparts)?;
+            self.subparts.insert(
+                name.clone(),
+                vec![Reference {
+                    file: root,
+                    color: *color,
+                    matrix: Transform::default(),
+                }],
+            );
+        }
+        self.references()?;
+        Ok(replacements.len())
+    }
     pub fn validate_isometries(&self) -> Result<()> {
         self.references()?;
         for (name, refs) in &self.subparts {
@@ -287,54 +370,91 @@ impl Model {
         Ok(())
     }
 
-    /// Append an independent instance without copying its leaf geometry. Local
-    /// definition names are namespaced to avoid collisions with existing files.
+    /// Append an independent instance, interning identical definitions across
+    /// placements. Colour inheritance and distinct leaf occurrences are retained.
     pub fn append(&mut self, other: &Self, matrix: Transform, color: u32) -> Result<()> {
         self.references()?;
         other.references()?;
+        for references in other.subparts.values() {
+            for reference in references {
+                ensure!(
+                    other.subparts.contains_key(&reference.file)
+                        || !self.subparts.contains_key(&reference.file),
+                    "Incoming part ID conflicts with an existing model definition"
+                );
+            }
+        }
         let prefix = (1..)
             .map(|i| format!("instance-{i}/"))
             .find(|p| self.subparts.keys().all(|name| !name.starts_with(p)))
             .unwrap();
-        let rename = |name: &str| {
-            if other.subparts.contains_key(name) {
-                format!("{prefix}{name}")
-            } else {
-                name.into()
+        fn intern(
+            name: &str,
+            other: &Model,
+            target: &mut Model,
+            names: &mut BTreeMap<String, String>,
+            prefix: &str,
+        ) -> String {
+            if let Some(id) = names.get(name) {
+                return id.clone();
             }
-        };
-        for (name, references) in &other.subparts {
-            self.subparts.insert(
-                rename(name),
-                references
-                    .iter()
-                    .map(|r| Reference {
-                        file: rename(&r.file),
-                        color: r.color,
-                        matrix: r.matrix,
-                    })
-                    .collect(),
-            );
+            let references = other.subparts[name]
+                .iter()
+                .map(|reference| Reference {
+                    file: if other.subparts.contains_key(&reference.file) {
+                        intern(&reference.file, other, target, names, prefix)
+                    } else {
+                        reference.file.clone()
+                    },
+                    color: reference.color,
+                    matrix: reference.matrix,
+                })
+                .collect::<Vec<_>>();
+            let id = if let Some((id, _)) = target
+                .subparts
+                .iter()
+                .find(|(_, value)| **value == references)
+            {
+                id.clone()
+            } else {
+                let collides_with_part = target
+                    .subparts
+                    .values()
+                    .any(|references| references.iter().any(|reference| reference.file == name));
+                let id = if !target.subparts.contains_key(name) && !collides_with_part {
+                    name.to_owned()
+                } else {
+                    format!("{prefix}{name}")
+                };
+                target.subparts.insert(id.clone(), references);
+                id
+            };
+            names.insert(name.into(), id.clone());
+            id
+        }
+        let mut names = BTreeMap::new();
+        for name in other.subparts.keys() {
+            intern(name, other, self, &mut names, &prefix);
         }
         let root = (1..)
             .map(|i| format!("combined-{i}.ldr"))
             .find(|name| !self.subparts.contains_key(name))
             .unwrap();
-        self.subparts.insert(
-            root.clone(),
-            vec![
-                Reference {
-                    file: self.root.clone(),
-                    matrix: Transform::default(),
-                    color: 16,
-                },
-                Reference {
-                    file: rename(&other.root),
-                    matrix,
-                    color,
-                },
-            ],
-        );
+        let previous = self.root.clone();
+        let mut instances = self.subparts[&previous].clone();
+        instances.push(Reference {
+            file: names[&other.root].clone(),
+            matrix,
+            color,
+        });
+        self.subparts.insert(root.clone(), instances);
+        if !self.subparts.values().any(|references| {
+            references
+                .iter()
+                .any(|reference| reference.file == previous)
+        }) {
+            self.subparts.remove(&previous);
+        }
         self.root = root;
         self.references()?;
         Ok(())
@@ -350,6 +470,17 @@ impl Model {
             std::iter::once(&self.root).chain(self.subparts.keys().filter(|n| *n != &self.root))
         {
             writeln!(text, "0 FILE {name}\r")?;
+            if name == &self.root {
+                for credit in crate::constructs::credits(self) {
+                    writeln!(
+                        text,
+                        "0 // Common construct source: {} | Author: {} | License: {}\r",
+                        credit.source_url.replace(['\r', '\n'], " "),
+                        credit.author.replace(['\r', '\n'], " "),
+                        credit.license.replace(['\r', '\n'], " ")
+                    )?;
+                }
+            }
             for r in &self.subparts[name] {
                 let a: [[f64; 4]; 4] = r.matrix.into();
                 writeln!(

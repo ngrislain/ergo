@@ -1,5 +1,22 @@
 # Changelog
 
+## v0.5.16
+
+- Consolidate canonical part names, dimensions, catalogue masses and official
+  identity aliases into one deterministic LDraw/BrickLink-backed library lock.
+  Ship all 55 selected genuine geometries in a checksum-verified 982,682-byte
+  native pack, with reproducible source/metadata update and bake verification.
+- Add immutable common minifigure/car references and intern repeated model
+  definitions. Resolve genuine parts before submodel placement instead of creating
+  another parametric box variant; retain independent occurrence identities.
+- Add the ordinary validated `retrofit_library` MCP edit for current legacy
+  aliases/proxy meshes, preserving IDs and nominal world bounds, and retain frozen
+  operator measurements across official identity aliases.
+- Expand S3 documentation with resource/reference types, exact encodings, hash
+  domains, native pack/gzip details and discardable catalogue-cache records.
+- Memoize repeated ordered transaction pages per exact pending root with bounded
+  storage, without weakening read predicates, pending-edit visibility or conflicts.
+
 ## v0.5.15
 
 - Derive crease-aware, angle-weighted smooth normals per GPU prototype, including

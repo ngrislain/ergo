@@ -56,7 +56,7 @@ prove an asset or image was published.
 
 ```sh
 gh run list --repo ngrislain/ergo --workflow release.yml --limit 5
-gh release view v0.5.15 --repo ngrislain/ergo
+gh release view v0.5.16 --repo ngrislain/ergo
 ```
 
 Verify the public tarball version/checksum, consumer install and actual MCP smoke
@@ -73,7 +73,7 @@ After publication, set the public Pages variable and rebuild:
 
 ```sh
 gh variable set ERGO_MCP_PACKAGE --repo ngrislain/ergo \
-  --body 'https://github.com/ngrislain/ergo/releases/download/v0.5.15/ngrislain-ergo-mcp-0.5.15.tgz'
+  --body 'https://github.com/ngrislain/ergo/releases/download/v0.5.16/ngrislain-ergo-mcp-0.5.16.tgz'
 gh workflow run pages.yml --repo ngrislain/ergo --ref main
 ```
 

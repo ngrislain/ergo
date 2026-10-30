@@ -74,69 +74,59 @@ fn centres(width: u32, depth: u32, first: [f64; 2]) -> Vec<DVec3> {
 /// Dimensions use BrickLink nominal stud sizes and LDraw's actual local datum;
 /// source meshes/credits are retained separately. Reviewed 2026-10-27.
 pub fn profile(part: &str) -> Option<Profile> {
-    let id = part.strip_suffix(".dat")?;
-    let (min, max, grams, cavity, studs, source_id) = match id {
+    let entry = &crate::part_library::get(part)?.catalogue;
+    let id = entry
+        .profile_id
+        .as_ref()
+        .unwrap_or(&entry.id)
+        .strip_suffix(".dat")?;
+    let (min, max, cavity, studs) = match id {
         "60594" => (
             [-2., -3., -0.5],
             [2., 0., 0.5],
-            1.85,
             Some(grid(4, 1, [-1.5, 0.], -3.)),
             centres(4, 1, [-1.5, 0.]),
-            "60594",
         ),
         "60592" => (
             [-1., -2., -0.5],
             [1., 0., 0.5],
-            1.00,
             Some(grid(2, 1, [-0.5, 0.], -2.)),
             centres(2, 1, [-0.5, 0.]),
-            "60592",
         ),
         // Slopes have an offset footprint and only their rear stud row.
         "3037" => (
             [-2., -1., -0.5],
             [2., 0., 1.5],
-            1.97,
             Some(grid(4, 2, [-1.5, 0.], -1.)),
             centres(4, 1, [-1.5, 0.]),
-            "3037",
         ),
         "3039" => (
             [-1., -1., -0.5],
             [1., 0., 1.5],
-            1.15,
             Some(grid(2, 2, [-0.5, 0.], -1.)),
             centres(2, 1, [-0.5, 0.]),
-            "3039",
         ),
         "3633" => (
             [-2., -1., -0.5],
             [2., 0., 0.5],
-            0.80,
             Some(grid(4, 1, [-1.5, 0.], -1.)),
             vec![],
-            "3633",
         ),
         "3062b" | "3062" => (
             [-0.5, -1., -0.5],
             [0.5, 0., 0.5],
-            0.28,
             Some(grid(1, 1, [0., 0.], -1.)),
             centres(1, 1, [0., 0.]),
-            "3062",
         ),
         "3941" => (
             [-1., -1., -1.],
             [1., 0., 1.],
-            1.20,
             Some(grid(2, 2, [-0.5, -0.5], -1.)),
             centres(2, 2, [-0.5, -0.5]),
-            "3941",
         ),
         "87081" => (
             [-2., -1., -2.],
             [2., 0., 2.],
-            3.04,
             Some(grid(4, 4, [-1.5, -1.5], -1.)),
             [
                 (-1.5, -0.5),
@@ -151,85 +141,56 @@ pub fn profile(part: &str) -> Option<Profile> {
             .into_iter()
             .map(|(x, z)| DVec3::new(x, 0., z))
             .collect(),
-            "87081",
         ),
         "2039" => (
             [-1., -7., -1.],
             [1., 0., 1.],
-            2.00,
             Some(grid(2, 2, [-0.5, -0.5], -7.)),
             centres(1, 1, [0., 0.]),
-            "2039",
         ),
         "4073" => (
             [-0.5, -1. / 3., -0.5],
             [0.5, 0., 0.5],
-            0.12,
             Some(grid(1, 1, [0., 0.], -1. / 3.)),
             centres(1, 1, [0., 0.]),
-            "4073",
         ),
         "4740" => (
             [-1., -1. / 3., -1.],
             [1., 0., 1.],
-            0.28,
             Some(grid(1, 1, [0., 0.], -1. / 3.)),
             centres(1, 1, [0., 0.]),
-            "4740",
         ),
         "87580" => (
             [-1., -1. / 3., -1.],
             [1., 0., 1.],
-            0.52,
             Some(grid(2, 2, [-0.5, -0.5], -1. / 3.)),
             centres(1, 1, [0., 0.]),
-            "87580",
         ),
         // Factory minifigure units use nominal load-bearing cores. Connector
         // pegs and hanging hands are visual geometry, not certified colliders.
         "970c00" => (
             [-0.975, -5. / 3., -0.5],
             [0.975, 0., 0.55],
-            1.18,
             Some(grid(2, 1, [-0.5, 0.], -5. / 3.)),
             vec![],
-            "970c00",
         ),
-        "76382p00" => (
-            [-0.95, -4. / 3., -0.5],
-            [0.95, 0., 0.5],
-            0.82 + 0.15 + 0.15 + 0.09 + 0.09,
-            None,
-            vec![],
-            "973",
-        ),
+        "76382p00" => ([-0.95, -4. / 3., -0.5], [0.95, 0., 0.5], None, vec![]),
         "3626a" | "3626ap01" => (
             [-0.65, -1., -0.65],
             [0.65, 0., 0.65],
-            0.57,
             Some(grid(1, 1, [0., 0.], -1.)),
             centres(1, 1, [0., 0.]),
-            id,
         ),
         // Factory wheel/tyre unit; its axis is horizontal in the source datum.
-        "4624c01" => (
-            [-0.9, -0.75, -0.4],
-            [0.9, 0.75, 0.4],
-            0.61,
-            None,
-            vec![],
-            "4624c01",
-        ),
+        "4624c01" => ([-0.9, -0.75, -0.4], [0.9, 0.75, 0.4], None, vec![]),
         // Reviewed 2026-10-29: genuine geometry remains source-only. Hair uses
         // its upper load-bearing cap; strands wrapping the head are visual,
         // like the arm/hand overhangs of the existing factory torso profile.
         "3901" => (
             [-0.65, 0., -0.65],
             [0.65, 0.25, 0.65],
-            0.30,
             Some(grid(1, 1, [0., 0.], 0.)),
             vec![],
-            "3901",
         ),
         // Classic vehicle shells use their lower structural floor as a nominal
         // bearing core, not filled wheel arches/passenger cavities. Upper
@@ -238,54 +199,39 @@ pub fn profile(part: &str) -> Option<Profile> {
         "4211" => (
             [-2., -2. / 3., -2.],
             [2., -1. / 3., 3.],
-            2.71,
             Some(grid(4, 5, [-1.5, -1.5], -2. / 3.)),
             vec![],
-            "4211",
         ),
         "3788" => (
             [-2., -2. / 3., -1.],
             [2., -1. / 3., 1.],
-            1.41,
             Some(grid(4, 2, [-1.5, -0.5], -2. / 3.)),
             vec![],
-            "3788",
         ),
         "3823" => (
             [-2., -2., -1.5],
             [2., 0., 0.5],
-            2.19,
             Some(grid(4, 2, [-1.5, -1.], -2.)),
             vec![DVec3::new(-1.5, 0., 0.), DVec3::new(1.5, 0., 0.)],
-            "3823",
         ),
         "4083" => (
             [-2., -2., -0.5],
             [2., 0., 0.5],
-            0.74,
             Some(grid(4, 1, [-1.5, 0.], -2.)),
             centres(4, 1, [-1.5, 0.]),
-            "4083",
         ),
         "3829c01" => (
             [-1., -1. / 3., -0.5],
             [1., 0., 0.5],
-            0.60,
             Some(grid(2, 1, [-0.5, 0.], -1. / 3.)),
             vec![],
-            "3829c01",
         ),
         _ => return None,
     };
-    let source = if id == "76382p00" {
-        "Derived sum of BrickLink catalogue masses for 973, 981, 982 and 2 x 983; https://www.bricklink.com/v2/catalog/catalogitem.page?P=973 ; https://www.bricklink.com/v2/catalog/catalogitem.page?P=981 ; https://www.bricklink.com/v2/catalog/catalogitem.page?P=982 ; https://www.bricklink.com/v2/catalog/catalogitem.page?P=983".into()
-    } else {
-        format!("https://www.bricklink.com/v2/catalog/catalogitem.page?P={source_id}")
-    };
     Some(Profile {
         bounds: Aabb::new(DVec3::from_array(min), DVec3::from_array(max)),
-        grams,
-        source,
+        grams: entry.mass_kg * 1000.,
+        source: entry.mass_source.clone(),
         cavity,
         studs,
     })

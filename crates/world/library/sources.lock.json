@@ -1,0 +1,3214 @@
+{
+  "authorities": {
+    "geometry": "https://library.ldraw.org/library/official",
+    "metadata": "https://www.bricklink.com"
+  },
+  "files": {
+    "1-16chrd.dat": {
+      "path": "p/1-16chrd.dat",
+      "sha256": "1cd8a01d9e530bd3fe9c38b88c494efbdfd2bb7c85b96380ea310f19f7034803"
+    },
+    "1-16con16.dat": {
+      "path": "p/1-16con16.dat",
+      "sha256": "7a874ac98fcf71a97236b407078c67484b9c816332230721bbe30f5469e02ba9"
+    },
+    "1-16con3.dat": {
+      "path": "p/1-16con3.dat",
+      "sha256": "ffc69256c4a20ca053b1595189d411ba3d2acb891782260c86d176e83bf0642a"
+    },
+    "1-16cyli.dat": {
+      "path": "p/1-16cyli.dat",
+      "sha256": "886762772410f11bc21e92c0a6321ff3f14cd97349c5b54c02d9456f52f8b433"
+    },
+    "1-16cylo.dat": {
+      "path": "p/1-16cylo.dat",
+      "sha256": "91ac2a4df369b312f93fe72eca610175c45c8de70bf05d91772fec0e56a9ea90"
+    },
+    "1-16edge.dat": {
+      "path": "p/1-16edge.dat",
+      "sha256": "ddc9e03637fcb286484b4d8a8963dce908b82ebd1796e7f4e2885256c583acbf"
+    },
+    "1-16ring2.dat": {
+      "path": "p/1-16ring2.dat",
+      "sha256": "fcf66c15ea7f92a8944c3efa39bf616fdda2d7a7ed8e2725cdb4d219890dc3ee"
+    },
+    "1-16tndis.dat": {
+      "path": "p/1-16tndis.dat",
+      "sha256": "5bc7f280531363282db128ebd82adaf8c3ff9240eb37959ff4b8e9994812bbb3"
+    },
+    "1-4chrd.dat": {
+      "path": "p/1-4chrd.dat",
+      "sha256": "cf99f30d9c8687e935e4dc7728b9db8908d9d5750ba77d604709b8272a9bb24c"
+    },
+    "1-4con10.dat": {
+      "path": "p/1-4con10.dat",
+      "sha256": "af4fd887d9a4d2fc23756242ca8f2ad52bfa143c24e34e27df133e5adeb23c29"
+    },
+    "1-4con4.dat": {
+      "path": "p/1-4con4.dat",
+      "sha256": "30f729c96c2b433bcfa2cd10bd7e512c8721f61336229f4595da4b37fba53484"
+    },
+    "1-4cylc.dat": {
+      "path": "p/1-4cylc.dat",
+      "sha256": "ac13d8f395101b5feb475f5d64ec5e5dbafbfb87be90381185058ffc98760f3b"
+    },
+    "1-4cyli.dat": {
+      "path": "p/1-4cyli.dat",
+      "sha256": "243b5b30352749221c03958371d36c3161efc242d4d3810b8cee3e0c3fd51c0f"
+    },
+    "1-4cylo.dat": {
+      "path": "p/1-4cylo.dat",
+      "sha256": "45dea01b76b187307683d56069ff9a91ed76955c49498b452d36b61938a8b274"
+    },
+    "1-4cyls.dat": {
+      "path": "p/1-4cyls.dat",
+      "sha256": "d45980725c5d006cab357fd1afff1469b1a9fc1d2791aa6afd162a2db582c7f9"
+    },
+    "1-4disc.dat": {
+      "path": "p/1-4disc.dat",
+      "sha256": "df614480f5ff6c78664b0e8fc7927ca5592b151314f40e7c5eee3b2c7fb37284"
+    },
+    "1-4edge.dat": {
+      "path": "p/1-4edge.dat",
+      "sha256": "4073c082099260c28e678b62e4cf14b349b58ab68fa0629c5a01913c86d429dd"
+    },
+    "1-4ndis.dat": {
+      "path": "p/1-4ndis.dat",
+      "sha256": "92711a498632a3f3ad3735237e8e361733b2b1a73cc4091907d77d3cf27b7328"
+    },
+    "1-4ring1.dat": {
+      "path": "p/1-4ring1.dat",
+      "sha256": "d43400cf0a9f4399f4dfb48f5ccd4593222bf7e1735c6d61cbce7d62598a6d8f"
+    },
+    "1-4ring3.dat": {
+      "path": "p/1-4ring3.dat",
+      "sha256": "fb714314dfa587c2d2f411921e1406f6e11cbdfac99e2dfb62b09a8447b6cfae"
+    },
+    "1-8chrd.dat": {
+      "path": "p/1-8chrd.dat",
+      "sha256": "fdd22f8c7da6b6cc1dccec40fb900dd9382b8de0bd27844df6a8be82f8905116"
+    },
+    "1-8con4.dat": {
+      "path": "p/1-8con4.dat",
+      "sha256": "9828e1bbfa40e8f1ca0d0f4d45d0d54339bdf0caa78bc3faf33ec5e63ab31315"
+    },
+    "1-8cyli.dat": {
+      "path": "p/1-8cyli.dat",
+      "sha256": "06ec5f0ebcce0982bf50e5ca8d29761071a5e90b35e7725f7a8904a83d4dd001"
+    },
+    "1-8cylo.dat": {
+      "path": "p/1-8cylo.dat",
+      "sha256": "7b6ffbbf7e512cef929ea3844868cb9602f4e9b8c339bcb72262d21815754fac"
+    },
+    "1-8disc.dat": {
+      "path": "p/1-8disc.dat",
+      "sha256": "6a58dce1f9265217bdc703cb29f5ee996fc1bb7391c4ed602f1814d9547195a0"
+    },
+    "1-8edge.dat": {
+      "path": "p/1-8edge.dat",
+      "sha256": "00b36a518cb634d79b8f73930ffb2d6074986f9c7b669d2b8187916ed72f8f7f"
+    },
+    "1-8ndis.dat": {
+      "path": "p/1-8ndis.dat",
+      "sha256": "1b3e6cd9bfaab26e0f9c8fd5f5c16b4ae1ffeb6282ca68acf4166eade0b4c759"
+    },
+    "1-8ring1.dat": {
+      "path": "p/1-8ring1.dat",
+      "sha256": "c94079f26612cede0691e244a50f450fe2f9a2b9d08cf2b84342381e33c40ee8"
+    },
+    "1-8ring17.dat": {
+      "path": "p/1-8ring17.dat",
+      "sha256": "7b208e08ca942bc9c6b93f219839a0bf1658e3e5c94a12cedc2ad8286439e25b"
+    },
+    "1-8ring3.dat": {
+      "path": "p/1-8ring3.dat",
+      "sha256": "a4f174ac83037f5135591b5ad25f06e773f6b99c7786dc1b61becc5def32df25"
+    },
+    "1-8ring4.dat": {
+      "path": "p/1-8ring4.dat",
+      "sha256": "9f3add6e1aae5befebf86f5d0d1c6b9ef32a17d49f4a6c8d7bc2d93e6f6dfb4e"
+    },
+    "1-8ring6.dat": {
+      "path": "p/1-8ring6.dat",
+      "sha256": "5042e0588b0379f70a6551b69a118b3401e820f69031b1c9bb2e0fef6d8173ba"
+    },
+    "1-8ring9.dat": {
+      "path": "p/1-8ring9.dat",
+      "sha256": "6e564359fb591726112f27a4cd021bc7446b356d81ef196d1ba3007e99b25eac"
+    },
+    "1-8sphe.dat": {
+      "path": "p/1-8sphe.dat",
+      "sha256": "9bf4c4aaef057e16607706637f6768dbdfa1870446633d11a66b8ffbf9e0845b"
+    },
+    "1-8tndis.dat": {
+      "path": "p/1-8tndis.dat",
+      "sha256": "bf98e36043848aa742af4a9ba20a15972175a26f13bd32a1981ddd185da13581"
+    },
+    "179.dat": {
+      "path": "parts/179.dat",
+      "sha256": "02c8b409ccbb52dfe362853588bca02ce3176a121775173f9b22a48430d853b1"
+    },
+    "18.dat": {
+      "path": "parts/18.dat",
+      "sha256": "795e13eebd8349ec3c3b17fd525093483eeee6b00bd5963318076f4be74aca21"
+    },
+    "2-4chrd.dat": {
+      "path": "p/2-4chrd.dat",
+      "sha256": "6b1b3d8ccc50f3477109a2dd220a151e76671c8ca3b1b276c81a72d0a4d4daf0"
+    },
+    "2-4con10.dat": {
+      "path": "p/2-4con10.dat",
+      "sha256": "2bb4bd96dde903775632cbd3e30ab737189bbdf6e7e62f1679a427ed1988fdc9"
+    },
+    "2-4con4.dat": {
+      "path": "p/2-4con4.dat",
+      "sha256": "c7caaa22904ea85121950ab0d80b61b926f00cc7e76e99b00c67dbb9ba719334"
+    },
+    "2-4cylc.dat": {
+      "path": "p/2-4cylc.dat",
+      "sha256": "ba378d13880665fa70a436a065105bbd97626e93cd436cd6af70081ff5c93cf1"
+    },
+    "2-4cyli.dat": {
+      "path": "p/2-4cyli.dat",
+      "sha256": "57b7479c754bd98d8a17668b58dba8aed3539598da4c8374e24e417bfda885b4"
+    },
+    "2-4cylo.dat": {
+      "path": "p/2-4cylo.dat",
+      "sha256": "5cc63e01df7fc2c633a67d3120021a84f0cf12cf744f8e1753a5b4543aa476ca"
+    },
+    "2-4disc.dat": {
+      "path": "p/2-4disc.dat",
+      "sha256": "c095c0341ad14424979ac0dcd147a5471c848628835785b355eaa8cb5613f39f"
+    },
+    "2-4edge.dat": {
+      "path": "p/2-4edge.dat",
+      "sha256": "ec42084755c0f7c2fa9ac3a07f088f56d1ccf218e73dffbf32115fec96f82070"
+    },
+    "2-4ndis.dat": {
+      "path": "p/2-4ndis.dat",
+      "sha256": "2ef5d3fceed3513b90ede773d624acb657dee425d8ccae0ff9ae57d61a7c74ab"
+    },
+    "2-4ring2.dat": {
+      "path": "p/2-4ring2.dat",
+      "sha256": "05aefb9b2a98945af8fc23d9a3ef8ebf3baff600367a8354fac0f8d93db66f9d"
+    },
+    "2-8sphe.dat": {
+      "path": "p/2-8sphe.dat",
+      "sha256": "89e0293113b10651ed416fa4e1c7d9ce20860031750e868cd0ffffd5555f0b0d"
+    },
+    "2039.dat": {
+      "path": "parts/2039.dat",
+      "sha256": "85704655b6c3bd152a6cc90aadf1396279cc200e7d99b228f0e96d8bb3cd2b58"
+    },
+    "2431.dat": {
+      "path": "parts/2431.dat",
+      "sha256": "85d20e8891bc942d8a600d10b49cb94d09a898848262cb6ba4a03596e1731d98"
+    },
+    "2431b.dat": {
+      "path": "parts/2431b.dat",
+      "sha256": "759e3791e5de727bef0db7cf9ced5551803e0fb206814fc77f1a3e6ffddb6885"
+    },
+    "2456.dat": {
+      "path": "parts/2456.dat",
+      "sha256": "2487eb97016ea2aa616d93643e7b93f76cf47834b48f5e216c3e059de7cc57d3"
+    },
+    "28.dat": {
+      "path": "parts/28.dat",
+      "sha256": "22eef307c829efd6148a21f97f71cba8618a95fd49af0e84416a96957a761592"
+    },
+    "296.dat": {
+      "path": "parts/296.dat",
+      "sha256": "12495af3fa7fe2a60bea6ae2a92d2471654702b168a2116300fed8eebc615a90"
+    },
+    "3-16cyli.dat": {
+      "path": "p/3-16cyli.dat",
+      "sha256": "fcdb03fc884515dd8986505929bbd481e41d30a55d8581d63d813bb1c871321d"
+    },
+    "3-16edge.dat": {
+      "path": "p/3-16edge.dat",
+      "sha256": "938953263acd4942b5eea8e40d4237c21624d0b5d564be016e0db02be272ed0d"
+    },
+    "3-4cyli.dat": {
+      "path": "p/3-4cyli.dat",
+      "sha256": "91997a6c00a7399c6f24c11acec0aba91a89a4c54fd27758f3c5de4a2013cfac"
+    },
+    "3-4cylo.dat": {
+      "path": "p/3-4cylo.dat",
+      "sha256": "cf883f2b54f8bd8ea2da5523956ebd03b7e66ff5e9b4ed352c4acaf768a97b50"
+    },
+    "3-4disc.dat": {
+      "path": "p/3-4disc.dat",
+      "sha256": "56107e83944ff68193ca9edf91ad3d66195ebdfaf841e6db1bb55e3592d7e19e"
+    },
+    "3-4edge.dat": {
+      "path": "p/3-4edge.dat",
+      "sha256": "1016c834bd372080f5d276e71ead380e25e5f8025163029d5f20d02b0e389290"
+    },
+    "3-4ndis.dat": {
+      "path": "p/3-4ndis.dat",
+      "sha256": "224f644ccd6ab2e618a4c18fd6a4888669a24b06bacd49d4f430f7301198e398"
+    },
+    "3-4ring1.dat": {
+      "path": "p/3-4ring1.dat",
+      "sha256": "22cea1345eefbb0aa3e6d6fe873cf185e6d39ca81dbe60c73f92b1fbbc033a97"
+    },
+    "3001.dat": {
+      "path": "parts/3001.dat",
+      "sha256": "798283181d352fa0ccce2a212a39020f020e2522ae93801c73a53bda63e41c65"
+    },
+    "3002.dat": {
+      "path": "parts/3002.dat",
+      "sha256": "47194dde21ac0650bfb034c963233288dc696f526372a26c526f7891159c74f5"
+    },
+    "3003.dat": {
+      "path": "parts/3003.dat",
+      "sha256": "134fc6f2e6db3b6474ab9d0d71474d574d3eca8bfe1af38e86f9367e6d8b62b1"
+    },
+    "3004.dat": {
+      "path": "parts/3004.dat",
+      "sha256": "cdd2bfd3d11da7809b84a3992ddd67cb56d9479d6058a9fccf799e04d4fca030"
+    },
+    "3005.dat": {
+      "path": "parts/3005.dat",
+      "sha256": "b7a42cd46ba514c6cc03e4d0db526b2c1bd3a837ef29ebfffc1547efd6410792"
+    },
+    "3007.dat": {
+      "path": "parts/3007.dat",
+      "sha256": "a4c648f95df21c30e39278781153369fa5599327fa5073da4362f250bd1f92a2"
+    },
+    "3008.dat": {
+      "path": "parts/3008.dat",
+      "sha256": "e42ebfcd1be23f164db439b8e0c6ae73eec269cc513a5c14eb420bf57becfcb0"
+    },
+    "3009.dat": {
+      "path": "parts/3009.dat",
+      "sha256": "34b892e6f6e1d4199c42d29fa3c552b3ca82578588d3a3012905f043bfe7fc43"
+    },
+    "3010.dat": {
+      "path": "parts/3010.dat",
+      "sha256": "bb8dc56ab1371ef96aefe841d50533c14164e0ea97bb82e153508167a85f85cf"
+    },
+    "3020.dat": {
+      "path": "parts/3020.dat",
+      "sha256": "cb96b720d20b6bf0f7ebfab487988861f961349e121f01593f441d22b59e897a"
+    },
+    "3021.dat": {
+      "path": "parts/3021.dat",
+      "sha256": "9f9e68e218c67910c48f152287ea362d1e159bc421b7a4782305133c92ef74ef"
+    },
+    "3022.dat": {
+      "path": "parts/3022.dat",
+      "sha256": "e2bc34057e433256ec5e97ede740079d987d6a691e618ea3e2127c95f6cf45c1"
+    },
+    "3023.dat": {
+      "path": "parts/3023.dat",
+      "sha256": "3c1591f7f7f18f176231e2488ebe7ce631297dd676c8f06602f2f06c50941482"
+    },
+    "3023b.dat": {
+      "path": "parts/3023b.dat",
+      "sha256": "204d4eeb8941862d354d98ec2b2177466241a3ae35c944a7b8485e79afdf7fc4"
+    },
+    "3024.dat": {
+      "path": "parts/3024.dat",
+      "sha256": "9c7334d673c235435bf46c9104cd98a3a2516f70e04c5876a75a6be2c0fef9a0"
+    },
+    "3026.dat": {
+      "path": "parts/3026.dat",
+      "sha256": "02c2c93119ee8ef2c9dab92cfed66f076d2066fec9e00aea4e1a502278bf013e"
+    },
+    "3031.dat": {
+      "path": "parts/3031.dat",
+      "sha256": "8196791f8a5526da3dc15d71379c3ed76aa472e0eb9da7bf44bd426dcd3f005a"
+    },
+    "3032.dat": {
+      "path": "parts/3032.dat",
+      "sha256": "3f296e9249b6f4189ce7dd44051ea9e1f5944623445897aca2c5c23ef38dceef"
+    },
+    "3034.dat": {
+      "path": "parts/3034.dat",
+      "sha256": "3835be082a232f504754f663b4b1483941a82d5a9fc9ff0b25a7039bb8530422"
+    },
+    "3035.dat": {
+      "path": "parts/3035.dat",
+      "sha256": "fe7fdbbd5d364edfeb230310021d022802dd0e87078fb67226798552b2c243ea"
+    },
+    "3037.dat": {
+      "path": "parts/3037.dat",
+      "sha256": "ecff0869cec70d87fd9825f72c5e502fe1b4b5febe4511cda02a079384b65450"
+    },
+    "3039.dat": {
+      "path": "parts/3039.dat",
+      "sha256": "e6fb7adddd9131403ab657bd592a1dd674f2f66cc7818d681d4cebe9fb8046ae"
+    },
+    "3062.dat": {
+      "path": "parts/3062.dat",
+      "sha256": "be9e7f628cf68e16f4540df8207c542a26699f8bcaa4d2ca3daf588865c94710"
+    },
+    "3062b.dat": {
+      "path": "parts/3062b.dat",
+      "sha256": "acfd1971eee6b97a6d02720752c607b3409b8093d5562bfe0c3adaf09a85f946"
+    },
+    "3068.dat": {
+      "path": "parts/3068.dat",
+      "sha256": "f7479c50d6ee5083111f4a5bf40ef8d2fbdc1876d707522899174dba4fe0dbad"
+    },
+    "3068b.dat": {
+      "path": "parts/3068b.dat",
+      "sha256": "e48a51f1ab356bf42fa7b669772ff4f68f53d3af3739eabb9159ad42000422d1"
+    },
+    "3069.dat": {
+      "path": "parts/3069.dat",
+      "sha256": "8fbafe5c2c5e414da0a4813941b24f322a215100feb02d41a4a35dc8237c044e"
+    },
+    "3069b.dat": {
+      "path": "parts/3069b.dat",
+      "sha256": "c2337110a8a28ccc598e9d0d2e17199953c64807ad2e8e3e4173c7456f067241"
+    },
+    "3070b.dat": {
+      "path": "parts/3070b.dat",
+      "sha256": "efaa57a47923682b0e5207254497976e090e4bd895ae175eab5205107ec28d01"
+    },
+    "3626a.dat": {
+      "path": "parts/3626a.dat",
+      "sha256": "8727c778dd45b616a8fb48a2713084b9cf48fc076362e12257b3e0ba3b231ac1"
+    },
+    "3626ap01.dat": {
+      "path": "parts/3626ap01.dat",
+      "sha256": "a7d70eb73ed8dc8de4f586b81d031cc51895ee2f5116c0dd9d328add69f3758c"
+    },
+    "3633.dat": {
+      "path": "parts/3633.dat",
+      "sha256": "ea988ddaa70e7fc9636303935e27e1b82e83d0619a09cc0df67f4c2a751000ef"
+    },
+    "3641.dat": {
+      "path": "parts/3641.dat",
+      "sha256": "6bd6486317aab3e16ec6a78c06e7f133548df847806ded46cd6900c0526f9afb"
+    },
+    "3666.dat": {
+      "path": "parts/3666.dat",
+      "sha256": "8ee78d740423f1edd6ae569daa20863e374666dc422751109867e87497aee046"
+    },
+    "3710.dat": {
+      "path": "parts/3710.dat",
+      "sha256": "adea9c5e724a3e5ca73f56cf6ce96b0b692611ca658d7eefa049bffc1e6e8a84"
+    },
+    "3788.dat": {
+      "path": "parts/3788.dat",
+      "sha256": "d70316b5be515174617fdf1be50e8b6fb8e1e6ad8de8d9f01fce6b5bbb199269"
+    },
+    "3795.dat": {
+      "path": "parts/3795.dat",
+      "sha256": "d1321f20c519da95c576d93036abef3a222a70cdcf902b06d6f9332ff8fd780c"
+    },
+    "3815.dat": {
+      "path": "parts/3815.dat",
+      "sha256": "5f803f19cb8fc2d0aa817c7f1bb72f4da88ef61e1b32c3c92e8917f9d3e1fcb5"
+    },
+    "3815c01.dat": {
+      "path": "parts/3815c01.dat",
+      "sha256": "9be997db952f62a4117d3545a4722b45782c58dcc1fcd76b3c8b43feb9adaa0b"
+    },
+    "3816.dat": {
+      "path": "parts/3816.dat",
+      "sha256": "9193afd0f74407f5ae45c026fca475ebbcd78a0d100f162f6d2d624154942c70"
+    },
+    "3817.dat": {
+      "path": "parts/3817.dat",
+      "sha256": "7abe13fdd11cec880a8fe326696b72a6b1fec0fcca434649bd5aec0e3242cd36"
+    },
+    "3818.dat": {
+      "path": "parts/3818.dat",
+      "sha256": "6baabeb67ded7277a92706e8cc80be99fc9d9ffcffa70fe99e794084cdb657db"
+    },
+    "3819.dat": {
+      "path": "parts/3819.dat",
+      "sha256": "aa90a47292efb87756eb734153e7b4b756f42218b5d9dc55c855475c251f3225"
+    },
+    "3820.dat": {
+      "path": "parts/3820.dat",
+      "sha256": "65369042f45dd41d882869552b8b56a2d3a22ef4e8e8353f93c195b3e3de6342"
+    },
+    "3823.dat": {
+      "path": "parts/3823.dat",
+      "sha256": "581452a33306b8608b31d3b06d1e059c3d3ac0f9030a8b99b1408aab0796f341"
+    },
+    "3828.dat": {
+      "path": "parts/3828.dat",
+      "sha256": "90324fb00d0f52cdd0d84fd60adafb278db4991f7d49742ee89c07d705eea0c0"
+    },
+    "3829.dat": {
+      "path": "parts/3829.dat",
+      "sha256": "29dae8b3ae126209e1ce0eda5eb66f4bd8f95e45c76db3bed00a0d2613c9dd0b"
+    },
+    "3829a.dat": {
+      "path": "parts/3829a.dat",
+      "sha256": "f6179e1e914cee6a8ef4971998632c2c6a7221b4f30e424491b081547cfcc0b8"
+    },
+    "3829c01.dat": {
+      "path": "parts/3829c01.dat",
+      "sha256": "293ba88cf124ce045761e6e4548ef9f895a7e674b4af88b936c4e549bb402c28"
+    },
+    "3832.dat": {
+      "path": "parts/3832.dat",
+      "sha256": "7f1286e7c64c2dec72e60edabff12977e38ed59e44bbccb2c09ce4c4d6a0d310"
+    },
+    "3901.dat": {
+      "path": "parts/3901.dat",
+      "sha256": "41e86bd78f7a37df93ce3b05eb879716fcfea52e705269613f0f5d652b3a449d"
+    },
+    "3941.dat": {
+      "path": "parts/3941.dat",
+      "sha256": "c64beca7423f8beb5e65501c1f89b95b7de48b4de67349c263ea3392b4f8e70c"
+    },
+    "4-4con1.dat": {
+      "path": "p/4-4con1.dat",
+      "sha256": "a756e203b939c424ea1424bba9424621b30525d2ac61a68dc4fe1b05a6f4f0d2"
+    },
+    "4-4con3.dat": {
+      "path": "p/4-4con3.dat",
+      "sha256": "0168776c69745a13e996244f080138c463c5a7eb90dc6c75c8165def07a2b953"
+    },
+    "4-4con4.dat": {
+      "path": "p/4-4con4.dat",
+      "sha256": "6205ccd845e66c6e70a09b6f8b4ec1a085daba82eb07c6c70b23fbb4386fdf37"
+    },
+    "4-4cylc.dat": {
+      "path": "p/4-4cylc.dat",
+      "sha256": "436b6b0907ac89abd49e8f2bcb9d55d428af48bd3e0f7c449457758818530bf3"
+    },
+    "4-4cyli.dat": {
+      "path": "p/4-4cyli.dat",
+      "sha256": "f832bd6e12c156e327b20dc954562942f62eda834effb114827a7664c27f82b9"
+    },
+    "4-4cylo.dat": {
+      "path": "p/4-4cylo.dat",
+      "sha256": "f340c88c42aa941c4d4b15c603e95b4581f2203ea665a13b997b8279e53671d5"
+    },
+    "4-4disc.dat": {
+      "path": "p/4-4disc.dat",
+      "sha256": "8853bc34639ef69cdaf1e2c0b090597415cec2fefe56eb93f7915e48b5782dcf"
+    },
+    "4-4edge.dat": {
+      "path": "p/4-4edge.dat",
+      "sha256": "507d698a5890b49bf7c2f6472c847d41139529e06a2dd7bfd315dc9ec9fd9bcc"
+    },
+    "4-4ndis.dat": {
+      "path": "p/4-4ndis.dat",
+      "sha256": "640b303813c6911e5a2cdf017009db11a6acbb91b78b6ba5db9c27367fc76c79"
+    },
+    "4-4ring1.dat": {
+      "path": "p/4-4ring1.dat",
+      "sha256": "96260830370ac6db8ca5c5e5947da20a0d052bead0a9076c0e730324e80d9ca5"
+    },
+    "4-4ring2.dat": {
+      "path": "p/4-4ring2.dat",
+      "sha256": "3c59fac484babc9d0c0e0af302e80c632a780f55bb55969b192bf9a726b6c0e7"
+    },
+    "4-4ring3.dat": {
+      "path": "p/4-4ring3.dat",
+      "sha256": "c0366e481b9f253ee64ed4de8324221e78cf3576d492e80f470ef59caf35db43"
+    },
+    "4-4ring4.dat": {
+      "path": "p/4-4ring4.dat",
+      "sha256": "919aba12b8ad015a88829da06a845eb920266892f788d16bdee97783d2012d10"
+    },
+    "4-4ring5.dat": {
+      "path": "p/4-4ring5.dat",
+      "sha256": "8fad06efb80dec9723455277d932b1e6fa875defacd77c1c4044f5c8ebbaf67d"
+    },
+    "4-4ring7.dat": {
+      "path": "p/4-4ring7.dat",
+      "sha256": "5599c51cfd4e26ca17174bec38de75403cee7d66387d6585aa05f6aebffca40f"
+    },
+    "4073.dat": {
+      "path": "parts/4073.dat",
+      "sha256": "f152df65421b645fdd74bdc46f49a409bb2dcd01173104ddbfb0872fc1c3f493"
+    },
+    "4083.dat": {
+      "path": "parts/4083.dat",
+      "sha256": "5cafa259b8021ce671c9a891c215dcdf88066c1064fe2c389420e1ff5081084b"
+    },
+    "41539.dat": {
+      "path": "parts/41539.dat",
+      "sha256": "4808b58e4b8b9d5f48cb59925058f2e8511e8ec67cb50ba0f9d572d9add9d31d"
+    },
+    "4201.dat": {
+      "path": "parts/4201.dat",
+      "sha256": "d40ab17aaa1264450cb47239b9b78c138d661235b73569dd992f4089d21c631f"
+    },
+    "4203.dat": {
+      "path": "parts/4203.dat",
+      "sha256": "4b70571d57c17c13416879a6a890328fba615c01b5ed749f413370d57d5be45f"
+    },
+    "4204.dat": {
+      "path": "parts/4204.dat",
+      "sha256": "7a548a397bf0f381c9fd2a2fb770edec8f59ee5c7f2d56b5bc9fed1ab877483f"
+    },
+    "4211.dat": {
+      "path": "parts/4211.dat",
+      "sha256": "0ec8ab4a0dad29f2e3a19e17181c3a3489bb00a491c0b1948e32e87eb771b2bd"
+    },
+    "4282.dat": {
+      "path": "parts/4282.dat",
+      "sha256": "b6efae04a320c3073e9d2e35e5175425da9f157eaedbbb28b85adad1ee280f82"
+    },
+    "4624.dat": {
+      "path": "parts/4624.dat",
+      "sha256": "0c1cf7b9b15deeacae10a88d2311535bbcda869e8202ec633009ac63ffa09f15"
+    },
+    "4624c01.dat": {
+      "path": "parts/4624c01.dat",
+      "sha256": "f5a19e285d0ebfc52188d46e59d503b4243ded1a54016d65024d5815f88b03ba"
+    },
+    "4740.dat": {
+      "path": "parts/4740.dat",
+      "sha256": "2ba23fa052d962cd0f857955f8867500f4a348b2188d90ebcd37b08da119738e"
+    },
+    "48/1-12cyli.dat": {
+      "path": "p/48/1-12cyli.dat",
+      "sha256": "6368f8ccbdd066bb7589b39b17f19cdfcbb84c48054f44420027bddfa689c0c1"
+    },
+    "48/1-12edge.dat": {
+      "path": "p/48/1-12edge.dat",
+      "sha256": "334814c4f3e50b2fc484d487cda5510ff3ac830a640c86cb66e94a03cb4ee8e3"
+    },
+    "48/1-48edge.dat": {
+      "path": "p/48/1-48edge.dat",
+      "sha256": "214478043d4609c3524b2605fc015e171b5553585c0eae83b682662781d22385"
+    },
+    "48/1-48ring9.dat": {
+      "path": "p/48/1-48ring9.dat",
+      "sha256": "377f7e6682f2153b89ceddd43445c597a2cfa3dd1cbe4c9cf7fa77e7ba9edbe4"
+    },
+    "48/1-4cyli.dat": {
+      "path": "p/48/1-4cyli.dat",
+      "sha256": "710869bf2eec7eeff2aad24fcda7586d6f5fe63cb8f6ec0a6774d842cfd10fd0"
+    },
+    "48/1-4edge.dat": {
+      "path": "p/48/1-4edge.dat",
+      "sha256": "5f178a1d3de8ee14d0247effcde528ed65c9373673022871f0087d83e0d6346d"
+    },
+    "48/1-8cyli.dat": {
+      "path": "p/48/1-8cyli.dat",
+      "sha256": "6c98423d311039aaa117186b97922454fa0f8a858a8827ddcf5882dcd124e396"
+    },
+    "48/1-8edge.dat": {
+      "path": "p/48/1-8edge.dat",
+      "sha256": "86118447861aad149cf2f16c0737d34013c7ad45c0bb02a5b622375ca69ed5f0"
+    },
+    "48/1-8ring1.dat": {
+      "path": "p/48/1-8ring1.dat",
+      "sha256": "a9fd0f3c1d552143128cb3823cddffb8513bcf42979683e9746e7a20dca6e720"
+    },
+    "48/1-8ring2.dat": {
+      "path": "p/48/1-8ring2.dat",
+      "sha256": "a4e7bd85c4f4784b3c688b7b171549fb2acf130ab0b4a9d02419f1c2d83863fe"
+    },
+    "48/1-8ring4.dat": {
+      "path": "p/48/1-8ring4.dat",
+      "sha256": "9d38a1051746bfeb7cba6a1e1a08bb45a8d0bf03c66612b113c755fad14c52e1"
+    },
+    "48/1-8ring5.dat": {
+      "path": "p/48/1-8ring5.dat",
+      "sha256": "ad1a24a91355974cd29c4407c1ad9c92278e359230e92db54d7dd45f1dab5a21"
+    },
+    "48/1-8ring7.dat": {
+      "path": "p/48/1-8ring7.dat",
+      "sha256": "cc43ccae5e41789c11a5a294fb523a84087c38ff9c95e1cbbb4bf3c029d13056"
+    },
+    "48/4-4aring.dat": {
+      "path": "p/48/4-4aring.dat",
+      "sha256": "6b4b2c284d9791e85e5844e1673546f2ab3f13345c1e3207a314d0c127422e57"
+    },
+    "48/4-4cyli.dat": {
+      "path": "p/48/4-4cyli.dat",
+      "sha256": "c3cf3599d02fd50be8c59fdbf5c53bdb3e6644c085d9f26299a4446d7ccf8e43"
+    },
+    "48/4-4edge.dat": {
+      "path": "p/48/4-4edge.dat",
+      "sha256": "5c6d7b1cf027d3ecee0c097bb0db250478fbbf7fcb223faa3d7acc98b6703e21"
+    },
+    "48/4-4ring2.dat": {
+      "path": "p/48/4-4ring2.dat",
+      "sha256": "1fbf0f7492d963b96428c48af1fe727a443bde410ef80b9e0e1d3e106cbbed33"
+    },
+    "48/4-4ring6.dat": {
+      "path": "p/48/4-4ring6.dat",
+      "sha256": "19b87ba6f09252fa3ea009206f2fd1b2b3e7b57d9435407b44b37b8bbdcdba50"
+    },
+    "5-16cyli.dat": {
+      "path": "p/5-16cyli.dat",
+      "sha256": "ac62343e7c9803ebb338b3820a48ccdce2a8617d8c8ff71ac8f0e3416ec45a0f"
+    },
+    "5-8edge.dat": {
+      "path": "p/5-8edge.dat",
+      "sha256": "1a55f8df466625e6e182f823ccc36996db5c14fc7cb89c408c0c3b0097b94a8c"
+    },
+    "60592.dat": {
+      "path": "parts/60592.dat",
+      "sha256": "ff176bf2863417abd616f6d6a541f76aee077ba6b3a47d86c3d6d75f21d44f7e"
+    },
+    "60594.dat": {
+      "path": "parts/60594.dat",
+      "sha256": "073d10138dcfaf255586762561c3d2a80a63dea8f097a99b2d50e46b90805aaa"
+    },
+    "6141.dat": {
+      "path": "parts/6141.dat",
+      "sha256": "296a8abccf3c5e3fdeed7249ddd15785148e99ae78a531f666c6e4cde68f62f2"
+    },
+    "7-16cyli.dat": {
+      "path": "p/7-16cyli.dat",
+      "sha256": "fc4bb12c2ac1cbc2ffd61295f36d8f28a510e35faf50f0b6febc083dd710f788"
+    },
+    "7-16disc.dat": {
+      "path": "p/7-16disc.dat",
+      "sha256": "6517b683690245f5c5b653e31570a2b62df9332b3b92ffc8fe07da5a07319183"
+    },
+    "7-16edge.dat": {
+      "path": "p/7-16edge.dat",
+      "sha256": "d2cab90f12b470f10a0c3509c052410eb12aeff069e8466bc3c0ed28aad66c3a"
+    },
+    "7-16ndis.dat": {
+      "path": "p/7-16ndis.dat",
+      "sha256": "f0f9fa3de12267aa92203ff1f5c5de2ad7e2e08a8a0dc0dea9f3589134d46de8"
+    },
+    "76382p00.dat": {
+      "path": "parts/76382p00.dat",
+      "sha256": "a8e37b2b1b814f06faac9e7ec243485fbce9fe0162e23e82c2e9010267d8ebd1"
+    },
+    "87081.dat": {
+      "path": "parts/87081.dat",
+      "sha256": "809dfc30b2c1dcb65984b207e3c2747ded5a4f67d8b0c65a9d1d8e22134710c8"
+    },
+    "87580.dat": {
+      "path": "parts/87580.dat",
+      "sha256": "a46979b506255a3eb498a6f742c4429b008c7ee40183a357ac1a61dc0635994c"
+    },
+    "970c00.dat": {
+      "path": "parts/970c00.dat",
+      "sha256": "e92a07f077d613a9aaf2f562c773fb8b06f87f9e57acf3f5ce91c85b168b2432"
+    },
+    "973.dat": {
+      "path": "parts/973.dat",
+      "sha256": "e02fe8f8d312708bcd9582e7b4ce9b0edc24e163b25dabb7ae25b75f0e0fe8f0"
+    },
+    "973c01.dat": {
+      "path": "parts/973c01.dat",
+      "sha256": "25ff07f8412bab47eb56da40ad9943bd5087e030a1c2ce4f95fec75b584c565e"
+    },
+    "axl5ho10.dat": {
+      "path": "p/axl5ho10.dat",
+      "sha256": "9764db56ccd9ef8d3505c56838656d6eb3869556f9041e2ac54fc2ac2d60f5c0"
+    },
+    "axl5hol8.dat": {
+      "path": "p/axl5hol8.dat",
+      "sha256": "086ef4c44953e33a42abe8860e536bb7fb5459437781ad16b1c22c82d55627f2"
+    },
+    "axl5hol9.dat": {
+      "path": "p/axl5hol9.dat",
+      "sha256": "47f63aa2fb81d3f58dce33d8695cd2d51faad777986b0ae810a4a8611c389d75"
+    },
+    "axlehol2.dat": {
+      "path": "p/axlehol2.dat",
+      "sha256": "0b90db3ba134e04a22858e2fa34719daa9afcb007d72688d3a2e604dec0ffe04"
+    },
+    "axlehol3.dat": {
+      "path": "p/axlehol3.dat",
+      "sha256": "d71cffdad748d04066d950187f8845c6ffa78a90ac9bcd51273743f2abf87c23"
+    },
+    "axlehole.dat": {
+      "path": "p/axlehole.dat",
+      "sha256": "549d59d7773ba9e752a46a32cd2cc95fa5c45b303079384104b089d5d4aad5ce"
+    },
+    "box0.dat": {
+      "path": "p/box0.dat",
+      "sha256": "fc133d30b4db5dedd82255cc3e695c6278b527edc9c9d0137f94322124d1aba0"
+    },
+    "box2-11.dat": {
+      "path": "p/box2-11.dat",
+      "sha256": "5798b669e17db57e485ed64716664d97df80917116a9e9c569ba0aacfd1d6753"
+    },
+    "box2-5.dat": {
+      "path": "p/box2-5.dat",
+      "sha256": "6ce3937a30798c2812e512d827c581869ce731fca1e6eb350082bc7918a57eb5"
+    },
+    "box2-9.dat": {
+      "path": "p/box2-9.dat",
+      "sha256": "f00629eb7d497208191af74b886c2fabf09fb6ec581b098737536981ae2b997d"
+    },
+    "box3u10p.dat": {
+      "path": "p/box3u10p.dat",
+      "sha256": "b4e56de458d8b8c7ef1085362a1c00a096ea27ae09d7e80967d42f5ac1297f8a"
+    },
+    "box3u2p.dat": {
+      "path": "p/box3u2p.dat",
+      "sha256": "eb3d043498e04f5404391d97fda0f1251dd675a334bb067080bc65c313771740"
+    },
+    "box3u4a.dat": {
+      "path": "p/box3u4a.dat",
+      "sha256": "914d9b2958b66e88375fa228363ef3134653b6eb4101892f89f1c8c06ab6ab61"
+    },
+    "box3u5p.dat": {
+      "path": "p/box3u5p.dat",
+      "sha256": "e638e4b54cbbef28ef611b5b79aea443e6b421a69d33417295b5ab7953383506"
+    },
+    "box3u8p.dat": {
+      "path": "p/box3u8p.dat",
+      "sha256": "8fe2ea280ced5fbf07b987715f6f2f65dcac87505aa9d82c9c371b295ac0a5fd"
+    },
+    "box4-2p.dat": {
+      "path": "p/box4-2p.dat",
+      "sha256": "5408f398ddf9a6174345d93497478ac6e21d03ede842e01bb35f18494ef05965"
+    },
+    "box4-4a.dat": {
+      "path": "p/box4-4a.dat",
+      "sha256": "a571936e4629b033e21f803fd0ad2d8d9709db12f0d9b36ad9621990b89d5cbe"
+    },
+    "box4-7a.dat": {
+      "path": "p/box4-7a.dat",
+      "sha256": "6a616734247babd70b0dee12f55a65c3b51f869f8047c6ad0946e85bc2ab929f"
+    },
+    "box4.dat": {
+      "path": "p/box4.dat",
+      "sha256": "a5e0c7846eecadf3f71c51d1b966412d6aa9f6e7bd80974aa52d5060262cc3fb"
+    },
+    "box4o4a.dat": {
+      "path": "p/box4o4a.dat",
+      "sha256": "8875e382aaa62964923dbc6371a93131e9ac58457afe3d45c68968b2b2409321"
+    },
+    "box4t.dat": {
+      "path": "p/box4t.dat",
+      "sha256": "50960c824a0cb24aad80863c4e3c40172ae2fefa1815bd3faa3d77362f5b8b39"
+    },
+    "box5.dat": {
+      "path": "p/box5.dat",
+      "sha256": "1f9b3c5e092c0fdcaa3f34aac48d8e3d25cd1f4bc42db2589390091162c949df"
+    },
+    "boxjcyl4.dat": {
+      "path": "p/boxjcyl4.dat",
+      "sha256": "67b1ac7a9c4ca2b09bf7c0bdd94077be6738b0c77f1a1984637911d8d9e15800"
+    },
+    "cylj4x6.dat": {
+      "path": "p/cylj4x6.dat",
+      "sha256": "6c28e67453407a36a1b387fbcf6d5d5fc3da98027469db8edeb6e42b1e571e4f"
+    },
+    "empty.dat": {
+      "path": "p/empty.dat",
+      "sha256": "551e676c718f85ceef32e2232c5af959283202c5488a25254ff008ba9a628c06"
+    },
+    "filletp0s.dat": {
+      "path": "p/filletp0s.dat",
+      "sha256": "c5eb31c3f3b0bed74422741f6968c96e0536c741d5c88cfef7c446afc574f1da"
+    },
+    "filletp1s.dat": {
+      "path": "p/filletp1s.dat",
+      "sha256": "f12b9918380664042e90566adf3666278594e35898c03cb39723bfaaaa7aac42"
+    },
+    "filletp2s.dat": {
+      "path": "p/filletp2s.dat",
+      "sha256": "3e3f33bf55b318a681b8e305e2a6eec274ef0d23d22b473b158d73ddccd05379"
+    },
+    "hipstud.dat": {
+      "path": "p/hipstud.dat",
+      "sha256": "fb6cea8a190b108e3468222b0bb91001e66cad31403b3dbee7ce749d7e2d134d"
+    },
+    "knob1.dat": {
+      "path": "p/knob1.dat",
+      "sha256": "8fcc0cdb533095618788b0d3b4acd8b6b3c0ef1fed358f66da0a94264f623cd2"
+    },
+    "rect.dat": {
+      "path": "p/rect.dat",
+      "sha256": "ba5d3fe77207c29c4994e353b5a01cc2e9cec840b023bbe49838f436a7f0086c"
+    },
+    "rect1.dat": {
+      "path": "p/rect1.dat",
+      "sha256": "0b2f8ad73ee7dddef23e06dd6ed6dcc7ac26c2abeae5f129a99a450be47a79fc"
+    },
+    "rect2a.dat": {
+      "path": "p/rect2a.dat",
+      "sha256": "21c7bbda3d5c529018080678a1210d8f1125d41eeae01a2e233f54e6d2eca44c"
+    },
+    "rect2p.dat": {
+      "path": "p/rect2p.dat",
+      "sha256": "66dccbcf437206dc951003b1c293c572114e8b14c7d44bbeeb8c557c7c237507"
+    },
+    "rect3.dat": {
+      "path": "p/rect3.dat",
+      "sha256": "af9fff6fbe080d8d331924e67c55aedc9a178e19dbd6e5724e8732e446ac6b29"
+    },
+    "recte3.dat": {
+      "path": "p/recte3.dat",
+      "sha256": "d767ca10b43d839c2b4839d9bd7777734c79ddef7c4984d48bd7bdc25cd9fa42"
+    },
+    "recte4.dat": {
+      "path": "p/recte4.dat",
+      "sha256": "a4300022fb5b0683f4b8d631c94e8371e46aeb988fe454c80761e09ae69601c3"
+    },
+    "s/2039s01.dat": {
+      "path": "parts/s/2039s01.dat",
+      "sha256": "d35c90993540f6ed45d5a809c952a0f8ebbd4ecd6f753adc334c7b3ae8121577"
+    },
+    "s/2039s02.dat": {
+      "path": "parts/s/2039s02.dat",
+      "sha256": "528b81bb52f3cefea8fa69686266f9571eed4225444f26f899252a53ec2fcd5f"
+    },
+    "s/2431s01.dat": {
+      "path": "parts/s/2431s01.dat",
+      "sha256": "65f19eb7596b9a478b013ca81ea685d6079db7fe1614b778c4c93b129ce9f1b4"
+    },
+    "s/3001s01.dat": {
+      "path": "parts/s/3001s01.dat",
+      "sha256": "1eadb49997c5ae51e7b9786c87c808da0e728c30765ae67f07719d0fa87f4027"
+    },
+    "s/3002s01.dat": {
+      "path": "parts/s/3002s01.dat",
+      "sha256": "8e194647491320e530d2ddc6cabb15b84993eab6b0d0ae1eadb99197505d6a3f"
+    },
+    "s/3003s01.dat": {
+      "path": "parts/s/3003s01.dat",
+      "sha256": "b0540235415047ee39e6740e3d5accef769dff0e4d30e6f4ad2001b46720e4f1"
+    },
+    "s/3003s02.dat": {
+      "path": "parts/s/3003s02.dat",
+      "sha256": "61340b5e5fc3b921bccad1fd8ae90d422ff3a688ab552e31b5cc5ac4adb8bd39"
+    },
+    "s/3004s01.dat": {
+      "path": "parts/s/3004s01.dat",
+      "sha256": "1b20d85f643cad7136e37f6c7eb2c2932d1e584b7df1a7bbfaca0b084a335f7d"
+    },
+    "s/3005s01.dat": {
+      "path": "parts/s/3005s01.dat",
+      "sha256": "737a8e48aee593b5226ce131463fb5c18871b73ab674ff47380b84568ef7c346"
+    },
+    "s/3007s01.dat": {
+      "path": "parts/s/3007s01.dat",
+      "sha256": "3f35d525b47932a2a218ec8b0bf01d95f88d5c783f0c5ac2d855064c9a3f1fd6"
+    },
+    "s/3008s01.dat": {
+      "path": "parts/s/3008s01.dat",
+      "sha256": "27c84f5d0e2e182460acf0a18b798ac8ec6e6b90132c7bb4b2cffe387b5daae5"
+    },
+    "s/3009s01.dat": {
+      "path": "parts/s/3009s01.dat",
+      "sha256": "885a1f135a4a7c8b37e146e38388dff6c35613234393a1dae0720764602f6ad4"
+    },
+    "s/3010s01.dat": {
+      "path": "parts/s/3010s01.dat",
+      "sha256": "709c425387aa6a9004cc00c37a8880e87e9a4dfdd55616a293e66668b0f55b7e"
+    },
+    "s/3023bs01.dat": {
+      "path": "parts/s/3023bs01.dat",
+      "sha256": "5f2b6dc76fc00b3b04eb026378a548acb0e96ce993eb9de51a72e847e2e2ac33"
+    },
+    "s/3024s01.dat": {
+      "path": "parts/s/3024s01.dat",
+      "sha256": "13e1accbf504d59fad211d6e7f77ddd243cd207e11d217f41d4a6187f1e798d7"
+    },
+    "s/3037s01.dat": {
+      "path": "parts/s/3037s01.dat",
+      "sha256": "eebd75d58fabc920eb537dc93dfcaa2fb5cc9b30408b619e70535e762f4233b0"
+    },
+    "s/3039s01.dat": {
+      "path": "parts/s/3039s01.dat",
+      "sha256": "82c7ca6620d3c74906aa1c5f434eba0b8600bc4ce5402be274b42538e7ab2e53"
+    },
+    "s/3062bs01.dat": {
+      "path": "parts/s/3062bs01.dat",
+      "sha256": "b3cc2ff48be9ba49b2392fdaf1b7b7dc8e2e7887f4b86c513873bd49f9362ade"
+    },
+    "s/3068bs01.dat": {
+      "path": "parts/s/3068bs01.dat",
+      "sha256": "6a406ced5ea600502727d3ce9ca631509bd3d284908026d7026dd0ae2d6e6d67"
+    },
+    "s/3069bs01.dat": {
+      "path": "parts/s/3069bs01.dat",
+      "sha256": "4a94c6269d900b4aa32066efe5feebf9b3ea0cc4a7526d7ee3ff732e995a804c"
+    },
+    "s/3070bs01.dat": {
+      "path": "parts/s/3070bs01.dat",
+      "sha256": "a503d2ea3be557d78994dc0b0ad9679fb0a5bdac2f078bbf7fb0b9de84b9d98d"
+    },
+    "s/3626ap01s01.dat": {
+      "path": "parts/s/3626ap01s01.dat",
+      "sha256": "7064f7de668bc8b26302d1f96a7b4d72f5a1d007c365037d0c164a84d92f1b09"
+    },
+    "s/3626as01.dat": {
+      "path": "parts/s/3626as01.dat",
+      "sha256": "3cd6f9ff369c582abd7020d90a2970fb6584caad53c9d1ab1c5d58de93ca5182"
+    },
+    "s/3641s01.dat": {
+      "path": "parts/s/3641s01.dat",
+      "sha256": "3b6acb59d3c35c1b27a6b08622fe01647130f596a36d86e481ea73f7f9a66826"
+    },
+    "s/3666s01.dat": {
+      "path": "parts/s/3666s01.dat",
+      "sha256": "a02a20c7e1b3bf550e02c723bb047418cff9e3384a9970a6ea55a5d1107b9ed1"
+    },
+    "s/3710s01.dat": {
+      "path": "parts/s/3710s01.dat",
+      "sha256": "4b616656ca1c75ccf136672e3703cb21e64f28fa40065d17777e634071e2d2d7"
+    },
+    "s/3815s01.dat": {
+      "path": "parts/s/3815s01.dat",
+      "sha256": "6440f7b304d937540e78484d53a34c08382aa1169d814125e4f8dda24bab2739"
+    },
+    "s/3816s01.dat": {
+      "path": "parts/s/3816s01.dat",
+      "sha256": "96329c9899c89d3a3db037069ba01c1d856a6d32f16838afd9377670445771f1"
+    },
+    "s/3816s02.dat": {
+      "path": "parts/s/3816s02.dat",
+      "sha256": "32c7a3d1753440836abfd3e513041234c68e730272841150036359c3a2bd61c9"
+    },
+    "s/3817s01.dat": {
+      "path": "parts/s/3817s01.dat",
+      "sha256": "22cf6ce3cb0d3a4c022639e3f7d4967b0754ec4dc9edfde797eba09c145bfd55"
+    },
+    "s/3818s01.dat": {
+      "path": "parts/s/3818s01.dat",
+      "sha256": "87c735fa677b80fab381111fdefc9e9033e1d5abf2f20cb5a66aa356a5528a6c"
+    },
+    "s/3818s02.dat": {
+      "path": "parts/s/3818s02.dat",
+      "sha256": "1217bb0c48640953c9b239e625b8e38d2faf207e471061934b065330df7ac1e8"
+    },
+    "s/3818s03.dat": {
+      "path": "parts/s/3818s03.dat",
+      "sha256": "3d12640b56612d240ed2ceba9e0c91a5649db4306dc4aaa745250c86dfa0870e"
+    },
+    "s/3818s04.dat": {
+      "path": "parts/s/3818s04.dat",
+      "sha256": "82ca476e5c1f79860490e74d2cafb75b375f837b6d70f74d8048a4a9e499862a"
+    },
+    "s/3941s01.dat": {
+      "path": "parts/s/3941s01.dat",
+      "sha256": "127c95e0691c9e5009ed22b2e4a7e318f5b89c7f19e5044d600924d0dd07c642"
+    },
+    "s/4624s01.dat": {
+      "path": "parts/s/4624s01.dat",
+      "sha256": "027bb24e170935b2e055a25b0ec7a1d4aa99c6ec954b101e7e6e9afb0f05f124"
+    },
+    "s/4740s01.dat": {
+      "path": "parts/s/4740s01.dat",
+      "sha256": "dd2a46a9faf26f72ab831c08857898f4e07c37e9941944d5edcea35e6a431453"
+    },
+    "s/87081s01.dat": {
+      "path": "parts/s/87081s01.dat",
+      "sha256": "4e4e4cc7551ada4bd8ae18e743a8401875662841c519de5ccd975b9c8b03a1e2"
+    },
+    "s/973s01.dat": {
+      "path": "parts/s/973s01.dat",
+      "sha256": "fca364d1c114163364a587f39b3af942b910e3be89e6446d511ba8607e245a3e"
+    },
+    "st4jfil3.dat": {
+      "path": "p/st4jfil3.dat",
+      "sha256": "cea1630c062d44a14b5490a843a0d7da7f481f47ace801fc8a52da22087585fc"
+    },
+    "stud.dat": {
+      "path": "p/stud.dat",
+      "sha256": "67c0b504502e97e2f61879ca0f740d101264474b4b95702176ee4685dd1a592a"
+    },
+    "stud10.dat": {
+      "path": "p/stud10.dat",
+      "sha256": "5e758a9c89cec6630f9ff49fce5f82501dc0b8cb6398a82d691817d16b52f765"
+    },
+    "stud18a.dat": {
+      "path": "p/stud18a.dat",
+      "sha256": "d010165b6b9be03546bb146c2043026975d3401d36a081cf41d322ccc511df79"
+    },
+    "stud2.dat": {
+      "path": "p/stud2.dat",
+      "sha256": "e1362f01b81ca9e2526383bee12942ce54cc09a6889e7966f9c846984759b824"
+    },
+    "stud2a.dat": {
+      "path": "p/stud2a.dat",
+      "sha256": "0782cd30cbba47361e2adcae6d699a53d3ce8e9c2c953ed1219b550b779f6991"
+    },
+    "stud3.dat": {
+      "path": "p/stud3.dat",
+      "sha256": "3bac117ba85212c2a2f442c82a96eeb1d2b3ed179d35ff17aa06e45508bc8d99"
+    },
+    "stud4.dat": {
+      "path": "p/stud4.dat",
+      "sha256": "4a2e3bbd0da208cbd15f5af14e2ddd28be4ac006657141b7be305a74e6dfc076"
+    },
+    "stud4a.dat": {
+      "path": "p/stud4a.dat",
+      "sha256": "257a0670c4097e1581b6d595c5e46859ad6b89c8b16b966d5ee93f646a6c088c"
+    },
+    "stud4f4s.dat": {
+      "path": "p/stud4f4s.dat",
+      "sha256": "6fa82f39f724f7df31f2737c8bbd48a5376ee20d4c67476d910008061cf51201"
+    },
+    "stud4od.dat": {
+      "path": "p/stud4od.dat",
+      "sha256": "52b69121f0de42c96a0812f100088dcd3bbecdee84f94d693d8ca4fece8820be"
+    },
+    "stug-1x2.dat": {
+      "path": "p/stug-1x2.dat",
+      "sha256": "a7051aeabeff96015e9734d3d6b7fc40754cb5072bd6211b108f060b48cc28c4"
+    },
+    "stug-1x4.dat": {
+      "path": "p/stug-1x4.dat",
+      "sha256": "e4b331a92bcba29b8f0ada97b4b9a201b5cdf6fa7f28330e718ab930bbedbc5c"
+    },
+    "stug-1x6.dat": {
+      "path": "p/stug-1x6.dat",
+      "sha256": "d533915003a99476f51fed0155fa0dc92df577508b48475d4863decc460f369e"
+    },
+    "stug-1x8.dat": {
+      "path": "p/stug-1x8.dat",
+      "sha256": "0fa8f8026e026593ba012eaa5034c56a0fe894c331f402bc033f82d9db861d31"
+    },
+    "stug-2x2.dat": {
+      "path": "p/stug-2x2.dat",
+      "sha256": "361b8e102349e0e1b15259e3e0d83155b8a88fccba7617acbdf517e1c8e00c29"
+    },
+    "stug-4x4.dat": {
+      "path": "p/stug-4x4.dat",
+      "sha256": "ccd372288459e370da9a455e8489262e681c9fa956f4890439411d99ec4ef330"
+    },
+    "stug-8x8.dat": {
+      "path": "p/stug-8x8.dat",
+      "sha256": "7d2c3670cfe606020f3843979b1e8a8d092051469586c0704208619cc2328919"
+    },
+    "stug10-2x2.dat": {
+      "path": "p/stug10-2x2.dat",
+      "sha256": "5069866ce7811b1bcb50d036ec8d6529359895c5dcb31b88d2fa76f212fc1a17"
+    },
+    "stug2-1x2.dat": {
+      "path": "p/stug2-1x2.dat",
+      "sha256": "a1bb4b4fd3a9acff8997f35a963c865fe5eea061ad317383020eddbe61975fd2"
+    },
+    "stug2.dat": {
+      "path": "p/stug2.dat",
+      "sha256": "7022f50bd0b016d0e418265bbf9064b836501a45098925b9252d06c7c73563cd"
+    },
+    "stug3-1x3.dat": {
+      "path": "p/stug3-1x3.dat",
+      "sha256": "35205cba095f8de5c93579e2b4f84158472fadeebeab28e703b83008d6202a9d"
+    },
+    "stug3-1x5.dat": {
+      "path": "p/stug3-1x5.dat",
+      "sha256": "763dc7e371f748ec005c3d55e06fa1b139a418c13933808a9c7057f94363cdbf"
+    },
+    "stug3-1x7.dat": {
+      "path": "p/stug3-1x7.dat",
+      "sha256": "315e72eda8d19ba8d337e649416f81b1473dbe139997a869e4fc6a43091cdc5d"
+    },
+    "stug4-1x7.dat": {
+      "path": "p/stug4-1x7.dat",
+      "sha256": "c0a8de42935abf630b4043c8ced67cb8be472a72e5e65e7dfa32f166e9804b14"
+    },
+    "t04o3333.dat": {
+      "path": "p/t04o3333.dat",
+      "sha256": "7e82506016f98f4ffcde0b5627f061e5cb28ee9ccb7796bb7154d06406754349"
+    },
+    "t04o6250.dat": {
+      "path": "p/t04o6250.dat",
+      "sha256": "fb83974033d6e2a37a9024e2c3fe9ea79e5cc06334be6aaae1d90c1f61a5c96b"
+    },
+    "t04q4000.dat": {
+      "path": "p/t04q4000.dat",
+      "sha256": "c1a154550ab945c7884efd934366f328c1a710e7c52470e3df5e583accbb722f"
+    },
+    "t16o1429.dat": {
+      "path": "p/t16o1429.dat",
+      "sha256": "7a8b01bcbb21280b3fec65aec510f5ff8ea2e8b41a46bc4591f3ddc27199685c"
+    },
+    "tri3.dat": {
+      "path": "p/tri3.dat",
+      "sha256": "f526c03b6d7401a9ad706e5f5687dbc6fa950d2ccfe1a533a8ba22c83084e239"
+    },
+    "tri3a4.dat": {
+      "path": "p/tri3a4.dat",
+      "sha256": "e73b71acaa0a9746cb48f764708f4d6f687339ba561940e6ba6ee2906a12015d"
+    }
+  },
+  "format": "ergo-part-library-lock-1",
+  "normalization": "UTF-8 without BOM; CRLF/CR to LF; all other text preserved",
+  "parts": {
+    "2039.dat": {
+      "asset": {
+        "bytes": 40821,
+        "mesh_hash": "f0f67319c736364876ec6837fe048f8bfd1f0e761f4c8e3657cbfcd87570f180",
+        "offset": 0
+      },
+      "catalogue": {
+        "aliases": [],
+        "id": "2039.dat",
+        "mass_kg": 0.002,
+        "mass_source": "https://www.bricklink.com/v2/catalog/catalogitem.page?P=2039",
+        "name": "Support  2 x  2 x  7 Lamppost with  6 Base Flutes",
+        "profile_id": "2039.dat",
+        "size": null,
+        "studs": null
+      },
+      "files": [
+        "1-4cyli.dat",
+        "1-4disc.dat",
+        "1-4edge.dat",
+        "1-4ring1.dat",
+        "2039.dat",
+        "4-4cyli.dat",
+        "4-4disc.dat",
+        "4-4edge.dat",
+        "4-4ndis.dat",
+        "4-4ring2.dat",
+        "4-4ring3.dat",
+        "4-4ring4.dat",
+        "4-4ring5.dat",
+        "s/2039s01.dat",
+        "s/2039s02.dat",
+        "stud2.dat",
+        "stud4.dat",
+        "t04o3333.dat"
+      ],
+      "revision": "fbef14e73e15c849f17e17b1043b71df74cd02a5832fab31bc83e05f4bc1e43b",
+      "source_revision": "7fc814c5d8feb79542f3fd03b4162fa9d1c64c92200f41b23d74da1d55701245",
+      "vertex_hash": "ff234c86efa0e3245526ff73d19084f2a43093d56fbe5198862cd4ff2b596eb5"
+    },
+    "2431.dat": {
+      "asset": {
+        "bytes": 2232,
+        "mesh_hash": "a23f17ce4f234914cb91337c5878303b070f9f05dea608d06a39f5cb672982c0",
+        "offset": 40821
+      },
+      "catalogue": {
+        "aliases": [
+          "2431b.dat"
+        ],
+        "id": "2431.dat",
+        "mass_kg": 0.00054,
+        "mass_source": "https://www.bricklink.com/v2/catalog/catalogitem.page?P=2431",
+        "name": "Tile 1 × 4",
+        "size": [
+          4,
+          1,
+          1
+        ],
+        "studs": false
+      },
+      "files": [
+        "2431.dat",
+        "2431b.dat",
+        "4-4cyli.dat",
+        "4-4disc.dat",
+        "4-4edge.dat",
+        "box4.dat",
+        "box5.dat",
+        "s/2431s01.dat",
+        "stud3.dat"
+      ],
+      "revision": "386962f40747ef72b44f33f0ef912bf9bcb9478c22fff2f63e94589f41c8b3a7",
+      "source_revision": "53d5ad04393ad6d9d046ceb7398a8a7c271757ab04e88692c2529346ec1bd1a9",
+      "vertex_hash": "58c8fff2cb12e47c16cca68442a29937c3b39809708252407e9c9ec3b9ee5326"
+    },
+    "2456.dat": {
+      "asset": {
+        "bytes": 11285,
+        "mesh_hash": "33f33c5de887068b97407dfc021ab38e86853cb25c2bae754da32e91e7949630",
+        "offset": 43053
+      },
+      "catalogue": {
+        "aliases": [],
+        "id": "2456.dat",
+        "mass_kg": 0.0037400000000000003,
+        "mass_source": "https://www.bricklink.com/v2/catalog/catalogitem.page?P=2456",
+        "name": "Brick 2 × 6",
+        "size": [
+          6,
+          2,
+          3
+        ],
+        "studs": true
+      },
+      "files": [
+        "2456.dat",
+        "4-4cyli.dat",
+        "4-4disc.dat",
+        "4-4edge.dat",
+        "4-4ring3.dat",
+        "box5.dat",
+        "stud.dat",
+        "stud4.dat"
+      ],
+      "revision": "533d7db90859bc9a18c9e7e0a26626a55984fea3bc85cadbcd833d0a2cfb98fc",
+      "source_revision": "fdfc15744c09744cebdf783eb6f09f38ae68ccae1f6b763a8ef85d72de9eb56c",
+      "vertex_hash": "3858d10e4839a2c266c15a637b45817bfadacaced7bc158ab373d193dab65747"
+    },
+    "3001.dat": {
+      "asset": {
+        "bytes": 7423,
+        "mesh_hash": "8d0f311f8449e652a16d8c1b88d60cbe11ea84b715949ac0adeb143d436c1fa7",
+        "offset": 54338
+      },
+      "catalogue": {
+        "aliases": [],
+        "id": "3001.dat",
+        "mass_kg": 0.00232,
+        "mass_source": "https://www.bricklink.com/v2/catalog/catalogitem.page?P=3001",
+        "name": "Brick 2 × 4",
+        "size": [
+          4,
+          2,
+          3
+        ],
+        "studs": true
+      },
+      "files": [
+        "3001.dat",
+        "4-4cyli.dat",
+        "4-4disc.dat",
+        "4-4edge.dat",
+        "4-4ring3.dat",
+        "box3u2p.dat",
+        "box5.dat",
+        "s/3001s01.dat",
+        "stud.dat",
+        "stud4.dat"
+      ],
+      "revision": "ccd7c02755c42003fd0942c9910ccec75a8dc3dc54686e831d61a26264e3cbd8",
+      "source_revision": "6147f2f8575e7e771619bba3084267b2f3c218a9b8ff26818bc373fea11ffd72",
+      "vertex_hash": "f00561198b49300d8030516bf93f27b7479e71ed90952bd86aef1b9124877538"
+    },
+    "3002.dat": {
+      "asset": {
+        "bytes": 5578,
+        "mesh_hash": "481a4517c6d867a29fc71f8627ca8917b2967b81af2ae76cc90e028a870d20ac",
+        "offset": 61761
+      },
+      "catalogue": {
+        "aliases": [],
+        "id": "3002.dat",
+        "mass_kg": 0.0019199999999999998,
+        "mass_source": "https://www.bricklink.com/v2/catalog/catalogitem.page?P=3002",
+        "name": "Brick 2 × 3",
+        "size": [
+          3,
+          2,
+          3
+        ],
+        "studs": true
+      },
+      "files": [
+        "3002.dat",
+        "4-4cyli.dat",
+        "4-4disc.dat",
+        "4-4edge.dat",
+        "4-4ring3.dat",
+        "box5.dat",
+        "s/3002s01.dat",
+        "stud.dat",
+        "stud4.dat"
+      ],
+      "revision": "4a72a05dd0d4bf6815f98bc668d7e979f68c7bb02f01ffc3da9de5523fbf9d0c",
+      "source_revision": "69e9143fc4980fdea0d4ade7792defaa745e9fd19b64c1139e307ff72eae2ec4",
+      "vertex_hash": "086da1605fee56a22c109294ea067036c71f1f8f8555859e28d1b792d3d7004b"
+    },
+    "3003.dat": {
+      "asset": {
+        "bytes": 3652,
+        "mesh_hash": "32bcbb08e8c50f7512da414be36bb9fda9e1781e41383233304e8ebc2292d130",
+        "offset": 67339
+      },
+      "catalogue": {
+        "aliases": [],
+        "id": "3003.dat",
+        "mass_kg": 0.00135,
+        "mass_source": "https://www.bricklink.com/v2/catalog/catalogitem.page?P=3003",
+        "name": "Brick 2 × 2",
+        "size": [
+          2,
+          2,
+          3
+        ],
+        "studs": true
+      },
+      "files": [
+        "3003.dat",
+        "4-4cyli.dat",
+        "4-4disc.dat",
+        "4-4edge.dat",
+        "4-4ring3.dat",
+        "box3u2p.dat",
+        "box5.dat",
+        "s/3003s01.dat",
+        "s/3003s02.dat",
+        "stud.dat",
+        "stud4.dat",
+        "stug-2x2.dat"
+      ],
+      "revision": "a84ee1ebcd52ffd62c4d69cbee09a2239acfeb2dd577cec6a54843968461f02b",
+      "source_revision": "d22c17339fa27b58c0a7b2c07b253a7a95873983805c4df8cbfe7346bad1618e",
+      "vertex_hash": "523e688d3b8985d3f22440469cbb50f7fcf3c7d6376b8499dbcb455851080dae"
+    },
+    "3004.dat": {
+      "asset": {
+        "bytes": 2178,
+        "mesh_hash": "17fb527817e360d1acce4256a4aa0377fe0899e9f3292e309c825965fc10a9f3",
+        "offset": 70991
+      },
+      "catalogue": {
+        "aliases": [],
+        "id": "3004.dat",
+        "mass_kg": 0.00083,
+        "mass_source": "https://www.bricklink.com/v2/catalog/catalogitem.page?P=3004",
+        "name": "Brick 1 × 2",
+        "size": [
+          2,
+          1,
+          3
+        ],
+        "studs": true
+      },
+      "files": [
+        "3004.dat",
+        "4-4cyli.dat",
+        "4-4disc.dat",
+        "4-4edge.dat",
+        "box4t.dat",
+        "box5.dat",
+        "s/3004s01.dat",
+        "stud.dat",
+        "stud3.dat"
+      ],
+      "revision": "ab82c0d68b3004e29460a10e88b07e7f462c3479b045e17a64f2d1f1d6a41b6f",
+      "source_revision": "4d114052129514c5c1f070d5ac56c5443b97b86e353265a0021c30f77a9a4ea7",
+      "vertex_hash": "698e472559410661e920d4911ecedbb49c55934f24bfab15585fe02191763f52"
+    },
+    "3005.dat": {
+      "asset": {
+        "bytes": 1192,
+        "mesh_hash": "686de833a7524943836eba448620c60fd7a0d7f3e01325f0d7892f3460da47ff",
+        "offset": 73169
+      },
+      "catalogue": {
+        "aliases": [],
+        "id": "3005.dat",
+        "mass_kg": 0.00044,
+        "mass_source": "https://www.bricklink.com/v2/catalog/catalogitem.page?P=3005",
+        "name": "Brick 1 × 1",
+        "size": [
+          1,
+          1,
+          3
+        ],
+        "studs": true
+      },
+      "files": [
+        "3005.dat",
+        "4-4cyli.dat",
+        "4-4disc.dat",
+        "4-4edge.dat",
+        "box4t.dat",
+        "box5.dat",
+        "s/3005s01.dat",
+        "stud.dat"
+      ],
+      "revision": "9981932d530b3217700f2751b09438efad1074572869e3af31f30310e6e48234",
+      "source_revision": "84d4c2baf715fc8fe9ec146f15f430a61b20d3db1bdc1d3bdae070e804c67374",
+      "vertex_hash": "88b2767a80936e29dc684382dd04a1485c84d6d2dbaf6fedfaf7c9744ca6c67e"
+    },
+    "3007.dat": {
+      "asset": {
+        "bytes": 15835,
+        "mesh_hash": "417005437832d83ac5af000c4c65fbfdca2fd4d0ccd12803178409e2bf7fbf37",
+        "offset": 74361
+      },
+      "catalogue": {
+        "aliases": [],
+        "id": "3007.dat",
+        "mass_kg": 0.00475,
+        "mass_source": "https://www.bricklink.com/v2/catalog/catalogitem.page?P=3007",
+        "name": "Brick 2 × 8",
+        "size": [
+          8,
+          2,
+          3
+        ],
+        "studs": true
+      },
+      "files": [
+        "1-16edge.dat",
+        "3007.dat",
+        "4-4cyli.dat",
+        "4-4disc.dat",
+        "4-4edge.dat",
+        "4-4ring3.dat",
+        "box3u5p.dat",
+        "box4t.dat",
+        "box5.dat",
+        "boxjcyl4.dat",
+        "rect3.dat",
+        "s/3007s01.dat",
+        "stud.dat",
+        "stud4.dat",
+        "stug-1x8.dat",
+        "stug4-1x7.dat"
+      ],
+      "revision": "8792c2c61a9feafa441a9111369e4505db3e5b43b754dbdec922db56175aa105",
+      "source_revision": "96523f609b13104468a3c046ad0dfb72c92ac76fd5c66410537971d14d83849e",
+      "vertex_hash": "c2d0cc4e85b860550e51d5ae27306064ac5fef50e2fd96f380a6d50ba4f6490d"
+    },
+    "3008.dat": {
+      "asset": {
+        "bytes": 7813,
+        "mesh_hash": "86820f1cc2bad61becc1030a7aec297ca15a2fbb8b5579cd19cb98386991a77c",
+        "offset": 90196
+      },
+      "catalogue": {
+        "aliases": [],
+        "id": "3008.dat",
+        "mass_kg": 0.00321,
+        "mass_source": "https://www.bricklink.com/v2/catalog/catalogitem.page?P=3008",
+        "name": "Brick 1 × 8",
+        "size": [
+          8,
+          1,
+          3
+        ],
+        "studs": true
+      },
+      "files": [
+        "3008.dat",
+        "4-4cyli.dat",
+        "4-4disc.dat",
+        "4-4edge.dat",
+        "box4t.dat",
+        "box5.dat",
+        "s/3008s01.dat",
+        "stud.dat",
+        "stud3.dat",
+        "stug-1x8.dat",
+        "stug3-1x7.dat"
+      ],
+      "revision": "00b9897faf8db5ca1dab233d973cfc84d4ffe0802cb4b3fe3cd40e6acefa19df",
+      "source_revision": "32a4a13be919e8d9871a04d99523131ad76fcfaf927038b1c1c195ddeda057df",
+      "vertex_hash": "0a0562b7b7b9787131e987fda26f5730b03f9faeaa23ea5d47b3ac65c5f5590a"
+    },
+    "3009.dat": {
+      "asset": {
+        "bytes": 5989,
+        "mesh_hash": "d56a260bfbc0d5b93d2bc107b321fa3635abb2315878dee077a37d173ce531dc",
+        "offset": 98009
+      },
+      "catalogue": {
+        "aliases": [],
+        "id": "3009.dat",
+        "mass_kg": 0.00242,
+        "mass_source": "https://www.bricklink.com/v2/catalog/catalogitem.page?P=3009",
+        "name": "Brick 1 × 6",
+        "size": [
+          6,
+          1,
+          3
+        ],
+        "studs": true
+      },
+      "files": [
+        "3009.dat",
+        "4-4cyli.dat",
+        "4-4disc.dat",
+        "4-4edge.dat",
+        "box5.dat",
+        "s/3009s01.dat",
+        "stud.dat",
+        "stud3.dat"
+      ],
+      "revision": "66f43774fdf087498cdb6dd9209413d0e0d2d4a35111092dcc119a0863055daa",
+      "source_revision": "a9106b30de524dc823d2e9ee8029ffe777367b56ca07082a0e44bc14e30082e7",
+      "vertex_hash": "e1214d74814909eff26a94d1b36fd06d6d83ba1a75f4e52907d92b40dc79ec8d"
+    },
+    "3010.dat": {
+      "asset": {
+        "bytes": 4178,
+        "mesh_hash": "3eb1d23fc9b77ee561b32bf926f5f0f8cd946b71635010bea6bd6209d37b49dd",
+        "offset": 103998
+      },
+      "catalogue": {
+        "aliases": [],
+        "id": "3010.dat",
+        "mass_kg": 0.00164,
+        "mass_source": "https://www.bricklink.com/v2/catalog/catalogitem.page?P=3010",
+        "name": "Brick 1 × 4",
+        "size": [
+          4,
+          1,
+          3
+        ],
+        "studs": true
+      },
+      "files": [
+        "3010.dat",
+        "4-4cyli.dat",
+        "4-4disc.dat",
+        "4-4edge.dat",
+        "box4t.dat",
+        "box5.dat",
+        "s/3010s01.dat",
+        "stud.dat",
+        "stud3.dat",
+        "stug-1x4.dat",
+        "stug3-1x3.dat"
+      ],
+      "revision": "2e536f63dfcac3dfe3e0489e21694b38e421f538b56754fdc92e1bfde0185d6d",
+      "source_revision": "7258836e2df63428c076701cf4442052099e2de7acd0c979f3a72c694ad09ba5",
+      "vertex_hash": "0064fb799b5febe09bbe15c464c419f11294a36061c6221d02b59a228053f5b4"
+    },
+    "3020.dat": {
+      "asset": {
+        "bytes": 7172,
+        "mesh_hash": "189ddab845c957c247bb6366add182f460142b0d5482fe551e7721e41c921f07",
+        "offset": 108176
+      },
+      "catalogue": {
+        "aliases": [],
+        "id": "3020.dat",
+        "mass_kg": 0.0012,
+        "mass_source": "https://www.bricklink.com/v2/catalog/catalogitem.page?P=3020",
+        "name": "Plate 2 × 4",
+        "size": [
+          4,
+          2,
+          1
+        ],
+        "studs": true
+      },
+      "files": [
+        "3020.dat",
+        "4-4cyli.dat",
+        "4-4disc.dat",
+        "4-4edge.dat",
+        "4-4ring3.dat",
+        "box5.dat",
+        "stud.dat",
+        "stud4.dat"
+      ],
+      "revision": "d6ca679987555d0aa044f094ab333da5dbc89fbadd40afc4e0e0fa248b1abb00",
+      "source_revision": "8f305925478a8b174ea80c9e8ff7f1db694ff461f45cdf0d4f2ba8d37fd24c8b",
+      "vertex_hash": "6b91a3e156a073d7286833b3d40bd4e25330194bddecc16fe19d544f8155259f"
+    },
+    "3021.dat": {
+      "asset": {
+        "bytes": 5436,
+        "mesh_hash": "659de4e90596a48f4ba2733ba01cdc4e793729a6b29c876cb64de88dc37c9323",
+        "offset": 115348
+      },
+      "catalogue": {
+        "aliases": [],
+        "id": "3021.dat",
+        "mass_kg": 0.00093,
+        "mass_source": "https://www.bricklink.com/v2/catalog/catalogitem.page?P=3021",
+        "name": "Plate 2 × 3",
+        "size": [
+          3,
+          2,
+          1
+        ],
+        "studs": true
+      },
+      "files": [
+        "3021.dat",
+        "4-4cyli.dat",
+        "4-4disc.dat",
+        "4-4edge.dat",
+        "4-4ring3.dat",
+        "box5.dat",
+        "stud.dat",
+        "stud4.dat"
+      ],
+      "revision": "4e2d870033d9515364147669965d615f063810525be8a118d619144bb456e0c0",
+      "source_revision": "d5001589d1d2ae793806f31d59e94cb3ec4e40dc2d4dc26bfa378eb132d24e54",
+      "vertex_hash": "6451197549eaccc9f1cb15c5216f06831b56229d48b73203b64507104207a688"
+    },
+    "3022.dat": {
+      "asset": {
+        "bytes": 3500,
+        "mesh_hash": "2a1cff97d10bb6e2ac0313ff2ce2dc9d18be1a73216d4b74b5d0a351342ce060",
+        "offset": 120784
+      },
+      "catalogue": {
+        "aliases": [],
+        "id": "3022.dat",
+        "mass_kg": 0.00064,
+        "mass_source": "https://www.bricklink.com/v2/catalog/catalogitem.page?P=3022",
+        "name": "Plate 2 × 2",
+        "size": [
+          2,
+          2,
+          1
+        ],
+        "studs": true
+      },
+      "files": [
+        "3022.dat",
+        "4-4cyli.dat",
+        "4-4disc.dat",
+        "4-4edge.dat",
+        "4-4ring3.dat",
+        "box5.dat",
+        "stud.dat",
+        "stud4.dat"
+      ],
+      "revision": "28dc48d251c1d63d06f2e80aa24c09477be0e6716a407d6b4406d26140afa4ab",
+      "source_revision": "c6856314c789f5e1673fe206f6db4efc5c5a9673dffd5ec6b83b65923b3f8752",
+      "vertex_hash": "70e6ebe9079c5c7f8d108ae909f109a07703312fab227b30a088efe84b730bec"
+    },
+    "3023b.dat": {
+      "asset": {
+        "bytes": 2233,
+        "mesh_hash": "adc84b6b5a5f8e959bb22c6a368c797e0f345ce05b4e4872a09cc407360b4db8",
+        "offset": 124284
+      },
+      "catalogue": {
+        "aliases": [
+          "3023.dat"
+        ],
+        "id": "3023b.dat",
+        "mass_kg": 0.00035999999999999997,
+        "mass_source": "https://www.bricklink.com/v2/catalog/catalogitem.page?P=3023",
+        "name": "Plate 1 × 2",
+        "size": [
+          2,
+          1,
+          1
+        ],
+        "studs": true
+      },
+      "files": [
+        "3023.dat",
+        "3023b.dat",
+        "4-4cyli.dat",
+        "4-4disc.dat",
+        "4-4edge.dat",
+        "box4t.dat",
+        "box5.dat",
+        "s/3023bs01.dat",
+        "stud.dat",
+        "stud3.dat",
+        "stug-1x2.dat"
+      ],
+      "revision": "8447df07bc7e26112bf477c70250ca7f118c82984196f1b31061660eabcbd954",
+      "source_revision": "5c74777115fb8c92cbe8c575ccefd4b5d0f6eefa48a039902cb97832843f5fc1",
+      "vertex_hash": "e26bfa7e93ce90842bfe111b6dc9a827cd477fd3a9c9d3abb4a5bc12fea69cec"
+    },
+    "3024.dat": {
+      "asset": {
+        "bytes": 1182,
+        "mesh_hash": "15c647ab55bc2712bd13af94e3aa05091da648f012d3c4d2adf0a8bbff5e371d",
+        "offset": 126517
+      },
+      "catalogue": {
+        "aliases": [],
+        "id": "3024.dat",
+        "mass_kg": 0.0002,
+        "mass_source": "https://www.bricklink.com/v2/catalog/catalogitem.page?P=3024",
+        "name": "Plate 1 × 1",
+        "size": [
+          1,
+          1,
+          1
+        ],
+        "studs": true
+      },
+      "files": [
+        "3024.dat",
+        "4-4cyli.dat",
+        "4-4disc.dat",
+        "4-4edge.dat",
+        "box4t.dat",
+        "box5.dat",
+        "s/3024s01.dat",
+        "stud.dat"
+      ],
+      "revision": "d3117253e30f931796bf0c109a224b0b3503a65bc5820a6306e1d3c3eee66738",
+      "source_revision": "ebd09be92116fa61f7b05a06b09facdfad4e174a8bb33366636a24ac12145936",
+      "vertex_hash": "cb7988c10723ce0a76a7f15029fdea5431d5eb97c78095df435ec10ecc8dfe44"
+    },
+    "3026.dat": {
+      "asset": {
+        "bytes": 163379,
+        "mesh_hash": "fdaa580593d2bd1f7896726c8f48a9af6dd6f3a51d2bb47cb38fe8bfebc18e78",
+        "offset": 127699
+      },
+      "catalogue": {
+        "aliases": [],
+        "id": "3026.dat",
+        "mass_kg": 0.01943,
+        "mass_source": "https://www.bricklink.com/v2/catalog/catalogitem.page?P=3026",
+        "name": "Plate 6 × 24",
+        "size": [
+          24,
+          6,
+          1
+        ],
+        "studs": true
+      },
+      "files": [
+        "3026.dat",
+        "4-4cyli.dat",
+        "4-4disc.dat",
+        "4-4edge.dat",
+        "4-4ring3.dat",
+        "box5.dat",
+        "stud.dat",
+        "stud4.dat"
+      ],
+      "revision": "b9030ab3ed00991c48433de1d6b60bd9749f8445461bc5dac5059803547b93fc",
+      "source_revision": "2845aca2b0b9f1281f23cb45d63386eba25a34b2aca76bf03417a3aa5f7989f3",
+      "vertex_hash": "a4dc798d036656ae01afba7d8273bed28d84a707d50c078a9c13a37f621f0986"
+    },
+    "3031.dat": {
+      "asset": {
+        "bytes": 16053,
+        "mesh_hash": "f91a2d16c8beadc5e2ba76284ea9637a4d1593c82fc8cc3ac1c01ca1c9b9141f",
+        "offset": 291078
+      },
+      "catalogue": {
+        "aliases": [],
+        "id": "3031.dat",
+        "mass_kg": 0.00222,
+        "mass_source": "https://www.bricklink.com/v2/catalog/catalogitem.page?P=3031",
+        "name": "Plate 4 × 4",
+        "size": [
+          4,
+          4,
+          1
+        ],
+        "studs": true
+      },
+      "files": [
+        "3031.dat",
+        "4-4cyli.dat",
+        "4-4disc.dat",
+        "4-4edge.dat",
+        "4-4ring3.dat",
+        "box5.dat",
+        "stud.dat",
+        "stud4.dat"
+      ],
+      "revision": "ae9daa0784b984f0d4ca25843ab9033aba0d4d3299a4baf24b8a20c0570a8411",
+      "source_revision": "f322ce686c71e8bfff8fad1ca0d54eb3b4e51c2cbf8a002f9b8eff4305610691",
+      "vertex_hash": "7e5dbcc3a2522ff30af3e9e81a34991781ead2ef29d39a00cd695d042c218dc3"
+    },
+    "3032.dat": {
+      "asset": {
+        "bytes": 25333,
+        "mesh_hash": "37cbaea0e0009bd3e080f85706a06f0c5e8007eb38d0bcbef3536894e3447f42",
+        "offset": 307131
+      },
+      "catalogue": {
+        "aliases": [],
+        "id": "3032.dat",
+        "mass_kg": 0.0033,
+        "mass_source": "https://www.bricklink.com/v2/catalog/catalogitem.page?P=3032",
+        "name": "Plate 4 × 6",
+        "size": [
+          6,
+          4,
+          1
+        ],
+        "studs": true
+      },
+      "files": [
+        "3032.dat",
+        "4-4cyli.dat",
+        "4-4disc.dat",
+        "4-4edge.dat",
+        "4-4ring3.dat",
+        "box5.dat",
+        "stud.dat",
+        "stud4.dat"
+      ],
+      "revision": "2fd5fefac945fe92a4a56079d746b27960e5c6ec6a86b7a66d4738d7c30f93fe",
+      "source_revision": "9fd88f78dfa061221b35f5d824cff67513f0a9b0bf9a37d042b406e1c0fc7b89",
+      "vertex_hash": "061884f8882b2c246e5c3fe20be1ec65c48abb3790c6bb9ff60cef202e8e477c"
+    },
+    "3034.dat": {
+      "asset": {
+        "bytes": 14465,
+        "mesh_hash": "de61406ebab1f0b807ab4b88ed78fb46388db1c6040b8f8fc389a1d27fea52c1",
+        "offset": 332464
+      },
+      "catalogue": {
+        "aliases": [],
+        "id": "3034.dat",
+        "mass_kg": 0.00227,
+        "mass_source": "https://www.bricklink.com/v2/catalog/catalogitem.page?P=3034",
+        "name": "Plate 2 × 8",
+        "size": [
+          8,
+          2,
+          1
+        ],
+        "studs": true
+      },
+      "files": [
+        "3034.dat",
+        "4-4cyli.dat",
+        "4-4disc.dat",
+        "4-4edge.dat",
+        "4-4ring3.dat",
+        "box5.dat",
+        "stud.dat",
+        "stud4.dat"
+      ],
+      "revision": "f1c24ca4b04ff94f3758868fa67934c118f529c67a92ba08c3702a4a28719f98",
+      "source_revision": "005eacc3190b2b184524cc52dcb2144ca62ff2dd80ee40bb317f668957b83a5d",
+      "vertex_hash": "d1e8a62b982986222e101783fe60608b72dd3f06ee90bb32cf61f9b69de33207"
+    },
+    "3035.dat": {
+      "asset": {
+        "bytes": 34210,
+        "mesh_hash": "429d2a2280c69bccda6823a73cc0a9d22ee91489f77ad9a4c9c652b20f8b2567",
+        "offset": 346929
+      },
+      "catalogue": {
+        "aliases": [],
+        "id": "3035.dat",
+        "mass_kg": 0.0047,
+        "mass_source": "https://www.bricklink.com/v2/catalog/catalogitem.page?P=3035",
+        "name": "Plate 4 × 8",
+        "size": [
+          8,
+          4,
+          1
+        ],
+        "studs": true
+      },
+      "files": [
+        "3035.dat",
+        "4-4cyli.dat",
+        "4-4disc.dat",
+        "4-4edge.dat",
+        "4-4ring3.dat",
+        "box5.dat",
+        "stud.dat",
+        "stud4.dat"
+      ],
+      "revision": "8e2648db175b195610a26a463bcfafe3e7fbfd2d761835222ecd9f795d6978a3",
+      "source_revision": "a0b2036c0fa4d97e2f64fae2a1add21abbf426ab842496ccb47fb83720849bad",
+      "vertex_hash": "432a053cd7d91b3d83ff92b3b3e8ce3beffab88729564b2a2efcee72bf74a743"
+    },
+    "3037.dat": {
+      "asset": {
+        "bytes": 8901,
+        "mesh_hash": "8b0e62d7b03ef96872de7ade7dbea065e3209b5f4137ec3387b3343333078d40",
+        "offset": 381139
+      },
+      "catalogue": {
+        "aliases": [],
+        "id": "3037.dat",
+        "mass_kg": 0.00197,
+        "mass_source": "https://www.bricklink.com/v2/catalog/catalogitem.page?P=3037",
+        "name": "Slope Brick 45  2 x  4",
+        "profile_id": "3037.dat",
+        "size": null,
+        "studs": null
+      },
+      "files": [
+        "1-4cyls.dat",
+        "2-4cyli.dat",
+        "2-4edge.dat",
+        "3037.dat",
+        "4-4cyli.dat",
+        "4-4disc.dat",
+        "4-4edge.dat",
+        "4-4ring3.dat",
+        "s/3037s01.dat",
+        "stud.dat",
+        "stud4a.dat"
+      ],
+      "revision": "30963c49e5bf35dee8698a90f8f396533043c87b1a8716f6203ee2e61231579c",
+      "source_revision": "717678c426ca3007cb266c4389e3221ee2b4475adb22c42bdd3d1404985ca950",
+      "vertex_hash": "7809ce1d0360b201d5aede1753ea3146f59440c9de46d77c9faf418eab0d4c7f"
+    },
+    "3039.dat": {
+      "asset": {
+        "bytes": 4393,
+        "mesh_hash": "672d25d962dec2c1252d5a849ac944f49fecd477b595650dc156a372e6100c39",
+        "offset": 390040
+      },
+      "catalogue": {
+        "aliases": [],
+        "id": "3039.dat",
+        "mass_kg": 0.00115,
+        "mass_source": "https://www.bricklink.com/v2/catalog/catalogitem.page?P=3039",
+        "name": "Slope Brick 45  2 x  2",
+        "profile_id": "3039.dat",
+        "size": null,
+        "studs": null
+      },
+      "files": [
+        "1-4cyls.dat",
+        "2-4chrd.dat",
+        "2-4cyli.dat",
+        "2-4edge.dat",
+        "2-4ndis.dat",
+        "3039.dat",
+        "4-4cyli.dat",
+        "4-4disc.dat",
+        "4-4edge.dat",
+        "4-4ring3.dat",
+        "box3u4a.dat",
+        "box4-4a.dat",
+        "rect.dat",
+        "s/3039s01.dat",
+        "stud.dat",
+        "stud4a.dat",
+        "stug-1x2.dat"
+      ],
+      "revision": "e3b64ff9fd3e910e90b5c1a6fe1ee1e993998b98f6793bff5e5b94972674b528",
+      "source_revision": "ef3d77832bf65855617522d9048cf5c29c952a3f3fcb9e3866baf9b78f5625a6",
+      "vertex_hash": "764a31c52c68d9006ba3df827708a600317d5687e68bc388a7e5c2ba0b4011fa"
+    },
+    "3062b.dat": {
+      "asset": {
+        "bytes": 4240,
+        "mesh_hash": "86cf8443fca5f6e1ff84ac944d01b6acc449d97e28222d4868282086276c4592",
+        "offset": 394433
+      },
+      "catalogue": {
+        "aliases": [
+          "28.dat",
+          "3062.dat"
+        ],
+        "id": "3062b.dat",
+        "mass_kg": 0.00028000000000000003,
+        "mass_source": "https://www.bricklink.com/v2/catalog/catalogitem.page?P=3062",
+        "name": "Brick  1 x  1 Round with Hollow Stud",
+        "profile_id": "3062b.dat",
+        "size": null,
+        "studs": null
+      },
+      "files": [
+        "28.dat",
+        "3062.dat",
+        "3062b.dat",
+        "4-4cyli.dat",
+        "4-4cylo.dat",
+        "4-4edge.dat",
+        "4-4ring2.dat",
+        "4-4ring3.dat",
+        "4-4ring4.dat",
+        "s/3062bs01.dat",
+        "stud2a.dat",
+        "stud4od.dat"
+      ],
+      "revision": "760bf65e097a7102b5a1afb1428b1050411c2da46fb2ba4111365c5b87d2515e",
+      "source_revision": "f4d3b565d38e91c58d7e66e39c8633160a1c774eb56fc14147f12ecde83372cd",
+      "vertex_hash": "b7150011cddfe806e68f1a040fc4acadd30b72894b8add6fedd7528ffcf53c97"
+    },
+    "3068b.dat": {
+      "asset": {
+        "bytes": 2170,
+        "mesh_hash": "7c4daca82061661107ee2e795cb7c625b6b45e688f80224641317d375f4c5721",
+        "offset": 398673
+      },
+      "catalogue": {
+        "aliases": [
+          "3068.dat"
+        ],
+        "id": "3068b.dat",
+        "mass_kg": 0.00049,
+        "mass_source": "https://www.bricklink.com/v2/catalog/catalogitem.page?P=3068",
+        "name": "Tile 2 × 2",
+        "size": [
+          2,
+          2,
+          1
+        ],
+        "studs": false
+      },
+      "files": [
+        "3068.dat",
+        "3068b.dat",
+        "4-4cyli.dat",
+        "4-4disc.dat",
+        "4-4edge.dat",
+        "4-4ndis.dat",
+        "4-4ring3.dat",
+        "box4.dat",
+        "s/3068bs01.dat",
+        "stud4.dat"
+      ],
+      "revision": "4005c902b4a553e22157716662e9c82f782e04b333abffff29108689f732a3e5",
+      "source_revision": "45849bcc10c092afda7795c1cd3d4259316ac6e4336864798f5220d96f656f10",
+      "vertex_hash": "56fe9b49c04852e1368136b3d67805c56b36d8ebc7d6858eb64d28ce030ec9ad"
+    },
+    "3069b.dat": {
+      "asset": {
+        "bytes": 778,
+        "mesh_hash": "37a68764796611db7a255c17eff5e6ec4a7da29bcadfa603f269bf17745ae8f0",
+        "offset": 400843
+      },
+      "catalogue": {
+        "aliases": [
+          "3069.dat"
+        ],
+        "id": "3069b.dat",
+        "mass_kg": 0.00026000000000000003,
+        "mass_source": "https://www.bricklink.com/v2/catalog/catalogitem.page?P=3069",
+        "name": "Tile 1 × 2",
+        "size": [
+          2,
+          1,
+          1
+        ],
+        "studs": false
+      },
+      "files": [
+        "3069.dat",
+        "3069b.dat",
+        "box4.dat",
+        "box5.dat",
+        "s/3069bs01.dat"
+      ],
+      "revision": "cc82e41d6cdc2bec690e0e246a6bcb1d0c054d0c59faa6a177a3ab6c2c00ff05",
+      "source_revision": "e430a105be2761233968d4af7507eac641f56d730486419aa7d1ecd96c137804",
+      "vertex_hash": "8ad0db84aeb08376c82c88d5d3a8e49a0e9abae18491a82a2c80bbeb23980b2f"
+    },
+    "3070b.dat": {
+      "asset": {
+        "bytes": 750,
+        "mesh_hash": "1aa4a5fa19aed49982e42f1d6da5e9d863951a70c8f4055777a7432c63e296ff",
+        "offset": 401621
+      },
+      "catalogue": {
+        "aliases": [],
+        "id": "3070b.dat",
+        "mass_kg": 0.00016,
+        "mass_source": "https://www.bricklink.com/v2/catalog/catalogitem.page?P=3070",
+        "name": "Tile 1 × 1",
+        "size": [
+          1,
+          1,
+          1
+        ],
+        "studs": false
+      },
+      "files": [
+        "3070b.dat",
+        "box4.dat",
+        "box5.dat",
+        "s/3070bs01.dat"
+      ],
+      "revision": "29f60f4e7074b8e656fbb5a3d089ec7208907a7f7a1f175bf7d892c59b9a6850",
+      "source_revision": "dde2f77fa8c39c7d0b1e696dc3aad89b6e7bdb5ff151c9536bf770855b7e7445",
+      "vertex_hash": "a978aa6ca6665178347e43c481dae128b78ba7ca7a134dc7fe0762ad13a43a58"
+    },
+    "3626a.dat": {
+      "asset": {
+        "bytes": 7328,
+        "mesh_hash": "36747745dcce8ef6dc9b6e7e1efb7abf46ac1049507cd8144768f90ba4036c9f",
+        "offset": 402371
+      },
+      "catalogue": {
+        "aliases": [
+          "18.dat"
+        ],
+        "id": "3626a.dat",
+        "mass_kg": 0.00057,
+        "mass_source": "https://www.bricklink.com/v2/catalog/catalogitem.page?P=3626a",
+        "name": "Minifig Head with Solid Stud",
+        "profile_id": "3626a.dat",
+        "size": null,
+        "studs": null
+      },
+      "files": [
+        "18.dat",
+        "2-4cyli.dat",
+        "3626a.dat",
+        "4-4cyli.dat",
+        "4-4disc.dat",
+        "4-4edge.dat",
+        "4-4ring3.dat",
+        "s/3626as01.dat",
+        "stud.dat",
+        "t04o6250.dat"
+      ],
+      "revision": "e25f55d182acce18fcd1b3e18a5ea27978419e87bdf01618c2238e65891dfd9d",
+      "source_revision": "39e9ce195bd327f77466060ddb9bc4b14ea20351e445f5210d591413fa40a587",
+      "vertex_hash": "400b1de5386ae732125176e08d0ef8180160787f0a36cdd7dab7f8369ea810f9"
+    },
+    "3626ap01.dat": {
+      "asset": {
+        "bytes": 9466,
+        "mesh_hash": "fcf5713645ff03306a045f608d63e8039b4845168ac52f353ea644a85b1f0b57",
+        "offset": 409699
+      },
+      "catalogue": {
+        "aliases": [],
+        "id": "3626ap01.dat",
+        "mass_kg": 0.00057,
+        "mass_source": "https://www.bricklink.com/v2/catalog/catalogitem.page?P=3626ap01",
+        "name": "Minifig Head with Standard Grin Pattern (Solid Stud)",
+        "profile_id": "3626ap01.dat",
+        "size": null,
+        "studs": null
+      },
+      "files": [
+        "2-4cyli.dat",
+        "3-16cyli.dat",
+        "3626ap01.dat",
+        "4-4cyli.dat",
+        "4-4disc.dat",
+        "4-4edge.dat",
+        "4-4ndis.dat",
+        "4-4ring3.dat",
+        "s/3626ap01s01.dat",
+        "s/3626as01.dat",
+        "stud.dat",
+        "t04o6250.dat"
+      ],
+      "revision": "b5fe5ea4fd753d59c76ebb6e82a4e5494c94aa3741f3ecf311d1dc593bd9ee99",
+      "source_revision": "5553457e4e945ac1286374d5efa0f6cb9eb229ff3234a9a696ce7c01ad231578",
+      "vertex_hash": "bdb04e4f4a3b894b8b8434e478d44bdacb15c3026ed3c7d2c217c50071ae1803"
+    },
+    "3633.dat": {
+      "asset": {
+        "bytes": 3582,
+        "mesh_hash": "eb601f5ad7c354b42a50314877d6119217ea6a21c1c24c102ba403d2a894bcae",
+        "offset": 419165
+      },
+      "catalogue": {
+        "aliases": [],
+        "id": "3633.dat",
+        "mass_kg": 0.0008,
+        "mass_source": "https://www.bricklink.com/v2/catalog/catalogitem.page?P=3633",
+        "name": "Fence Lattice  1 x  4 x  1",
+        "profile_id": "3633.dat",
+        "size": null,
+        "studs": null
+      },
+      "files": [
+        "3633.dat",
+        "4-4cyli.dat",
+        "4-4disc.dat",
+        "4-4edge.dat",
+        "box2-5.dat",
+        "box5.dat",
+        "rect.dat",
+        "rect1.dat",
+        "rect2p.dat",
+        "stud3.dat",
+        "tri3.dat"
+      ],
+      "revision": "52d8b179147b74b18172ac909b8e2099c74160f0274c771f1bed38ce84448576",
+      "source_revision": "a9fd7dc32ef91688a9c3180d22acac55a9c4258644135589033bdaf2ef0b5c2e",
+      "vertex_hash": "2db48ec8b952c5728c7f8751d2ed055d95df8de64ee480b60b217926713db20d"
+    },
+    "3666.dat": {
+      "asset": {
+        "bytes": 5917,
+        "mesh_hash": "bbb05c5e0c28a5eb8e9205e50b177b6c4c3952ef95a02575d6751fde436e6f75",
+        "offset": 422747
+      },
+      "catalogue": {
+        "aliases": [],
+        "id": "3666.dat",
+        "mass_kg": 0.00106,
+        "mass_source": "https://www.bricklink.com/v2/catalog/catalogitem.page?P=3666",
+        "name": "Plate 1 × 6",
+        "size": [
+          6,
+          1,
+          1
+        ],
+        "studs": true
+      },
+      "files": [
+        "3666.dat",
+        "4-4cyli.dat",
+        "4-4disc.dat",
+        "4-4edge.dat",
+        "box4t.dat",
+        "box5.dat",
+        "s/3666s01.dat",
+        "stud.dat",
+        "stud3.dat",
+        "stug-1x6.dat",
+        "stug3-1x5.dat"
+      ],
+      "revision": "e91066e008280687b0ca6aab64e5072ac62b1849d5491c4faa6f4ad35c25314d",
+      "source_revision": "db8203f1d92c022b0dc3937fbb14caaf596e4bd0061dc444b5255aa74da23837",
+      "vertex_hash": "17288a4087defc222f5341ca3608fa638101b5ae88b8fddf8679dcff91ec3833"
+    },
+    "3710.dat": {
+      "asset": {
+        "bytes": 4078,
+        "mesh_hash": "4c886d6597ef6d085c5157481997614f4b6c14bc8f0d82401a86ec46e85de6b5",
+        "offset": 428664
+      },
+      "catalogue": {
+        "aliases": [],
+        "id": "3710.dat",
+        "mass_kg": 0.0007099999999999999,
+        "mass_source": "https://www.bricklink.com/v2/catalog/catalogitem.page?P=3710",
+        "name": "Plate 1 × 4",
+        "size": [
+          4,
+          1,
+          1
+        ],
+        "studs": true
+      },
+      "files": [
+        "3710.dat",
+        "4-4cyli.dat",
+        "4-4disc.dat",
+        "4-4edge.dat",
+        "box4t.dat",
+        "box5.dat",
+        "s/3710s01.dat",
+        "stud.dat",
+        "stud3.dat",
+        "stug-1x4.dat",
+        "stug3-1x3.dat"
+      ],
+      "revision": "57cf4bd5e1a52670e98887b05242fd821f3c05ef2f6bf2ea111a7175808d3acd",
+      "source_revision": "1d60f5fd1d58c526a5340e751ec3c58a5f5eaf50f9188182536e09cb0f9a6907",
+      "vertex_hash": "f09021a811fb083b602bdaf1360996d19049cbf81ba9f964fe65933f42bb7693"
+    },
+    "3788.dat": {
+      "asset": {
+        "bytes": 6005,
+        "mesh_hash": "8673a18785d2fe4b4873efe4d2a8ad93f81355994485508277f05258585d9a3e",
+        "offset": 432742
+      },
+      "catalogue": {
+        "aliases": [],
+        "id": "3788.dat",
+        "mass_kg": 0.00141,
+        "mass_source": "https://www.bricklink.com/v2/catalog/catalogitem.page?P=3788",
+        "name": "Car Mudguard  2 x  4",
+        "profile_id": "3788.dat",
+        "size": null,
+        "studs": null
+      },
+      "files": [
+        "3788.dat",
+        "4-4cyli.dat",
+        "4-4disc.dat",
+        "4-4edge.dat",
+        "4-4ring3.dat",
+        "box4-4a.dat",
+        "box5.dat",
+        "rect.dat",
+        "rect1.dat",
+        "rect2p.dat",
+        "rect3.dat",
+        "stud.dat",
+        "stud4.dat",
+        "stug-1x2.dat",
+        "stug-2x2.dat"
+      ],
+      "revision": "25f637e5caee0572c9c7eaf442be4c0d91f0027ac07a40d737ae0afae9ee2f9c",
+      "source_revision": "adae340f98a0c5b35a023a38da5388c1a8ca950b7684987e85042ac3873f90ca",
+      "vertex_hash": "7497de827e82885b8f1d39898b000f6894437392eb0ab162adb2812247839535"
+    },
+    "3795.dat": {
+      "asset": {
+        "bytes": 10931,
+        "mesh_hash": "24186dccde2fa6c7fb648d96a37e286083cc0a266aaf725fff5b2ab3c0f68077",
+        "offset": 438747
+      },
+      "catalogue": {
+        "aliases": [],
+        "id": "3795.dat",
+        "mass_kg": 0.00174,
+        "mass_source": "https://www.bricklink.com/v2/catalog/catalogitem.page?P=3795",
+        "name": "Plate 2 × 6",
+        "size": [
+          6,
+          2,
+          1
+        ],
+        "studs": true
+      },
+      "files": [
+        "3795.dat",
+        "4-4cyli.dat",
+        "4-4disc.dat",
+        "4-4edge.dat",
+        "4-4ring3.dat",
+        "box5.dat",
+        "stud.dat",
+        "stud4.dat"
+      ],
+      "revision": "9993e7ecd5917d74789cd8c4f6f81c31ab55ca8dff482f14645e0aa807b07c19",
+      "source_revision": "85cc2ad56bcd3eefca1ec21352e9bc9c34c6a465a20b751b2a763913d550ed1f",
+      "vertex_hash": "29c38374fba7d21aeb80479d2f7931b7c85671398d98a1aa63ebda831a678089"
+    },
+    "3815c01.dat": {
+      "asset": {
+        "bytes": 14025,
+        "mesh_hash": "ea3a8269cc46d84f8d6b1c3e9ca11d4cc2e193b55c31d102e71fb76560e12aa5",
+        "offset": 449678
+      },
+      "catalogue": {
+        "aliases": [
+          "970c00.dat"
+        ],
+        "id": "3815c01.dat",
+        "mass_kg": 0.0011799999999999998,
+        "mass_source": "https://www.bricklink.com/v2/catalog/catalogitem.page?P=970c00",
+        "name": "~Minifig Hips and Legs (Obsolete)",
+        "profile_id": "970c00.dat",
+        "size": null,
+        "studs": null
+      },
+      "files": [
+        "1-4cylc.dat",
+        "1-4cyli.dat",
+        "1-4cylo.dat",
+        "1-4disc.dat",
+        "1-4edge.dat",
+        "1-4ring1.dat",
+        "1-8ndis.dat",
+        "2-4edge.dat",
+        "3-4cyli.dat",
+        "3-4cylo.dat",
+        "3-4edge.dat",
+        "3-4ndis.dat",
+        "3815.dat",
+        "3815c01.dat",
+        "3816.dat",
+        "3817.dat",
+        "4-4cylc.dat",
+        "4-4cyli.dat",
+        "4-4cylo.dat",
+        "4-4disc.dat",
+        "4-4edge.dat",
+        "4-4ndis.dat",
+        "5-16cyli.dat",
+        "7-16cyli.dat",
+        "970c00.dat",
+        "box2-5.dat",
+        "box4-4a.dat",
+        "hipstud.dat",
+        "rect.dat",
+        "rect2p.dat",
+        "rect3.dat",
+        "s/3815s01.dat",
+        "s/3816s01.dat",
+        "s/3816s02.dat",
+        "s/3817s01.dat"
+      ],
+      "revision": "936a7050c2a6d7130f7dfc611c49f81bb084ca9df4ac4a1fccec47ce75dbfaf0",
+      "source_revision": "2e5364a3c258d7b148172beda5f5c2d20cd3dc975c8ee6a6396c1aabcd294d6c",
+      "vertex_hash": "0a8dd2a41d8746777b2089ec74f2687e7e00ed7654b83c328d7b90e28f9c93ba"
+    },
+    "3823.dat": {
+      "asset": {
+        "bytes": 8119,
+        "mesh_hash": "8370c883cebc33d7a0dff597cf2a771589b78e972eb499bc6758a6b2a8719305",
+        "offset": 463703
+      },
+      "catalogue": {
+        "aliases": [],
+        "id": "3823.dat",
+        "mass_kg": 0.00219,
+        "mass_source": "https://www.bricklink.com/v2/catalog/catalogitem.page?P=3823",
+        "name": "Windscreen  2 x  4 x  2",
+        "profile_id": "3823.dat",
+        "size": null,
+        "studs": null
+      },
+      "files": [
+        "1-4cyli.dat",
+        "1-4disc.dat",
+        "1-4edge.dat",
+        "1-4ndis.dat",
+        "3823.dat",
+        "4-4cyli.dat",
+        "4-4disc.dat",
+        "4-4edge.dat",
+        "4-4ring2.dat",
+        "stud2.dat",
+        "stud3.dat"
+      ],
+      "revision": "46a28af46cba119c52cfc251c854da6e6db54dd1066b9f54336eda0883d9cd18",
+      "source_revision": "e0e285fc74f49afb0e4e017c64b35b1cbbf96e3585056cba50519278f92603ad",
+      "vertex_hash": "58c9d2ed20a1345ef669f064342c3c80cbbbbfdfb747bbba4c6b7b30b81099c6"
+    },
+    "3829c01.dat": {
+      "asset": {
+        "bytes": 19409,
+        "mesh_hash": "51a74458b9eb9c5a8707531e78506d396e2d5e1ba0ccaea38d3dd59f0e8b4543",
+        "offset": 471822
+      },
+      "catalogue": {
+        "aliases": [
+          "3829.dat"
+        ],
+        "id": "3829c01.dat",
+        "mass_kg": 0.0006,
+        "mass_source": "https://www.bricklink.com/v2/catalog/catalogitem.page?P=3829c01",
+        "name": "Car Steering Stand and Wheel (Complete)",
+        "profile_id": "3829c01.dat",
+        "size": null,
+        "studs": null
+      },
+      "files": [
+        "1-4cyls.dat",
+        "2-4cyli.dat",
+        "2-4disc.dat",
+        "2-4edge.dat",
+        "3-16edge.dat",
+        "3828.dat",
+        "3829.dat",
+        "3829a.dat",
+        "3829c01.dat",
+        "4-4cyli.dat",
+        "4-4disc.dat",
+        "4-4edge.dat",
+        "48/1-4cyli.dat",
+        "48/1-4edge.dat",
+        "48/4-4cyli.dat",
+        "48/4-4edge.dat",
+        "48/4-4ring2.dat",
+        "48/4-4ring6.dat",
+        "5-8edge.dat",
+        "box2-5.dat",
+        "box3u2p.dat",
+        "box5.dat",
+        "rect1.dat",
+        "stud3.dat"
+      ],
+      "revision": "0844342a365c972321147d9bc6919e6d3bbbd7850f417ee6ce372a29017ad9fc",
+      "source_revision": "6e6a6570aa05554b8cc84dba59f15fdbaeb5587f72b6a49d3ba16ced40b57381",
+      "vertex_hash": "b273c12229a296ad36f21ac56967175602033ab03adaa5c21a64060a84bcb104"
+    },
+    "3832.dat": {
+      "asset": {
+        "bytes": 18166,
+        "mesh_hash": "cf28acb5e0291b93d2fcd4dc56d3f11747244559a5020f78d35086e316499fc8",
+        "offset": 491231
+      },
+      "catalogue": {
+        "aliases": [],
+        "id": "3832.dat",
+        "mass_kg": 0.0029100000000000003,
+        "mass_source": "https://www.bricklink.com/v2/catalog/catalogitem.page?P=3832",
+        "name": "Plate 2 × 10",
+        "size": [
+          10,
+          2,
+          1
+        ],
+        "studs": true
+      },
+      "files": [
+        "3832.dat",
+        "4-4cyli.dat",
+        "4-4disc.dat",
+        "4-4edge.dat",
+        "4-4ring3.dat",
+        "box5.dat",
+        "stud.dat",
+        "stud4.dat"
+      ],
+      "revision": "4fd18bf17e622532d1dfeb4746a345f711dec52d106ec00dfa1d4a7af0d6cc7e",
+      "source_revision": "4788e3e461a32e09b66652bc7c408e1acebe4de9c9140f8b84a2cc873f966b36",
+      "vertex_hash": "31f9c1aaed6b4299ac16eb6fab77d7a09ace0933a3052bb2599b12824462ab30"
+    },
+    "3901.dat": {
+      "asset": {
+        "bytes": 16669,
+        "mesh_hash": "a36f05b50534ec408dea2c667c776248d1113c7e435fe35f01dfed443b9ad144",
+        "offset": 509397
+      },
+      "catalogue": {
+        "aliases": [],
+        "id": "3901.dat",
+        "mass_kg": 0.0003,
+        "mass_source": "https://www.bricklink.com/v2/catalog/catalogitem.page?P=3901",
+        "name": "Minifig Hair Male",
+        "profile_id": "3901.dat",
+        "size": null,
+        "studs": null
+      },
+      "files": [
+        "3901.dat",
+        "4-4cyli.dat",
+        "4-4disc.dat",
+        "4-4edge.dat",
+        "4-4ring3.dat",
+        "stud4.dat",
+        "t04o6250.dat"
+      ],
+      "revision": "e9e16d055488afd2183916961effde99bf96e9b4e047826425202b5a5f6fc568",
+      "source_revision": "3fc0fe1513966a31bd872c4b33b4df9cce552bce37defd95527ac8aec515e841",
+      "vertex_hash": "f945d225f13215e21fd971aff1b5bb8a62466726154bdd2d1249a7abdaddf909"
+    },
+    "3941.dat": {
+      "asset": {
+        "bytes": 7774,
+        "mesh_hash": "0afa4efbdcb4dcfdd029408681f96349502baaef30dd84c0f2e4d024195ebc6d",
+        "offset": 526066
+      },
+      "catalogue": {
+        "aliases": [],
+        "id": "3941.dat",
+        "mass_kg": 0.0012,
+        "mass_source": "https://www.bricklink.com/v2/catalog/catalogitem.page?P=3941",
+        "name": "Brick  2 x  2 Round without Reinforcement",
+        "profile_id": "3941.dat",
+        "size": null,
+        "studs": null
+      },
+      "files": [
+        "1-16chrd.dat",
+        "1-4chrd.dat",
+        "1-8chrd.dat",
+        "1-8cyli.dat",
+        "1-8edge.dat",
+        "3-4cyli.dat",
+        "3-4disc.dat",
+        "3-4edge.dat",
+        "3941.dat",
+        "4-4cyli.dat",
+        "4-4cylo.dat",
+        "4-4edge.dat",
+        "4-4ndis.dat",
+        "4-4ring1.dat",
+        "4-4ring3.dat",
+        "axl5ho10.dat",
+        "axl5hol8.dat",
+        "axl5hol9.dat",
+        "axlehol2.dat",
+        "axlehol3.dat",
+        "axlehole.dat",
+        "empty.dat",
+        "rect.dat",
+        "rect1.dat",
+        "s/3941s01.dat",
+        "stud10.dat",
+        "stud4a.dat",
+        "stug10-2x2.dat"
+      ],
+      "revision": "7340dfb3650717ac7f5bf83bbd003b3f5873648b23c71be6e2a40faa666c364a",
+      "source_revision": "131e87c13a6060fa4d96f113e7986a10eb8b0f1df83f185dd0c16564299569ad",
+      "vertex_hash": "791fd68c638058d57ad8f2724965ef37e14ae6c6c6f953862ff43a4cb9c0e67d"
+    },
+    "4083.dat": {
+      "asset": {
+        "bytes": 16648,
+        "mesh_hash": "002ca0c9bb8c6f4c092fa1b2f406c2e9c7f1b45713a50c9d2cf45e1ec91e039d",
+        "offset": 533840
+      },
+      "catalogue": {
+        "aliases": [],
+        "id": "4083.dat",
+        "mass_kg": 0.00074,
+        "mass_source": "https://www.bricklink.com/v2/catalog/catalogitem.page?P=4083",
+        "name": "Bar  1 x  4 x  2 with Studs",
+        "profile_id": "4083.dat",
+        "size": null,
+        "studs": null
+      },
+      "files": [
+        "2-4edge.dat",
+        "4-4cyli.dat",
+        "4-4disc.dat",
+        "4-4edge.dat",
+        "4-4ring2.dat",
+        "4-4ring3.dat",
+        "4083.dat",
+        "cylj4x6.dat",
+        "stud2a.dat",
+        "stud4a.dat",
+        "t04q4000.dat"
+      ],
+      "revision": "3d50a5dfe711d13a9207b1744aa80ce380f286fbbf238db48b5b226a78acb6a3",
+      "source_revision": "a6779a72801ae89ea55d7f670d0be0b39b0b1c4ecac412046f66d6508c256bac",
+      "vertex_hash": "9e9f4f98b0a336be18d5ca35c95fc9b17bb05ed96291316dac3aa4ff5de34361"
+    },
+    "41539.dat": {
+      "asset": {
+        "bytes": 72518,
+        "mesh_hash": "052b344eb0948af85bb1bdd7260c790ea292b03b6dbaaf4287c4fde7f7b6ecdc",
+        "offset": 550488
+      },
+      "catalogue": {
+        "aliases": [],
+        "id": "41539.dat",
+        "mass_kg": 0.0094,
+        "mass_source": "https://www.bricklink.com/v2/catalog/catalogitem.page?P=41539",
+        "name": "Plate 8 × 8",
+        "size": [
+          8,
+          8,
+          1
+        ],
+        "studs": true
+      },
+      "files": [
+        "4-4cyli.dat",
+        "4-4disc.dat",
+        "4-4edge.dat",
+        "4-4ring3.dat",
+        "41539.dat",
+        "box5.dat",
+        "stud.dat",
+        "stud4.dat"
+      ],
+      "revision": "4382371f4448e3126023acf969857734087a86ac60ded43ebeda003e6abadf16",
+      "source_revision": "e6424161e67d2e7bb25f7ce1143ae97d33cb6127326f1a5372a0c2201e5e15d2",
+      "vertex_hash": "5744a346c78059260daaea88bfd3549821147425a76693a774dd9546187f931d"
+    },
+    "4201.dat": {
+      "asset": {
+        "bytes": 60372,
+        "mesh_hash": "cf1e67a72ba2ffa588999ded46f3892df7d43e3bd2b951de9a5ec21c41a88cc2",
+        "offset": 623006
+      },
+      "catalogue": {
+        "aliases": [
+          "4203.dat"
+        ],
+        "id": "4201.dat",
+        "mass_kg": 0.016300000000000002,
+        "mass_source": "https://www.bricklink.com/v2/catalog/catalogitem.page?P=4201",
+        "name": "Brick 8 × 8",
+        "size": [
+          8,
+          8,
+          3
+        ],
+        "studs": true
+      },
+      "files": [
+        "1-16tndis.dat",
+        "1-8cyli.dat",
+        "1-8cylo.dat",
+        "1-8edge.dat",
+        "1-8ring3.dat",
+        "4-4cyli.dat",
+        "4-4disc.dat",
+        "4-4edge.dat",
+        "4-4ring3.dat",
+        "4201.dat",
+        "4203.dat",
+        "box2-9.dat",
+        "box3u10p.dat",
+        "box3u8p.dat",
+        "box5.dat",
+        "filletp0s.dat",
+        "filletp1s.dat",
+        "filletp2s.dat",
+        "rect3.dat",
+        "st4jfil3.dat",
+        "stud.dat",
+        "stud4.dat",
+        "stud4f4s.dat",
+        "stug-2x2.dat",
+        "stug-4x4.dat",
+        "stug-8x8.dat"
+      ],
+      "revision": "cd67c43ea98edd539c3c6d8de7d263cbd9c4552556f5714af6e0765747ecd2d8",
+      "source_revision": "5ab9b3b6950f575f54f90daac16bc4ff6e70d6c4bb65983ba2400388094c7001",
+      "vertex_hash": "02ae3e56687099068356cd8d9864789b57f039def4b29f9fce4405b18c96fb15"
+    },
+    "4204.dat": {
+      "asset": {
+        "bytes": 122972,
+        "mesh_hash": "735e96331c112128b3c60e9c7242f8874165758db060bde64805e7d5422e8f13",
+        "offset": 683378
+      },
+      "catalogue": {
+        "aliases": [],
+        "id": "4204.dat",
+        "mass_kg": 0.03066,
+        "mass_source": "https://www.bricklink.com/v2/catalog/catalogitem.page?P=4204",
+        "name": "Brick 8 × 16",
+        "size": [
+          16,
+          8,
+          3
+        ],
+        "studs": true
+      },
+      "files": [
+        "1-16tndis.dat",
+        "1-8cyli.dat",
+        "1-8cylo.dat",
+        "1-8edge.dat",
+        "1-8ring3.dat",
+        "4-4cyli.dat",
+        "4-4disc.dat",
+        "4-4edge.dat",
+        "4-4ring3.dat",
+        "4204.dat",
+        "box2-9.dat",
+        "box3u10p.dat",
+        "box3u8p.dat",
+        "box5.dat",
+        "filletp0s.dat",
+        "filletp1s.dat",
+        "filletp2s.dat",
+        "rect3.dat",
+        "st4jfil3.dat",
+        "stud.dat",
+        "stud4.dat",
+        "stud4f4s.dat",
+        "stug-2x2.dat",
+        "stug-4x4.dat",
+        "stug-8x8.dat"
+      ],
+      "revision": "b1be201d49cf144d1ac83f71d55aa00c5f2af397bb82639e4cf337e5e63cb6ef",
+      "source_revision": "c4c81b785d46809fd1f51e05ef69a46f221e14b23953745cb8d1ce82f0d240a4",
+      "vertex_hash": "e49c1b3f32ced0a34d09a78d9df824abc991d0849c9f5f2c12dee16f2c9b3b6e"
+    },
+    "4211.dat": {
+      "asset": {
+        "bytes": 14775,
+        "mesh_hash": "fd3314f5b9a702284acdcc2bf5eee69a18a32eb3db9576e4214855cbaa43b0e0",
+        "offset": 806350
+      },
+      "catalogue": {
+        "aliases": [],
+        "id": "4211.dat",
+        "mass_kg": 0.00271,
+        "mass_source": "https://www.bricklink.com/v2/catalog/catalogitem.page?P=4211",
+        "name": "Car Base  4 x  5",
+        "profile_id": "4211.dat",
+        "size": null,
+        "studs": null
+      },
+      "files": [
+        "4-4cyli.dat",
+        "4-4disc.dat",
+        "4-4edge.dat",
+        "4-4ring3.dat",
+        "4211.dat",
+        "box3u2p.dat",
+        "box4-2p.dat",
+        "rect.dat",
+        "rect1.dat",
+        "rect2p.dat",
+        "rect3.dat",
+        "stud.dat",
+        "stud3.dat",
+        "stud4.dat",
+        "stug-2x2.dat",
+        "stug2.dat"
+      ],
+      "revision": "be32808c5a0301c71cdda968f1eb2af01d624956852cd5274ef5439072069a46",
+      "source_revision": "4dcf625e38077ed6abe56c9584611fa225efcfe29b48be477004d13f719df258",
+      "vertex_hash": "e432a873e43f3a3a6ae970a33992afb29e90ad3b62b679041608952803973ab9"
+    },
+    "4282.dat": {
+      "asset": {
+        "bytes": 28452,
+        "mesh_hash": "a6dc001cb53f0e2d5f7bc2cea98a0f1eefad17e4a10a059b0f8b719cea2fd223",
+        "offset": 821125
+      },
+      "catalogue": {
+        "aliases": [],
+        "id": "4282.dat",
+        "mass_kg": 0.0045,
+        "mass_source": "https://www.bricklink.com/v2/catalog/catalogitem.page?P=4282",
+        "name": "Plate 2 × 16",
+        "size": [
+          16,
+          2,
+          1
+        ],
+        "studs": true
+      },
+      "files": [
+        "4-4cyli.dat",
+        "4-4disc.dat",
+        "4-4edge.dat",
+        "4-4ring3.dat",
+        "4282.dat",
+        "box5.dat",
+        "stud.dat",
+        "stud4.dat"
+      ],
+      "revision": "c70eb54253dbebffc717fba01bbce7b84d5bddb48662669b63221a094e9e68eb",
+      "source_revision": "1e687d923a3204389acc32f292185e7dbd7d3ea84f1e44cd63df91da3ca63611",
+      "vertex_hash": "e0ff769087305aced8abd3f56f4c9d31a68d68a5c495bf840ca3fc8d547d6cdc"
+    },
+    "4624c01.dat": {
+      "asset": {
+        "bytes": 16990,
+        "mesh_hash": "7daf7c9a4c2ac670f4c47300f14ddb6339845c3b81a24d923a4a6d45d9cc5fc1",
+        "offset": 849577
+      },
+      "catalogue": {
+        "aliases": [],
+        "id": "4624c01.dat",
+        "mass_kg": 0.00061,
+        "mass_source": "https://www.bricklink.com/v2/catalog/catalogitem.page?P=4624c01",
+        "name": "Wheel Rim  6.4 x  8 with Tyre  6/ 50 x  8 Offset Tread",
+        "profile_id": "4624c01.dat",
+        "size": null,
+        "studs": null
+      },
+      "files": [
+        "1-16chrd.dat",
+        "1-16con16.dat",
+        "1-16con3.dat",
+        "1-16cyli.dat",
+        "1-16cylo.dat",
+        "1-16edge.dat",
+        "1-16ring2.dat",
+        "1-8con4.dat",
+        "1-8cyli.dat",
+        "1-8cylo.dat",
+        "1-8disc.dat",
+        "1-8edge.dat",
+        "1-8ring17.dat",
+        "1-8ring3.dat",
+        "1-8ring4.dat",
+        "1-8ring9.dat",
+        "1-8tndis.dat",
+        "3641.dat",
+        "4-4con4.dat",
+        "4-4cyli.dat",
+        "4-4cylo.dat",
+        "4-4edge.dat",
+        "4624.dat",
+        "4624c01.dat",
+        "empty.dat",
+        "rect.dat",
+        "rect2p.dat",
+        "rect3.dat",
+        "s/3641s01.dat",
+        "s/4624s01.dat"
+      ],
+      "revision": "c37d8579e1404fe8d2f00e65ae9bdfdc60fec6ad494c8d941d648c63eaafc407",
+      "source_revision": "95eb77c0d5bdda26d9cdff0df75078440e3d8ad80b2bdb44c87003b96c379ba9",
+      "vertex_hash": "750c7f228ae4a590dc18a631f1099ada536653b94bc3df579e08d28e9bfb114c"
+    },
+    "4740.dat": {
+      "asset": {
+        "bytes": 6539,
+        "mesh_hash": "c408d23b9af89f72a99b969b7bf79c4881388c25101ae42500afbe93d9026bbd",
+        "offset": 866567
+      },
+      "catalogue": {
+        "aliases": [
+          "296.dat"
+        ],
+        "id": "4740.dat",
+        "mass_kg": 0.00028000000000000003,
+        "mass_source": "https://www.bricklink.com/v2/catalog/catalogitem.page?P=4740",
+        "name": "Dish  2 x  2 Inverted",
+        "profile_id": "4740.dat",
+        "size": null,
+        "studs": null
+      },
+      "files": [
+        "296.dat",
+        "4-4con1.dat",
+        "4-4con3.dat",
+        "4-4con4.dat",
+        "4-4cyli.dat",
+        "4-4cylo.dat",
+        "4-4edge.dat",
+        "4-4ring2.dat",
+        "4-4ring3.dat",
+        "4740.dat",
+        "s/4740s01.dat",
+        "stud2a.dat",
+        "stud4a.dat"
+      ],
+      "revision": "597c8fbeee98e860caa9089368f996184423748664c848a16791bf8b1c69e0e9",
+      "source_revision": "764273096f86b8aa3b5f49ee8f606d1ce39d8ab0123ef1650abb98dd0d6ccd29",
+      "vertex_hash": "f40d5e36d4587d6d953ef46b6370334219abba2489a46b33fef0c6125ab6962e"
+    },
+    "60592.dat": {
+      "asset": {
+        "bytes": 6759,
+        "mesh_hash": "cfe0fa248fb1044fcea3b0270e1a38bbefbc4d49e9acb1fd53d6df597dd6b5f0",
+        "offset": 873106
+      },
+      "catalogue": {
+        "aliases": [],
+        "id": "60592.dat",
+        "mass_kg": 0.001,
+        "mass_source": "https://www.bricklink.com/v2/catalog/catalogitem.page?P=60592",
+        "name": "Window  1 x  2 x  2 without Sill",
+        "profile_id": "60592.dat",
+        "size": null,
+        "studs": null
+      },
+      "files": [
+        "1-4cyli.dat",
+        "1-4edge.dat",
+        "1-4ndis.dat",
+        "2-4cyli.dat",
+        "2-4edge.dat",
+        "2-4ndis.dat",
+        "4-4cyli.dat",
+        "4-4cylo.dat",
+        "4-4edge.dat",
+        "4-4ndis.dat",
+        "4-4ring2.dat",
+        "60592.dat",
+        "7-16cyli.dat",
+        "7-16disc.dat",
+        "7-16edge.dat",
+        "7-16ndis.dat",
+        "box0.dat",
+        "box3u8p.dat",
+        "box4-2p.dat",
+        "box4-4a.dat",
+        "rect.dat",
+        "rect2p.dat",
+        "recte3.dat",
+        "recte4.dat",
+        "stud2.dat",
+        "stug2-1x2.dat"
+      ],
+      "revision": "728790fd44353602fd6a6bad8b136230d829ae4ff7e3b1f9f0db02495cf9ff2a",
+      "source_revision": "c598464173db22046970daa4737f795e2d7e3439849591c5a9a504935724ac59",
+      "vertex_hash": "99ab87479084355673b6a2aa9089671981fc6846b03b3d748e1c2cc56bed6ab0"
+    },
+    "60594.dat": {
+      "asset": {
+        "bytes": 6506,
+        "mesh_hash": "c3fb32508889e507b286fc7ecc2ed36e70ddad7dd9979261db1f5c7ce8b8c622",
+        "offset": 879865
+      },
+      "catalogue": {
+        "aliases": [],
+        "id": "60594.dat",
+        "mass_kg": 0.00185,
+        "mass_source": "https://www.bricklink.com/v2/catalog/catalogitem.page?P=60594",
+        "name": "Window  1 x  4 x  3 without Shutter Tabs",
+        "profile_id": "60594.dat",
+        "size": null,
+        "studs": null
+      },
+      "files": [
+        "3-4cyli.dat",
+        "3-4disc.dat",
+        "3-4edge.dat",
+        "4-4cyli.dat",
+        "4-4disc.dat",
+        "4-4edge.dat",
+        "4-4ring2.dat",
+        "60594.dat",
+        "box2-11.dat",
+        "box3u2p.dat",
+        "box3u4a.dat",
+        "box4o4a.dat",
+        "rect.dat",
+        "rect1.dat",
+        "rect2a.dat",
+        "rect2p.dat",
+        "rect3.dat",
+        "stud2.dat",
+        "stud3.dat"
+      ],
+      "revision": "0aa5e37d81cd83e9f3eda213e6d6dae7a29b0703a35dd162a9d89fe732b90f94",
+      "source_revision": "8956fbd90fd9619518c868de912178db624315ca27a9ea4e3d7bd8eea35a99b9",
+      "vertex_hash": "aa4e9588aa92492dc0f15f0c4e1cb26745cfcb88b4a67a5feb131c78d069704d"
+    },
+    "6141.dat": {
+      "asset": {
+        "bytes": 3231,
+        "mesh_hash": "09bbc0a451022f9e8f2156df5a051083e536e5e9dad12664a0802a95c71cc4a0",
+        "offset": 886371
+      },
+      "catalogue": {
+        "aliases": [
+          "179.dat",
+          "4073.dat"
+        ],
+        "id": "6141.dat",
+        "mass_kg": 0.00011999999999999999,
+        "mass_source": "https://www.bricklink.com/v2/catalog/catalogitem.page?P=4073",
+        "name": "Plate  1 x  1 Round",
+        "profile_id": "4073.dat",
+        "size": null,
+        "studs": null
+      },
+      "files": [
+        "179.dat",
+        "4-4cyli.dat",
+        "4-4cylo.dat",
+        "4-4disc.dat",
+        "4-4edge.dat",
+        "4-4ring3.dat",
+        "4-4ring4.dat",
+        "4073.dat",
+        "6141.dat",
+        "stud.dat",
+        "stud4.dat"
+      ],
+      "revision": "a8ed26b2d4549f854c21be6c35e27b018e2846b9d902de3af59fcd9f92087ba4",
+      "source_revision": "8e1a99a6dce95099635a96b42fcb7bef23def710afe52e67a96c1908914caf19",
+      "vertex_hash": "afcaed45358aba3d261301bcc785709adcef7a0ea668148cb339bd09e8f41921"
+    },
+    "76382p00.dat": {
+      "asset": {
+        "bytes": 39991,
+        "mesh_hash": "7352d94c40b552c6a74e25da834c63c44c109495f7d5ddbfcafba3ad381cbcfb",
+        "offset": 889602
+      },
+      "catalogue": {
+        "aliases": [
+          "973c01.dat"
+        ],
+        "id": "76382p00.dat",
+        "mass_kg": 0.0013,
+        "mass_source": "Derived sum of BrickLink catalogue masses for 973, 981, 982 and 2 x 983; https://www.bricklink.com/v2/catalog/catalogitem.page?P=973 ; https://www.bricklink.com/v2/catalog/catalogitem.page?P=981 ; https://www.bricklink.com/v2/catalog/catalogitem.page?P=982 ; https://www.bricklink.com/v2/catalog/catalogitem.page?P=983",
+        "name": "Minifig Torso with Arms and Yellow Hands Pattern",
+        "profile_id": "76382p00.dat",
+        "size": null,
+        "studs": null
+      },
+      "files": [
+        "1-4chrd.dat",
+        "1-4con10.dat",
+        "1-4con4.dat",
+        "1-4cyli.dat",
+        "1-4edge.dat",
+        "1-4ndis.dat",
+        "1-8chrd.dat",
+        "2-4con10.dat",
+        "2-4con4.dat",
+        "2-4cyli.dat",
+        "2-4cylo.dat",
+        "2-4edge.dat",
+        "2-4ring2.dat",
+        "3-4cyli.dat",
+        "3-4edge.dat",
+        "3-4ring1.dat",
+        "3818.dat",
+        "3819.dat",
+        "3820.dat",
+        "4-4cylc.dat",
+        "4-4cyli.dat",
+        "4-4cylo.dat",
+        "4-4disc.dat",
+        "4-4edge.dat",
+        "4-4ndis.dat",
+        "76382p00.dat",
+        "973.dat",
+        "973c01.dat",
+        "knob1.dat",
+        "rect.dat",
+        "rect2p.dat",
+        "s/3818s01.dat",
+        "s/3818s02.dat",
+        "s/3818s03.dat",
+        "s/3818s04.dat",
+        "s/973s01.dat",
+        "tri3a4.dat"
+      ],
+      "revision": "24048307aa7809e2a6f157b03e765386e090591b0a3b3ce60c9b9102201149c5",
+      "source_revision": "da9822c33e429f555b7a1fadf4931929cc63e6df97ca1d138a97056bc30a2d23",
+      "vertex_hash": "dacc031b0337b39e66e7d28283f8177683d073c29b3f543771d6c700e8c33379"
+    },
+    "87081.dat": {
+      "asset": {
+        "bytes": 49862,
+        "mesh_hash": "de3a943fdc2e57fa65b3a6963601c21b6a9e0e3032fc6be255a5eaa872b16660",
+        "offset": 929593
+      },
+      "catalogue": {
+        "aliases": [],
+        "id": "87081.dat",
+        "mass_kg": 0.00304,
+        "mass_source": "https://www.bricklink.com/v2/catalog/catalogitem.page?P=87081",
+        "name": "Brick  4 x  4 Round with Pinhole and Snapstud",
+        "profile_id": "87081.dat",
+        "size": null,
+        "studs": null
+      },
+      "files": [
+        "1-4cyli.dat",
+        "1-4disc.dat",
+        "1-4edge.dat",
+        "1-4ndis.dat",
+        "1-4ring3.dat",
+        "1-8cyli.dat",
+        "1-8edge.dat",
+        "1-8ring1.dat",
+        "1-8ring4.dat",
+        "1-8ring6.dat",
+        "1-8sphe.dat",
+        "2-4cylc.dat",
+        "2-4cyli.dat",
+        "2-4disc.dat",
+        "2-4edge.dat",
+        "2-8sphe.dat",
+        "4-4cyli.dat",
+        "4-4disc.dat",
+        "4-4edge.dat",
+        "4-4ring3.dat",
+        "4-4ring7.dat",
+        "48/1-12cyli.dat",
+        "48/1-12edge.dat",
+        "48/1-48edge.dat",
+        "48/1-48ring9.dat",
+        "48/1-8cyli.dat",
+        "48/1-8edge.dat",
+        "48/1-8ring1.dat",
+        "48/1-8ring2.dat",
+        "48/1-8ring4.dat",
+        "48/1-8ring5.dat",
+        "48/1-8ring7.dat",
+        "48/4-4aring.dat",
+        "87081.dat",
+        "box4-7a.dat",
+        "rect1.dat",
+        "rect2a.dat",
+        "rect2p.dat",
+        "rect3.dat",
+        "s/87081s01.dat",
+        "stud.dat",
+        "stud18a.dat",
+        "stud4a.dat",
+        "stug-2x2.dat",
+        "t16o1429.dat"
+      ],
+      "revision": "2d6863dd11ae10b458fb0b7843d853b714ab05df6a022c88894d89108ce8020e",
+      "source_revision": "091ff3d37d85d3caee4c783f2c8dc3c8c1b5853e827022654b4e736a9f8bd87e",
+      "vertex_hash": "3a69d99b34d49eec89ddafdf8416090de14fb28097d41604f21d437c0fd1b30c"
+    },
+    "87580.dat": {
+      "asset": {
+        "bytes": 3227,
+        "mesh_hash": "edae2d91cc950018caddefe6aef218a90be767647cf804d1777b2af98892d640",
+        "offset": 979455
+      },
+      "catalogue": {
+        "aliases": [],
+        "id": "87580.dat",
+        "mass_kg": 0.0005200000000000001,
+        "mass_source": "https://www.bricklink.com/v2/catalog/catalogitem.page?P=87580",
+        "name": "Plate  2 x  2 with Groove with 1 Centre Stud",
+        "profile_id": "87580.dat",
+        "size": null,
+        "studs": null
+      },
+      "files": [
+        "3068b.dat",
+        "4-4cyli.dat",
+        "4-4disc.dat",
+        "4-4edge.dat",
+        "4-4ndis.dat",
+        "4-4ring2.dat",
+        "4-4ring3.dat",
+        "87580.dat",
+        "box4.dat",
+        "s/3068bs01.dat",
+        "stud2.dat",
+        "stud4.dat"
+      ],
+      "revision": "1b72cf4fee87e1dca414b5a0d2827f30d71a7bf65ff81130ce7dbdf8a8c803bd",
+      "source_revision": "92af47256ccebca43e0c56b2209958e9b63868a2e6239cd46461f667c0521771",
+      "vertex_hash": "d4d600a0113089dc04a911cfd4a0fe7e731445e284a591d6ecfd25c457b3e8ae"
+    }
+  },
+  "source_archive_sha256": "023083918da2d3697c794fb4267975509584f3611b993095874206a803fa610f"
+}

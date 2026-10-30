@@ -219,9 +219,11 @@ pub fn relation(a: &Brick, b: &Brick) -> Option<Relation> {
                             && v <= f64::from(grid.depth - 1) + eps
                     });
             }
-            factory_clip = ((lower.part == "970c00.dat" && upper.part == "76382p00.dat")
-                || (lower.part == "76382p00.dat"
-                    && ["3626a.dat", "3626ap01.dat"].contains(&upper.part.as_str())))
+            let lower_part = crate::part_library::profile_id(&lower.part);
+            let upper_part = crate::part_library::profile_id(&upper.part);
+            factory_clip = ((lower_part == "970c00.dat" && upper_part == "76382p00.dat")
+                || (lower_part == "76382p00.dat"
+                    && ["3626a.dat", "3626ap01.dat"].contains(&upper_part)))
                 && (lower.position.x - upper.position.x).abs() < eps
                 && (lower.position.z - upper.position.z).abs() < eps;
             inferred |= factory_clip;

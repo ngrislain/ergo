@@ -25,9 +25,15 @@ try{
      let result,assetWarning;
      try{
       if(job.revision!==revision){const fresh=await api('/api/local/workspace');runtime.restore(JSON.stringify(fresh.scene),fresh.revision);revision=fresh.revision;}
-      if((job.name==='place_brick'||job.name==='get_catalog'&&job.arguments.part)&&runtime.needs_part(job.arguments.part)){
+       if(job.name==='place_brick'||job.name==='get_catalog'&&job.arguments.part){
         const part=await api(`/api/local/parts/${encodeURIComponent(job.arguments.part)}`);runtime.insert_part(JSON.stringify(part));assetWarning=part.warning;
-      }
+       }
+       const required=JSON.parse(runtime.required_parts(job.name,JSON.stringify(job.arguments)));
+       for(let offset=0;offset<required.length;offset+=4){
+         await Promise.all(required.slice(offset,offset+4).map(async id=>{
+           const part=await api(`/api/local/parts/${encodeURIComponent(id)}`);runtime.insert_part(JSON.stringify(part));
+         }));
+       }
       result=JSON.parse(runtime.execute(job.name,JSON.stringify(job.arguments)));
       if(assetWarning) result.content.unshift({type:'text',text:assetWarning});
       const snapshot=runtime.pending_snapshot();

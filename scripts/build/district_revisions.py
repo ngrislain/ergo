@@ -4,25 +4,19 @@ No file edit here is a shared commit. Publication uses place_submodel(replace_id
 and checks its accepted receipt. Unchanged source occurrences retain their IDs.
 """
 import itertools,math
-from scripts.native_model import Model,instance,yaw
+from scripts.native_model import Model,instance,yaw,model_leaves
 from scripts.build.monument_models import Masonry,rectangles
 from scripts.build import district_models as buildings,district_streets as streets,district_details as details,district_skybridges as sky
 
 def multiply(a,b):return [[sum(a[i][k]*b[k][j] for k in range(4)) for j in range(4)] for i in range(4)]
 
 def leaves(construction):
-    model=construction['model'];properties=iter(construction['pieces']);result=[]
-    def visit(name,parent,color):
-        for value in model['definitions'][name]:
-            transform=multiply(parent,value['transform']);shade=value.get('color',color);shade=color if shade==16 else shade;target=value['target']
-            if target['kind']=='definition':visit(target['id'],transform,shade)
-            else:
-                metadata=next(properties);part=target['id'];box=construction['meshes'][part]['body_bounds']
-                points=[[sum(transform[i][j]*point[j] for j in range(4)) for i in range(3)] for point in itertools.product(*zip(box['min'],box['max']),[1])]
-                result.append({'id':metadata['id'],'part':part,'color':shade,'position':[transform[i][3] for i in range(3)],
-                    'transform':transform,
-                    'min':[min(point[i] for point in points) for i in range(3)],'max':[max(point[i] for point in points) for i in range(3)]})
-    visit(model['root'],[[int(i==j) for j in range(4)] for i in range(4)],71)
+    properties=iter(construction['pieces']);result=[]
+    for leaf in model_leaves(construction['model']):
+        transform=leaf['transform'];part=leaf['part'];metadata=next(properties);box=construction['meshes'][part]['body_bounds']
+        points=[[sum(transform[i][j]*point[j] for j in range(4)) for i in range(3)] for point in itertools.product(*zip(box['min'],box['max']),[1])]
+        result.append({'id':metadata['id'],'part':part,'color':leaf['color'],'position':[transform[i][3] for i in range(3)],'transform':transform,
+            'min':[min(point[i] for point in points) for i in range(3)],'max':[max(point[i] for point in points) for i in range(3)]})
     try:next(properties);raise ValueError('Unexpected unmatched piece properties')
     except StopIteration:pass
     return result

@@ -1,6 +1,7 @@
 pub mod assembly;
 pub mod catalog;
 pub mod constraints;
+pub mod constructs;
 pub mod coordinates;
 pub mod demo;
 pub mod estimates;
@@ -11,6 +12,7 @@ pub mod illustration;
 pub mod interference;
 pub mod ldraw;
 pub mod mcp;
+pub mod part_library;
 pub mod part_profiles;
 pub mod physical;
 #[cfg(feature = "simulation")]

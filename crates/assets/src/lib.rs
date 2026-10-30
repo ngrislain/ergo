@@ -11,6 +11,7 @@ use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use std::{
     collections::{BTreeMap, HashMap, VecDeque},
+    io::Read,
     path::PathBuf,
     sync::Arc,
     time::{Duration, Instant},
@@ -38,6 +39,8 @@ pub struct PartDescription {
     body_bounds: ergo_world::Aabb,
     catalog_mass: Option<CatalogMass>,
     credits: Vec<Credit>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    library_revision: Option<String>,
 }
 #[derive(Clone, Debug, Serialize, Deserialize)]
 struct CatalogMass {
@@ -60,6 +63,8 @@ impl PartDescription {
                     source: ergo_world::physical::mass_source(&mesh.part),
                 }),
             credits: mesh.credits.clone(),
+            library_revision: ergo_world::part_library::get(&mesh.part)
+                .map(|entry| entry.revision.clone()),
         }
     }
 }
@@ -81,6 +86,7 @@ pub struct PartCache {
     failures: Arc<std::sync::Mutex<HashMap<String, (Instant, String)>>>,
     sources: Arc<std::sync::Mutex<(usize, BTreeMap<String, Source>)>>,
     resolved: Arc<std::sync::Mutex<ResolvedCache>>,
+    builtin: bool,
 }
 #[derive(Default)]
 struct ResolvedCache {
@@ -155,7 +161,13 @@ impl PartCache {
             failures: Arc::new(std::sync::Mutex::new(HashMap::new())),
             sources: Default::default(),
             resolved: Default::default(),
+            builtin: true,
         })
+    }
+    /// Updater tooling verifies/bakes source files instead of reusing the pack.
+    pub fn with_builtin_assets(mut self, enabled: bool) -> Self {
+        self.builtin = enabled;
+        self
     }
     fn path(&self, key: &str) -> Path {
         Path::from(if self.prefix.is_empty() {
@@ -194,6 +206,8 @@ impl PartCache {
     }
     async fn resolve_part(&self, part: &str) -> Result<PartAsset> {
         let key = format!("assets/parts/{part}.json");
+        let expected_revision =
+            ergo_world::part_library::get(part).map(|entry| entry.revision.clone());
         if let Some(bytes) = self.get(&key).await? {
             let mut record: PartDescription = serde_json::from_slice(&bytes)?;
             ensure!(
@@ -202,9 +216,10 @@ impl PartCache {
                     && record.part == part,
                 "Unsupported Ergo part description"
             );
-            if let Some(mesh) = self
-                .get(&format!("objects/{}.cbor", record.mesh_hash))
-                .await?
+            if record.library_revision == expected_revision
+                && let Some(mesh) = self
+                    .get(&format!("objects/{}.cbor", record.mesh_hash))
+                    .await?
             {
                 ensure!(
                     hex::encode(Sha256::digest(&mesh)) == record.mesh_hash,
@@ -250,15 +265,21 @@ impl PartCache {
             .filter(|(when, _)| when.elapsed() < Duration::from_secs(30))
         {
             let _ = when;
-            return Ok(PartAsset {
-                mesh: fallback_mesh(&part),
-                credits: Vec::new(),
-                cache_hit: false,
-                warning: Some(message),
-                description: None,
-            });
+            anyhow::bail!(
+                "{message}; authoritative source resolution will be retried after its cooldown"
+            );
         }
-        match self.build(&part).await {
+        let built = if self.builtin {
+            if let Some(mesh) = self.builtin_part(part)? {
+                let credits = mesh.credits.clone();
+                Ok((mesh, credits))
+            } else {
+                self.build(&part).await
+            }
+        } else {
+            self.build(&part).await
+        };
+        match built {
             Ok((mesh, credits)) => {
                 let mut data = Vec::new();
                 ciborium::into_writer(&mesh, &mut data)?;
@@ -275,25 +296,61 @@ impl PartCache {
                 })
             }
             Err(e) => {
-                ensure!(
-                    ergo_world::geometry::part_spec(&part).is_some(),
-                    "No geometry for {part}: {e:#}. Supply an asset library with ERGO_ASSET_LIBRARY_DIR; non-standard parts never use placeholder geometry"
+                let message = format!(
+                    "No authoritative geometry for {part}: {e:#}. Supply the pinned official library with ERGO_ASSET_LIBRARY_DIR or update the reviewed library lock"
                 );
-                let message =
-                    format!("{e:#}; using parametric geometry (upstream fetch will be retried)");
                 self.failures
                     .lock()
                     .unwrap()
                     .insert(part.to_owned(), (Instant::now(), message.clone()));
-                Ok(PartAsset {
-                    mesh: fallback_mesh(&part),
-                    credits: Vec::new(),
-                    cache_hit: false,
-                    warning: Some(message),
-                    description: None,
-                })
+                anyhow::bail!(message)
             }
         }
+    }
+    fn builtin_part(&self, part: &str) -> Result<Option<Mesh>> {
+        let Some(entry) = ergo_world::part_library::get(part) else {
+            return Ok(None);
+        };
+        let Some(asset) = &entry.asset else {
+            return Ok(None);
+        };
+        let pack = include_bytes!("../library/parts.pack");
+        let end = asset
+            .offset
+            .checked_add(asset.bytes)
+            .context("Invalid packed asset range")?;
+        let compressed = pack
+            .get(asset.offset..end)
+            .context("Canonical asset pack is incomplete")?;
+        let mut raw = Vec::new();
+        flate2::read::GzDecoder::new(compressed)
+            .take(32 * 1024 * 1024 + 1)
+            .read_to_end(&mut raw)?;
+        ensure!(
+            raw.len() <= 32 * 1024 * 1024,
+            "Canonical mesh exceeds its decode budget"
+        );
+        ensure!(
+            hex::encode(Sha256::digest(&raw)) == asset.mesh_hash,
+            "Canonical mesh pack checksum mismatch"
+        );
+        let mesh: Mesh = ciborium::from_reader(raw.as_slice())?;
+        ensure!(
+            mesh.schema == ergo_world::SCHEMA_VERSION
+                && mesh.part == entry.catalogue.id
+                && mesh.quality == "source",
+            "Invalid canonical packed mesh"
+        );
+        let mut hash = Sha256::new();
+        for value in &mesh.vertices {
+            hash.update(ergo_world::geometry::vertex_bytes(*value));
+        }
+        let fingerprint = format!("{:x}", hash.finalize());
+        ensure!(
+            entry.vertex_hash.as_deref() == Some(fingerprint.as_str()),
+            "Canonical packed vertices mismatch"
+        );
+        Ok(Some(mesh))
     }
     async fn build(&self, part: &str) -> Result<(Mesh, Vec<Credit>)> {
         let mut queue = VecDeque::from([part.to_owned()]);
@@ -305,6 +362,12 @@ impl PartCache {
                 continue;
             }
             ensure!(files.len() < 4096, "Too many geometry dependencies");
+            if let Some(entry) = ergo_world::part_library::get(part) {
+                ensure!(
+                    entry.files.contains(&name),
+                    "Unpinned dependency in canonical part {part}: {name}"
+                );
+            }
             let (text, url) = self.source(&name, name == part).await?;
             total += text.len();
             ensure!(total <= 32 * 1024 * 1024, "Part dependencies exceed 32 MiB");
@@ -347,22 +410,71 @@ impl PartCache {
                 ergo_world::geometry::nominal_body_bounds(part).unwrap_or(mesh.bounds);
         }
         mesh.credits = credits.clone();
+        if let Some(expected) =
+            ergo_world::part_library::get(part).and_then(|entry| entry.vertex_hash.as_ref())
+        {
+            let mut hash = Sha256::new();
+            for value in &mesh.vertices {
+                hash.update(ergo_world::geometry::vertex_bytes(*value));
+            }
+            ensure!(
+                format!("{:x}", hash.finalize()) == *expected,
+                "Baked geometry differs from the pinned canonical part {part}"
+            );
+        }
         Ok((mesh, credits))
     }
     async fn source(&self, name: &str, top: bool) -> Result<(String, String)> {
+        let pinned = ergo_world::part_library::library().files.get(name);
+        let source_url = |path: &str| {
+            format!(
+                "{}/{}",
+                ergo_world::part_library::library().authorities["geometry"],
+                path
+            )
+        };
+        let verify = |text: String| -> Result<String> {
+            let text = text
+                .trim_start_matches('\u{feff}')
+                .replace("\r\n", "\n")
+                .replace('\r', "\n");
+            if let Some(expected) = pinned {
+                ensure!(
+                    hex::encode(Sha256::digest(text.as_bytes())) == expected.sha256,
+                    "Official source changed for {name}; update the pinned part library explicitly"
+                );
+            }
+            Ok(text)
+        };
         if let Some(source) = self.sources.lock().unwrap().1.get(name).cloned() {
-            return Ok((source.text, source.url));
+            return Ok((
+                verify(source.text)?,
+                pinned.map_or(source.url, |entry| source_url(&entry.path)),
+            ));
         }
         if let Some(root) = &self.local {
-            for dir in ["parts", "p", "unofficial/parts", "unofficial/p"] {
-                let Ok(path) = root.join(dir).join(name).canonicalize() else {
+            let candidates = pinned.map_or_else(
+                || {
+                    ["parts", "p", "unofficial/parts", "unofficial/p"]
+                        .map(|dir| format!("{dir}/{name}"))
+                        .to_vec()
+                },
+                |entry| vec![entry.path.clone()],
+            );
+            for relative in candidates {
+                let Ok(path) = root.join(&relative).canonicalize() else {
                     continue;
                 };
                 if !path.starts_with(root) || path.metadata()?.len() > 1024 * 1024 {
                     continue;
                 }
                 if let Ok(text) = std::fs::read_to_string(&path) {
-                    let url = format!("LDraw local library: {dir}/{name}");
+                    let text = verify(text)?;
+                    let url = if pinned.is_some() {
+                        source_url(&relative)
+                    } else {
+                        format!("LDraw local library: {relative}")
+                    };
                     self.remember(
                         name,
                         Source {
@@ -378,13 +490,19 @@ impl PartCache {
             self.fetch,
             "Automatic LDraw fetching is disabled and {name} is not cached"
         );
-        let candidates = if name.starts_with("s/") || top {
+        let candidates = if let Some(entry) = pinned {
+            vec![entry.path.clone()]
+        } else if name.starts_with("s/") || top {
             vec![format!("parts/{name}")]
         } else {
             vec![format!("p/{name}"), format!("parts/{name}")]
         };
         for path in candidates {
-            let url = format!("{}/{path}", self.base);
+            let url = if pinned.is_some() {
+                source_url(&path)
+            } else {
+                format!("{}/{path}", self.base)
+            };
             let response = self.http.get(&url).send().await?;
             if response.status() == reqwest::StatusCode::NOT_FOUND {
                 continue;
@@ -404,7 +522,7 @@ impl PartCache {
                 );
                 bytes.extend_from_slice(&chunk);
             }
-            let text = String::from_utf8(bytes).context("LDraw source is not UTF-8")?;
+            let text = verify(String::from_utf8(bytes).context("LDraw source is not UTF-8")?)?;
             ensure!(
                 !text.contains("<html"),
                 "Upstream returned HTML instead of LDraw"
@@ -488,6 +606,7 @@ mod tests {
             base: "http://127.0.0.1:9".into(),
             local: None,
             fetch: false,
+            builtin: false,
             gate: Arc::new(tokio::sync::Mutex::new(())),
             failures: Arc::new(std::sync::Mutex::new(HashMap::new())),
             sources: Default::default(),
@@ -498,14 +617,14 @@ mod tests {
     async fn baked_part_is_persisted_and_reused_by_a_fresh_cache_instance() {
         let store: Arc<dyn ObjectStore> = Arc::new(object_store::memory::InMemory::new());
         let first = cache(store.clone());
-        let source=Source{text:"0 Test cube\n0 Author: Test fixture\n0 !LICENSE Test fixture\n4 16 -20 0 -20 20 0 -20 20 0 20 -20 0 20\n4 16 -20 24 -20 -20 24 20 20 24 20 20 24 -20\n4 16 -20 0 -20 -20 24 -20 20 24 -20 20 0 -20\n".into(),url:"http://127.0.0.1:9/parts/3003.dat".into()};
-        first.remember("3003.dat", source);
-        let a = first.resolve("3003.dat").await.unwrap();
+        let source=Source{text:"0 Test cube\n0 Author: Test fixture\n0 !LICENSE Test fixture\n4 16 -20 0 -20 20 0 -20 20 0 20 -20 0 20\n4 16 -20 24 -20 -20 24 20 20 24 20 20 24 -20\n4 16 -20 0 -20 -20 24 -20 20 24 -20 20 0 -20\n".into(),url:"http://127.0.0.1:9/parts/fixture-cube.dat".into()};
+        first.remember("fixture-cube.dat", source);
+        let a = first.resolve("fixture-cube.dat").await.unwrap();
         assert_eq!(a.mesh.quality, "source");
         assert!(!a.cache_hit);
         assert!(!a.mesh.credits.is_empty());
         let second = cache(store);
-        let b = second.resolve("3003.dat").await.unwrap();
+        let b = second.resolve("fixture-cube.dat").await.unwrap();
         assert!(b.cache_hit);
         assert_eq!(a.mesh.vertices, b.mesh.vertices);
         // The same resolver keeps both specification and decoded geometry
@@ -522,13 +641,18 @@ mod tests {
         let description = PartDescription::from_mesh(&changed, hash);
         first
             .put(
-                "assets/parts/3003.dat.json",
+                "assets/parts/fixture-cube.dat.json",
                 serde_json::to_vec(&description).unwrap(),
             )
             .await
             .unwrap();
         assert_eq!(
-            first.resolve("3003.dat").await.unwrap().mesh.vertices,
+            first
+                .resolve("fixture-cube.dat")
+                .await
+                .unwrap()
+                .mesh
+                .vertices,
             a.mesh.vertices
         );
         first
@@ -536,12 +660,67 @@ mod tests {
             .lock()
             .unwrap()
             .values
-            .get_mut("3003.dat")
+            .get_mut("fixture-cube.dat")
             .unwrap()
             .0 = Instant::now() - Duration::from_secs(61);
         assert_eq!(
-            first.resolve("3003.dat").await.unwrap().mesh.vertices,
+            first
+                .resolve("fixture-cube.dat")
+                .await
+                .unwrap()
+                .mesh
+                .vertices,
             changed.vertices
         );
+    }
+    #[tokio::test]
+    async fn changed_standard_sources_fail_instead_of_creating_another_box_variant() {
+        let resolver = cache(Arc::new(object_store::memory::InMemory::new()));
+        resolver.remember(
+            "3003.dat",
+            Source {
+                text: "0 Altered standard part\n".into(),
+                url: "https://example.invalid/3003.dat".into(),
+            },
+        );
+        assert!(
+            resolver
+                .resolve("3003.dat")
+                .await
+                .unwrap_err()
+                .to_string()
+                .contains("Official source changed")
+        );
+        assert!(
+            resolver
+                .get("assets/parts/3003.dat.json")
+                .await
+                .unwrap()
+                .is_none()
+        );
+        assert!(resolver.resolve("3003.dat").await.is_err());
+    }
+    #[tokio::test]
+    async fn the_complete_canonical_pack_resolves_offline_without_source_downloads() {
+        let mut resolver = cache(Arc::new(object_store::memory::InMemory::new()));
+        resolver.builtin = true;
+        for entry in ergo_world::part_library::all() {
+            let asset = resolver.resolve(&entry.catalogue.id).await.unwrap();
+            assert_eq!(asset.mesh.quality, "source");
+            assert_eq!(asset.mesh.part, entry.catalogue.id);
+            assert!(!asset.mesh.vertices.is_empty());
+            assert!(asset.credits.iter().all(|credit| {
+                credit
+                    .source_url
+                    .starts_with("https://library.ldraw.org/library/official/")
+            }));
+            let description = asset.description.unwrap();
+            assert_eq!(description.library_revision.as_ref(), Some(&entry.revision));
+            assert_eq!(
+                description.mesh_hash,
+                entry.asset.as_ref().unwrap().mesh_hash
+            );
+        }
+        assert!(resolver.sources.lock().unwrap().1.is_empty());
     }
 }

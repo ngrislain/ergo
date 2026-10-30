@@ -1,0 +1,44 @@
+[
+  {
+    "id":"minifigure-v1",
+    "name":"Standing minifigure with genuine hair",
+    "description":"Standard factory legs, torso, classic-grin head and 3901 hair on a 4 × 4 plate. Instance colour selects the torso; navy legs, yellow head and black hair are fixed.",
+    "credits":[],
+    "parts":[
+      {"part":"3031.dat","color":71,"position":[2,2,0.3333333333333333]},
+      {"part":"3815c01.dat","color":272,"position":[2,1.5,2]},
+      {"part":"76382p00.dat","position":[2,1.5,3.3333333333333335]},
+      {"part":"3626ap01.dat","color":14,"position":[2,1.5,4.333333333333333]},
+      {"part":"3901.dat","color":0,"position":[2,1.5,4.333333333333333]}
+    ]
+  },
+  {
+    "id":"classic-car-v1",
+    "name":"Classic open-cabin car",
+    "description":"Adaptation of LEGO 6505 Fire Chief's Car with genuine chassis, mudguard, windscreen, roll bar, steering and four factory wheel/tyre units. Place on a supported smooth road/tiled surface. Instance colour selects the body. No rolling or calibrated axle-retention claim.",
+    "credits":[{"file":"6505-1.mpd","source_url":"https://library.ldraw.org/omr/sets/610","author":"Robert Paciorek [bercik]","license":"CCAL 2.0 / BSD-MIT"}],
+    "parts":[
+      {"part":"4624c01.dat","color":7,"position":[2,0.4,0.75]},
+      {"part":"4624c01.dat","color":7,"position":[2,3.6,0.75]},
+      {"part":"4624c01.dat","color":7,"position":[6,0.4,0.75]},
+      {"part":"4624c01.dat","color":7,"position":[6,3.6,0.75]},
+      {"part":"3035.dat","color":0,"position":[4,2,1.8333333333333333]},
+      {"part":"4211.dat","position":[6,2,2.5],"quarter_turns":-1},
+      {"part":"3788.dat","position":[2,2,2.5],"quarter_turns":-1},
+      {"part":"3829c01.dat","color":0,"position":[3.5,2,2.5],"quarter_turns":1},
+      {"part":"3023b.dat","position":[4,0.5,2.5]},
+      {"part":"3023b.dat","position":[4,3.5,2.5]},
+      {"part":"3024.dat","color":36,"position":[7.5,0.5,2.5]},
+      {"part":"3024.dat","color":36,"position":[7.5,3.5,2.5]},
+      {"part":"3710.dat","position":[1.5,2,2.8333333333333335],"quarter_turns":-1},
+      {"part":"3666.dat","position":[5,0.5,2.8333333333333335],"quarter_turns":2},
+      {"part":"3666.dat","position":[5,3.5,2.8333333333333335],"quarter_turns":2},
+      {"part":"3823.dat","color":43,"position":[3.5,2,4.833333333333333],"quarter_turns":1},
+      {"part":"4083.dat","position":[7.5,2,4.833333333333333],"quarter_turns":1},
+      {"part":"3023b.dat","position":[1.5,1,2.5],"quarter_turns":1},
+      {"part":"3023b.dat","position":[1.5,3,2.5],"quarter_turns":1},
+      {"part":"3024.dat","color":14,"position":[1.5,0.5,3.1666666666666665]},
+      {"part":"3024.dat","color":14,"position":[1.5,3.5,3.1666666666666665]}
+    ]
+  }
+]

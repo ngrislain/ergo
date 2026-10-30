@@ -249,7 +249,7 @@ mod tests {
     }
 
     #[test]
-    fn nested_dat_subparts_and_namespaced_instances_preserve_hierarchy() {
+    fn nested_dat_subparts_share_definitions_but_keep_distinct_instances() {
         let doc = ldraw::Document::parse("0 FILE main.ldr\n1 4 0 0 0 1 0 0 0 1 0 0 0 1 sub.dat\n0 FILE sub.dat\n0 !LDRAW_ORG Model\n1 16 0 -24 0 1 0 0 0 1 0 0 0 1 3003.dat", "model.mpd").unwrap();
         assert_eq!(doc.instances().unwrap()[0].name, "3003.dat");
         let mut a = Model::from_document(&doc).unwrap();
@@ -263,6 +263,16 @@ mod tests {
         let refs = a.references().unwrap();
         assert_eq!(refs.len(), 2);
         assert_eq!(refs[1].position.x, 100.);
-        assert!(a.subparts.contains_key("instance-1/sub.dat"));
+        assert!(a.subparts.contains_key("sub.dat"));
+        assert!(!a.subparts.contains_key("instance-1/sub.dat"));
+        assert_eq!(
+            a.subparts
+                .values()
+                .filter(|references| references
+                    .iter()
+                    .any(|reference| reference.file == "3003.dat"))
+                .count(),
+            1
+        );
     }
 }

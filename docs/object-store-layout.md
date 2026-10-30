@@ -18,6 +18,7 @@ s3://ergo/
     ground/rasters/<provider-hash>/<z>/<x>/<y>.cbor
     ground/blocks/<signature>/<east>_<north>.cbor
     cache/read-views/v1/<region-and-limits-hash>.cbor
+    read-cache/metadata-v1/<world-id>/<00..15>.json
     users/<user-id>.json
     user-positions/<actor-hash>.json
     edit-pacing/<actor-hash>.json
@@ -59,6 +60,37 @@ regions. Exact revision/limits and current permission checks precede every hit.
 One region/configuration slot is reused across edits; old packets are never world
 GC roots or authoring input. World GC does not manage this separate namespace.
 See [loading and caching](loading-and-cache.md).
+
+`read-cache/metadata-v1` contains sixteen bounded UTF-8 JSON catalogue-cache slots
+per world. Each wraps revision/ETag/checksum and an encoded JSON response string.
+These are separate from gzip-CBOR geometry packets and from authoritative state.
+
+## Canonical resources and reusable models
+
+The [part library](part-library.md) defines canonical part IDs and immutable
+minifigure/car construct IDs. Its checksum-verified native geometry pack is shipped
+with the application. Requested assets populate `assets/parts` and `objects` once
+per canonical resource; models use references, transforms and colours rather than
+repeating mesh vertices or common component definitions for each copy.
+
+Accepted source models in `world/objects` are deterministic CBOR with typed
+part/local-definition/common-construct references. Current Piece records retain
+independent brick identity and pose; rules map canonical IDs to immutable mesh CIDs.
+The [format reference](object-store-formats.md#resource-references-parts-constructs-and-occurrences)
+specifies encodings, hash inputs, gzip envelopes and the distinction between
+catalogue resources, common models and placed occurrences.
+
+## Additional development/compatibility namespaces
+
+Code also supports `worlds/<owner>/<uuid>/manifest.json` and
+`_private_catalog/<owner-hash>/{refs,objects,...}` for private/development snapshots.
+The production common-world configuration disables new private snapshots. When
+multiple shared worlds are enabled without a common-world override, their
+repositories live under `shared/<uuid>` and derived discovery repositories under
+`shared/_catalog/{users/<actor-hash>,geo-directory/<slot>,geo/<quad>}`. Each discovery
+repository uses ordinary transaction heads and deterministic CBOR objects; its
+advertisements are verified against actual policy/data before display. These are
+supported optional layouts, not extra authoritative worlds in the deployed Sandbox.
 
 ## Private account context
 

@@ -33,6 +33,21 @@ pub fn mpd(scene: &WorldExport) -> Result<String> {
         "0 FILE construction.ldr\r\n0 {}\r\n0 !LDRAW_ORG Model\r\n0 // Exported from Ergo; horizontal origin centered, original ground at Y=0.\r",
         comment(&scene.name)
     )?;
+    if let Some(model) = scene
+        .model
+        .as_ref()
+        .filter(|model| model.matches(&scene.bricks))
+    {
+        for credit in crate::constructs::credits(model) {
+            writeln!(
+                text,
+                "0 // Common construct source: {} | Author: {} | License: {}\r",
+                comment(&credit.source_url),
+                comment(&credit.author),
+                comment(&credit.license)
+            )?;
+        }
+    }
     let mut used = BTreeSet::new();
     for (reference, brick) in refs.iter().zip(&bricks) {
         ensure!(

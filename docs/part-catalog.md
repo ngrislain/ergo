@@ -13,6 +13,8 @@ Parts are stored as **`ergo-part-1`** descriptions, not external model documents
 - Optional `catalog_mass: {kg,source}`; this is sourced catalog information,
   not an invented physical measurement or publication permission.
 - `credits`: source file/URL, author and license metadata.
+- `library_revision`: optional pinned canonical-library revision. A description
+  with an older/missing revision is rebuilt when that part is in the current library.
 
 Geometry is `objects/<mesh_hash>.cbor`, using Ergo's schema-2 positions, normals,
 face colors, bounds and physical metadata. Vertices are unindexed triangles with
@@ -21,7 +23,7 @@ The resolver verifies hash, schema and part identity when reading cached geometr
 
 ## Resolution
 
-The catalog recommends 32 standard brick/plate/tile geometries, 23 source-only
+The [canonical library](part-library.md) supplies 32 standard brick/plate/tile geometries, 23 source-only
 architectural/figure/vehicle entries and 20 opaque colors. It exposes the sourced
 complete color palette and resolves other
 part IDs when actual geometry is available. These recommendations help minimize
@@ -43,14 +45,19 @@ Long pedestrian spans can use genuine **3026 Plate 6×24**, 19.43g, rather than
 scaled smaller plates. Its nominal dimensions and catalogue mass are sourced from
 [BrickLink 3026](https://www.bricklink.com/v2/catalog/catalogitem.page?P=3026).
 
-Resolution is cache-first. An import adapter can read a configured local source
+Resolution is cache-first, then uses the checksum-verified native library pack.
+The complete 55-part pack is under one megabyte; only a requested part is decoded.
+For additional source assets an import adapter can read a configured local source
 library or retrieve a missing source, bake it into Ergo geometry, and store its
 native description. Source text is transient in a bounded 32 MiB process cache;
 it is not a second persisted asset representation in S3.
 
 `ERGO_ASSET_LIBRARY_DIR` configures the source-library adapter. `ERGO_ASSET_FETCH=0` disables
-upstream requests. Known standard shapes can use labeled nominal parametric
-geometry when a source is unavailable. Nonstandard parts never become fake boxes.
+upstream requests for the source adapter. Selected parts normally come from their
+pinned native pack; source update builds verify their official dependency pins,
+independent of local paths. Missing/changed source geometry returns an error;
+resolution does not introduce another box substitute. Nominal parametric geometry
+is retained for internal diagnostics and disposable render derivatives.
 The renderer retains arbitrary source silhouettes through medium distance tiers.
 
 ## Reviewed display-detail library
@@ -87,10 +94,10 @@ Generated `view/.../<part>` and `readback-variants/.../<part>` aliases can recov
 rectangular display support when their **parametric vertices and nominal body
 bounds exactly match** that known part, or when a sourced variant matches a reviewed
 whole-vertex SHA-256 and its nominal body bounds. The current source fingerprints
-cover official [3001](https://library.ldraw.org/library/official/parts/3001.dat) and
-[3022](https://library.ldraw.org/library/official/parts/3022.dat), James Jessiman,
-CC BY 4.0, reviewed 2026-10-28. The digest hashes every internal float32 vertex
-component in little-endian order, independent of mass/physical-record variants.
+are generated for the complete selected official library, with each part's original
+author/license retained. The digest hashes every internal float32 vertex
+component in little-endian order with signed zero normalized, independent of
+mass/physical-record variants and deterministic CBOR axis roundtrips.
 A filename suffix, attribution or bounding box alone is not proof of shape;
 unknown/modified streams remain source-only. The alias, physical metadata and
 frozen source geometry remain intact.
@@ -152,9 +159,10 @@ admission. See [calibration](physical-calibration.md).
 Collision clearance and connectivity use the same interface lookup in
 `part_profiles.rs`; strength estimation remains a separate opt-in mechanism.
 
-Current shading is opaque RGB plastic. Source attribution and licenses are
-retained with converted data. Native descriptions do not imply texture, glitter,
-metallic or transparent-material rendering support.
+Current shading uses lit RGB plastic and catalogue alpha for transparent colours,
+including source windscreens. Source attribution and licenses remain with converted
+data. Fixed baked face colours remain opaque; texture, glitter, metallic rendering,
+refraction and coloured transmission are not implied by a native description.
 
 Implementation: `crates/assets/src/lib.rs`, `crates/world/src/geometry.rs`,
 `catalog.rs`, `physical.rs`, and the server import boundary.

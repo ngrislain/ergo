@@ -10,7 +10,7 @@ use sha2::{Digest, Sha256};
 pub fn vertex_hash(mesh: &Mesh) -> String {
     let mut hash = Sha256::new();
     for value in &mesh.vertices {
-        hash.update(value.to_le_bytes());
+        hash.update(ergo_world::geometry::vertex_bytes(*value));
     }
     format!("{:x}", hash.finalize())
 }
@@ -55,17 +55,8 @@ impl RenderPart {
                 let known = if mesh.quality == "parametric" {
                     mesh.vertices == expected.vertices
                 } else if mesh.quality == "source" {
-                    let fingerprint = match id {
-                        // James Jessiman, official LDraw 3001.dat / 3022.dat,
-                        // CC BY 4.0. Reviewed frozen vertices, 2026-10-28.
-                        "3001.dat" => {
-                            Some("6eb31ee3206edad1b494924cbc52813d7cbe6a192dba00c708580da5398d8161")
-                        }
-                        "3022.dat" => {
-                            Some("c22f3af60bafe9812958c45ba944ad1d708052064a1c6c9ad54601b02b412349")
-                        }
-                        _ => None,
-                    };
+                    let fingerprint = ergo_world::part_library::get(id)
+                        .and_then(|entry| entry.vertex_hash.as_deref());
                     fingerprint.is_some_and(|expected| vertex_hash(mesh) == expected)
                 } else {
                     false

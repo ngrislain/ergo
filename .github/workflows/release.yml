@@ -136,6 +136,8 @@ jobs:
       - run: node --test packages/mcp/test/*.test.cjs
       - run: python3 scripts/package-mcp.py npm --artifacts target/distribution/artifacts --output target/distribution/npm
       - run: python3 scripts/test-npm-package.py --package-dir target/distribution/npm --browser
+      - name: Verify offline canonical parts, retrofits and shared common constructs
+        run: python3 scripts/test-part-library.py --binary target/distribution/npm/native/linux-x64/ergo-mcp
       - name: Pack the complete npm release
         run: |
           mkdir -p target/distribution/tarballs

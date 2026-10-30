@@ -90,65 +90,23 @@ pub fn validate_pose(brick: &Brick) -> Result<()> {
     Ok(())
 }
 
-/// BrickLink item-info weights, retrieved 2026-10-17. Tile aliases map to the
-/// unsuffixed BrickLink catalog IDs. Mold/color variation is not modeled.
+/// Reviewed catalogue averages from the pinned part library. Official identity
+/// aliases select the same record; source-specific physical measurements remain separate.
 pub fn mass_kg(part: &str) -> Result<f64> {
-    if let Some(profile) = crate::part_profiles::profile(part) {
-        return Ok(profile.grams / 1000.);
-    }
-    let grams = match part {
-        "3005.dat" => 0.44,
-        "3004.dat" => 0.83,
-        "3010.dat" => 1.64,
-        "3009.dat" => 2.42,
-        "3008.dat" => 3.21,
-        "3003.dat" => 1.35,
-        "3002.dat" => 1.92,
-        "3001.dat" => 2.32,
-        "2456.dat" => 3.74,
-        "3007.dat" => 4.75,
-        // BrickLink item-info weights, verified 2026-10-27.
-        "4201.dat" => 16.30,
-        "4204.dat" => 30.66,
-        "3024.dat" => 0.20,
-        "3023.dat" => 0.36,
-        "3710.dat" => 0.71,
-        "3666.dat" => 1.06,
-        "3022.dat" => 0.64,
-        "3021.dat" => 0.93,
-        "3020.dat" => 1.20,
-        "3795.dat" => 1.74,
-        "3034.dat" => 2.27,
-        // BrickLink 3832, Plate 2 x 10, verified 2026-10-26.
-        "3832.dat" => 2.91,
-        // BrickLink item-info weight verified 2026-10-26 (plate 2 × 16).
-        "4282.dat" => 4.50,
-        "3031.dat" => 2.22,
-        "3032.dat" => 3.30,
-        "3035.dat" => 4.70,
-        "41539.dat" => 9.40,
-        // BrickLink Plate 6 x 24, reviewed 2026-10-29.
-        "3026.dat" => 19.43,
-        "3070b.dat" => 0.16,
-        "3069b.dat" => 0.26,
-        "3068b.dat" => 0.49,
-        "2431.dat" => 0.54,
-        _ => anyhow::bail!("No sourced mass for {part}"),
-    };
-    Ok(grams / 1000.0)
+    crate::part_library::get(part)
+        .map(|entry| entry.catalogue.mass_kg)
+        .with_context(|| format!("No sourced mass for {part}"))
 }
 pub fn mass_source(part: &str) -> String {
-    if let Some(profile) = crate::part_profiles::profile(part) {
-        return profile.source;
-    }
-    let id = part.trim_end_matches(".dat");
-    let id = match id {
-        "3070b" => "3070",
-        "3069b" => "3069",
-        "3068b" => "3068",
-        _ => id,
-    };
-    format!("https://www.bricklink.com/v2/catalog/catalogitem.page?P={id}")
+    crate::part_library::get(part).map_or_else(
+        || {
+            format!(
+                "https://www.bricklink.com/v2/catalog/catalogitem.page?P={}",
+                part.trim_end_matches(".dat")
+            )
+        },
+        |entry| entry.catalogue.mass_source.clone(),
+    )
 }
 
 #[derive(Clone, Default, Serialize, Deserialize)]
@@ -180,13 +138,18 @@ pub struct ConnectionMeasurement {
 }
 
 impl ConnectionMeasurements {
+    pub fn part_record(&self, part: &str) -> Option<&PartMeasurement> {
+        let canonical = crate::catalog::canonical_part(part);
+        self.parts
+            .iter()
+            .find(|record| crate::catalog::canonical_part(&record.part) == canonical)
+    }
     pub fn validate(&self) -> Result<()> {
         let mut names = std::collections::BTreeSet::new();
         for part in &self.parts {
             ensure!(
                 crate::catalog::valid_part(&part.part)
-                    && crate::catalog::canonical_part(&part.part) == part.part
-                    && names.insert(&part.part),
+                    && names.insert(crate::catalog::canonical_part(&part.part)),
                 "Invalid or duplicate physical part ID"
             );
             ensure!(
@@ -219,9 +182,7 @@ impl ConnectionMeasurements {
         Ok(())
     }
     pub fn mass_kg(&self, part: &str) -> Result<f64> {
-        self.parts
-            .iter()
-            .find(|p| p.part == part)
+        self.part_record(part)
             .map(|p| Ok(p.mass_kg))
             .unwrap_or_else(|| mass_kg(part))
     }
@@ -229,7 +190,16 @@ impl ConnectionMeasurements {
     pub fn normalize_scene(&self, scene: &mut crate::WorldExport) -> Result<()> {
         self.validate()?;
         for mesh in scene.meshes.values_mut() {
-            mesh.physical = self.parts.iter().find(|p| p.part == mesh.part).cloned();
+            let canonical = crate::catalog::canonical_part(&mesh.part);
+            mesh.physical = self
+                .parts
+                .iter()
+                .find(|p| crate::catalog::canonical_part(&p.part) == canonical)
+                .cloned()
+                .map(|mut record| {
+                    record.part = mesh.part.clone();
+                    record
+                });
             if let Some(record) = &mesh.physical {
                 mesh.body_bounds = record.body_bounds;
             } else if let Some(bounds) = crate::geometry::nominal_body_bounds(&mesh.part) {
@@ -237,7 +207,12 @@ impl ConnectionMeasurements {
             }
         }
         for brick in &mut scene.bricks {
-            let bounds = if let Some(record) = self.parts.iter().find(|p| p.part == brick.part) {
+            let canonical = crate::catalog::canonical_part(&brick.part);
+            let bounds = if let Some(record) = self
+                .parts
+                .iter()
+                .find(|p| crate::catalog::canonical_part(&p.part) == canonical)
+            {
                 record.body_bounds
             } else if let Some(bounds) = crate::geometry::nominal_body_bounds(&brick.part) {
                 bounds
@@ -271,7 +246,12 @@ impl ConnectionMeasurements {
             } else {
                 "revolute"
             };
-            let measurement=self.entries.iter().find(|e|((e.part_a==a.part&&e.part_b==b.part)||(e.part_a==b.part&&e.part_b==a.part))&&e.kind==kind&&e.overlap_studs==footprint)
+            let a_part = crate::catalog::canonical_part(&a.part);
+            let b_part = crate::catalog::canonical_part(&b.part);
+            let measurement=self.entries.iter().find(|e|{
+                let left=crate::catalog::canonical_part(&e.part_a);let right=crate::catalog::canonical_part(&e.part_b);
+                ((left==a_part&&right==b_part)||(left==b_part&&right==a_part))&&e.kind==kind&&e.overlap_studs==footprint
+            })
                 .with_context(||format!("Missing measured connector capacity for {} ↔ {} ({kind}, footprint {}×{}). Configure ERGO_CONNECTION_MEASUREMENTS; no realistic strength is assumed",a.part,b.part,footprint[0],footprint[1]))?;
             matched.push(measurement);
         }
@@ -331,9 +311,31 @@ mod tests {
             DVec3::new(0.016, 0.0096, 0.032)
         );
         assert!((mass_kg("3001.dat").unwrap() - 0.00232).abs() < 1e-12);
-        for (part, _) in crate::catalog::PARTS {
+        for (part, _) in crate::catalog::PARTS.iter() {
             assert!(mass_kg(part).unwrap() > 0.0);
         }
+    }
+    #[test]
+    fn official_identity_aliases_preserve_frozen_operator_measurements() {
+        let mut book = ConnectionMeasurements::default();
+        book.parts.push(PartMeasurement {
+            part: "3023.dat".into(),
+            mass_kg: 0.00123,
+            body_bounds: crate::geometry::fallback_mesh("3023b.dat").body_bounds,
+            source: "Frozen operator fixture".into(),
+            samples: 3,
+        });
+        book.validate().unwrap();
+        assert_eq!(book.mass_kg("3023b.dat").unwrap(), 0.00123);
+        assert_eq!(book.part_record("3023b.dat").unwrap().part, "3023.dat");
+        book.parts.push(PartMeasurement {
+            part: "3023b.dat".into(),
+            ..book.parts[0].clone()
+        });
+        assert!(
+            book.validate().is_err(),
+            "Aliased duplicate physical records must not become ambiguous"
+        );
     }
     #[test]
     fn missing_strength_is_not_replaced_with_an_invented_default() {

@@ -3,8 +3,7 @@
 Geometry credits are retained in resolved native assets. Bounds are the declared
 nominal proxies documented in docs/part-catalog.md, not exact material collision.
 """
-import math
-from scripts.native_model import Model, SPECIAL_BOUNDS, instance, yaw
+from scripts.native_model import Model, SPECIAL_BOUNDS, CONSTRUCTS, instance
 
 PARTS=['60594','3037','3039','3633','3062b','3941','87081','2039','4073','4740',
        '970c00','76382p00','3626ap01','4624c01','3901','4211','3788','3823','4083','3829c01']
@@ -15,14 +14,11 @@ def rooted(model,part,color,position,rotation=None):
 
 
 def person(torso=321,legs=272,hair=0):
-    model=Model();model.part('3031',71,0,0,0)
-    height=1/3
-    for part,color in [('970c00',legs),('76382p00',torso),('3626ap01',14)]:
-        box=SPECIAL_BOUNDS[part]
-        root=height-box['min'][2]
-        rooted(model,part,color,[2,1.5,root])
-        height=root+box['max'][2]
-    rooted(model,'3901',hair,[2,1.5,height])
+    if legs==272 and hair==0:
+        model=Model();model.construct('minifigure-v1',color=torso);return model
+    model=Model();colours={'3815c01.dat':legs,'76382p00.dat':torso,'3901.dat':hair}
+    for part in CONSTRUCTS['minifigure-v1']['parts']:
+        model.definitions['main'].append(instance('part',part['part'],part['position'],colours.get(part['part'],part.get('color'))))
     return model
 
 
@@ -59,20 +55,5 @@ def car(color=4,pedestal=False):
     model=Model();base=0
     if pedestal:
         model.part('3035',71,0,0,0);model.floor(8,4,72,0,0,1/3);base=2/3
-    wheel=SPECIAL_BOUNDS['4624c01'];wheel_root=base-wheel['min'][2]
-    for x in [2,6]:
-        for north in [0.4,3.6]:rooted(model,'4624c01',7,[x,north,wheel_root])
-    height=wheel_root+wheel['max'][2]
-    model.part('3035',0,0,0,height);height+=1/3
-    for part,x,north,z,angle,shade in [
-        ('4211',6,2,2/3,-math.pi/2,color),('3788',2,2,2/3,-math.pi/2,color),
-        ('3829c01',3.5,2,2/3,math.pi/2,0),
-        ('3023',4,.5,2/3,0,color),('3023',4,3.5,2/3,0,color),
-        ('3024',7.5,.5,2/3,0,36),('3024',7.5,3.5,2/3,0,36),
-        ('3710',1.5,2,1,-math.pi/2,color),
-        ('3666',5,.5,1,math.pi,color),('3666',5,3.5,1,math.pi,color),
-        ('3823',3.5,2,3,math.pi/2,43),('4083',7.5,2,3,math.pi/2,color),
-    ]:rooted(model,part,shade,[x,north,height+z],yaw(angle))
-    for north in [0,2]:model.part('3023',color,1,north,height+1/3,turn=True)
-    for north in [0,3]:model.part('3024',14,1,north,height+1)
+    model.construct('classic-car-v1',height=base,color=color)
     return model

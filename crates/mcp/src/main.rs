@@ -805,7 +805,7 @@ fn main() -> Result<()> {
                             h.queue.retain(|j| j.id != job_id);
                         }
                         let mut value=value.context(if bridge.common.is_some(){"Shared MCP request timed out; acceptance may be unknown. Reopen/reconcile the authoritative assembly before any retry; no automatic retry was performed"}else{"Local WASM client timed out; attach the browser client or check its console"})?;
-                        if name == "export_construction" {
+                        if name == "export_construction" && value["isError"] != true {
                             value["structuredContent"]["path"] = json!(path);
                             if let Some(text) =
                                 value["content"].as_array_mut().and_then(|a| a.first_mut())
