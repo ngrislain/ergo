@@ -17,7 +17,7 @@ use std::{
 #[derive(Debug, Default)]
 struct FaultStore {
     inner: InMemory,
-    // 1 = fail immutable upload, 2 = lose successful CAS response,
+    // 1 = persistently fail immutable upload, 2 = lose successful CAS response,
     // 3 = SDK returns 412 after a hidden successful CAS, 4 = fail CAS before write.
     fault: AtomicU8,
     head_started: tokio::sync::Notify,
@@ -49,13 +49,39 @@ impl ObjectStore for FaultStore {
         payload: PutPayload,
         opts: PutOptions,
     ) -> object_store::Result<PutResult> {
-        if path.as_ref().contains("/objects/")
-            && self
+        if path.as_ref().contains("/objects/") {
+            if self.fault.load(Ordering::SeqCst) == 1 {
+                return Err(failure());
+            }
+            if self
                 .fault
-                .compare_exchange(1, 0, Ordering::SeqCst, Ordering::SeqCst)
+                .compare_exchange(8, 0, Ordering::SeqCst, Ordering::SeqCst)
                 .is_ok()
-        {
-            return Err(failure());
+            {
+                self.inner.put_opts(path, payload, opts).await?;
+                return Err(failure());
+            }
+            if self
+                .fault
+                .compare_exchange(9, 0, Ordering::SeqCst, Ordering::SeqCst)
+                .is_ok()
+            {
+                return Err(failure());
+            }
+            if self
+                .fault
+                .compare_exchange(10, 0, Ordering::SeqCst, Ordering::SeqCst)
+                .is_ok()
+            {
+                self.inner
+                    .put_opts(
+                        path,
+                        bytes::Bytes::from_static(b"corrupt upload").into(),
+                        opts,
+                    )
+                    .await?;
+                return Err(failure());
+            }
         }
         if matches!(opts.mode, PutMode::Update(_)) && path.as_ref().contains("/refs/") {
             self.head_updates.fetch_add(1, Ordering::SeqCst);
@@ -435,6 +461,64 @@ async fn failed_staging_never_advances_the_head() {
             .unwrap()
             .is_empty()
     );
+}
+
+#[tokio::test]
+async fn an_immutable_lost_ack_is_read_verified_without_repeating_publication() {
+    let store = Arc::new(FaultStore::default());
+    let repo = Repository::new(store.clone(), "immutable-ack").unwrap();
+    repo.create("main").await.unwrap();
+    let mut tx = repo.begin("main").await.unwrap();
+    let path = "1".parse().unwrap();
+    tx.put(&path, &42u32).await.unwrap();
+    store.fault.store(8, Ordering::SeqCst);
+    let accepted = tx
+        .commit("a", "lost immutable acknowledgement", Default::default())
+        .await
+        .unwrap();
+    assert_eq!(accepted.snapshot.get::<u32>(&path).await.unwrap(), Some(42));
+    assert_eq!(store.head_updates.load(Ordering::SeqCst), 1);
+    assert!(store.object_reads.load(Ordering::SeqCst) > 0);
+}
+
+#[tokio::test]
+async fn an_absent_immutable_upload_can_retry_its_identical_create_before_one_cas() {
+    let store = Arc::new(FaultStore::default());
+    let repo = Repository::new(store.clone(), "immutable-retry").unwrap();
+    repo.create("main").await.unwrap();
+    let mut tx = repo.begin("main").await.unwrap();
+    let path = "2".parse().unwrap();
+    tx.put(&path, &99u32).await.unwrap();
+    store.fault.store(9, Ordering::SeqCst);
+    let accepted = tx
+        .commit("a", "verified absent immutable retry", Default::default())
+        .await
+        .unwrap();
+    assert_eq!(accepted.snapshot.get::<u32>(&path).await.unwrap(), Some(99));
+    assert_eq!(store.head_updates.load(Ordering::SeqCst), 1);
+}
+
+#[tokio::test]
+async fn immutable_error_proofs_never_use_cached_or_corrupt_bytes() {
+    let store = Arc::new(FaultStore::default());
+    let repo = Repository::new(store.clone(), "immutable-proof").unwrap();
+    let id = repo.put_blob(&"cached orphan").await.unwrap();
+    store
+        .inner
+        .delete(&Path::from(format!("immutable-proof/objects/{id}.cbor")))
+        .await
+        .unwrap();
+    store.fault.store(1, Ordering::SeqCst);
+    assert!(matches!(
+        repo.put_blob(&"cached orphan").await,
+        Err(Error::Store(_))
+    ));
+    store.fault.store(10, Ordering::SeqCst);
+    assert!(matches!(
+        repo.put_blob(&"bad acknowledgement").await,
+        Err(Error::Corrupt(_))
+    ));
+    assert_eq!(store.head_updates.load(Ordering::SeqCst), 0);
 }
 
 #[tokio::test]

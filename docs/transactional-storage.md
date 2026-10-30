@@ -76,6 +76,17 @@ transaction namespace must use the adapter on a filesystem supporting those
 primitives. It is not a distributed/network-filesystem implementation; multipart
 upload is unsupported by the adapter.
 
+Immutable-object upload errors are resolved separately from publication. After a
+failed create-if-absent PUT, an **uncached, hash-verified remote GET** may prove that
+the same object actually exists. If the strong read instead returns NotFound,
+the library may repeat the identical content-addressed create, with at most three
+total attempts and bounded backoff. A late first upload and a retry contain the
+same hash/bytes; existing-object responses still require remote verification.
+Cached bytes, corrupt objects and failed/ambiguous reads do not establish success.
+Persistent failure stops before the branch head changes. This does not retry an
+arbitrary construction edit or an uncertain mutable head CAS; their acceptance
+and reconciliation protocol below is unchanged.
+
 ## State and object layout
 
 Use a dedicated namespace, separate from the existing world's flat-manifest layout:

@@ -1,5 +1,11 @@
 # Changelog
 
+## Container maintenance after v0.5.16
+
+- Resolve uncertain immutable S3 upload acknowledgements with uncached hash-verified
+  reads, and retry an identical create only after a strong NotFound proof, bounded
+  to three attempts. Keep mutable publication/CAS and MCP non-retry semantics intact.
+
 ## v0.5.16
 
 - Consolidate canonical part names, dimensions, catalogue masses and official

@@ -363,32 +363,53 @@ impl Repository {
 
     async fn put_object(&self, id: &ContentId, bytes: Bytes) -> Result<()> {
         let location = self.path(&format!("objects/{id}.cbor"));
-        match self
-            .backend
-            .put_opts(&location, bytes.clone().into(), PutMode::Create.into())
-            .await
-        {
-            Ok(_) => {
-                // Only an acknowledged immutable upload may populate the LRU.
-                // Never elide the upload based on a cache hit: GC may have
-                // collected an unreferenced object since it was downloaded.
-                self.cache
-                    .lock()
-                    .unwrap()
-                    .insert(location.to_string(), bytes);
-                Ok(())
+        for attempt in 0..3 {
+            match self
+                .backend
+                .put_opts(&location, bytes.clone().into(), PutMode::Create.into())
+                .await
+            {
+                Ok(_) => {
+                    // Only an acknowledged immutable upload may populate the LRU.
+                    // Never elide the upload based on a cache hit: GC may have
+                    // collected an unreferenced object since it was downloaded.
+                    self.cache
+                        .lock()
+                        .unwrap()
+                        .insert(location.to_string(), bytes);
+                    return Ok(());
+                }
+                // A 409 may represent a concurrent conditional request, not an existing
+                // object. Verify the object before treating either status as deduplication.
+                Err(
+                    object_store::Error::AlreadyExists { .. }
+                    | object_store::Error::Precondition { .. },
+                ) => {
+                    self.uncached_object(id).await?;
+                    return Ok(());
+                }
+                Err(error) => {
+                    // A transport error can hide a successful immutable upload.
+                    // Prove remote existence/content while the writer pin is held;
+                    // never accept a cache hit, repeat a head CAS, or guess success.
+                    match self.uncached_object(id).await {
+                        Ok(_) => return Ok(()),
+                        Err(Error::Store(object_store::Error::NotFound { .. })) if attempt < 2 => {
+                            // The object is absent at the strong read. Repeating
+                            // create-if-absent for the same hash/bytes is idempotent,
+                            // even if an earlier upload subsequently completes.
+                            tokio::time::sleep(std::time::Duration::from_millis(
+                                250 * (attempt + 1),
+                            ))
+                            .await;
+                        }
+                        Err(proof @ Error::Corrupt(_)) => return Err(proof),
+                        Err(_) => return Err(error.into()),
+                    }
+                }
             }
-            // A 409 may represent a concurrent conditional request, not an existing
-            // object. Verify the object before treating either status as deduplication.
-            Err(
-                object_store::Error::AlreadyExists { .. }
-                | object_store::Error::Precondition { .. },
-            ) => {
-                self.uncached_object(id).await?;
-                Ok(())
-            }
-            Err(e) => Err(e.into()),
         }
+        unreachable!("Immutable upload attempts always return or retry")
     }
 
     async fn store_commit(&self, commit: &Commit) -> Result<ContentId> {
