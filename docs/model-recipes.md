@@ -202,14 +202,28 @@ transoms, regular framed middle-storey bays and six-course stacked upper-storey 
 Recessed frames, belt-course colours and a gold-accented upper floor distinguish
 base, middle, upper shaft and existing stepped crown. Room heights and the open
 ten-storey switchback route are retained. `tower(facade=False)` generates the older
-unframed recipe for interpreting historical receipts. This source change is a
-proposal for the existing tower until its separate shared receipt/readback is recorded.
+unframed recipe for interpreting historical receipts. The accepted facade is
+recorded separately below.
 
 The facade's base/shaft/crown rhythm was researched using the official OMR
 [21046 Empire State Building](https://library.ldraw.org/omr/sets/987), modeled by
 Orion Pobursky [OrionP], CCAL 2.0. Its microscale SNOT/grille construction is a
 visual reference; this minifigure-scale design uses upright sourced frames and
 bonded masonry rather than copying that model or its scale.
+
+### Accepted tower facade (2026-10-30)
+
+The existing tower assembly was updated at revision
+`116c9fca408e798aa5040e34782483badaea687fae6693a9a53896d32bd8203e`.
+It now contains **5,151 pieces**, including **159 genuine 60594 frames and 66
+60592 frames**. The atomic edit retained 3,996 existing occurrences, removed 966
+changed ones and added 1,155; its assembly identity and absolute position remain.
+Independent authoritative readback matched the exact intended part/colour/pose/ID
+rows. The accepted geometry passed all **126** original ten-storey walking
+waypoints with nine-unit room clearance, without jumping or teleporting.
+Actual WASM/WebGL studio images verified the facade. Static acceptance, walking
+and images remain separate evidence, not a complete dynamic/calibrated-strength
+certificate; this tower exceeds the 5,000-body dynamics working-set limit.
 
 The stair flights use four-stud clear walking lanes, brick-height steps and
 explicit landings; the room-height guarantee is checked separately from stair

@@ -116,5 +116,15 @@ Record actual accepted receipts and a fresh complete inventory for migration res
 Historical accepted roots keep their frozen resources; retention-aware collection
 is separate from replacing current legacy usage.
 
+### Accepted normalization checkpoint (2026-10-30)
+
+Revision `3d97e56e19988497f951de55474f355522cd05e96ddc3c77e45ccd1b6345e549`
+verified all **30 existing constructs / 102,629 pieces**: 23 accepted MCP retrofits
+and seven already-canonical readbacks. Independent reads checked occurrence IDs,
+colours, groups/joints, nominal world bounds and full canonical vertex fingerprints.
+The live assembly headers shared **50 canonical part IDs with exactly one mesh CID
+per ID**; no construct was removed. This is the library-normalization checkpoint,
+before the separately journalled tower facade and final height/terrace publications.
+
 See [construction encoding](construction-format.md), [S3 resource formats](object-store-formats.md)
 and [part descriptions and physical limits](part-catalog.md).
