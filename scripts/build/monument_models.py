@@ -6,12 +6,13 @@ https://en.wikipedia.org/wiki/Great_Pyramid_of_Giza
 https://en.wikipedia.org/wiki/Main_building_of_Moscow_State_University
 """
 import math
-from scripts.native_model import Model, snap_origin, yaw
+from scripts.native_model import Model, SPECIAL_BOUNDS, snap_origin, yaw
 
 BASE=2/3
 COURSES=9
 PITCH=COURSES+2/3
 TECHNIQUES=['running-bond','interlocked-corner','interlocked-t-junction','opening-lintels','staggered-slabs','stepped-roof']
+TOWER_PARTS=['60594','60592']
 
 def merge(intervals):
     result=[]
@@ -122,7 +123,7 @@ def pyramid_route(origin):
         (32,47,'north corridor'),(32,32,'return crossing'),(32,-5,'exit pyramid')]
     return route(origin,(32,-5,BASE),[(x,n,BASE,name) for x,n,name in points],9)
 
-def tower_walls(m,wings,course,height,color,ground,extra_holes=()):
+def tower_walls(m,wings,course,height,color,ground,extra_holes=(),window_pattern=None):
     def ring(lo,hi,south,north,holes):
         # Three aligned header courses retain full engagements over openings;
         # the lower running bond and staggered slabs strap these beam segments.
@@ -133,11 +134,16 @@ def tower_walls(m,wings,course,height,color,ground,extra_holes=()):
         for x in [lo,hi-2]:m.brickwork([(x,x+2,a,b)],height,color,holes,turn=True,phase=4 if headers else 4*(course%2))
     def main_holes(layer):
         holes=[]
-        if 3<=layer<6:
-            for x in [6,14,22]:
-                holes.append((x,x+4,0,2))
-                holes.append((x,x+4,30,32))
-            for n in [6,14,22]:holes += [(0,2,n,n+4),(30,32,n,n+4)]
+        if window_pattern is None:
+            if 3<=layer<6:
+                for x in [6,14,22]:
+                    holes.append((x,x+4,0,2))
+                    holes.append((x,x+4,30,32))
+                for n in [6,14,22]:holes += [(0,2,n,n+4),(30,32,n,n+4)]
+        else:
+            for part,x,bottom in window_pattern:
+                box=SPECIAL_BOUNDS[part];width=round(box['max'][0]-box['min'][0]);height=round(box['max'][2]-box['min'][2])
+                if bottom<=layer<bottom+height:holes += [(x,x+width,0,2),(x,x+width,30,32),(0,2,x,x+width),(30,32,x,x+width)]
         if ground and layer<6:holes.append((14,18,0,2))
         if wings and layer<6:holes += [(0,2,14,18),(30,32,14,18)]
         return holes
@@ -181,7 +187,34 @@ def stair(m,base,flights=True):
             for x,hi,n,hn in rectangles(cuts,occupied):m.plate_rectangle(hi-x,hn-n,19,x,n,base+course+plate/3)
     for x,_,n,_,plate,part in beams:m.part(part,71,x,n,base+plate/3)
 
-def tower():
+def tower_window_pattern(level):
+    if level<3:return [(part,x+offset,bottom) for x in [6,14,22] for part,offset,bottom in [('60594',0,2),('60592',0,5),('60592',2,5)]]
+    if level<7:return [('60594',x,3) for x in [6,14,22]]
+    return [('60594',x,bottom) for x in [6,14,22] for bottom in [1,4]]
+
+def tower_wall_colour(level,course):
+    if level==0:return 72 if course<2 else 71 if course<8 else 15
+    if level in [3,6] and course<2:return 28 if course==0 else 15
+    if level==9 and course==7:return 14
+    if course==8:return 15
+    if level>=7:return 19 if course==0 else 15
+    return 28 if level in [2,5] and course==0 else 19
+
+def tower_frames(m,level,base):
+    colour=72 if level==0 else 28 if level>=7 else 15
+    for part,x,bottom in tower_window_pattern(level):
+        if not (level==0 and 14<=x<18):
+            m.part(part,colour,x,1,base+bottom)
+            m.part(part,colour,1,x,base+bottom,rotation=yaw(math.pi/2))
+            m.part(part,colour,30,x,base+bottom,rotation=yaw(-math.pi/2))
+        m.part(part,colour,x,30,base+bottom,rotation=yaw(math.pi))
+    if level==0:
+        for lo in [-18,34]:
+            m.part('60594',15,lo+6,7,base+3)
+            m.part('60594',15,lo+6,24,base+3,rotation=yaw(math.pi))
+            m.part('60594',15,lo+1 if lo<0 else lo+14,14,base+3,rotation=yaw(math.pi/2 if lo<0 else -math.pi/2))
+
+def tower(facade=True):
     m=Masonry();m.compact_short_rows=True;m.slab([(-24,56,-8,40)],BASE,71)
     main=[(0,32,0,32)]
     well=[(10,14,6,16),(18,22,6,16),(10,22,16,20)]
@@ -195,8 +228,9 @@ def tower():
                     m.part('4282',15,x,6,base-1/3,turn=True)
                     m.part('3020',15,x,22,base-1/3,turn=True)
         for course in range(COURSES):
-            color=15 if course==8 else 71 if level==0 and course<2 else 19
-            tower_walls(m,wings,course,base+course,color,level==0)
+            color=tower_wall_colour(level,course) if facade else 15 if course==8 else 71 if level==0 and course<2 else 19
+            tower_walls(m,wings,course,base+course,color,level==0,window_pattern=tower_window_pattern(level) if facade else None)
+        if facade:tower_frames(m,level,base)
         stair(m,base,level<9)
     top=BASE+10*PITCH
     # Close the stairwell with real supported beams before adding the crown.

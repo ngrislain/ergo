@@ -6,7 +6,7 @@ connected stepped roof courses. The plate-rise roof is a shallow-pitch adaptatio
 """
 import math
 from typing import Optional
-from native_model import Model,yaw,snap_origin
+from scripts.native_model import Model,yaw,snap_origin
 
 WIDTH=24
 DEPTH=16

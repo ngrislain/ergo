@@ -28,9 +28,9 @@ def main():
     diagnostics.add_argument('--wasm-estimated-connectors',action='store_true',help='Run the bounded WASM/MCP diagnostic instead')
     args=parser.parse_args();binary=shutil.which(args.binary)
     if not binary:parser.error('An installed Ergo MCP binary is required')
-    model=getattr(models,args.kind)()
+    model=getattr(models,args.kind)
     name='Pyramid of the Three Chambers' if args.kind=='pyramid' else 'Ten-Level Seven Sisters Tower'
-    report=builder.run_model(binary,args.output,name,model,args.origin,estimated_connectors=args.wasm_estimated_connectors,technique_query='')
+    report=builder.run_model(binary,args.output,name,model,args.origin,estimated_connectors=args.wasm_estimated_connectors,technique_query='lintel' if args.kind=='tower' else '',required_parts=models.TOWER_PARTS if args.kind=='tower' else ())
     report['design']={'kind':args.kind,'techniques_applied':models.TECHNIQUES,'minifigure_scale':True,
         'clear_room_height_native':9,'inspiration':'https://en.wikipedia.org/wiki/Great_Pyramid_of_Giza' if args.kind=='pyramid' else 'https://en.wikipedia.org/wiki/Main_building_of_Moscow_State_University',
         'original_design_not_replica':True,'levels':1 if args.kind=='pyramid' else 10}

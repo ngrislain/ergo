@@ -2,8 +2,8 @@
 
 ## District recipes and accepted construction
 
-The current accepted district has **91,543 pieces in the same 15 assemblies**
-(2026-10-29). The building-link/street revisions below supersede the original
+The building-link/street baseline has **91,543 pieces in the same 15 assemblies**
+(2026-10-29). Its revisions below supersede the original
 road-bridge and figure/car details in the 2026-10-28 baseline record.
 
 On 2026-10-28 the eleven new ten-storey buildings and three separate site assemblies
@@ -195,6 +195,21 @@ and descends without teleporting. Lower wings, a tiered crown and a red/gold
 spire are an original interpretation of the
 [Moscow State University main building](https://en.wikipedia.org/wiki/Main_building_of_Moscow_State_University)
 and the Seven Sisters silhouette, not a scale replica of that much taller building.
+
+The current `tower()` recipe resolves genuine 60594/60592 frames before generation.
+It has a rusticated grey entrance/podium, lower five-course window bays with paired
+transoms, regular framed middle-storey bays and six-course stacked upper-storey openings.
+Recessed frames, belt-course colours and a gold-accented upper floor distinguish
+base, middle, upper shaft and existing stepped crown. Room heights and the open
+ten-storey switchback route are retained. `tower(facade=False)` generates the older
+unframed recipe for interpreting historical receipts. This source change is a
+proposal for the existing tower until its separate shared receipt/readback is recorded.
+
+The facade's base/shaft/crown rhythm was researched using the official OMR
+[21046 Empire State Building](https://library.ldraw.org/omr/sets/987), modeled by
+Orion Pobursky [OrionP], CCAL 2.0. Its microscale SNOT/grille construction is a
+visual reference; this minifigure-scale design uses upright sourced frames and
+bonded masonry rather than copying that model or its scale.
 
 The stair flights use four-stud clear walking lanes, brick-height steps and
 explicit landings; the room-height guarantee is checked separately from stair

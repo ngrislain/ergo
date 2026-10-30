@@ -6,13 +6,13 @@ import json
 import math
 from pathlib import Path
 import shutil
-import chalet_model
 import sys
-
-from native_model import Model,bounds,east_rotation,local_bounds,multiply,north_rotation,yaw,snap_origin
+from typing import Callable
 
 ROOT=Path(__file__).resolve().parents[1]
 sys.path.insert(0,str(ROOT))
+import chalet_model
+from scripts.native_model import Model,bounds,east_rotation,local_bounds,multiply,north_rotation,yaw,snap_origin
 from scripts.mcp_client import Mcp
 
 
@@ -277,15 +277,19 @@ def palace():
     return model
 
 
-def run_model(binary,output,name,model,origin,token_file=None,publish=False,estimated_connectors=False,technique_query=None):
+def run_model(binary,output,name,model:Model|Callable[[],Model],origin,token_file=None,publish=False,estimated_connectors=False,technique_query=None,required_parts=()):
     origin=snap_origin(origin)
     output.mkdir(parents=True,exist_ok=True);workspace=output/"construction.ergo.json"
     if workspace.exists():raise RuntimeError("Choose a fresh output directory: "+str(output))
-    native=model.export(tuple(origin));(output/"model.ergo-model.json").write_text(json.dumps(native,separators=(',',':'))+'\n')
     mcp=Mcp(binary,workspace,'https://ergosandbox.com',None)
     try:
         query=technique_query if technique_query is not None else ('palace' if 'palace' in name.lower() else 'chalet')
         technique_plan=mcp.call('get_building_techniques',query=query)['structuredContent']
+        if required_parts:
+            from scripts.native_model import register_catalog_part
+            for part in required_parts:register_catalog_part(part,mcp.call('get_catalog',part=part+'.dat')['structuredContent']['requested_part'])
+        if callable(model):model=model()
+        native=model.export(tuple(origin));(output/"model.ergo-model.json").write_text(json.dumps(native,separators=(',',':'))+'\n')
         mcp.call('place_submodel',model=native)
         validation=mcp.call('validate_construction')['structuredContent']
         lo,hi=bounds(native);target=[(a+b)/2 for a,b in zip(lo,hi)];span=max(b-a for a,b in zip(lo,hi))
