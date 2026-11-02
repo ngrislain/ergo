@@ -178,13 +178,29 @@ def encoded(entries):
     return '[\n'+',\n'.join(result)+'\n]\n'
 
 
+def same_poses(left, right):
+    """Libm may differ in the last bits across macOS/Linux; keep stored IDs/poses.
+
+    Only numeric differences below 1e-12 are tolerated. Names, component lists,
+    colours, transforms and all non-numeric metadata must still agree.
+    """
+    if isinstance(left, (int, float)) and isinstance(right, (int, float)):
+        return math.isclose(left, right, rel_tol=0, abs_tol=1e-12)
+    if isinstance(left, list) and isinstance(right, list):
+        return len(left) == len(right) and all(same_poses(a, b) for a, b in zip(left, right))
+    if isinstance(left, dict) and isinstance(right, dict):
+        return left.keys() == right.keys() and all(same_poses(left[k], right[k]) for k in left)
+    return left == right
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--check', action='store_true')
     args = parser.parse_args()
     result = encoded(generate(json.loads(PATH.read_text())))
     if args.check:
-        if result != PATH.read_text(): raise SystemExit('Common constructs differ from source-datum regeneration')
+        if not same_poses(json.loads(result), json.loads(PATH.read_text())):
+            raise SystemExit('Common constructs differ from source-datum regeneration')
     else: PATH.write_text(result)
 
 

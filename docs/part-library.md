@@ -163,7 +163,10 @@ conflicting definitions are rejected. A changed construct gets a new version ID.
 Old v1/v2 IDs retain immutable definitions. The catalogue recommends the new
 guard/archer poses and plate-free v2 people/cars. Regenerate/check poses using
 `python3 scripts/update-common-constructs.py --check`; hand datums come from the
-same reviewed connector definitions as runtime inference. The castle repair helper
+same reviewed connector definitions as runtime inference.
+The regeneration check tolerates only 1e-12 numeric differences from platform
+`libm` rounding; it does not rewrite the stored immutable poses or relax metadata.
+The castle repair helper
 `scripts/repair-castle-garrison.py` prepares an explicitly local preview, matches
 old components by exact occurrence pose, retains architecture/flag identities,
 and uses elevated guard slots for archers. It never treats a failed static
