@@ -216,10 +216,11 @@ impl SharedWorlds {
         tx.watch(&OctreePath::new(Vec::new())?).await?;
         let base = tx.base_id().clone();
         let snapshot = repo.accepted_snapshot("main", &base).await?;
-        let mut metadata: Metadata = snapshot
+        let metadata: Metadata = snapshot
             .get(&root(2))
             .await?
             .context("Missing world metadata")?;
+        metadata.require_current_cells()?;
         let mut header: spatial::BlockHeader = snapshot
             .get(&spatial::directory(coord))
             .await?
@@ -289,12 +290,6 @@ impl SharedWorlds {
         }
         header.packed = true;
         tx.put(&spatial::directory(coord), &header).await?;
-        // Layout 3 is a writer fence: older layout-2-only servers reject it,
-        // rather than editing canonical pieces without maintaining these pages.
-        if metadata.layout < 3 {
-            metadata.layout = 3;
-            tx.put(&root(2), &metadata).await?;
-        }
         let policy_hash = snapshot
             .value_id(&root(0))
             .await?

@@ -4,6 +4,7 @@ use ergo_world::{
     geometry::{Mesh, fallback_mesh},
     ldraw::{self, Document, brick_from_reference},
 };
+use sha2::{Digest, Sha256};
 use std::{
     collections::BTreeMap,
     io::{Cursor, Read},
@@ -168,6 +169,29 @@ pub fn import_ldraw(
     })
 }
 
+/// A client cannot move a specialty part's visible hand/bore while retaining the
+/// trusted catalogue connector datums. Verify the complete pinned source stream.
+pub(crate) fn validate_catalogue_mesh(mesh: &Mesh) -> Result<()> {
+    if let Some(entry) = ergo_world::part_library::get(&mesh.part)
+        && entry.catalogue.size.is_none()
+    {
+        let expected = entry
+            .vertex_hash
+            .as_ref()
+            .context("Catalogue geometry fingerprint is missing")?;
+        let mut hash = Sha256::new();
+        for value in &mesh.vertices {
+            hash.update(ergo_world::geometry::vertex_bytes(*value));
+        }
+        ensure!(
+            mesh.quality == "source" && format!("{:x}", hash.finalize()) == *expected,
+            "Catalogue geometry mismatch for {}: registered attachments require the pinned source geometry",
+            mesh.part
+        );
+    }
+    Ok(())
+}
+
 pub fn validate_export(scene: &mut WorldExport) -> Result<()> {
     ensure!(
         !scene.name.trim().is_empty() && scene.name.chars().count() <= 120,
@@ -218,6 +242,7 @@ pub fn validate_export(scene: &mut WorldExport) -> Result<()> {
             vertices <= 4_000_000 && mesh.vertices.iter().all(|n| n.is_finite()),
             "Invalid or excessive geometry"
         );
+        validate_catalogue_mesh(mesh)?;
         let bounds = mesh
             .vertices
             .chunks_exact(9)

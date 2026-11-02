@@ -181,7 +181,7 @@ async fn packed_pages_track_appearance_moves_deletions_and_historical_snapshots(
 }
 
 #[tokio::test]
-async fn legacy_block_backfill_changes_only_the_read_projection() {
+async fn unpacked_current_block_backfill_changes_only_the_read_projection() {
     let service = service();
     let (head, imported) = seeded(&service, scene(100.)).await;
     let id = &imported.pieces[&1];
@@ -189,9 +189,6 @@ async fn legacy_block_backfill_changes_only_the_read_projection() {
     let coord = *original.replicas.iter().next().unwrap();
     let repo = service.repo(&head.id).unwrap();
     let mut tx = repo.begin("main").await.unwrap();
-    let mut metadata: Metadata = tx.get(&root(2)).await.unwrap().unwrap();
-    metadata.layout = 2;
-    tx.put(&root(2), &metadata).await.unwrap();
     let mut header: spatial::BlockHeader =
         tx.get(&spatial::directory(coord)).await.unwrap().unwrap();
     header.packed = false;
@@ -213,7 +210,7 @@ async fn legacy_block_backfill_changes_only_the_read_projection() {
             .unwrap()
             .unwrap()
             .layout,
-        3
+        4
     );
     assert_eq!(after.value_id(&entity_path(3, id)).await.unwrap(), before);
     assert_eq!(
@@ -305,9 +302,9 @@ async fn cold_packed_block_loading_reduces_object_store_gets_without_changing_ge
         d.add(
             "3003",
             19,
-            100. + (index % 64) as f64 * 3.,
+            (index % 64) as f64 * 2.,
             0.,
-            100. + (index / 64) as f64 * 3.,
+            (index / 64) as f64 * 2.,
         );
     }
     let mut data = scene(100.);

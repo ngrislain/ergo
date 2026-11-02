@@ -343,12 +343,13 @@ impl SharedWorlds {
             .get_limited(&root(2), self.view_limits.bytes)
             .await?
             .context("Missing world metadata")?;
+        metadata.require_current_cells()?;
         anyhow::ensure!(
             metadata.id.as_deref().is_none_or(|stored| stored == id),
             "Configured sandbox ID does not match the stored namespace"
         );
         anyhow::ensure!(
-            [2, 3].contains(&metadata.layout),
+            metadata.layout == 4,
             "Only current paged shared records are supported"
         );
         let key = ViewKey {
@@ -543,6 +544,7 @@ async fn build(
         .get_limited(&root(2), key.read_bytes)
         .await?
         .context("Missing world metadata")?;
+    metadata.require_current_cells()?;
     let mut ids = BTreeSet::new();
     let mut preloaded = BTreeMap::<ContentId, Piece>::new();
     let mut remaining = key

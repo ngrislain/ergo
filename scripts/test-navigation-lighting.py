@@ -24,7 +24,7 @@ def daylight_projection(before, after):
         assert math.dist(a, b) < 1e-6, ('Sun shadow coverage changed', before, after)
     # Entering walk may lower the eye, but the light footprint must stay in the
     # same world position. Only whole-cell floating-origin shifts are permitted.
-    for axis, pitch in enumerate([1024., 1228.8, 1024.]):
+    for axis, pitch in enumerate([128., 153.6, 128.]):
         delta = after['light_position'][axis] - before['light_position'][axis]
         assert abs(delta - round(delta / pitch) * pitch) < .005, ('Sun footprint jumped', delta)
 

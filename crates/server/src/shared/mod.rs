@@ -16,6 +16,7 @@ mod model;
 pub(crate) mod pacing;
 mod paged;
 mod read_cache;
+mod resize;
 mod retention;
 mod spatial;
 #[cfg(test)]
@@ -315,7 +316,8 @@ impl SharedWorlds {
             name: request.name,
             geo: request.geo,
             model,
-            layout: 3,
+            layout: 4,
+            cell_size: ergo_world::BLOCK_SIZE as u32,
         };
         let policy = Policy {
             owner: actor.into(),
@@ -365,10 +367,11 @@ impl SharedWorlds {
         } else {
             current
         };
-        let metadata = snapshot
+        let metadata: Metadata = snapshot
             .get_limited(&root(2), self.limits.bytes)
             .await?
             .context("Missing world metadata")?;
+        metadata.require_current_cells()?;
         let policy = if revision.is_some() {
             snapshot
                 .get_limited(&root(0), self.limits.bytes)

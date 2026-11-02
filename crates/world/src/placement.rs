@@ -37,6 +37,36 @@ pub fn snap_translation(bounds: Aabb, translation: DVec3) -> DVec3 {
     .map(|v| if v.abs() < 1e-9 { 0. } else { v })
 }
 
+/// Register the lowest receiving interface when one exists. Decorative tools or
+/// rounded foot envelopes must not displace an already aligned standing model.
+pub fn snap_bricks_translation<'a>(
+    bricks: impl IntoIterator<Item = &'a crate::Brick>,
+    translation: DVec3,
+) -> DVec3 {
+    let bricks: Vec<_> = bricks.into_iter().collect();
+    let Some(bounds) = bricks.iter().map(|b| b.bounds).reduce(Aabb::union) else {
+        return translation;
+    };
+    let mut corner = DVec3::new(bounds.min.x, bounds.min.y, bounds.max.z);
+    for brick in &bricks {
+        if (brick.bounds.min.y - bounds.min.y).abs() > 1e-5
+            || (crate::physical::metric_transform(brick.transform).y_axis - DVec3::Y).length()
+                > 1e-7
+        {
+            continue;
+        }
+        if let Some(grid) = crate::part_profiles::receiving_grid(&brick.part) {
+            let point = brick.position
+                + brick.transform * DVec3::new(grid.first[0], grid.bottom, grid.first[1]);
+            corner.x = point.x - 0.5;
+            corner.z = point.z - 0.5;
+            break;
+        }
+    }
+    (translation + snap_point(corner + translation) - (corner + translation))
+        .map(|v| if v.abs() < 1e-9 { 0. } else { v })
+}
+
 /// Translate all poses and dependent frames coherently, retaining a current
 /// model hierarchy. Callers enforce edit permissions/anchor restrictions.
 pub fn translate_scene(scene: &mut WorldExport, delta: DVec3) -> Result<()> {
@@ -63,16 +93,7 @@ pub fn translate_scene(scene: &mut WorldExport, delta: DVec3) -> Result<()> {
 }
 
 pub fn snap_scene(scene: &mut WorldExport) -> Result<DVec3> {
-    let bounds = scene
-        .bricks
-        .iter()
-        .map(|b| {
-            scene.meshes.get(&b.part).map_or(b.bounds, |mesh| {
-                body_bounds(mesh).transformed(b.transform, b.position)
-            })
-        })
-        .reduce(Aabb::union);
-    let delta = bounds.map_or(DVec3::ZERO, snapping_delta);
+    let delta = snap_bricks_translation(&scene.bricks, DVec3::ZERO);
     translate_scene(scene, delta)?;
     Ok(delta)
 }

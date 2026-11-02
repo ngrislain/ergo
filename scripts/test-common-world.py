@@ -197,7 +197,7 @@ with tempfile.TemporaryDirectory(prefix="ergo-common-") as directory:
             page.wait_for_function("old=>{const e=document.querySelector('.camera-gps strong');return e.dataset.latitude!==old[0]||e.dataset.longitude!==old[1]}",arg=before)
             page.keyboard.up("ArrowUp")
             assert page.locator(".reference-origin strong").inner_text()==origin,"The coordinate reference must not follow the camera"
-            page.wait_for_function("()=>{const p=JSON.parse(document.querySelector('#world-canvas').dataset.cameraPosition);const e=document.querySelector('.camera-gps strong');return Math.abs(Number(e.dataset.latitude)-(48.8566+p[1]/(3600*1024)))<1e-10&&Math.abs(Number(e.dataset.longitude)-(2.3522+p[0]/(3600*1024)))<1e-10}")
+            page.wait_for_function("()=>{const p=JSON.parse(document.querySelector('#world-canvas').dataset.cameraPosition);const e=document.querySelector('.camera-gps strong');return Math.abs(Number(e.dataset.latitude)-(48.8566+p[1]/(3600*128)))<1e-10&&Math.abs(Number(e.dataset.longitude)-(2.3522+p[0]/(3600*128)))<1e-10}")
             page.evaluate("dispatchEvent(new PageTransitionEvent('pagehide'))")
             for _ in range(100):
                 status,saved=helpers.http(url+"/api/user-position",token=tokens["alice"])

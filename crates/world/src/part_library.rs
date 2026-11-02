@@ -19,6 +19,12 @@ pub struct Part {
     pub aliases: Vec<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub profile_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub set_count: Option<u32>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub nominal: Option<crate::part_profiles::Nominal>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub connectors: Vec<crate::attachments::Connector>,
 }
 
 #[derive(Debug, Deserialize, Serialize)]
@@ -139,8 +145,53 @@ mod tests {
                 assert_eq!(crate::catalog::canonical_part(alias), part.id);
             }
             assert_eq!(crate::physical::mass_kg(&part.id).unwrap(), part.mass_kg);
+            let body = crate::geometry::nominal_body_bounds(&part.id).unwrap();
+            for port in &part.connectors {
+                let start = glam::DVec3::from_array(port.start);
+                let end = glam::DVec3::from_array(port.end);
+                assert!(start.is_finite() && end.is_finite() && (end - start).length() > 1e-6);
+                assert!(port.radius.is_finite() && port.radius > 0. && port.inset >= 0.);
+                assert!(port.inset * 2. < (end - start).length());
+                if let Some(key) = port.key {
+                    let key = glam::DVec3::from_array(key);
+                    assert!(
+                        key.is_finite() && key.length() > 0. && key.dot(end - start).abs() < 1e-8
+                    );
+                }
+                let c = crate::ldraw::conversion();
+                let axis = (end - start).normalize();
+                let radial = (glam::DVec3::ONE - axis * axis)
+                    .max(glam::DVec3::ZERO)
+                    .map(f64::sqrt)
+                    * port.radius;
+                for point in [start, end] {
+                    assert!(
+                        body.expanded(crate::attachments::PORT_OVERHANG).contains(
+                            crate::Aabb::new(point - radial, point + radial)
+                                .transformed(c, glam::DVec3::ZERO)
+                        ),
+                        "{} connector exceeds the server search halo",
+                        part.id
+                    );
+                }
+            }
         }
-        assert_eq!(all().len(), 61);
-        assert_eq!(rectangular, 32);
+        assert_eq!(all().len(), 124);
+        assert_eq!(rectangular, 44);
+        for id in [
+            "2780.dat",
+            "3700.dat",
+            "32278.dat",
+            "3705.dat",
+            "3713.dat",
+            "4600.dat",
+            "3820.dat",
+            "3837.dat",
+        ] {
+            let part = &get(id).unwrap().catalogue;
+            assert!(part.set_count.is_some_and(|sets| sets > 7));
+            assert!(!part.connectors.is_empty());
+            assert!(crate::geometry::nominal_body_bounds(id).is_some());
+        }
     }
 }

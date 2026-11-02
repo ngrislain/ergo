@@ -73,12 +73,34 @@ pub struct Metadata {
     pub model: ContentId,
     #[serde(deserialize_with = "current_layout")]
     pub layout: u32,
+    #[serde(deserialize_with = "current_cell_size")]
+    pub cell_size: u32,
+}
+fn current_cell_size<'de, D: serde::Deserializer<'de>>(deserializer: D) -> Result<u32, D::Error> {
+    let size = u32::deserialize(deserializer)?;
+    if size != ergo_world::BLOCK_SIZE as u32 {
+        return Err(serde::de::Error::custom(
+            "Incompatible cell size; migrate stored blocks to 128-unit cells",
+        ));
+    }
+    Ok(size)
+}
+impl Metadata {
+    pub fn require_current_cells(&self) -> Result<()> {
+        ensure!(
+            self.cell_size == ergo_world::BLOCK_SIZE as u32,
+            "World uses {}-unit cells; run the operator shared-resize-cells migration before using {}-unit cells",
+            self.cell_size,
+            ergo_world::BLOCK_SIZE
+        );
+        Ok(())
+    }
 }
 fn current_layout<'de, D: serde::Deserializer<'de>>(deserializer: D) -> Result<u32, D::Error> {
     let layout = u32::deserialize(deserializer)?;
-    if ![2, 3].contains(&layout) {
+    if layout != 4 {
         return Err(serde::de::Error::custom(
-            "Only shared spatial layouts 2 and 3 are supported",
+            "Only spatial layout 4 is supported; migrate old blocks",
         ));
     }
     Ok(layout)

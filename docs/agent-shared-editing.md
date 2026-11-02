@@ -3,7 +3,7 @@
 There is one **public Ergo Sandbox**. Anyone can view it; signed-in users can
 edit it, subject to pacing and physical validation. Current MCP clients commit
 accepted edits to that same S3-backed world automatically. A working file is a
-cache, not a private world. Use MCP **v0.5.17** for canonical part/construct references and building techniques,
+cache, not a private world. Use MCP **v0.5.18** for current cells, attachment checks and canonical part/construct references,
 coherent grid snapping, proper-isometry checks, per-piece stability diagnostics,
 explicit estimated connector tests and long shared operations.
 
@@ -43,10 +43,16 @@ vertical seams. This is a construction rule, not a substitute for checking suppo
 and measured connections or a guarantee of solidity by itself.
 
 Place and move complete models coherently on the stud/plate grid. The client
-snaps the nominal union corner, preserving relative poses; the server separately
+snaps the lowest receiving-grid datum, or the nominal union corner as fallback,
+preserving relative poses; the server separately
 rejects off-grid grounded footprints and scale/shear/reflection. Every hierarchy
 instance must be a proper metric isometry, even if nested invalid scales would
 cancel in the final part pose. Camera coordinates are not placement coordinates.
+
+Use the plate-free v2 car/minifigure/guard references. Their tyres or feet rest
+directly on the existing surface; do not add display plates, pedestals or shield
+support tiles. Equipment uses reviewed grip connections, with measured capacities
+required when publication consumes joint strength.
 
 ## Start from the viewer's current position
 
@@ -109,10 +115,10 @@ sandbox's geographic reference.
 
 For GPS, first use the viewer's **Go to a location** dialog, then the handoff.
 The conversion is documented in [ground and coordinates](ground-and-coordinates.md):
-`x = Δlongitude × 3600 × 1024 / arcseconds_per_block`,
-`y = Δlatitude × 3600 × 1024 / arcseconds_per_block`, with longitude wrapping.
+`x = Δlongitude × 3600 × 128 / arcseconds_per_block`,
+`y = Δlatitude × 3600 × 128 / arcseconds_per_block`, with longitude wrapping.
 For example, in the default Paris reference, `[128,64,0]` is approximately
-48.8566173611° N, 2.3522347222° E. Viewer `/app?x=...&y=...&z=...` links use
+48.8567388889° N, 2.3524777778° E. Viewer `/app?x=...&y=...&z=...` links use
 **block indices**; `/login` handoff coordinates and MCP positions use construction
 units. Do not interchange them.
 

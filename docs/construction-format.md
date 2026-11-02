@@ -13,7 +13,7 @@ an ordered array of instances. An instance contains:
 - `target`: `{kind: "part" | "definition" | "construct", id: string}`. A part ID
   identifies the canonical catalogue description; a definition ID identifies a
   local reusable definition. A construct ID selects an immutable versioned common
-  model such as `minifigure-v1` or `classic-car-v1` from [the shared library](part-library.md).
+  model such as `minifigure-v2` or `classic-car-v2` from [the shared library](part-library.md).
 - `transform`: a finite row-major 4×4 affine matrix, using column vectors.
 - Optional `color`: a palette/custom color. Omit it to inherit the enclosing
   instance color; no external-format inheritance code is stored in this field.

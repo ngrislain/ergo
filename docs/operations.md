@@ -56,12 +56,12 @@ prove an asset or image was published.
 
 ```sh
 gh run list --repo ngrislain/ergo --workflow release.yml --limit 5
-gh release view v0.5.17 --repo ngrislain/ergo
+gh release view v0.5.18 --repo ngrislain/ergo
 ```
 
 Verify the public tarball version/checksum, consumer install and actual MCP smoke
 before changing the displayed installation source. The verified npm release is
-`@ngrislain/ergo-mcp@0.5.17`; GitHub also hosts its identical complete tarball.
+`@ngrislain/ergo-mcp@0.5.18`; GitHub also hosts its identical complete tarball.
 
 Registry CI uses the approved npm trusted publisher for `ngrislain/ergo` /
 `release.yml`, with `ERGO_NPM_PUBLISH=true`. Run
@@ -72,16 +72,16 @@ version/integrity before switching `ERGO_MCP_PACKAGE` to the npm package spec;
 see [npmjs publication](distribution.md#npmjs-trusted-publication).
 
 When verifying an upgrade in an existing browser, fetch the current application
-JavaScript/WASM assets as well as checking `/api/config`. A hard reload can bypass
-an old HTTP code-cache entry while retaining IndexedDB/CacheStorage model data for
-verified migration. Do not treat old application code as evidence that model
-storage is corrupt or clear the user's model state just to upgrade the viewer.
+JavaScript/WASM assets as well as checking `/api/config`. The 128-cell release
+deletes incompatible IndexedDB/CacheStorage data and reloads app windows; it does
+not lazily import old packets. Accepted world storage is separately migrated with
+the [atomic cell migration](cells-and-migration.md), never deleted as a cache.
 
 After publication, set the public Pages variable and rebuild:
 
 ```sh
 gh variable set ERGO_MCP_PACKAGE --repo ngrislain/ergo \
-  --body '@ngrislain/ergo-mcp@0.5.17'
+  --body '@ngrislain/ergo-mcp@0.5.18'
 gh workflow run pages.yml --repo ngrislain/ergo --ref main
 ```
 

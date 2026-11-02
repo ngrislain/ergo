@@ -23,24 +23,37 @@ impl GroundSurface {
         );
         Ok(())
     }
-    /// Bilinear neighbour blend. Coordinates are east/north offsets in studs.
-    /// The renderer uses the same field, snapped to each stud centre.
+    /// Smooth categorical weights round region corners while the winning
+    /// material remains one exact standard colour. Studs evaluate at centres.
     pub fn rgb_at(&self, east: f64, north: f64) -> u32 {
         let scale = (SAMPLE_GRID_SIZE - 1) as f64 / crate::BLOCK_SIZE;
         let x = east.clamp(0., crate::BLOCK_SIZE) * scale;
         let y = north.clamp(0., crate::BLOCK_SIZE) * scale;
         let x0 = (x.floor() as usize).min(SAMPLE_GRID_SIZE - 2);
         let y0 = (y.floor() as usize).min(SAMPLE_GRID_SIZE - 2);
-        blend_rgb(
-            [
-                self.rgb[y0 * SAMPLE_GRID_SIZE + x0],
-                self.rgb[y0 * SAMPLE_GRID_SIZE + x0 + 1],
-                self.rgb[(y0 + 1) * SAMPLE_GRID_SIZE + x0],
-                self.rgb[(y0 + 1) * SAMPLE_GRID_SIZE + x0 + 1],
-            ],
-            x - x0 as f64,
-            y - y0 as f64,
-        )
+        let u = x - x0 as f64;
+        let v = y - y0 as f64;
+        let colors = [
+            self.rgb[y0 * SAMPLE_GRID_SIZE + x0],
+            self.rgb[y0 * SAMPLE_GRID_SIZE + x0 + 1],
+            self.rgb[(y0 + 1) * SAMPLE_GRID_SIZE + x0],
+            self.rgb[(y0 + 1) * SAMPLE_GRID_SIZE + x0 + 1],
+        ]
+        .map(standard_ground_rgb);
+        let weights = [(1. - u) * (1. - v), u * (1. - v), (1. - u) * v, u * v];
+        let mut best = (0., u32::MAX);
+        for color in colors {
+            let weight = colors
+                .iter()
+                .zip(weights)
+                .filter(|(c, _)| **c == color)
+                .map(|(_, w)| w)
+                .sum::<f64>();
+            if weight > best.0 || (weight == best.0 && color < best.1) {
+                best = (weight, color);
+            }
+        }
+        best.1
     }
 }
 
@@ -57,6 +70,7 @@ pub fn blend_rgb(rgb: [u32; 4], x: f64, y: f64) -> u32 {
 #[serde(try_from = "GroundWire")]
 pub struct GroundBlock {
     pub schema: u32,
+    pub cell_size: u32,
     pub coord: BlockCoord,
     pub bricks: Vec<Brick>,
     /// Representative palette colour, also used for legacy/fallback records.
@@ -75,6 +89,7 @@ impl GroundBlock {
     pub fn fallback(x: i64, y: i64, reason: String) -> Self {
         Self {
             schema: SCHEMA_VERSION,
+            cell_size: crate::BLOCK_SIZE as u32,
             coord: BlockCoord::from([x, y, 0]),
             bricks: Vec::new(),
             color: 71,
@@ -94,6 +109,7 @@ impl GroundBlock {
         }
         anyhow::ensure!(
             self.schema == SCHEMA_VERSION
+                && self.cell_size == crate::BLOCK_SIZE as u32
                 && self.coord.1 == 0
                 && self.bricks.is_empty()
                 && COLORS.iter().any(|(code, _)| *code == self.color)
@@ -111,6 +127,7 @@ impl GroundBlock {
 #[serde(deny_unknown_fields)]
 struct GroundWire {
     schema: u32,
+    cell_size: u32,
     coord: BlockCoord,
     bricks: Vec<Brick>,
     color: u32,
@@ -130,6 +147,7 @@ impl TryFrom<GroundWire> for GroundBlock {
     fn try_from(w: GroundWire) -> Result<Self, String> {
         let block = Self {
             schema: w.schema,
+            cell_size: w.cell_size,
             coord: w.coord,
             bricks: w.bricks,
             color: w.color,
@@ -208,6 +226,16 @@ pub fn nearest_color(rgb: u32) -> u32 {
 }
 
 pub const TERRAIN_COLORS: &[u32] = &[1, 2, 288, 71, 72, 14, 15, 70, 19, 28];
+/// Re-project legacy blended caches at display time as well as new samples.
+pub fn standard_ground_rgb(rgb: u32) -> u32 {
+    static PALETTE: std::sync::LazyLock<Vec<u32>> =
+        std::sync::LazyLock::new(|| TERRAIN_COLORS.iter().map(|code| color_rgb(*code)).collect());
+    if PALETTE.contains(&rgb) {
+        rgb
+    } else {
+        color_rgb(nearest_terrain_color(rgb))
+    }
+}
 pub fn nearest_terrain_color(rgb: u32) -> u32 {
     let sample = lab(rgb);
     *TERRAIN_COLORS
@@ -255,7 +283,7 @@ pub fn map_terrain_color(rgb: u32) -> u32 {
 mod tests {
     use super::*;
     #[test]
-    fn ground_field_blends_neighbours_and_validates_retained_records() {
+    fn ground_field_uses_only_standard_colours_including_legacy_blended_records() {
         let mut surface = GroundSurface {
             format: "ergo-ground-surface-1".into(),
             rgb: (0..SAMPLE_GRID_SIZE)
@@ -266,10 +294,27 @@ mod tests {
                 .collect(),
         };
         surface.validate().unwrap();
-        assert_eq!(surface.rgb_at(8., 8.), 0x020002);
-        assert_eq!(surface.rgb_at(16., 0.), 0x040000);
-        assert_eq!(surface.rgb_at(0., 1024.), 0x0000ff);
-        assert_ne!(surface.rgb_at(0.5, 0.5), surface.rgb_at(1023.5, 1023.5));
+        let pitch = crate::BLOCK_SIZE / (SAMPLE_GRID_SIZE - 1) as f64;
+        assert_eq!(
+            surface.rgb_at(pitch / 2., pitch / 2.),
+            standard_ground_rgb(0x040004)
+        );
+        assert_eq!(surface.rgb_at(pitch, 0.), standard_ground_rgb(0x040000));
+        assert_eq!(
+            surface.rgb_at(0., crate::BLOCK_SIZE),
+            standard_ground_rgb(0x0000ff)
+        );
+        for x in 0..crate::BLOCK_SIZE as u32 {
+            assert!(
+                TERRAIN_COLORS
+                    .iter()
+                    .any(|c| color_rgb(*c) == surface.rgb_at(x as f64 + 0.5, 512.5))
+            );
+        }
+        assert_ne!(
+            surface.rgb_at(0.5, 0.5),
+            surface.rgb_at(crate::BLOCK_SIZE - 0.5, crate::BLOCK_SIZE - 0.5)
+        );
         let mut block = GroundBlock::fallback(0, 0, "fixture".into());
         block.surface = Some(surface.clone());
         let encoded = serde_json::to_value(&block).unwrap();
@@ -287,6 +332,28 @@ mod tests {
                 .surface
                 .is_none()
         );
+    }
+    #[test]
+    fn categorical_regions_round_corners_without_creating_gradient_colours() {
+        let blue = color_rgb(1);
+        let green = color_rgb(2);
+        let mut surface = GroundSurface {
+            format: "ergo-ground-surface-1".into(),
+            rgb: vec![green; SAMPLE_GRID_SIZE * SAMPLE_GRID_SIZE],
+        };
+        surface.rgb[0] = blue;
+        let pitch = crate::BLOCK_SIZE / (SAMPLE_GRID_SIZE - 1) as f64;
+        assert_eq!(surface.rgb_at(pitch * 0.2, pitch * 0.2), blue);
+        // A nearest-sample rectangle would still be blue here. Aggregating the
+        // three green corners yields a rounded categorical boundary instead.
+        assert_eq!(surface.rgb_at(pitch * 0.3, pitch * 0.3), green);
+        for x in 0..128 {
+            for y in 0..128 {
+                assert!(
+                    [blue, green].contains(&surface.rgb_at(f64::from(x) + 0.5, f64::from(y) + 0.5))
+                );
+            }
+        }
     }
     #[test]
     fn map_water_and_land_use_the_requested_palette() {

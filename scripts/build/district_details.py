@@ -15,9 +15,9 @@ def rooted(model,part,color,position,rotation=None):
 
 def person(torso=321,legs=272,hair=0):
     if legs==272 and hair==0:
-        model=Model();model.construct('minifigure-v1',color=torso);return model
+        model=Model();model.construct('minifigure-v2',color=torso);return model
     model=Model();colours={'3815c01.dat':legs,'76382p00.dat':torso,'3901.dat':hair}
-    for part in CONSTRUCTS['minifigure-v1']['parts']:
+    for part in CONSTRUCTS['minifigure-v2']['parts']:
         model.definitions['main'].append(instance('part',part['part'],part['position'],colours.get(part['part'],part.get('color'))))
     return model
 
@@ -40,7 +40,7 @@ def lamppost():
     return model
 
 
-def car(color=4,pedestal=False):
+def car(color=4):
     """Classic Town car adapted from the official LEGO 6505 OMR model.
 
     Robert Paciorek [bercik], https://library.ldraw.org/omr/sets/610 ; model
@@ -52,8 +52,6 @@ def car(color=4,pedestal=False):
     cabin/roll-bar silhouette rather than adding an oversized flat plate roof.
     Rolling/steering mechanics and calibrated axle retention are not claimed.
     """
-    model=Model();base=0
-    if pedestal:
-        model.part('3035',71,0,0,0);model.floor(8,4,72,0,0,1/3);base=2/3
-    model.construct('classic-car-v1',height=base,color=color)
+    model=Model()
+    model.construct('classic-car-v2',color=color)
     return model

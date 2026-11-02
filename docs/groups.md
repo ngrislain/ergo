@@ -47,11 +47,12 @@ the authority for attachment. A grouped assembly can fall apart in simulation.
 
 Group transforms are atomic CAD edits. They validate the **destination** body
 boxes and floor. A rotation is not a continuously swept physics trajectory;
-conservative world AABBs may reject some otherwise valid rotated arrangements.
+world AABBs are broad-phase bounds; oriented-box SAT and finite registered
+connector clearances check reviewed nominal geometry at the destination.
 Dynamic dragging is handled by the separate client constraint solver.
 
-After applying a CAD rotation/translation, the destination nominal union corner
-is snapped to the stud/plate grid with one additional translation. All descendant
+After applying a CAD rotation/translation, the lowest receiving-grid datum (or
+nominal union corner as fallback) is snapped with one additional translation. All descendant
 poses, pivots and internal joint frames move together; members are never rounded
 independently. The server still checks grounded footprints and all metric poses
 before accepting the edit.

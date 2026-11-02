@@ -1,7 +1,7 @@
 # Paging, history and maintenance
 
 All hosted operations target the one configured Sandbox. Current storage requires
-transaction format 3, indexed accepted history and spatial layout 2 or 3.
+transaction format 3, indexed accepted history and spatial layout 4 with 128-unit cells.
 
 ## Bounded reads
 
@@ -60,13 +60,13 @@ for the source-built command and required storage configuration.
 
 Source-built servers after v0.5.11 support
 `shared-pack-block WORLD_ID X Y Z`. This is an explicit storage-only commit, not
-a read-cache warm-up: it packs one allocated block and, when necessary, promotes
-Metadata from spatial layout 2 to layout 3. Use existing storage credentials and
-the same read budgets as the viewer. A whole-root watch rejects concurrent changes.
+a read-cache warm-up: it packs one allocated current-format cell. Use existing
+storage credentials and the same read budgets as the viewer. A whole-root watch rejects concurrent changes.
 No geometry, births, ownership, geographic reference or frozen physics is changed.
-Stop old writers before promotion and keep all subsequent writers page-aware;
-layout-2-only servers reject the new metadata instead of leaving stale projections.
-Other legacy blocks retain the reference fallback until explicitly packed.
+Only layout 4 and the 128-unit cell marker are accepted. Run
+`shared-resize-cells WORLD_ID` for the [old-block migration](cells-and-migration.md)
+before serving an old world; incompatible caches are deleted. Other current
+unpacked cells use the reference reader until explicitly packed.
 
 ### Current history installation
 

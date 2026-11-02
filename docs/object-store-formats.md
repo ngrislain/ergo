@@ -15,7 +15,7 @@ Only current persisted formats are supported by the application.
   hashing always uses the actual stored bytes.
 - Public coordinate `schema: 2` is east/north/up construction space. X/Y units are
   8 mm and Z units are 9.6 mm. Bounds are `{min:[x,y,z],max:[x,y,z]}`.
-- Transaction `format: 3`, spatial layouts `2` (legacy) and `3` (packed reads), and the named Ergo model/part/
+- Transaction `format: 3`, active spatial layout `4` (128-unit cells), and the named Ergo model/part/
   construction formats are independent version domains.
 - Logical octree paths are arrays of octants 0–7 (maximum depth 192), not S3 keys.
   Sets/ordered sequences encode as arrays; CBOR integer map keys remain integers.
@@ -35,8 +35,8 @@ client/server, not copied into each S3 construction as another set of part meshe
 - A standard **part ID** such as `3003.dat` selects one canonical description.
   Official identity aliases resolve to that record. A **library revision** pins
   its source/metadata, baker and full vertex fingerprint; it is not a world CID.
-- A **common construct ID** such as `classic-car-v1` selects reusable component
-  placements. A native model stores `{kind:"construct",id:"classic-car-v1"}` plus
+- A **common construct ID** such as `classic-car-v2` selects reusable component
+  placements. A native model stores `{kind:"construct",id:"classic-car-v2"}` plus
   transform/colour, rather than embedding the car's full definition per copy.
 - A placed **occurrence** has an independent local ID and global Birth CID.
   Materialized Piece records and spatial references still track its component
@@ -96,7 +96,7 @@ all 256 hash bits, padded by two bits and split into 86 octants.
 - **`[0]` Policy:** `{owner,grants,keep_last,authenticated_editing}`. Grants contain
   `{user,regions}`. Retention is optional; permissions come from this policy and
   authenticated server identity, not free-form author strings.
-- **`[2]` Metadata:** `{id?,name,geo,model,layout:2|3}`. Geo is
+- **`[2]` Metadata:** `{id?,name,geo,model,layout:4,cell_size:128}`. Geo is
   `{latitude,longitude,arcseconds_per_block}`. Model links the frozen physical model.
   The record contains neither a world-sized piece list nor a global piece counter.
 - **`[3]+entity-ID` Piece:** `{id,assembly,local_id,geometry,mesh,replicas}`. The stable
@@ -172,18 +172,18 @@ The collector follows typed tree/history links and application blob links in
 Packed-page entries additionally retain the embedded Piece's Birth, assembly and
 mesh links. Old accepted roots keep their original projection versions.
 
-## `cache/read-views/v1/<hash>.cbor`: discardable read packet
+## `cache/read-views/cell128-v1/<hash>.cbor`: discardable read packet
 
-Discardable `cache/read-views/v1/*.cbor` objects use a separate compressed read
-packet, not a canonical world record. Its envelope has `format`, `key`
+Discardable `cache/read-views/cell128-v1/*.cbor` objects use a separate compressed read
+packet, not a canonical world record. Its envelope has `format:2`, `key`
 (world/revision/cell/limits), `logical_read_bytes`, `decoded_bytes`, `checksum` and
 gzip bytes. Authorization/revision checks and bounded decompression precede use;
 see [loading caches](loading-and-cache.md). Removing this cache does not remove
 accepted history or geometry.
 
-## `read-cache/metadata-v1/<world>/<00..15>.json`: catalogue cache
+## `read-cache/metadata-cell128-v1/<world>/<00..15>.json`: catalogue cache
 
-Uncompressed UTF-8 JSON `{format:1,etag,revision,checksum,text}`. `text` is an encoded
+Uncompressed UTF-8 JSON `{format:2,etag,revision,checksum,text}`. `text` is an encoded
 JSON response string, not a nested response object. Its SHA-256 checksum covers its
 UTF-8 bytes; both the envelope and decoded response must identify the expected
 accepted revision. Sixteen hash-selected slots are reused per world. Response text
@@ -226,20 +226,21 @@ seven days.
 
 ## `ground/blocks/<signature>/<east>_<north>.cbor`: GroundBlock
 
-CBOR `{schema:2,coord,bricks,color,surface?,sample_rgb,source,attribution,attribution_url,
+CBOR `{schema:2,cell_size:128,coord,bricks,color,surface?,sample_rgb,source,attribution,attribution_url,
 generated_at,source_tiles,fallback_reason}`. Public coord is `[east,north,0]` and
 bricks is empty. `surface` is `{format:"ergo-ground-surface-1",rgb:[...]}` with
 exactly 65×65 unsigned 24-bit sRGB values, row-major east/north including cell
-boundaries. It supplies neighbour-blended per-stud colours; it is not a list of
+boundaries. Categorical corner weights select one exact standard swatch per stud,
+with rounded region borders and no RGB gradients. It is not a list of
 geometry instances. `color` is a representative palette code; `sample_rgb` is
 the optional average source RGB. Source/attribution explain the derived field.
 
 The configuration signature covers geographic origin/resolution, provider/template,
 attribution, enabled state, palette, grid size and the sampling algorithm. It is not a hash
 of the payload. Successful cells have a seven-day TTL; fallback cells retry after
-60 seconds. The new signature separates generated fields from old uniform caches.
-Old records without `surface` remain readable; the live viewer refreshes those
-instead of treating them as current colour fields. Unknown field formats, wrong
+60 seconds. Cell size and categorical algorithm are part of the signature.
+Incompatible old-size records are deleted. Current fallback records may omit
+`surface`; there is no old-grid reading mode. Unknown field formats, wrong
 sample counts and values above 0xffffff are rejected. The earlier unversioned
 `colors` grid is still unsupported.
 

@@ -7,7 +7,7 @@ shared Sandbox. The bridge never grants itself acceptance or direct agent S3 acc
 ## Install and configure
 
 ```sh
-npm install --global --ignore-scripts @ngrislain/ergo-mcp@0.5.17
+npm install --global --ignore-scripts @ngrislain/ergo-mcp@0.5.18
 ergo-mcp --login --publish-url https://ergosandbox.com
 ```
 
@@ -80,7 +80,9 @@ expire and are origin/purpose-bound. They are not S3 credentials.
 - `list_bricks` and `inspect_brick` expose actual IDs, poses, bounds, sourced
   masses and contact/constraint metadata.
 - `get_catalog` also lists versioned common-construct IDs. Reference canonical parts
-  and reusable `minifigure-v1`/`classic-car-v1` models rather than copying definitions.
+  and reusable plate-free `minifigure-v2`/`classic-car-v2` models rather than copying definitions.
+  Recorded `set_count` values and hand/wheel/Technic connector endpoints are included
+  where reviewed; endpoint coordinates use public part-local brick units.
   See [the canonical library and source-update workflow](part-library.md).
 
 Gravity reports include `unstable_pieces` with exact IDs/parts, initial/current
@@ -180,8 +182,8 @@ definitions; cancelling parent/child scales are rejected.
 
 See [construction format](construction-format.md) and [groups](groups.md).
 
-Incoming submodels are snapped with one translation of the new pieces' nominal
-union corner. Existing pieces and relative internal poses are preserved. The
+Incoming submodels are snapped with one translation of the lowest receiving-grid
+datum, using the nominal union corner as fallback. Existing pieces and relative internal poses are preserved. The
 server independently rejects off-grid grounded footprints; an internally
 misregistered source model is not repaired by rounding every piece.
 

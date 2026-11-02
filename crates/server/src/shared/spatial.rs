@@ -86,7 +86,7 @@ pub fn record(piece: &Piece, coord: BlockCoord, bounds: Aabb) -> (OctreePath, Sp
     )
 }
 
-/// Layout-2 spatial keys already contain the full birth ID. A bounded visual
+/// Current unpacked spatial keys contain the full birth ID. A bounded visual
 /// enumeration needs that ID, not the separate bounding-box payload.
 pub(super) fn reference_piece(path: &OctreePath, coord: BlockCoord) -> SharedResult<ContentId> {
     let block = block_path(coord);
@@ -190,7 +190,7 @@ impl Working {
                             &BlockHeader {
                                 coord,
                                 paged: true,
-                                packed: self.metadata.layout >= 3,
+                                packed: true,
                             },
                         )
                         .await?;

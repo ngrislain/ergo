@@ -51,11 +51,11 @@ The prebuilt bundle includes native binaries and WASM assets; consumers need
 Node.js 20+ and Chrome/Chromium, not Rust.
 
 ```sh
-npm install --global --ignore-scripts @ngrislain/ergo-mcp@0.5.17
+npm install --global --ignore-scripts @ngrislain/ergo-mcp@0.5.18
 ergo-mcp --login --publish-url https://ergosandbox.com
 ```
 
-The [GitHub Release](https://github.com/ngrislain/ergo/releases/tag/v0.5.17)
+The [GitHub Release](https://github.com/ngrislain/ergo/releases/tag/v0.5.18)
 also provides the verified complete tarball and checksum.
 
 Generate/download a token in the signed-in browser, keep it in a private file,
@@ -93,7 +93,8 @@ brick units. They retain occurrence identities, colors, groups and physical meta
 Imported files are converted at the boundary. Stored assets are
 [Ergo part descriptions](docs/part-catalog.md) and geometry with source attribution.
 One [pinned canonical library](docs/part-library.md), derived from official LDraw
-and BrickLink, supplies standard parts and reusable minifigure/car references,
+and BrickLink, supplies 124 parts, reviewed common-part usage counts, hand/wheel/Technic
+interfaces and plate-free minifigure/car references,
 including [Lion Knights guards and supported genuine Castle pennants](docs/part-library.md#pre-assembled-common-constructs).
 Its compact native pack resolves the complete selected geometry offline.
 
@@ -103,12 +104,14 @@ part/terrain caches, private profiles/positions/plans and operational backups.
 
 ## Coordinates and physical acceptance
 
-Public axes are X east, Y north, Z up. A storage cell is 1024³ brick units;
+Public axes are X east, Y north, Z up. A storage cell is 128 studs × 128 studs ×
+128 bricks high (384 plates); [old indexes are migrated atomically](docs/cells-and-migration.md).
 the default address mapping is one arc-second per horizontal cell. The Paris
 reference is 48.8566° N, 2.3522° E. The reference is fixed; camera GPS is derived
 from your current position. Storage-cell membership is not a physical anchor.
 Virtual baseplates use [OSM-derived per-stud colours](docs/ground-and-coordinates.md),
-blending neighbouring map pixels and agreeing across plate edges. Generated colour
+restricted to exact standard LEGO colours per stud, with rounded categorical
+region borders and no RGB gradients. Generated colour
 fields are small display caches, independent of authored bricks and physics.
 
 Nominal geometry uses 8 mm stud pitch, 9.6 mm brick height and 3.2 mm plate height.

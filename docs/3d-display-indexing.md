@@ -55,7 +55,7 @@ resident shadow casters; camera clipping no longer removes an offscreen caster.
 
 ## Frustum- and fog-bounded streaming
 
-For camera position $\mathbf{c}$ and block side $B=1024$:
+For camera position $\mathbf{c}$ and block side $B=128$:
 
 $$
 \mathbf{k}_c=\left\lfloor\frac{\mathbf{c}}{B}\right\rfloor.

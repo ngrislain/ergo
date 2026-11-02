@@ -39,7 +39,10 @@ pub fn registered_bar_clearance(a: &Brick, b: &Brick, tolerance: f64) -> bool {
 
 pub fn bodies_penetrate(a: &Brick, b: &Brick, tolerance: f64) -> bool {
     let overlap = a.bounds.max.min(b.bounds.max) - a.bounds.min.max(b.bounds.min);
-    overlap.min_element() > tolerance && !registered_bar_clearance(a, b, tolerance)
+    overlap.min_element() > tolerance
+        && !registered_bar_clearance(a, b, tolerance)
+        && !crate::attachments::registered_clearance(a, b, tolerance)
+        && crate::attachments::boxes_penetrate(a, b, tolerance).unwrap_or(true)
 }
 
 pub fn axis_aligned(brick: &Brick) -> bool {

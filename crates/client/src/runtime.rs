@@ -569,13 +569,12 @@ impl LocalClientRuntime {
                         ergo_world::physical::validate_pose(&brick)?;
                         scene.bricks.push(brick);
                     }
-                    if let Some(bounds) = scene.bricks[first..]
-                        .iter()
-                        .map(|b| b.bounds)
-                        .reduce(ergo_world::Aabb::union)
-                    {
+                    if !scene.bricks[first..].is_empty() {
                         snap_delta = if replace_ids.is_empty() {
-                            ergo_world::placement::snapping_delta(bounds)
+                            ergo_world::placement::snap_bricks_translation(
+                                &scene.bricks[first..],
+                                DVec3::ZERO,
+                            )
                         } else {
                             DVec3::ZERO
                         };
@@ -645,15 +644,10 @@ impl LocalClientRuntime {
                 let mut graph = self.scene.joints.clone();
                 graph.extend(constraints::inferred_joints(&self.scene.bricks));
                 let group = constraints::connected_group(selected, &graph);
-                let bounds = self
-                    .scene
-                    .bricks
-                    .iter()
-                    .filter(|b| group.contains(&b.id))
-                    .map(|b| b.bounds)
-                    .reduce(ergo_world::Aabb::union)
-                    .context("Empty selection")?;
-                let delta = ergo_world::placement::snap_translation(bounds, requested_delta);
+                let delta = ergo_world::placement::snap_bricks_translation(
+                    self.scene.bricks.iter().filter(|b| group.contains(&b.id)),
+                    requested_delta,
+                );
                 if delta == DVec3::ZERO {
                     let mut feedback = self.feedback();
                     feedback["working_copy_changed"] = json!(false);

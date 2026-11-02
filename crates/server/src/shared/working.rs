@@ -49,6 +49,7 @@ impl Working {
             .get_limited(&super::address::root(2), limits.bytes)
             .await?
             .context("Missing shared metadata")?;
+        metadata.require_current_cells()?;
         let model: PhysicalModel = tx.blob_limited(&metadata.model, limits.bytes).await?;
         ensure!(
             model.algorithm == 1,
@@ -291,6 +292,7 @@ impl Working {
         }
         let mesh: Mesh = self.tx.blob_limited(id, self.remaining()).await?;
         self.charge(&mesh)?;
+        crate::import::validate_catalogue_mesh(&mesh)?;
         let mesh = Arc::new(mesh);
         self.meshes.insert(id.clone(), mesh.clone());
         Ok(mesh)
@@ -365,7 +367,8 @@ impl Working {
             };
             stack.extend(self.piece_rules(&piece).await?);
             stack.extend(self.external(&piece.id).await?);
-            let bounds = self.brick(&piece, 1).await?.bounds.expanded(halo);
+            let bounds = ergo_world::attachments::bounds(&self.brick(&piece, 1).await?)
+                .expanded(halo + ergo_world::attachments::PORT_OVERHANG);
             stack.extend(self.neighbors(bounds).await?);
         }
         Ok(visited)
@@ -390,7 +393,10 @@ impl Working {
             .position_brick_units
             .max(INFERRED_JOINT_HALO);
         if self
-            .has_spatial_neighbor_excluding(bounds.expanded(halo), ids)
+            .has_spatial_neighbor_excluding(
+                bounds.expanded(halo + 2. * ergo_world::attachments::PORT_OVERHANG),
+                ids,
+            )
             .await?
         {
             return Ok(true);
@@ -433,7 +439,7 @@ impl Working {
             .max(INFERRED_JOINT_HALO);
         self.neighbors(
             Aabb::new(a.position.min(b.position), a.position.max(b.position))
-                .expanded(radius + halo),
+                .expanded(radius + halo + 2. * ergo_world::attachments::PORT_OVERHANG),
         )
         .await?;
         Ok(())
@@ -502,7 +508,7 @@ impl Working {
         let model = self.model.clone();
         Ok(Some(tokio::task::spawn_blocking(move || -> anyhow::Result<_> {
             let pairs: BTreeSet<_> = scene.joints.iter().map(|j| (j.a.min(j.b), j.a.max(j.b))).collect();
-            scene.joints.extend(ergo_world::constraints::inferred_joints(&scene.bricks).into_iter().filter(|j| !pairs.contains(&(j.a.min(j.b), j.a.max(j.b)))));
+            scene.joints.extend(ergo_world::constraints::inferred_joints_with_tolerance(&scene.bricks, model.tolerances.position_brick_units).into_iter().filter(|j| !pairs.contains(&(j.a.min(j.b), j.a.max(j.b)))));
             for joint in &mut scene.joints {
                 joint.break_force=None; joint.break_torque=None; joint.strength_source=None;
             }

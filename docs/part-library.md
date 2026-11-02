@@ -3,8 +3,8 @@
 ## One reproducible library
 
 `crates/world/library/sources.lock.json` is the canonical catalogue used by Rust
-and Python authoring. It contains 61 selected parts: 32 rectangular brick, plate
-and tile shapes, plus 29 source-only architectural, figure and vehicle parts.
+and Python authoring. It contains 124 selected parts: 44 rectangular brick, plate
+and tile shapes, plus 80 source-only architectural, figure, vehicle and Technic parts.
 Names, dimensions, catalogue masses and aliases are read from this registry;
 there are no independent standard-size or standard-mass tables in the generator.
 
@@ -35,7 +35,7 @@ physical-model version or connector calibration.
 
 ## Compact native asset pack
 
-`crates/assets/library/parts.pack` ships the complete selected geometry in **1,066,065
+`crates/assets/library/parts.pack` ships the complete selected geometry in **2,278,268
 bytes**. It concatenates independent deterministic gzip members in canonical part-ID
 order. Each member decodes to one ordinary native Mesh CBOR object; it is not a ZIP
 or a top-level CBOR container. The lock records `asset:{offset,bytes,mesh_hash}` for
@@ -85,21 +85,66 @@ The updater fetches that item's linked catalogue mass and records the complete
 official dependency closure. Existing selections are rejected rather than
 silently overwritten. Subsequent deterministic checks need no `--add-part` flag.
 
+## Common-part selection and coverage
+
+The 2026-11-03 expansion adds **63 parts**, each individually recorded by its linked
+BrickLink item as appearing in **strictly more than seven sets**. The full library
+has 123 such individual-item usage records; the original factory torso uses a
+component mass sum and has no inferred whole-unit set count. Counts are metadata
+snapshot values, not live statistics. Repeated colours and quantities are not set
+counts. Existing reviewed selections remain available independently of popularity.
+
+`scripts/common_parts.py` declares the reviewed candidate families: additional
+rectangular plates/tiles, Technic bricks and straight beams, cross axles, friction
+and frictionless pins, bushes, hand-held tools/bars, wheel holders, rims and tyres.
+Its profiles and functional datums use the pinned official geometry. Standalone
+tool/axle envelopes come from source triangles; genuine visual geometry is baked
+normally. No generic box is substituted for a missing part.
+
+```sh
+python3 scripts/update-part-library.py --source-dir /path/to/ldraw \
+  --add-common-parts --refresh-usage --bake
+python3 scripts/check-common-parts.py
+python3 scripts/check-common-parts.py inventory.csv --require-complete
+python3 scripts/test-common-parts.py
+```
+
+The optional inventory CSV has `set_num,part` columns with official LDraw IDs.
+The audit unions canonical aliases and counts distinct set IDs, ignores repeated
+rows/colours/quantities in a set, and reports unavailable common IDs. It deliberately
+does not guess mappings from another catalogue's part numbering. `--require-complete`
+fails on gaps in the supplied corpus. The reviewed selection is **not an exhaustive
+claim that every LEGO part used in eight sets is bundled**; a complete external
+inventory is needed to measure that broader target. The default audit's universe
+is explicitly the bundled items with recorded usage.
+
+`get_catalog` exposes `set_count` where sourced, and part-local connector endpoints
+in public east/north/up brick units with `radius_m` in SI. See
+[attachment behavior](part-catalog.md#hand-wheel-and-technic-attachments).
+
 ## Pre-assembled common constructs
 
 `crates/world/library/constructs.json` defines immutable, versioned common models:
 
-- `minifigure-v1`: factory legs, torso, classic-grin head and genuine 3901 hair on
-  a plate; the instance colour selects the torso.
-- `classic-car-v1`: the attributed 6505 open-cabin adaptation, with instance-colour
-  bodywork, fixed wheel/trim colours and transparent windscreen. Its tyres rest on
-  a supported smooth road/tiled surface; the tyre proxy is not an upright ground-stud footprint.
-- `medieval-guard-v1`: an eight-part Lion Knights guard with genuine **76382p4f**
-  printed gold-lion shield torso, **3844** Castle helmet, **4497** spear and
-  **3846p4h** triangular shield. The spear rests on the base; the shield rests on a
-  smooth tile stop. This is an at-rest pose, not an assumed hand-clutch rating.
-  The instance colour selects the torso; the moulded arms, hands and heraldry keep
-  the official source colours. A repeated guard uses one versioned reference.
+- `minifigure-v2`: four factory legs/torso/head/hair units. Feet register directly
+  on the ground receiving grid; no display plate is added. Instance colour selects the torso.
+- `classic-car-v2`: the attributed 6505 open-cabin adaptation, with instance-colour
+  bodywork, fixed wheel/trim colours and transparent windscreen. Two genuine 4600
+  holders seat four wheel/tyre units on revolute bearings. The 27 parts include
+  internal axle spacers and a structural chassis plate; tyres alone touch ground.
+  No road tile, pedestal or display plate is added. Joint-dependent publication
+  still requires measured connector capacities.
+- `medieval-guard-v3`: a ten-part Lion Knights guard with genuine **973p4f** printed
+  torso, separately posed **3818/3819** arms and **3820** hands, **3844** helmet,
+  **4497** spear and **3846p4h** shield. Shoulder elevation and wrist roll align
+  the actual hands with an upright spear and a forward-facing shield handle.
+  Feet touch ground directly; no display base or shield-stop tile is added.
+  Instance colour selects the torso; blue arms, yellow hands and heraldry remain
+  fixed. Joint-dependent publication needs measured capacities.
+- `medieval-archer-v1`: nine source parts, with the same printed torso and posed
+  arm/wrist interfaces, a genuine **4499 bow with arrow** held in the left hand,
+  and a relaxed right arm. The grip lies beside the arrow crossing, not through
+  the arrow. This is an upright ready/carry pose, not a drawn-bow simulation.
 - `castle-standard-v1`: an eleven-part supported standard with genuine **4495a**
   wavy pennant and **3957a** antenna. One capped post bears the asymmetric cloth,
   avoiding an uncalibrated cantilever. Place the two post centres on half-stud
@@ -110,11 +155,19 @@ Both Castle constructs retain the Stefan Frenz **6080-1** reference attribution
 (CCAL 2.0); each genuine part also retains its own official LDraw author/licence.
 
 `get_catalog` lists these IDs, descriptions, part counts and credits. A native
-model references one with `{"target":{"kind":"construct","id":"classic-car-v1"}}`,
+model references one with `{"target":{"kind":"construct","id":"classic-car-v2"}}`,
 along with its ordinary transform and optional colour. The client/server expand
 the shared definition for rendering, identity assignment and physical validation;
 the model payload does not repeat its component placements. Unknown versions and
 conflicting definitions are rejected. A changed construct gets a new version ID.
+Old v1/v2 IDs retain immutable definitions. The catalogue recommends the new
+guard/archer poses and plate-free v2 people/cars. Regenerate/check poses using
+`python3 scripts/update-common-constructs.py --check`; hand datums come from the
+same reviewed connector definitions as runtime inference. The castle repair helper
+`scripts/repair-castle-garrison.py` prepares an explicitly local preview, matches
+old components by exact occurrence pose, retains architecture/flag identities,
+and uses elevated guard slots for archers. It never treats a failed static
+certificate or local preview as an accepted live edit.
 
 Repeated local definitions are also interned on append, with independent placement
 and colour inheritance. Matching existing prototypes can become library references;

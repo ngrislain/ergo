@@ -53,17 +53,19 @@ poses and joint references, and checks:
   rotation and determinant +1. Scale, shear and reflection are rejected, both in
   materialized pieces and in model instances. Native construction axes have
   different scales; the test is performed after metric conversion.
-- Axis-aligned nominal body faces. Tilted pieces cannot
-  obtain this axis-aligned static support certificate; dynamic diagnostics use
-  their actual oriented cuboids.
+- Axis-aligned compression-bearing faces. Tilted pieces must remain above ground
+  and have a joint-supported load path; their envelope faces do not supply
+  unilateral contact patches. Dynamic diagnostics use their actual oriented proxies.
 - Baseplate penetration: the per-brick minimum-height check.
-- Baseplate registration: grounded pieces must be upright, with integer public
-  minimum X/Y nominal footprint edges, within the server position tolerance.
+- Baseplate registration: grounded receiving interfaces must be upright, with
+  half-integer public stud centres, within the server position tolerance. The
+  nominal footprint edge is the fallback for parts without registered cavities.
+  Reviewed tyres bear on the flat ground below their axle instead of engaging studs.
   This includes smooth tiles; flat-plane support alone does not authorize a
   fractional-stud foundation. Client snapping is convenience, not a substitute
   for this independent commit gate.
-- Brick-to-brick penetration: the octree candidate-pair loop, using
-  candidate pairs and the per-axis overlap of their nominal body AABBs.
+- Brick-to-brick penetration: octree AABB candidates, followed by oriented-box SAT
+  and the reviewed compound shield/spear proxies and finite connector clearances.
 - Catalogue stud/solid interference:
   [`first_stud_collision`](../crates/world/src/interference.rs) permits a stud
   inside another nominal body only at a registered compatible underside cavity.
@@ -80,29 +82,47 @@ stud engagement does not count as illegal penetration.
 
 **Limit:** this is conservative nominal-body-box collision, not exact triangle,
 cavity, Technic-hole, or connector-shape collision. A detailed visual mesh does
-not make the persistence collision model exact.
+not make the persistence collision model exact. Reviewed Technic bores and grips
+have explicit nominal clearance prisms, not universal exact hollow-mesh collision.
 
 ## 2. Bricks connect through studs or declared joints
 
 [`spatial::relation`](../crates/world/src/spatial.rs) recognizes a
-restricted stud-contact case: matching top/bottom contact, upright unscaled
-catalog parts, coincident stud lattices, and studs on the lower part.
+registered stud/cavity engagement under proper metric rotations, factory body
+clips and reviewed hand/wheel/Technic interfaces.
 [`constraints::inferred_joints`](../crates/world/src/constraints.rs)
 turns each recognized pair into a joint.
 
-**Important gap: every automatically inferred joint is currently `Fixed`, even
-when the engagement footprint is one stud.** The requested automatic rule
+**Stud joints remain `Fixed`, even with a one-stud footprint.** The automatic rule
 “one engaged stud permits rotation about that stud” is not implemented.
-The client-side inference in `physics.rs` uses the same fixed-joint simplification.
+Wheel bearings, frictionless pins and axles in round bores infer revolute joints;
+keyed axles, friction pins and grips infer fixed joints. Client simulation delegates
+to the same inference implementation. Inference includes peripheral port bounds,
+and server dependency discovery accounts for their bounded overhang beyond body indexes.
 
 The serialized [`JointKind`](../crates/world/src/lib.rs) supports only:
 
 - `Fixed`.
-- `Revolute { axis, limits }`, authored explicitly.
+- `Revolute { axis, limits }`, authored explicitly or inferred from a reviewed bearing.
 
 [`validate_joint_ids`](../crates/world/src/constraints.rs) checks endpoint
 existence, distinct bodies, finite anchors, positive finite capacity claims, and
-valid hinge axes/limits. When publication needs joint strength,
+valid hinge axes/limits and duplicate part-pair joints.
+[`attachments::validate_joints`](../crates/world/src/attachments.rs) then checks
+every claimed attachment against server-owned connector geometry at server
+tolerances: registered engagement, canonical anchor, permitted fixed/revolute
+kind and the bearing axis. Current free bearings have no registered stops;
+invented limits and side-face welds are rejected. These checks precede the
+zero-joint-wrench shortcut, even if gravity alone supports every piece.
+
+Specialty meshes must match their complete pinned catalogue vertex stream, both
+on import/replacement and direct immutable mesh lookup. Client geometry cannot
+relocate a hand or bore while retaining that catalogue ID's trusted interfaces.
+REST regressions submit shifted/tilted spears, shields and bows, forged anchors,
+kinds, wheel axes/stops, duplicate joints and modified meshes; rejection leaves
+the accepted head unchanged, even with synthetic test-only capacity records.
+
+When publication needs joint strength,
 [`ConnectionMeasurements::apply`](../crates/world/src/physical.rs)
 replaces client strength claims with a matching server-owned part-pair,
 joint-kind, and overlap-footprint measurement. Missing required measurements

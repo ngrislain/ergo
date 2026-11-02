@@ -1,7 +1,7 @@
 //! Bounded baseplate/stud instance planning; no browser or GPU dependencies.
 use super::{Camera, DISPLAY_SCALE, GeometryKey, Instances, instance};
 use ergo_world::{
-    Aabb,
+    Aabb, BLOCK_SIZE,
     terrain::{GROUND_TOP, GroundBlock},
 };
 use glam::{DMat4, DQuat, DVec3};
@@ -9,15 +9,15 @@ use std::collections::{HashMap, HashSet};
 
 pub fn visible_cells(camera: &Camera, far: f64) -> Vec<(i64, i64)> {
     let cell = ergo_world::BlockCoord::at(camera.eye);
-    let radius = (far / 1024.).ceil() as i64 + 1;
+    let radius = (far / BLOCK_SIZE).ceil() as i64 + 1;
     let mut cells = Vec::new();
     for x in cell.0 - radius..=cell.0 + radius {
         for y in cell.2 - radius..=cell.2 + radius {
-            let min = DVec3::new(x as f64 * 1024., -1. / 3., y as f64 * 1024.);
-            if camera
-                .visibility
-                .contains(Aabb::new(min, min + DVec3::new(1024., 1. / 3., 1024.)))
-            {
+            let min = DVec3::new(x as f64 * BLOCK_SIZE, -1. / 3., y as f64 * BLOCK_SIZE);
+            if camera.visibility.contains(Aabb::new(
+                min,
+                min + DVec3::new(BLOCK_SIZE, 1. / 3., BLOCK_SIZE),
+            )) {
                 cells.push((x, y));
             }
         }
@@ -39,14 +39,14 @@ pub fn plan(
     for &(x, y) in &cells {
         let color = ground.get(&(x, y)).map_or(71, |block| block.color);
         let center = DVec3::new(
-            (x as f64 + 0.5) * 1024.,
+            (x as f64 + 0.5) * BLOCK_SIZE,
             GROUND_TOP,
-            (y as f64 + 0.5) * 1024.,
+            (y as f64 + 0.5) * BLOCK_SIZE,
         ) - camera.origin;
         instance(
             instances.entry(GeometryKey::Ground(x, y)).or_default(),
             DMat4::from_scale_rotation_translation(
-                DVec3::new(1024., 1. / 3., 1024.),
+                DVec3::new(BLOCK_SIZE, 1. / 3., BLOCK_SIZE),
                 DQuat::IDENTITY,
                 center,
             ),
@@ -66,7 +66,10 @@ pub fn plan(
         for z in
             center_z - crate::lod::GROUND_GRID_RADIUS..=center_z + crate::lod::GROUND_GRID_RADIUS
         {
-            let cell = (x.div_euclid(1024), z.div_euclid(1024));
+            let cell = (
+                x.div_euclid(BLOCK_SIZE as i64),
+                z.div_euclid(BLOCK_SIZE as i64),
+            );
             if !cells.contains(&cell) {
                 continue;
             }
@@ -97,8 +100,8 @@ pub fn plan(
                         .as_ref()
                         .map_or(ergo_world::color_rgb(block.color), |surface| {
                             surface.rgb_at(
-                                x.rem_euclid(1024) as f64 + 0.5,
-                                1024. - (z.rem_euclid(1024) as f64 + 0.5),
+                                x.rem_euclid(BLOCK_SIZE as i64) as f64 + 0.5,
+                                BLOCK_SIZE - (z.rem_euclid(BLOCK_SIZE as i64) as f64 + 0.5),
                             )
                         })
                 });
@@ -132,13 +135,14 @@ mod tests {
             format: "ergo-ground-surface-1".into(),
             rgb: (0..SAMPLE_GRID_SIZE)
                 .flat_map(|y| {
-                    (0..SAMPLE_GRID_SIZE).map(move |x| ((x * 3) as u32) << 16 | (y * 3) as u32)
+                    (0..SAMPLE_GRID_SIZE)
+                        .map(move |x| ergo_world::color_rgb(if (x + y) % 2 == 0 { 1 } else { 2 }))
                 })
                 .collect(),
         });
         let camera = Camera::new(
-            DVec3::new(-512., 12., 512.),
-            DVec3::new(-512., 0., 530.),
+            DVec3::new(-BLOCK_SIZE / 2., 12., BLOCK_SIZE / 2.),
+            DVec3::new(-BLOCK_SIZE / 2., 0., BLOCK_SIZE / 2. + 18.),
             800.,
             600.,
             45.,
@@ -153,8 +157,8 @@ mod tests {
                 continue;
             }
             for item in data.chunks_exact(20) {
-                let east = (item[12] as f64 + camera.origin.x).rem_euclid(1024.);
-                let north = 1024. - (item[14] as f64 + camera.origin.z).rem_euclid(1024.);
+                let east = (item[12] as f64 + camera.origin.x).rem_euclid(BLOCK_SIZE);
+                let north = BLOCK_SIZE - (item[14] as f64 + camera.origin.z).rem_euclid(BLOCK_SIZE);
                 let expected = block.surface.as_ref().unwrap().rgb_at(east, north);
                 let actual = [16, 17, 18]
                     .into_iter()
@@ -164,8 +168,8 @@ mod tests {
             }
         }
         assert!(
-            colours.len() > 10,
-            "Nearby studs must not inherit one plate colour"
+            colours.len() == 2,
+            "Studs must retain the two standard materials without intermediate colours"
         );
     }
 }

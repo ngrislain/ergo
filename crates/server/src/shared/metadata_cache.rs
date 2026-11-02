@@ -19,7 +19,9 @@ fn slot(store: &Store, world: &str, etag: &str) -> object_store::path::Path {
     // Sixteen bounded discardable slots per world, not one permanent object
     // per historical revision/query. A collision is only a cache miss.
     let bucket = u8::from_str_radix(&hash[..2], 16).unwrap() % 16;
-    store.path(&format!("read-cache/metadata-v1/{world}/{bucket:02}.json"))
+    store.path(&format!(
+        "read-cache/metadata-cell128-v1/{world}/{bucket:02}.json"
+    ))
 }
 
 pub(super) async fn load(
@@ -34,7 +36,7 @@ pub(super) async fn load(
             return None;
         }
         let stored: StoredMetadata = serde_json::from_slice(&response.bytes().await.ok()?).ok()?;
-        if stored.format != 1
+        if stored.format != 2
             || stored.etag != etag
             || stored.revision != *revision
             || stored.text.len() > MAX_ENTRY
@@ -67,7 +69,7 @@ pub(super) async fn persist(
         return;
     };
     let record = StoredMetadata {
-        format: 1,
+        format: 2,
         etag: etag.into(),
         revision: revision.clone(),
         checksum: ContentId::of(bytes),

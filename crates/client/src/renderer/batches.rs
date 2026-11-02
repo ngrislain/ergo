@@ -107,7 +107,7 @@ impl Geometry {
         gl.active_texture(Gl::TEXTURE1);
         gl.bind_texture(Gl::TEXTURE_2D, Some(&texture));
         for setting in [Gl::TEXTURE_MIN_FILTER, Gl::TEXTURE_MAG_FILTER] {
-            gl.tex_parameteri(Gl::TEXTURE_2D, setting, Gl::LINEAR as i32);
+            gl.tex_parameteri(Gl::TEXTURE_2D, setting, Gl::NEAREST as i32);
         }
         for setting in [Gl::TEXTURE_WRAP_S, Gl::TEXTURE_WRAP_T] {
             gl.tex_parameteri(Gl::TEXTURE_2D, setting, Gl::CLAMP_TO_EDGE as i32);
@@ -115,7 +115,8 @@ impl Geometry {
         let rgba: Vec<u8> = surface
             .rgb
             .iter()
-            .flat_map(|rgb| [(rgb >> 16) as u8, (rgb >> 8) as u8, *rgb as u8, 255])
+            .map(|rgb| ergo_world::terrain::standard_ground_rgb(*rgb))
+            .flat_map(|rgb| [(rgb >> 16) as u8, (rgb >> 8) as u8, rgb as u8, 255])
             .collect();
         let uploaded = gl
             .tex_image_2d_with_i32_and_i32_and_i32_and_format_and_type_and_opt_u8_array(
@@ -279,6 +280,11 @@ impl Batches {
         let mut triangles = 0;
         let mut instances = 0;
         if matches!(pass, Pass::Color) {
+            gl.uniform1f(
+                gl.get_uniform_location(program, "ground_cell_span")
+                    .as_ref(),
+                ergo_world::BLOCK_SIZE as f32,
+            );
             gl.uniform1i(
                 gl.get_uniform_location(program, "ground_surface").as_ref(),
                 1,
