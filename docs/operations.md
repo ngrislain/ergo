@@ -63,6 +63,14 @@ Verify the public tarball version/checksum, consumer install and actual MCP smok
 before changing the displayed installation source. Registry publication remains
 disabled; the supported client source is the GitHub Release asset.
 
+To activate registry CI, establish the npm trusted publisher for
+`ngrislain/ergo` / `release.yml` with publish permission, then set
+`ERGO_NPM_PUBLISH=true`. Run `gh workflow run release.yml --ref main -f publish_npm=true`
+for an explicit full build/test/publication, or publish the next matching version
+tag. The job uses GitHub OIDC rather than a long-lived npm secret. Confirm registry
+version/integrity before switching `ERGO_MCP_PACKAGE` to the npm package spec;
+see [npmjs publication](distribution.md#npmjs-trusted-publication).
+
 When verifying an upgrade in an existing browser, fetch the current application
 JavaScript/WASM assets as well as checking `/api/config`. A hard reload can bypass
 an old HTTP code-cache entry while retaining IndexedDB/CacheStorage model data for

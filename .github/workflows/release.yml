@@ -9,6 +9,10 @@ on:
         description: Build, test, and publish only the server image to GHCR
         type: boolean
         default: false
+      publish_npm:
+        description: Build, test, and publish the complete MCP bundle to npmjs
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -31,13 +35,20 @@ jobs:
         env:
           RELEASE_TAG: ${{ github.ref_name }}
           EVENT_NAME: ${{ github.event_name }}
+          PUBLISH_CONTAINER: ${{ inputs.publish_container }}
+          PUBLISH_NPM: ${{ inputs.publish_npm }}
         run: |
+          if [ "$PUBLISH_CONTAINER" = true ] && [ "$PUBLISH_NPM" = true ]; then
+            echo 'Choose either image-only publication or full npm publication.' >&2
+            exit 1
+          fi
           if [ "$EVENT_NAME" = push ]; then
             python3 scripts/package-mcp.py version --tag "$RELEASE_TAG"
           fi
           version=$(python3 scripts/package-mcp.py version)
           echo "version=$version" >> "$GITHUB_OUTPUT"
       - run: python3 scripts/test-distribution.py
+      - run: python3 scripts/test-npm-publish.py
 
   web:
     needs: version
@@ -151,12 +162,15 @@ jobs:
 
   publish-npm:
     needs: [version, npm-package]
-    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v') && vars.ERGO_NPM_PUBLISH == 'true'
+    if: (github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v') && vars.ERGO_NPM_PUBLISH == 'true') || (github.event_name == 'workflow_dispatch' && inputs.publish_npm)
     runs-on: ubuntu-24.04
     permissions:
       contents: read
       id-token: write
     steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
       - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
         with:
           node-version: "24"
@@ -166,10 +180,13 @@ jobs:
         with:
           name: npm-package
           path: npm-release
-      - name: Publish with npm trusted publishing (or bootstrap token)
+      - name: Publish the verified bundle with npm trusted publishing
         env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
-        run: npm publish npm-release/*.tgz --access public --provenance
+          VERSION: ${{ needs.version.outputs.version }}
+        run: |
+          set -- npm-release/*.tgz
+          [ "$#" -eq 1 ] && [ -f "$1" ]
+          python3 scripts/publish-npm.py "$1" --version "$VERSION"
 
   container:
     needs: version

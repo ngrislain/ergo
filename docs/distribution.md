@@ -34,6 +34,26 @@ Canonical-library/retrofit checks launch the package's `bin/ergo-mcp.cjs`
 entrypoint, which supplies its bundled `ERGO_WEB_DIR`; a bare native executable
 does not discover a package's separate WASM directory automatically.
 
+### npmjs trusted publication
+
+Configure npm's GitHub trusted publisher for `@ngrislain/ergo-mcp`, repository
+`ngrislain/ergo`, workflow **`release.yml`**, with direct publish permission. The
+publish job uses GitHub OIDC (`id-token:write`), public access and npm provenance;
+it does not require an `NPM_TOKEN` repository secret. npm may require an interactive
+owner/security-key approval when establishing that trust.
+
+Set repository variable `ERGO_NPM_PUBLISH=true` to publish successful `vVERSION`
+release builds automatically. Manual `workflow_dispatch` with `publish_npm=true`
+also builds/tests all four native bridges and matching WASM before publication.
+It is mutually exclusive with the image-only `publish_container=true` path.
+
+`scripts/publish-npm.py` accepts only a complete assembled bundle, never the private
+source package. A repeated run accepts an existing npm version only when its exact
+SHA-512 integrity matches the candidate; a different artifact requires a new version.
+Registry/authentication failures stop before publication. Successful publication
+is confirmed by reading the npm integrity back. Source setup/CI configuration
+alone does not establish that a package is available on npmjs.
+
 ## Server image
 
 `ghcr.io/ngrislain/ergo` contains the API and generated workbench assets, runs
