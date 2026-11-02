@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """Exercise publish effect boundaries without contacting or writing to npm."""
-import base64,hashlib,importlib.util,io,json,pathlib,subprocess,tarfile,tempfile,unittest
+import base64,hashlib,importlib.util,io,json,os,pathlib,subprocess,tarfile,tempfile,unittest
 ROOT=pathlib.Path(__file__).resolve().parents[1]
 spec=importlib.util.spec_from_file_location('npm_publisher',ROOT/'scripts/publish-npm.py')
 assert spec and spec.loader
@@ -9,7 +9,8 @@ publisher=importlib.util.module_from_spec(spec);spec.loader.exec_module(publishe
 class Publication(unittest.TestCase):
     def setUp(self):
         self.directory=tempfile.TemporaryDirectory();self.addCleanup(self.directory.cleanup)
-        self.tarball=pathlib.Path(self.directory.name)/'bundle.tgz'
+        self.tarball=pathlib.Path(self.directory.name)/'npm-release'/'bundle.tgz'
+        self.tarball.parent.mkdir()
         self.bundle()
     def bundle(self,private=False,platforms=None):
         values={'package.json':{'name':publisher.NAME,'version':'0.5.16','private':private},
@@ -48,5 +49,21 @@ class Publication(unittest.TestCase):
         publisher.publish(self.tarball,'0.5.16',registry)
         self.assertEqual([command[1] for command in calls],['view','publish','view'])
         self.assertIn('--provenance',calls[1]);self.assertIn('--ignore-scripts',calls[1]);self.assertIn('public',calls[1])
+    def test_relative_tarball_is_not_interpreted_as_a_github_repository(self):
+        calls=[]
+        def registry(command,**kwargs):
+            calls.append(command)
+            if len(calls)==1:return subprocess.CompletedProcess(command,1,json.dumps({'error':{'code':'E404'}}),'')
+            if command[1]=='publish':
+                self.assertEqual(command[2],str(self.tarball.resolve()))
+                self.assertTrue(pathlib.Path(command[2]).is_file())
+                return subprocess.CompletedProcess(command,0,'','')
+            return subprocess.CompletedProcess(command,0,json.dumps(self.integrity()),'')
+        before=os.getcwd()
+        try:
+            os.chdir(self.directory.name)
+            publisher.publish(pathlib.Path('npm-release/bundle.tgz'),'0.5.16',registry)
+        finally:os.chdir(before)
+        self.assertEqual([command[1] for command in calls],['view','publish','view'])
 
 if __name__=='__main__':unittest.main()

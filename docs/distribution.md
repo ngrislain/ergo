@@ -48,8 +48,10 @@ also builds/tests all four native bridges and matching WASM before publication.
 It is mutually exclusive with the image-only `publish_container=true` path.
 
 `scripts/publish-npm.py` accepts only a complete assembled bundle, never the private
-source package. A repeated run accepts an existing npm version only when its exact
-SHA-512 integrity matches the candidate; a different artifact requires a new version.
+source package. Tarball inputs are resolved to absolute local paths so npm cannot
+interpret a relative directory/file name as GitHub repository shorthand. A repeated
+run accepts an existing npm version only when its exact SHA-512 integrity matches
+the candidate; a different artifact requires a new version.
 Registry/authentication failures stop before publication. Successful publication
 is confirmed by reading the npm integrity back. Source setup/CI configuration
 alone does not establish that a package is available on npmjs.

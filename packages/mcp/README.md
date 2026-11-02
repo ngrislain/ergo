@@ -6,12 +6,15 @@ required by package consumers. The package includes macOS ARM64/Intel and Linux
 ARM64/x64 binaries. macOS 13+ and Linux glibc 2.36+ are the release baselines;
 Windows and Linux musl/Alpine binaries are not included.
 
-Install the GitHub-hosted bundle with npm (registry publication is currently disabled):
+For a version published on npm, install the complete bundle with:
 
 ```sh
-npm install --global --ignore-scripts 'https://github.com/ngrislain/ergo/releases/download/v0.5.16/ngrislain-ergo-mcp-0.5.16.tgz'
+npm install --global --ignore-scripts @ngrislain/ergo-mcp
 ergo-mcp --workspace /absolute/path/construction.ergo.json
 ```
+
+Verified GitHub Release tarballs can also be installed by their `.tgz` URL.
+An npm bootstrap staging placeholder is not a complete client release.
 
 MCP client configuration:
 

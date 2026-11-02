@@ -26,6 +26,9 @@ def metadata(tarball,version):
     return package
 
 def publish(tarball,version,run=subprocess.run):
+    # npm treats directory/file.tgz as GitHub shorthand without a leading ./.
+    # An absolute local path is unambiguous for every caller and working dir.
+    tarball=tarball.resolve(strict=True)
     metadata(tarball,version)
     integrity='sha512-'+base64.b64encode(hashlib.sha512(tarball.read_bytes()).digest()).decode()
     existing=run(['npm','view',NAME+'@'+version,'dist.integrity','--json','--registry='+REGISTRY],capture_output=True,text=True)
