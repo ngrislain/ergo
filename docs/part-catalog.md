@@ -23,7 +23,7 @@ The resolver verifies hash, schema and part identity when reading cached geometr
 
 ## Resolution
 
-The [canonical library](part-library.md) supplies 32 standard brick/plate/tile geometries, 23 source-only
+The [canonical library](part-library.md) supplies 32 standard brick/plate/tile geometries, 29 source-only
 architectural/figure/vehicle entries and 20 opaque colors. It exposes the sourced
 complete color palette and resolves other
 part IDs when actual geometry is available. These recommendations help minimize
@@ -46,7 +46,7 @@ scaled smaller plates. Its nominal dimensions and catalogue mass are sourced fro
 [BrickLink 3026](https://www.bricklink.com/v2/catalog/catalogitem.page?P=3026).
 
 Resolution is cache-first, then uses the checksum-verified native library pack.
-The complete 55-part pack is under one megabyte; only a requested part is decoded.
+The complete 61-part pack is 1,066,065 bytes; only a requested part is decoded.
 For additional source assets an import adapter can read a configured local source
 library or retrieve a missing source, bake it into Ergo geometry, and store its
 native description. Source text is transient in a bounded 32 MiB process cache;
@@ -150,6 +150,31 @@ The torso assembly's 1.30g is a declared sum of catalogue averages for 973
 (0.82g), 981/982 (0.15g each), and two 983 hands (0.09g each); it is not a new
 laboratory measurement. Other profile values link their individual BrickLink
 records. All were reviewed on 2026-10-27.
+
+### Castle equipment and printed heraldry
+
+Reviewed 2026-11-02 additions pin official geometry and linked BrickLink masses:
+**3844 helmet** (0.64g), **4497 spear** (0.40g), **3846p4h shield** (0.42g),
+**3957a antenna** (0.42g), **4495a pennant** (0.37g), and **76382p4f Lion Knights
+torso with arms/hands** (1.25g, BrickLink 973px138c01). The printed torso is a
+distinct genuine asset, not a colour overlay or an alias to the unprinted torso.
+
+The helmet uses its upper bearing cap, leaving the neck protector visual; the
+factory torso keeps the existing torso-core interface. Spear/shield profiles are
+nominal envelope approximations. The flag retains its full asymmetric footprint
+and mass; its bearing face follows the cloth hem at 20 LDU, while the lower hollow
+stud extends to 24 LDU. Its receiving datum remains at that lower connector.
+
+The only new overlap clearance is the source-defined 3.2mm antenna shaft through
+the pennant's hollow stud: upright, axis-aligned parts, coaxial within tolerance,
+and only within the straight shaft's axial range. Wrong parts, lateral offsets,
+tilts, the wide antenna foot and placement above the tip remain rejected. Client
+edits, group moves, server admission and inferred connectivity share this rule.
+This geometric clearance does not establish retention, friction or clutch strength.
+The supported standard has a capped bearing post under the cloth; removing it
+requires measured connector capacities for any force/moment consumed by admission.
+Dynamic tests retain their nominal box/contact approximations; this is not an
+exact annular-contact simulation or a new calibrated connection model.
 
 Nominal collision boxes intentionally differ from render bounds, which include
 studs/details. The server supplies trusted mass/body measurements and connector

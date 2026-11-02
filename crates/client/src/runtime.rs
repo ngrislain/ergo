@@ -1024,9 +1024,12 @@ fn overlap_free(scene: &WorldExport) -> Result<()> {
                 continue;
             }
             let b = &scene.bricks[j];
-            let overlap = a.bounds.max.min(b.bounds.max) - a.bounds.min.max(b.bounds.min);
             ensure!(
-                overlap.min_element() <= ergo_world::validation::OVERLAP_TOLERANCE,
+                !ergo_world::interference::bodies_penetrate(
+                    a,
+                    b,
+                    ergo_world::validation::OVERLAP_TOLERANCE
+                ),
                 "Edit rejected: bricks {} and {} overlap; working copy unchanged",
                 a.id,
                 b.id

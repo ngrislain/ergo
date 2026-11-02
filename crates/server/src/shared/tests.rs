@@ -737,6 +737,110 @@ async fn god_mode_removes_the_ordinary_authoring_piece_cap() {
 }
 
 #[tokio::test]
+async fn genuine_castle_bore_clearance_keeps_server_support_and_capacity_gates() {
+    let service = service();
+    let model: ergo_world::assembly::Model = serde_json::from_value(serde_json::json!({
+        "format":"ergo-model-1", "schema":2, "root":"castle", "definitions":{"castle":[
+            {"target":{"kind":"part","id":"4201.dat"}, "color":71,
+             "transform":[[1,0,0,4],[0,1,0,4],[0,0,1,1],[0,0,0,1]]},
+            {"target":{"kind":"construct","id":"castle-standard-v1"}, "color":1,
+             "transform":[[1,0,0,2.5],[0,1,0,2.5],[0,0,1,1],[0,0,0,1]]}
+        ]}
+    }))
+    .unwrap();
+    let cache = ergo_assets::PartCache::new(
+        Arc::new(object_store::memory::InMemory::new()),
+        String::new(),
+    )
+    .unwrap();
+    let mut candidate = scene(0.);
+    candidate.bricks.clear();
+    candidate.meshes.clear();
+    for (i, reference) in model.references().unwrap().iter().enumerate() {
+        let mesh = cache.resolve(&reference.name).await.unwrap().mesh;
+        candidate
+            .bricks
+            .push(ergo_world::ldraw::brick_from_reference(
+                i as u32 + 1,
+                reference,
+                &mesh,
+                &Default::default(),
+            ));
+        candidate.meshes.insert(reference.name.clone(), mesh);
+    }
+    candidate.model = Some(model);
+    let (head, accepted) = seeded(&service, candidate.clone()).await;
+    assert_eq!(
+        accepted
+            .accepted
+            .audit
+            .validation
+            .as_ref()
+            .unwrap()
+            .joint_strength_required,
+        Some(false)
+    );
+    let (app, headers) = http(&service);
+    let app = app.layer(axum::extract::DefaultBodyLimit::max(128 * 1024 * 1024));
+    let path = format!(
+        "/api/shared-worlds/{}/assemblies/{}/workspace",
+        head.id, accepted.assembly
+    );
+    for missing_support in [false, true] {
+        let mut invalid = candidate.clone();
+        invalid.model = None;
+        if missing_support {
+            invalid.bricks.retain(|brick| {
+                (ergo_world::coordinates::public(brick.position).y - 4.5).abs() > 1e-6
+            });
+        } else {
+            invalid
+                .bricks
+                .iter_mut()
+                .find(|brick| brick.part == "4495a.dat")
+                .unwrap()
+                .translated(glam::DVec3::X * 0.01);
+        }
+        let (status, response) = json(
+            &app,
+            "PUT",
+            &path,
+            &headers,
+            Some(serde_json::json!({"base":head.revision,"scene":invalid})),
+        )
+        .await;
+        assert_eq!(
+            status,
+            axum::http::StatusCode::UNPROCESSABLE_ENTITY,
+            "{response}"
+        );
+        let expected = if missing_support {
+            "Missing measured connector capacity"
+        } else {
+            "overlap"
+        };
+        assert!(
+            response["error"].as_str().unwrap().contains(expected),
+            "{response}"
+        );
+        assert_eq!(
+            service
+                .head(
+                    &head.id,
+                    &Principal {
+                        id: Some("alice".into())
+                    },
+                    None
+                )
+                .await
+                .unwrap()
+                .revision,
+            head.revision
+        );
+    }
+}
+
+#[tokio::test]
 async fn dense_neighbor_queries_charge_immutable_spatial_rows_once() {
     let mut service = service();
     let mut d = ergo_world::demo::Demo::new();

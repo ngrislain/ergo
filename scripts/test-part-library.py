@@ -51,7 +51,7 @@ with tempfile.TemporaryDirectory(prefix='ergo-library-') as temporary:
     workspace=directory/'cars.ergo.json';client=Mcp(BINARY,workspace,None,None)
     try:
         catalog=client.call('get_catalog')['structuredContent']['catalog']
-        assert {entry['id'] for entry in catalog['constructs']}=={'minifigure-v1','classic-car-v1'}
+        assert {entry['id'] for entry in catalog['constructs']}=={'minifigure-v1','classic-car-v1','medieval-guard-v1','castle-standard-v1'}
         road=[placed('part','2431.dat',[offset+x+2,n+.5,1/3],72) for offset in [0,16] for x in [0,4] for n in range(4)]
         model={'format':'ergo-model-1','schema':2,'root':'main','definitions':{'main':[
             *road,placed('construct','classic-car-v1',[0,0,1/3],4),placed('construct','classic-car-v1',[16,0,1/3],1)]}}
@@ -71,5 +71,34 @@ with tempfile.TemporaryDirectory(prefix='ergo-library-') as temporary:
             assert all(old[field]==new[field] for field in ['id','part','color','mass_kg'])
             assert old['position']==new['position']
             assert all(math.isclose(old['bounds'][edge][axis],new['bounds'][edge][axis],abs_tol=1e-12,rel_tol=0) for edge in ['min','max'] for axis in range(3))
+    finally:client.close()
+
+    workspace=directory/'castle.ergo.json';client=Mcp(BINARY,workspace,None,None)
+    try:
+        model={'format':'ergo-model-1','schema':2,'root':'main','definitions':{'main':[
+            placed('part','4201.dat',[4,4,1],71),
+            placed('construct','medieval-guard-v1',[1,1,1],4),
+            placed('construct','castle-standard-v1',[6.5,2.5,1],1)]}}
+        feedback=client.call('place_submodel',model=model)['structuredContent']
+        assert feedback['brick_count']==20 and feedback['publication_ready'],feedback
+        assert feedback['stability_report']['joint_strength_required'] is False
+        before=client.call('list_bricks',limit=100)['structuredContent']['bricks']
+        assert {'3844.dat','4497.dat','3846p4h.dat','76382p4f.dat','3957a.dat','4495a.dat'} <= {b['part'] for b in before}
+        flag=next(b for b in before if b['part']=='4495a.dat')
+        replacement={'format':'ergo-model-1','schema':2,'root':'flag','definitions':{'flag':[
+            placed('part','4495a.dat',[flag['position'][0]+.01,*flag['position'][1:]],1)]}}
+        rejected=client.rpc('tools/call',{'name':'place_submodel','arguments':{
+            'model':replacement,'replace_ids':[flag['id']]}})
+        assert rejected['isError']
+        after=client.call('list_bricks',limit=100)['structuredContent']['bricks']
+        assert after==before,'Incorrect flag-bore fit changed the working copy'
+        client.call('export_construction');accepted=json.loads(workspace.read_text())
+        assert all(mesh['quality']=='source' and mesh['credits'] for mesh in accepted['meshes'].values())
+        torso=accepted['meshes']['76382p4f.dat']
+        assert any(value>=0 for value in torso['vertices'][6::9]),'Heraldry must retain real source face colours'
+        support=[b['id'] for b in before if math.isclose(b['position'][0],6.5) and math.isclose(b['position'][1],4.5)]
+        assert len(support)==6
+        feedback=client.call('remove_bricks',ids=support)['structuredContent']
+        assert not feedback['publication_ready'],'Unsupported flag gained invented attachment capacity'
     finally:client.close()
 print('Canonical library WASM checks passed: offline source assets, legacy alias/proxy retrofit, stable IDs/poses/metadata, shared car references and unknown-version rollback.')

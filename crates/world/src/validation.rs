@@ -152,7 +152,11 @@ pub fn validate_static_with_measurements(
             let overlap =
                 brick.bounds.max.min(other.bounds.max) - brick.bounds.min.max(other.bounds.min);
             ensure!(
-                overlap.min_element() <= tolerances.position_brick_units,
+                !crate::interference::bodies_penetrate(
+                    brick,
+                    other,
+                    tolerances.position_brick_units
+                ),
                 "Bricks {} and {} overlap by {:.4} brick units; fix the model before saving",
                 brick.id,
                 other.id,
@@ -185,7 +189,9 @@ pub fn validate_static_with_measurements(
     };
     let contact_only = scene.fixed_bricks.is_empty() && compression_issue.is_none();
     let report = ValidationReport {
-        collision_model: "nominal body bounding boxes; visual studs excluded".into(),
+        collision_model:
+            "nominal body boxes with registered antenna/flag bore clearance; visual studs excluded"
+                .into(),
         method: if contact_only {
             "static compression certificate (zero joint wrench; no simulation)"
         } else {

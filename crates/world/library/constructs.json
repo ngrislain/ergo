@@ -13,6 +13,41 @@
     ]
   },
   {
+    "id":"medieval-guard-v1",
+    "name":"Lion Knights guard with genuine Castle equipment",
+    "description":"Classic-grin guard with gold-lion shield torso, Castle helmet, genuine spear and matching triangular shield on a 4 x 4 base. The spear and shield rest on the base/smooth shield stop; no hand-clutch strength is assumed. Instance colour selects the torso.",
+    "credits":[{"file":"6080-1.mpd","source_url":"https://library.ldraw.org/omr/sets/1034","author":"Stefan Frenz [smf]","license":"CCAL version 2.0"}],
+    "parts":[
+      {"part":"3031.dat","color":71,"position":[2,2,0.3333333333333333]},
+      {"part":"3815c01.dat","color":0,"position":[2,1.5,2]},
+      {"part":"76382p4f.dat","position":[2,1.5,3.3333333333333335]},
+      {"part":"3626ap01.dat","color":14,"position":[2,1.5,4.333333333333333]},
+      {"part":"3844.dat","color":72,"position":[2,1.5,4.333333333333333]},
+      {"part":"3070b.dat","color":71,"position":[0.5,0.5,0.6666666666666666]},
+      {"part":"3846p4h.dat","color":4,"position":[0.5,0,2.0154166666666664]},
+      {"part":"4497.dat","color":70,"position":[3.325,1,4.416666666666667]}
+    ]
+  },
+  {
+    "id":"castle-standard-v1",
+    "name":"Genuine Castle pennant on a supported standard",
+    "description":"Genuine 4495a pennant and 3957a antenna, with a separate capped bearing post under the asymmetric cloth. The bore clearance is geometric, not a measured clutch rating. Instance colour selects the pennant. Place the post centres on half-stud coordinates over ordinary brick studs.",
+    "credits":[{"file":"6080-1.mpd","source_url":"https://library.ldraw.org/omr/sets/1034","author":"Stefan Frenz [smf]","license":"CCAL version 2.0"}],
+    "parts":[
+      {"part":"3062b.dat","color":0,"position":[0,0,1]},
+      {"part":"3062b.dat","color":0,"position":[0,0,2]},
+      {"part":"3062b.dat","color":0,"position":[0,0,3]},
+      {"part":"3957a.dat","color":0,"position":[0,0,3.3333333333333335]},
+      {"part":"3062b.dat","color":0,"position":[0,2,1]},
+      {"part":"3062b.dat","color":0,"position":[0,2,2]},
+      {"part":"3062b.dat","color":0,"position":[0,2,3]},
+      {"part":"3024.dat","color":0,"position":[0,2,3.3333333333333335]},
+      {"part":"3024.dat","color":0,"position":[0,2,3.6666666666666665]},
+      {"part":"3070b.dat","color":0,"position":[0,2,4]},
+      {"part":"4495a.dat","position":[0,0,4.833333333333333]}
+    ]
+  },
+  {
     "id":"classic-car-v1",
     "name":"Classic open-cabin car",
     "description":"Adaptation of LEGO 6505 Fire Chief's Car with genuine chassis, mudguard, windscreen, roll bar, steering and four factory wheel/tyre units. Place on a supported smooth road/tiled surface. Instance colour selects the body. No rolling or calibrated axle-retention claim.",

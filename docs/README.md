@@ -21,6 +21,7 @@ designs live in `todo/` and are indexed by [TODO.md](../TODO.md).
 - [Native construction/model format](construction-format.md)
 - [Native part descriptions](part-catalog.md)
 - [Canonical parts, compact common constructs and deterministic source updates](part-library.md)
+  includes genuine Castle equipment, printed Lion Knights torsos and supported pennant standards.
 - [S3 organization](object-store-layout.md)
 - [Every persisted record family](object-store-formats.md)
 - [Spatial persistence indexing](persistence-indexing.md)

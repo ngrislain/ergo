@@ -174,7 +174,7 @@ pub fn profile(part: &str) -> Option<Profile> {
             Some(grid(2, 1, [-0.5, 0.], -5. / 3.)),
             vec![],
         ),
-        "76382p00" => ([-0.95, -4. / 3., -0.5], [0.95, 0., 0.5], None, vec![]),
+        "76382p00" | "76382p4f" => ([-0.95, -4. / 3., -0.5], [0.95, 0., 0.5], None, vec![]),
         "3626a" | "3626ap01" => (
             [-0.65, -1., -0.65],
             [0.65, 0., 0.65],
@@ -191,6 +191,33 @@ pub fn profile(part: &str) -> Option<Profile> {
             [0.65, 0.25, 0.65],
             Some(grid(1, 1, [0., 0.], 0.)),
             vec![],
+        ),
+        // Genuine Castle parts: source datums and moulded geometry remain in
+        // the pinned assets. Helmet neck protection is visual, as for hair;
+        // the upper cap bears on the head without filling its hollow cavity.
+        "3844" => (
+            [-0.65, 0., -0.65],
+            [0.65, 17. / 24., 0.65],
+            Some(grid(1, 1, [0., 0.], 0.)),
+            vec![],
+        ),
+        "4497" => ([-0.35, -49. / 12., -0.2], [0.35, 2., 0.2], None, vec![]),
+        "3846p4h" => ([-1., -1.34875, -0.7], [1., 7. / 12., 0.5], None, vec![]),
+        "3957a" => (
+            [-0.4, -1. / 3., -0.4],
+            [0.4, 11. / 3., 0.4],
+            Some(grid(1, 1, [0., 0.], -1. / 3.)),
+            vec![],
+        ),
+        // The flag's cloth hem is at 20 LDU; its lower hollow stud extends to
+        // 24 LDU. Exclude connector protrusions from the bearing box, retaining
+        // the complete asymmetric pennant footprint and catalogue mass. A flag
+        // needs real bearing under that footprint or measured attachment loads.
+        "4495a" => (
+            [-0.4, -5. / 6., -3.55],
+            [0.4, 0., 0.4],
+            Some(grid(1, 1, [0., 0.], -1.)),
+            centres(1, 1, [0., 0.]),
         ),
         // Classic vehicle shells use their lower structural floor as a nominal
         // bearing core, not filled wheel arches/passenger cavities. Upper

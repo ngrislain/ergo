@@ -116,9 +116,10 @@ pub fn can_translate(bricks: &[Brick], ids: &HashSet<u32>, delta: DVec3) -> Resu
                 if ids.contains(&other.id) {
                     continue;
                 }
-                let overlap = bounds.max.min(other.bounds.max) - bounds.min.max(other.bounds.min);
+                let mut translated = brick.clone();
+                translated.translated(offset);
                 ensure!(
-                    overlap.min_element() <= 0.002,
+                    !crate::interference::bodies_penetrate(&translated, other, 0.002),
                     "Move blocked by brick {} (body bounds)",
                     other.id
                 );

@@ -197,6 +197,126 @@ mod tests {
         serde_json::from_value(value).unwrap()
     }
 
+    fn nominal_scene(model: Model) -> crate::WorldExport {
+        let mut meshes = BTreeMap::new();
+        let bricks = model
+            .references()
+            .unwrap()
+            .iter()
+            .enumerate()
+            .map(|(i, reference)| {
+                let mesh = meshes.entry(reference.name.clone()).or_insert_with(|| {
+                    let mut mesh = crate::geometry::fallback_mesh(&reference.name);
+                    mesh.body_bounds =
+                        crate::geometry::nominal_body_bounds(&reference.name).unwrap();
+                    mesh.bounds = mesh.body_bounds;
+                    mesh
+                });
+                crate::ldraw::brick_from_reference(i as u32 + 1, reference, mesh, &BTreeMap::new())
+            })
+            .collect();
+        crate::WorldExport {
+            schema: crate::SCHEMA_VERSION,
+            name: "Catalogue fixture".into(),
+            geo: Default::default(),
+            bricks,
+            meshes,
+            joints: vec![],
+            fixed_bricks: vec![],
+            groups: vec![],
+            ground: vec![],
+            model: Some(model),
+        }
+    }
+
+    #[test]
+    fn adjacent_medieval_guards_have_printed_chests_and_supported_real_accessories() {
+        let mut model = instance("medieval-guard-v1", 4);
+        model
+            .append(
+                &instance("medieval-guard-v1", 1),
+                Transform::from_world([
+                    [1., 0., 0., 4.],
+                    [0., 1., 0., 0.],
+                    [0., 0., 1., 0.],
+                    [0., 0., 0., 1.],
+                ])
+                .unwrap(),
+                1,
+            )
+            .unwrap();
+        let mut scene = nominal_scene(model);
+        let report = crate::validation::validate_static(&mut scene).unwrap();
+        assert_eq!(report.checked_bricks, 16);
+        assert_eq!(report.joint_strength_required, Some(false));
+        for part in ["3844.dat", "3846p4h.dat", "4497.dat", "76382p4f.dat"] {
+            assert_eq!(
+                scene
+                    .bricks
+                    .iter()
+                    .filter(|brick| brick.part == part)
+                    .count(),
+                2
+            );
+        }
+        assert_eq!(scene.bricks[2].color, 4);
+        assert_eq!(scene.bricks[10].color, 1);
+    }
+
+    fn standard_on_brick() -> crate::WorldExport {
+        let mut model: Model = serde_json::from_value(serde_json::json!({
+            "format":"ergo-model-1", "schema":2, "root":"base", "definitions":{"base":[{
+                "target":{"kind":"part","id":"4201.dat"}, "color":71,
+                "transform":[[1,0,0,4],[0,1,0,4],[0,0,1,1],[0,0,0,1]]
+            }]}
+        }))
+        .unwrap();
+        model
+            .append(
+                &instance("castle-standard-v1", 1),
+                Transform::from_world([
+                    [1., 0., 0., 2.5],
+                    [0., 1., 0., 2.5],
+                    [0., 0., 1., 1.],
+                    [0., 0., 0., 1.],
+                ])
+                .unwrap(),
+                1,
+            )
+            .unwrap();
+        nominal_scene(model)
+    }
+
+    #[test]
+    fn a_supported_flag_passes_but_a_flying_flag_does_not_gain_invented_clutch_strength() {
+        let mut supported = standard_on_brick();
+        let report = crate::validation::validate_static(&mut supported).unwrap();
+        assert_eq!(report.joint_strength_required, Some(false));
+        let mut floating = standard_on_brick();
+        let public_y = |brick: &crate::Brick| crate::coordinates::public(brick.position).y;
+        floating
+            .bricks
+            .retain(|brick| (public_y(brick) - 4.5).abs() > 1e-6);
+        floating.model = None;
+        let issue = crate::validation::compression_issue(
+            &floating.bricks,
+            Default::default(),
+            &Default::default(),
+        )
+        .unwrap()
+        .unwrap();
+        assert_eq!(issue.part, "4495a.dat");
+        let report = crate::validation::validate_static(&mut floating).unwrap();
+        assert_eq!(report.joint_strength_required, Some(true));
+        // The server's existing admission path requires the operator book for
+        // this case; the geometry-only local solver supplies no calibration.
+        assert!(
+            crate::physical::ConnectionMeasurements::default()
+                .apply(&floating.bricks, &mut floating.joints)
+                .is_err()
+        );
+    }
+
     #[test]
     fn hundred_cars_share_one_definition_and_roundtrip_distinct_poses_and_colours() {
         let prototype = instance("classic-car-v1", 16);

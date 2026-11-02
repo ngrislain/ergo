@@ -70,6 +70,10 @@ poses and joint references, and checks:
 
 A pair is rejected when it has positive-volume overlap beyond the configured
 position tolerance (default `1e-4` construction units). Face touching is allowed.
+The reviewed, upright/coaxial **3957a antenna / 4495a pennant** bore has narrowly
+scoped [geometric clearance](part-catalog.md#castle-equipment-and-printed-heraldry)
+within the real shaft range. This is not a general overlap exemption and does not
+waive support, mass, registration or measured joint-strength requirements.
 Studs are excluded from the nominal body boxes, but the separate catalogue stud
 clearance check rejects a floor stud entering a sideways solid face. Registered
 stud engagement does not count as illegal penetration.

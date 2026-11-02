@@ -68,6 +68,14 @@ units do not model internal joints. Known rectangular catalogue behavior is
 unchanged. A new inferred interface still needs measured capacities whenever its
 force/torque is consumed; adding a mass/bounds profile supplies no clutch strength.
 
+The Castle profiles include the real printed Lion Knights factory torso, helmet,
+spear, shield, antenna and wavy pennant. The registered antenna/flag bore clearance
+permits the source assembly's hollow geometry, but supplies no force/torque values.
+`medieval-guard-v1` uses at-rest spear/shield bearing, and `castle-standard-v1`
+supports the cloth with a capped post. Removing that support does not produce a
+zero-joint-wrench proof: the server's existing operator-measurement gate still
+applies. Neither a source mesh nor a geometric factory-fit relation is calibration.
+
 There is no universal “LEGO joint strength” that can safely be inferred from a
 part name or its visual mesh. Relevant variables include part pair, engagement
 footprint, molding/material, age/wear, connection direction, assembly history,

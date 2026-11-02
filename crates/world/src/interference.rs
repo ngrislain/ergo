@@ -9,6 +9,39 @@ use crate::{
 };
 use glam::DVec3;
 
+/// Reviewed clearance of a 3.2 mm antenna shaft through the moulded flag bore.
+/// This recognizes only coaxial, upright catalogue pairs within the straight
+/// shaft's axial range, not arbitrary overlap, retention or joint strength.
+pub fn registered_bar_clearance(a: &Brick, b: &Brick, tolerance: f64) -> bool {
+    let (pole, flag) = match (
+        crate::part_library::profile_id(&a.part),
+        crate::part_library::profile_id(&b.part),
+    ) {
+        ("3957a.dat", "4495a.dat") => (a, b),
+        ("4495a.dat", "3957a.dat") => (b, a),
+        _ => return false,
+    };
+    if !axis_aligned(pole)
+        || !axis_aligned(flag)
+        || (pole.transform.y_axis - DVec3::Y).length() > 1e-8
+        || (flag.transform.y_axis - DVec3::Y).length() > 1e-8
+    {
+        return false;
+    }
+    let delta = flag.position - pole.position;
+    delta.x.abs() <= tolerance
+        && delta.z.abs() <= tolerance
+        // The lower cup must clear the wider antenna foot. The top of the
+        // hollow stud may reach the rounded end, but never pass above it.
+        && delta.y - 1. >= 1. / 6. - tolerance
+        && delta.y + 1. / 6. <= 11. / 3. + tolerance
+}
+
+pub fn bodies_penetrate(a: &Brick, b: &Brick, tolerance: f64) -> bool {
+    let overlap = a.bounds.max.min(b.bounds.max) - a.bounds.min.max(b.bounds.min);
+    overlap.min_element() > tolerance && !registered_bar_clearance(a, b, tolerance)
+}
+
 pub fn axis_aligned(brick: &Brick) -> bool {
     let rotation = metric_transform(brick.transform);
     rotation.to_cols_array_2d().iter().all(|axis| {
@@ -41,7 +74,10 @@ pub fn first_stud_collision(bricks: &[Brick], tolerance: f64) -> Option<String> 
             let query = crate::Aabb::new((center - half) / SCALE, (center + half) / SCALE);
             for index in tree.query(query) {
                 let target = &bricks[index];
-                if target.id == source.id || !axis_aligned(target) {
+                if target.id == source.id
+                    || !axis_aligned(target)
+                    || registered_bar_clearance(source, target, tolerance)
+                {
                     continue;
                 }
                 let lo = target.bounds.min * SCALE;
@@ -95,6 +131,38 @@ pub fn first_stud_collision(bricks: &[Brick], tolerance: f64) -> Option<String> 
 #[cfg(test)]
 mod tests {
     use super::*;
+    fn part(id: &str, position: DVec3) -> Brick {
+        let mut demo = crate::demo::Demo::new();
+        demo.add(id.trim_end_matches(".dat"), 0, 0., 0., 0.);
+        let mut brick = demo.bricks.remove(0);
+        brick.position = position;
+        brick.bounds = crate::geometry::nominal_body_bounds(id)
+            .unwrap()
+            .transformed(brick.transform, position);
+        brick
+    }
+
+    #[test]
+    fn flag_bore_clearance_is_coaxial_and_restricted_to_the_real_antenna_shaft() {
+        let pole = part("3957a.dat", DVec3::ZERO);
+        let mut flag = part("4495a.dat", DVec3::new(0., 1.5, 0.));
+        let tolerance = crate::validation::OVERLAP_TOLERANCE;
+        assert!(registered_bar_clearance(&pole, &flag, tolerance));
+        assert!(!bodies_penetrate(&pole, &flag, tolerance));
+        flag.translated(DVec3::X * 0.01);
+        assert!(bodies_penetrate(&pole, &flag, tolerance));
+        flag.translated(DVec3::X * -0.01);
+        flag.translated(DVec3::Y * -0.5);
+        assert!(bodies_penetrate(&pole, &flag, tolerance));
+        flag.translated(DVec3::Y * 3.);
+        assert!(!registered_bar_clearance(&pole, &flag, tolerance));
+        flag = part("4495a.dat", DVec3::new(0., 1.5, 0.));
+        flag.transform =
+            crate::physical::world_transform(glam::DMat3::from_rotation_z(std::f64::consts::PI));
+        assert!(!registered_bar_clearance(&pole, &flag, tolerance));
+        let unrelated = part("3005.dat", DVec3::new(0., 1.5, 0.));
+        assert!(bodies_penetrate(&pole, &unrelated, tolerance));
+    }
     #[test]
     fn catalogue_frame_receives_registered_brick_studs_but_rejects_half_stud_shift() {
         let mut d = crate::demo::Demo::new();

@@ -93,7 +93,8 @@ brick units. They retain occurrence identities, colors, groups and physical meta
 Imported files are converted at the boundary. Stored assets are
 [Ergo part descriptions](docs/part-catalog.md) and geometry with source attribution.
 One [pinned canonical library](docs/part-library.md), derived from official LDraw
-and BrickLink, supplies standard parts and reusable minifigure/car references.
+and BrickLink, supplies standard parts and reusable minifigure/car references,
+including [Lion Knights guards and supported genuine Castle pennants](docs/part-library.md#pre-assembled-common-constructs).
 Its compact native pack resolves the complete selected geometry offline.
 
 [S3 organization](docs/object-store-layout.md) separates the authoritative world,

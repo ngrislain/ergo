@@ -314,9 +314,12 @@ pub fn transform(
                 continue;
             }
             let other = &bricks[j];
-            let overlap = b.bounds.max.min(other.bounds.max) - b.bounds.min.max(other.bounds.min);
             ensure!(
-                overlap.min_element() <= crate::validation::OVERLAP_TOLERANCE,
+                !crate::interference::bodies_penetrate(
+                    b,
+                    other,
+                    crate::validation::OVERLAP_TOLERANCE
+                ),
                 "Group transform overlaps piece {} with {}",
                 b.id,
                 other.id

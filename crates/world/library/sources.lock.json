@@ -144,6 +144,10 @@
       "path": "p/1-8tndis.dat",
       "sha256": "bf98e36043848aa742af4a9ba20a15972175a26f13bd32a1981ddd185da13581"
     },
+    "148.dat": {
+      "path": "parts/148.dat",
+      "sha256": "ceb26ba11e76edc9065ac8819548bb3b188c4aa0be91f7f045abe3d5430b2d7d"
+    },
     "179.dat": {
       "path": "parts/179.dat",
       "sha256": "02c8b409ccbb52dfe362853588bca02ce3176a121775173f9b22a48430d853b1"
@@ -155,6 +159,10 @@
     "2-4chrd.dat": {
       "path": "p/2-4chrd.dat",
       "sha256": "6b1b3d8ccc50f3477109a2dd220a151e76671c8ca3b1b276c81a72d0a4d4daf0"
+    },
+    "2-4con0.dat": {
+      "path": "p/2-4con0.dat",
+      "sha256": "a90cbf8c6904913aff9c63d60f06e827011511880f30055ddab225b0513d52a7"
     },
     "2-4con10.dat": {
       "path": "p/2-4con10.dat",
@@ -211,6 +219,10 @@
     "2456.dat": {
       "path": "parts/2456.dat",
       "sha256": "2487eb97016ea2aa616d93643e7b93f76cf47834b48f5e216c3e059de7cc57d3"
+    },
+    "249.dat": {
+      "path": "parts/249.dat",
+      "sha256": "4cc35f46e7ac5f5f8ca89ff25e9da873a707b7649ec72b123a21be4ef060f3d9"
     },
     "28.dat": {
       "path": "parts/28.dat",
@@ -452,6 +464,14 @@
       "path": "parts/3832.dat",
       "sha256": "7f1286e7c64c2dec72e60edabff12977e38ed59e44bbccb2c09ce4c4d6a0d310"
     },
+    "3844.dat": {
+      "path": "parts/3844.dat",
+      "sha256": "849b7fd9a108c69fd84d8d213544ce4ef6a8bba25e6eab5889e0a1de7c5204b7"
+    },
+    "3846p4h.dat": {
+      "path": "parts/3846p4h.dat",
+      "sha256": "2a09df23e5a2d927d38961f6a700a2b3ff3e91319a2eec1621cd95f744ac474e"
+    },
     "3901.dat": {
       "path": "parts/3901.dat",
       "sha256": "41e86bd78f7a37df93ce3b05eb879716fcfea52e705269613f0f5d652b3a449d"
@@ -459,6 +479,14 @@
     "3941.dat": {
       "path": "parts/3941.dat",
       "sha256": "c64beca7423f8beb5e65501c1f89b95b7de48b4de67349c263ea3392b4f8e70c"
+    },
+    "3957.dat": {
+      "path": "parts/3957.dat",
+      "sha256": "b2ee616741da9f5e8f6ca60739b8d2d51a46a09e83c78ab7693525dbc83f4f94"
+    },
+    "3957a.dat": {
+      "path": "parts/3957a.dat",
+      "sha256": "72b00fb1cddeca659be6137e9027d07a932cd8427df20ef304bc675e34a1c34f"
     },
     "4-4con1.dat": {
       "path": "p/4-4con1.dat",
@@ -520,6 +548,10 @@
       "path": "p/4-4ring7.dat",
       "sha256": "5599c51cfd4e26ca17174bec38de75403cee7d66387d6585aa05f6aebffca40f"
     },
+    "4-8sphe.dat": {
+      "path": "p/4-8sphe.dat",
+      "sha256": "b89c633619d13f6ee5e6867998b4be0f7ac6639e33be803940baf4a89882ce8a"
+    },
     "4073.dat": {
       "path": "parts/4073.dat",
       "sha256": "f152df65421b645fdd74bdc46f49a409bb2dcd01173104ddbfb0872fc1c3f493"
@@ -551,6 +583,18 @@
     "4282.dat": {
       "path": "parts/4282.dat",
       "sha256": "b6efae04a320c3073e9d2e35e5175425da9f157eaedbbb28b85adad1ee280f82"
+    },
+    "4495.dat": {
+      "path": "parts/4495.dat",
+      "sha256": "19d2dbffb687d632b18b5ed352fef4238a99cfff7c87e8b2d6b2ee52f8366553"
+    },
+    "4495a.dat": {
+      "path": "parts/4495a.dat",
+      "sha256": "3c331c0730dd89c83ff2bfd5142c7fa5c26367effedbeeb42ca68b80cc82d036"
+    },
+    "4497.dat": {
+      "path": "parts/4497.dat",
+      "sha256": "54fa0c238e230a1127bdb1d619366ec4aedd7ed6bea53fc0670a1134de1a55a9"
     },
     "4624.dat": {
       "path": "parts/4624.dat",
@@ -676,6 +720,10 @@
       "path": "parts/76382p00.dat",
       "sha256": "a8e37b2b1b814f06faac9e7ec243485fbce9fe0162e23e82c2e9010267d8ebd1"
     },
+    "76382p4f.dat": {
+      "path": "parts/76382p4f.dat",
+      "sha256": "a3cdb0024c0a4c5b787145b8c4c6266752091fc25fd2128a847524120b969723"
+    },
     "87081.dat": {
       "path": "parts/87081.dat",
       "sha256": "809dfc30b2c1dcb65984b207e3c2747ded5a4f67d8b0c65a9d1d8e22134710c8"
@@ -695,6 +743,10 @@
     "973c01.dat": {
       "path": "parts/973c01.dat",
       "sha256": "25ff07f8412bab47eb56da40ad9943bd5087e030a1c2ce4f95fec75b584c565e"
+    },
+    "973p4f.dat": {
+      "path": "parts/973p4f.dat",
+      "sha256": "5c82af148e5fd92e1da84b6ac4d0439345b085f07ca27d450aa270246bb4077f"
     },
     "axl5ho10.dat": {
       "path": "p/axl5ho10.dat",
@@ -979,6 +1031,18 @@
     "s/3818s04.dat": {
       "path": "parts/s/3818s04.dat",
       "sha256": "82ca476e5c1f79860490e74d2cafb75b375f837b6d70f74d8048a4a9e499862a"
+    },
+    "s/3846p4gs01.dat": {
+      "path": "parts/s/3846p4gs01.dat",
+      "sha256": "f7b089bfcb73769a317f5b18220eb8558c6a8e817a9ac2318b956b3cfa6db4fa"
+    },
+    "s/3846p4gs02.dat": {
+      "path": "parts/s/3846p4gs02.dat",
+      "sha256": "eec3fd6a58fe4d159bffaf637ec7b41724bcaa80edd3e15df9dc82ba31180c92"
+    },
+    "s/3846s01.dat": {
+      "path": "parts/s/3846s01.dat",
+      "sha256": "cf38e965b84837bf7689456d117591c7a016a5f349c53e67a37238d9affd3ebe"
     },
     "s/3941s01.dat": {
       "path": "parts/s/3941s01.dat",
@@ -2514,11 +2578,73 @@
       "source_revision": "4788e3e461a32e09b66652bc7c408e1acebe4de9c9140f8b84a2cc873f966b36",
       "vertex_hash": "31f9c1aaed6b4299ac16eb6fab77d7a09ace0933a3052bb2599b12824462ab30"
     },
+    "3844.dat": {
+      "asset": {
+        "bytes": 10090,
+        "mesh_hash": "c80b475fdec65199b104c279887347e0bd8d10f97de4eb3db21f5ab4c6ed6519",
+        "offset": 509397
+      },
+      "catalogue": {
+        "aliases": [],
+        "id": "3844.dat",
+        "mass_kg": 0.00064,
+        "mass_source": "https://www.bricklink.com/v2/catalog/catalogitem.page?P=3844",
+        "name": "Minifig Helmet Castle with Neck Protector",
+        "profile_id": "3844.dat",
+        "size": null,
+        "studs": null
+      },
+      "files": [
+        "3844.dat",
+        "4-4con1.dat",
+        "4-4cyli.dat",
+        "4-4disc.dat",
+        "4-4edge.dat",
+        "4-4ring3.dat",
+        "rect.dat",
+        "rect2p.dat",
+        "stud4a.dat"
+      ],
+      "revision": "8c37a16dc98c848bd4a540d80598a0d174e1ac9f0beb486bee1853d549089f5e",
+      "source_revision": "0c3e5ba7551dff873fffac9901001e57b3ef29c62837e738fcc896c66d964483",
+      "vertex_hash": "097d59e9550966ec1e5c3893f85db70c7d587e41b5409cfa9275e68d1166a0f0"
+    },
+    "3846p4h.dat": {
+      "asset": {
+        "bytes": 8578,
+        "mesh_hash": "f4b7705d62122d9409dd0e200f6343bf8faed73d3f44950c7817921443766527",
+        "offset": 519487
+      },
+      "catalogue": {
+        "aliases": [],
+        "id": "3846p4h.dat",
+        "mass_kg": 0.00041999999999999996,
+        "mass_source": "https://www.bricklink.com/v2/catalog/catalogitem.page?P=3846p4h",
+        "name": "Minifig Shield Triangular with Yellow Lion on Blue Pattern",
+        "profile_id": "3846p4h.dat",
+        "size": null,
+        "studs": null
+      },
+      "files": [
+        "2-4edge.dat",
+        "3846p4h.dat",
+        "4-4cyli.dat",
+        "4-4disc.dat",
+        "4-4edge.dat",
+        "rect.dat",
+        "s/3846p4gs01.dat",
+        "s/3846p4gs02.dat",
+        "s/3846s01.dat"
+      ],
+      "revision": "f0e833167f2001a2ae344622925791f5150c4f14b5ed386d1877e8abb4e44bc0",
+      "source_revision": "95c5da4e3590d7f9ca5d7d8fa9389b3dce84058be5a623d1c5dcb85d78213977",
+      "vertex_hash": "29d4e257894b473c7628d025a55ec5c9df5f5f83055a25a0fce9ee985e2f3d63"
+    },
     "3901.dat": {
       "asset": {
         "bytes": 16669,
         "mesh_hash": "a36f05b50534ec408dea2c667c776248d1113c7e435fe35f01dfed443b9ad144",
-        "offset": 509397
+        "offset": 528065
       },
       "catalogue": {
         "aliases": [],
@@ -2547,7 +2673,7 @@
       "asset": {
         "bytes": 7774,
         "mesh_hash": "0afa4efbdcb4dcfdd029408681f96349502baaef30dd84c0f2e4d024195ebc6d",
-        "offset": 526066
+        "offset": 544734
       },
       "catalogue": {
         "aliases": [],
@@ -2593,11 +2719,50 @@
       "source_revision": "131e87c13a6060fa4d96f113e7986a10eb8b0f1df83f185dd0c16564299569ad",
       "vertex_hash": "791fd68c638058d57ad8f2724965ef37e14ae6c6c6f953862ff43a4cb9c0e67d"
     },
+    "3957a.dat": {
+      "asset": {
+        "bytes": 4897,
+        "mesh_hash": "1bb08a4950b905b707cc2e8ce6745975ca7cd2c4580aceb05408b50ea9293f33",
+        "offset": 552508
+      },
+      "catalogue": {
+        "aliases": [
+          "148.dat",
+          "3957.dat"
+        ],
+        "id": "3957a.dat",
+        "mass_kg": 0.00041999999999999996,
+        "mass_source": "https://www.bricklink.com/v2/catalog/catalogitem.page?P=3957a",
+        "name": "Antenna  4H with Rounded Top",
+        "profile_id": "3957a.dat",
+        "size": null,
+        "studs": null
+      },
+      "files": [
+        "1-8sphe.dat",
+        "148.dat",
+        "3957.dat",
+        "3957a.dat",
+        "4-4cylc.dat",
+        "4-4cyli.dat",
+        "4-4cylo.dat",
+        "4-4disc.dat",
+        "4-4edge.dat",
+        "4-4ring1.dat",
+        "4-4ring2.dat",
+        "4-4ring3.dat",
+        "4-8sphe.dat",
+        "stud4a.dat"
+      ],
+      "revision": "2ec86feabfd93cb35e1597f19dd86833dbde312c2d56db01b7ac78b47b613c8c",
+      "source_revision": "1c4728650370f495a7ef3863b0c979bd8726fe8ca9ddc207fe5324bfe12f0a46",
+      "vertex_hash": "cb661982b9c71ea3ee8a6462ab7c60f19bee1a2788874060a16bc381925e7a9c"
+    },
     "4083.dat": {
       "asset": {
         "bytes": 16648,
         "mesh_hash": "002ca0c9bb8c6f4c092fa1b2f406c2e9c7f1b45713a50c9d2cf45e1ec91e039d",
-        "offset": 533840
+        "offset": 557405
       },
       "catalogue": {
         "aliases": [],
@@ -2630,7 +2795,7 @@
       "asset": {
         "bytes": 72518,
         "mesh_hash": "052b344eb0948af85bb1bdd7260c790ea292b03b6dbaaf4287c4fde7f7b6ecdc",
-        "offset": 550488
+        "offset": 574053
       },
       "catalogue": {
         "aliases": [],
@@ -2663,7 +2828,7 @@
       "asset": {
         "bytes": 60372,
         "mesh_hash": "cf1e67a72ba2ffa588999ded46f3892df7d43e3bd2b951de9a5ec21c41a88cc2",
-        "offset": 623006
+        "offset": 646571
       },
       "catalogue": {
         "aliases": [
@@ -2716,7 +2881,7 @@
       "asset": {
         "bytes": 122972,
         "mesh_hash": "735e96331c112128b3c60e9c7242f8874165758db060bde64805e7d5422e8f13",
-        "offset": 683378
+        "offset": 706943
       },
       "catalogue": {
         "aliases": [],
@@ -2766,7 +2931,7 @@
       "asset": {
         "bytes": 14775,
         "mesh_hash": "fd3314f5b9a702284acdcc2bf5eee69a18a32eb3db9576e4214855cbaa43b0e0",
-        "offset": 806350
+        "offset": 829915
       },
       "catalogue": {
         "aliases": [],
@@ -2804,7 +2969,7 @@
       "asset": {
         "bytes": 28452,
         "mesh_hash": "a6dc001cb53f0e2d5f7bc2cea98a0f1eefad17e4a10a059b0f8b719cea2fd223",
-        "offset": 821125
+        "offset": 844690
       },
       "catalogue": {
         "aliases": [],
@@ -2833,11 +2998,82 @@
       "source_revision": "1e687d923a3204389acc32f292185e7dbd7d3ea84f1e44cd63df91da3ca63611",
       "vertex_hash": "e0ff769087305aced8abd3f56f4c9d31a68d68a5c495bf840ca3fc8d547d6cdc"
     },
+    "4495a.dat": {
+      "asset": {
+        "bytes": 8364,
+        "mesh_hash": "005fe35f6e547231759a38423e719a564392dd9f289f979e92cf242dd19ac45d",
+        "offset": 873142
+      },
+      "catalogue": {
+        "aliases": [
+          "249.dat",
+          "4495.dat"
+        ],
+        "id": "4495a.dat",
+        "mass_kg": 0.00037,
+        "mass_source": "https://www.bricklink.com/v2/catalog/catalogitem.page?P=4495a",
+        "name": "Flag  4 x  1 with First Wave Left",
+        "profile_id": "4495a.dat",
+        "size": null,
+        "studs": null
+      },
+      "files": [
+        "1-8cyli.dat",
+        "1-8edge.dat",
+        "2-4cyli.dat",
+        "2-4disc.dat",
+        "2-4edge.dat",
+        "249.dat",
+        "4-4cyli.dat",
+        "4-4edge.dat",
+        "4-4ring2.dat",
+        "4-4ring3.dat",
+        "4495.dat",
+        "4495a.dat",
+        "rect.dat",
+        "stud2a.dat",
+        "stud4a.dat"
+      ],
+      "revision": "9a7a5e69c46d96acbf29e4b5ca8e6d27f36dd5c966581932021798210bb445dc",
+      "source_revision": "2965678289728249b6beaddae00942c4266a37c5f47f97e8f74a54321b0dfc0b",
+      "vertex_hash": "6c1eaa1c1672bfde8b52d20ea2b77968af7802b92436a1c77cbc94196c6d9358"
+    },
+    "4497.dat": {
+      "asset": {
+        "bytes": 3865,
+        "mesh_hash": "b0b74fa4e81c9c2a487eab3f69cc3b13afb2aeae1d91bce02dea26062789ef1b",
+        "offset": 881506
+      },
+      "catalogue": {
+        "aliases": [],
+        "id": "4497.dat",
+        "mass_kg": 0.0004,
+        "mass_source": "https://www.bricklink.com/v2/catalog/catalogitem.page?P=4497",
+        "name": "Minifig Spear with Round End",
+        "profile_id": "4497.dat",
+        "size": null,
+        "studs": null
+      },
+      "files": [
+        "1-4disc.dat",
+        "1-8edge.dat",
+        "1-8sphe.dat",
+        "2-4con0.dat",
+        "2-4cyli.dat",
+        "2-4edge.dat",
+        "4-4cyli.dat",
+        "4-8sphe.dat",
+        "4497.dat"
+      ],
+      "revision": "1f3d5bcac8f1e20d8aa0d85e0e5846134400deb285bacd29546bb8236454e621",
+      "source_revision": "204a57205e2b5e032bdd39e7b7a399316cb72562259de775f0b8a7807234943c",
+      "vertex_hash": "1dd4c462fbdc325ed4fedd31c8e17d23fbfb01ad229692c8fefd18d3582e27a1"
+    },
     "4624c01.dat": {
       "asset": {
         "bytes": 16990,
         "mesh_hash": "7daf7c9a4c2ac670f4c47300f14ddb6339845c3b81a24d923a4a6d45d9cc5fc1",
-        "offset": 849577
+        "offset": 885371
       },
       "catalogue": {
         "aliases": [],
@@ -2889,7 +3125,7 @@
       "asset": {
         "bytes": 6539,
         "mesh_hash": "c408d23b9af89f72a99b969b7bf79c4881388c25101ae42500afbe93d9026bbd",
-        "offset": 866567
+        "offset": 902361
       },
       "catalogue": {
         "aliases": [
@@ -2926,7 +3162,7 @@
       "asset": {
         "bytes": 6759,
         "mesh_hash": "cfe0fa248fb1044fcea3b0270e1a38bbefbc4d49e9acb1fd53d6df597dd6b5f0",
-        "offset": 873106
+        "offset": 908900
       },
       "catalogue": {
         "aliases": [],
@@ -2974,7 +3210,7 @@
       "asset": {
         "bytes": 6506,
         "mesh_hash": "c3fb32508889e507b286fc7ecc2ed36e70ddad7dd9979261db1f5c7ce8b8c622",
-        "offset": 879865
+        "offset": 915659
       },
       "catalogue": {
         "aliases": [],
@@ -3015,7 +3251,7 @@
       "asset": {
         "bytes": 3231,
         "mesh_hash": "09bbc0a451022f9e8f2156df5a051083e536e5e9dad12664a0802a95c71cc4a0",
-        "offset": 886371
+        "offset": 922165
       },
       "catalogue": {
         "aliases": [
@@ -3051,7 +3287,7 @@
       "asset": {
         "bytes": 39991,
         "mesh_hash": "7352d94c40b552c6a74e25da834c63c44c109495f7d5ddbfcafba3ad381cbcfb",
-        "offset": 889602
+        "offset": 925396
       },
       "catalogue": {
         "aliases": [
@@ -3108,11 +3344,71 @@
       "source_revision": "da9822c33e429f555b7a1fadf4931929cc63e6df97ca1d138a97056bc30a2d23",
       "vertex_hash": "dacc031b0337b39e66e7d28283f8177683d073c29b3f543771d6c700e8c33379"
     },
+    "76382p4f.dat": {
+      "asset": {
+        "bytes": 47589,
+        "mesh_hash": "d09b99c8a05a31b088cfd77b59c173efe5d326df8532ad301328a7935caee806",
+        "offset": 965387
+      },
+      "catalogue": {
+        "aliases": [],
+        "id": "76382p4f.dat",
+        "mass_kg": 0.00125,
+        "mass_source": "https://www.bricklink.com/v2/catalog/catalogitem.page?P=973px138c01",
+        "name": "Minifig Torso with Arms and Hands with Lion Gold on Blue Shield Pattern",
+        "profile_id": "76382p4f.dat",
+        "size": null,
+        "studs": null
+      },
+      "files": [
+        "1-4chrd.dat",
+        "1-4con10.dat",
+        "1-4con4.dat",
+        "1-4cyli.dat",
+        "1-4edge.dat",
+        "1-4ndis.dat",
+        "1-8chrd.dat",
+        "2-4con10.dat",
+        "2-4con4.dat",
+        "2-4cyli.dat",
+        "2-4cylo.dat",
+        "2-4edge.dat",
+        "2-4ring2.dat",
+        "3-4cyli.dat",
+        "3-4edge.dat",
+        "3-4ring1.dat",
+        "3818.dat",
+        "3819.dat",
+        "3820.dat",
+        "4-4cylc.dat",
+        "4-4cyli.dat",
+        "4-4cylo.dat",
+        "4-4disc.dat",
+        "4-4edge.dat",
+        "4-4ndis.dat",
+        "76382p4f.dat",
+        "973p4f.dat",
+        "knob1.dat",
+        "rect.dat",
+        "rect2p.dat",
+        "s/3818s01.dat",
+        "s/3818s02.dat",
+        "s/3818s03.dat",
+        "s/3818s04.dat",
+        "s/3846p4gs01.dat",
+        "s/3846p4gs02.dat",
+        "s/973s01.dat",
+        "tri3a4.dat"
+      ],
+      "revision": "b35b14537adf3e37fa53551c7a016498ac358b357c781158a955d21ed04e78dd",
+      "source_revision": "f3e2d9365113ad7dc392e22a14465ac5d8877b7cd94fa9bd63403d892d76c4fe",
+      "vertex_hash": "9068661ddd5745517f1a43d3171f529697121c0d60c8f5500d062966ddcaa471"
+    },
     "87081.dat": {
       "asset": {
         "bytes": 49862,
         "mesh_hash": "de3a943fdc2e57fa65b3a6963601c21b6a9e0e3032fc6be255a5eaa872b16660",
-        "offset": 929593
+        "offset": 1012976
       },
       "catalogue": {
         "aliases": [],
@@ -3179,7 +3475,7 @@
       "asset": {
         "bytes": 3227,
         "mesh_hash": "edae2d91cc950018caddefe6aef218a90be767647cf804d1777b2af98892d640",
-        "offset": 979455
+        "offset": 1062838
       },
       "catalogue": {
         "aliases": [],

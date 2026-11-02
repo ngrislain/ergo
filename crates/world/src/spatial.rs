@@ -166,6 +166,13 @@ pub struct Relation {
 /// upright, unscaled catalogue parts with registered interfaces infer a connection.
 /// Inferred catalogue factory clips still have no assumed strength.
 pub fn relation(a: &Brick, b: &Brick) -> Option<Relation> {
+    if crate::interference::registered_bar_clearance(a, b, 0.002) {
+        return Some(Relation {
+            brick_id: b.id,
+            kind: "catalogue bar and hollow-stud connection",
+            certainty: "inferred",
+        });
+    }
     let overlap = a.bounds.max.min(b.bounds.max) - a.bounds.min.max(b.bounds.min);
     let eps = 0.002;
     let touching_axes = (0..3).filter(|&i| overlap[i].abs() < eps).count();
@@ -221,9 +228,9 @@ pub fn relation(a: &Brick, b: &Brick) -> Option<Relation> {
             }
             let lower_part = crate::part_library::profile_id(&lower.part);
             let upper_part = crate::part_library::profile_id(&upper.part);
-            factory_clip = ((lower_part == "970c00.dat" && upper_part == "76382p00.dat")
-                || (lower_part == "76382p00.dat"
-                    && ["3626a.dat", "3626ap01.dat"].contains(&upper_part)))
+            let torso = |part: &str| ["76382p00.dat", "76382p4f.dat"].contains(&part);
+            factory_clip = ((lower_part == "970c00.dat" && torso(upper_part))
+                || (torso(lower_part) && ["3626a.dat", "3626ap01.dat"].contains(&upper_part)))
                 && (lower.position.x - upper.position.x).abs() < eps
                 && (lower.position.z - upper.position.z).abs() < eps;
             inferred |= factory_clip;

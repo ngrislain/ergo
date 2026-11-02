@@ -1,5 +1,14 @@
 # Changelog
 
+## Unreleased
+
+- Add six pinned genuine Castle parts, sourced catalogue masses, printed Lion
+  Knights guard and supported pennant common constructs. Recognize only the
+  reviewed coaxial antenna/flag bore clearance; retain support and measured
+  connector-capacity requirements for unsupported accessories.
+- Allow explicit reviewed source-only catalogue additions through the reproducible
+  official LDraw/BrickLink updater.
+
 ## v0.5.17
 
 - Issue MCP/API delegations for 365 days by default, independently of the browser

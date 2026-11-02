@@ -3,8 +3,8 @@
 ## One reproducible library
 
 `crates/world/library/sources.lock.json` is the canonical catalogue used by Rust
-and Python authoring. It contains 55 selected parts: 32 rectangular brick, plate
-and tile shapes, plus 23 source-only architectural, figure and vehicle parts.
+and Python authoring. It contains 61 selected parts: 32 rectangular brick, plate
+and tile shapes, plus 29 source-only architectural, figure and vehicle parts.
 Names, dimensions, catalogue masses and aliases are read from this registry;
 there are no independent standard-size or standard-mass tables in the generator.
 
@@ -35,7 +35,7 @@ physical-model version or connector calibration.
 
 ## Compact native asset pack
 
-`crates/assets/library/parts.pack` ships the complete selected geometry in **982,682
+`crates/assets/library/parts.pack` ships the complete selected geometry in **1,066,065
 bytes**. It concatenates independent deterministic gzip members in canonical part-ID
 order. Each member decodes to one ordinary native Mesh CBOR object; it is not a ZIP
 or a top-level CBOR container. The lock records `asset:{offset,bytes,mesh_hash}` for
@@ -79,6 +79,12 @@ Part resolution rejects changed/unavailable canonical sources rather than creati
 another flat-bottomed box variant. Parametric meshes remain internal diagnostics
 and render-detail derivatives, not newly resolved catalogue assets.
 
+To select an additional reviewed source-only part, first implement its nominal
+profile, then use `--add-part LDRAW_ID.dat=BRICKLINK_ID --bake` with `--source-dir`.
+The updater fetches that item's linked catalogue mass and records the complete
+official dependency closure. Existing selections are rejected rather than
+silently overwritten. Subsequent deterministic checks need no `--add-part` flag.
+
 ## Pre-assembled common constructs
 
 `crates/world/library/constructs.json` defines immutable, versioned common models:
@@ -88,6 +94,20 @@ and render-detail derivatives, not newly resolved catalogue assets.
 - `classic-car-v1`: the attributed 6505 open-cabin adaptation, with instance-colour
   bodywork, fixed wheel/trim colours and transparent windscreen. Its tyres rest on
   a supported smooth road/tiled surface; the tyre proxy is not an upright ground-stud footprint.
+- `medieval-guard-v1`: an eight-part Lion Knights guard with genuine **76382p4f**
+  printed gold-lion shield torso, **3844** Castle helmet, **4497** spear and
+  **3846p4h** triangular shield. The spear rests on the base; the shield rests on a
+  smooth tile stop. This is an at-rest pose, not an assumed hand-clutch rating.
+  The instance colour selects the torso; the moulded arms, hands and heraldry keep
+  the official source colours. A repeated guard uses one versioned reference.
+- `castle-standard-v1`: an eleven-part supported standard with genuine **4495a**
+  wavy pennant and **3957a** antenna. One capped post bears the asymmetric cloth,
+  avoiding an uncalibrated cantilever. Place the two post centres on half-stud
+  coordinates over ordinary brick studs; the instance colour selects the flag.
+  This does not certify an unsupported flag or any connector's shake strength.
+
+Both Castle constructs retain the Stefan Frenz **6080-1** reference attribution
+(CCAL 2.0); each genuine part also retains its own official LDraw author/licence.
 
 `get_catalog` lists these IDs, descriptions, part counts and credits. A native
 model references one with `{"target":{"kind":"construct","id":"classic-car-v1"}}`,

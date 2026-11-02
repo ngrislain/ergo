@@ -140,7 +140,7 @@ mod tests {
             }
             assert_eq!(crate::physical::mass_kg(&part.id).unwrap(), part.mass_kg);
         }
-        assert_eq!(all().len(), 55);
+        assert_eq!(all().len(), 61);
         assert_eq!(rectangular, 32);
     }
 }

@@ -195,6 +195,8 @@ def main():
     parser.add_argument('--extract-to',type=pathlib.Path,help='Extract a downloaded archive under this directory')
     parser.add_argument('--archive-sha256',help='Previously verified complete archive SHA-256')
     parser.add_argument('--refresh-masses',action='store_true',help='Take current masses from the recorded BrickLink sources')
+    parser.add_argument('--add-part',action='append',default=[],metavar='LDRAW_ID=BRICKLINK_ID',
+        help='Add a reviewed source-only part with an implemented nominal profile; fetch its catalogue mass')
     parser.add_argument('--bake',action='store_true',help='Reproducibly bake and lock the full vertex fingerprints')
     parser.add_argument('--rebake',action='store_true',help='Explicitly rebuild fingerprints after a reviewed baker algorithm update')
     parser.add_argument('--output',type=pathlib.Path,default=DEFAULT)
@@ -207,6 +209,18 @@ def main():
     if args.source_dir is None:parser.error('Provide --source-dir or download/extract arguments')
     if args.archive_sha256 and archive_hash!=args.archive_sha256:raise ValueError('Archive checksum differs from the requested snapshot')
     previous=json.loads((args.output if args.output.exists() else DEFAULT).read_text())
+    additions=[]
+    for value in args.add_part:
+        match=re.fullmatch(r'([a-z0-9]+\.dat)=([A-Za-z0-9]+)',value)
+        if not match:parser.error('--add-part requires normalized LDRAW_ID.dat=BRICKLINK_ID')
+        id,metadata_id=match.groups()
+        if id in previous['parts']:parser.error('Part is already selected: '+id)
+        entry={'id':id,'name':'','mass_kg':0.,
+            'mass_source':'https://www.bricklink.com/v2/catalog/catalogitem.page?P='+metadata_id,
+            'size':None,'studs':None,'aliases':[],'profile_id':id}
+        previous['parts'][id]={'catalogue':entry}
+        additions.append(entry)
+    if additions:metadata_masses(additions)
     archive_hash=archive_hash or previous.get('source_archive_sha256')
     lock=generate(args.source_dir,previous,archive_hash,args.refresh_masses)
     if args.rebake:
