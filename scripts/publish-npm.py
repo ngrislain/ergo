@@ -7,6 +7,7 @@ import json
 import pathlib
 import subprocess
 import tarfile
+import time
 
 REGISTRY='https://registry.npmjs.org/'
 NAME='@ngrislain/ergo-mcp'
@@ -25,23 +26,33 @@ def metadata(tarball,version):
     if distribution.get('version')!=version or not distribution.get('complete') or set(distribution.get('platforms',[]))!=PLATFORMS:raise ValueError('All four verified native platforms are required')
     return package
 
-def publish(tarball,version,run=subprocess.run):
+def missing(result):
+    try:return result.returncode!=0 and json.loads(result.stdout).get('error',{}).get('code')=='E404'
+    except (json.JSONDecodeError,AttributeError):return False
+
+def publish(tarball,version,run=subprocess.run,wait=time.sleep):
     # npm treats directory/file.tgz as GitHub shorthand without a leading ./.
     # An absolute local path is unambiguous for every caller and working dir.
     tarball=tarball.resolve(strict=True)
     metadata(tarball,version)
     integrity='sha512-'+base64.b64encode(hashlib.sha512(tarball.read_bytes()).digest()).decode()
-    existing=run(['npm','view',NAME+'@'+version,'dist.integrity','--json','--registry='+REGISTRY],capture_output=True,text=True)
+    query=['npm','view',NAME+'@'+version,'dist.integrity','--json','--prefer-online','--registry='+REGISTRY]
+    existing=run(query,capture_output=True,text=True)
     if existing.returncode==0:
         if json.loads(existing.stdout)!=integrity:raise RuntimeError('This npm version already contains a different artifact; choose a new version')
         print(json.dumps({'package':NAME,'version':version,'state':'already_published_identical','integrity':integrity}));return
-    try:missing=json.loads(existing.stdout).get('error',{}).get('code')=='E404'
-    except (json.JSONDecodeError,AttributeError):missing=False
-    if not missing:raise RuntimeError('Could not verify npm version availability; publication was not attempted')
+    if not missing(existing):raise RuntimeError('Could not verify npm version availability; publication was not attempted')
     run(['npm','publish',str(tarball),'--access','public','--provenance','--ignore-scripts','--registry='+REGISTRY],check=True)
-    verified=run(['npm','view',NAME+'@'+version,'dist.integrity','--json','--registry='+REGISTRY],capture_output=True,text=True,check=True)
-    if json.loads(verified.stdout)!=integrity:raise RuntimeError('Published npm integrity differs from the verified bundle')
-    print(json.dumps({'package':NAME,'version':version,'state':'published_verified','integrity':integrity}))
+    # An accepted npm publication may remain in registry processing for minutes.
+    # Poll reads only; never repeat the publication to resolve that delay.
+    for attempt in range(61):
+        verified=run(query,capture_output=True,text=True)
+        if verified.returncode==0:
+            if json.loads(verified.stdout)!=integrity:raise RuntimeError('Published npm integrity differs from the verified bundle')
+            print(json.dumps({'package':NAME,'version':version,'state':'published_verified','integrity':integrity}));return
+        if not missing(verified):raise RuntimeError('npm accepted publication but integrity read-back failed; reconcile before any retry')
+        if attempt<60:wait(10)
+    raise RuntimeError('npm accepted publication but it is still processing after 10 minutes; check registry integrity before any retry')
 
 def main():
     parser=argparse.ArgumentParser(description=__doc__);parser.add_argument('tarball',type=pathlib.Path);parser.add_argument('--version',required=True)

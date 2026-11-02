@@ -9,7 +9,8 @@
 - Colour virtual baseplates per stud from neighbour-blended OSM terrain colours,
   with shared cell-edge samples and bounded GPU colour fields. Preserve authored
   pieces, physics, source attribution and offline snapshot compatibility.
-- Add explicit CI npm publication with OIDC and immutable-artifact integrity checks.
+- Add explicit CI npm publication with OIDC and immutable-artifact integrity checks;
+  poll read-only while an accepted version is in asynchronous registry processing.
 
 ## Container maintenance after v0.5.16
 

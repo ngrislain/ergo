@@ -91,12 +91,12 @@ and readable no-JavaScript content.
 
 `ERGO_MCP_PACKAGE` selects the npm package spec displayed in the homepage and
 generated `/llms.txt`. It is a **public build setting**, not a credential. The
-source default points to the versioned release asset below. The deployed
-repository variable stays on the last verified asset until the new release is
+source default points to the versioned npm release below. The deployed
+repository variable stays on the last verified package until the new release is
 published and verified:
 
 ```text
-https://github.com/ngrislain/ergo/releases/download/v0.5.16/ngrislain-ergo-mcp-0.5.16.tgz
+@ngrislain/ergo-mcp@0.5.17
 ```
 
 For a local override, copy `site/.env.example` to ignored `site/.env`, edit that
@@ -105,11 +105,11 @@ variable with the same name. Update it only after the release asset is verified:
 
 ```sh
 gh variable set ERGO_MCP_PACKAGE --repo ngrislain/ergo \
-  --body 'https://github.com/ngrislain/ergo/releases/download/v0.5.16/ngrislain-ergo-mcp-0.5.16.tgz'
+  --body '@ngrislain/ergo-mcp@0.5.17'
 gh workflow run pages.yml --repo ngrislain/ergo --ref main
 ```
 
-Use the actual published GitHub Release `.tgz` URL. A raw monorepo Git URL is not
+Use a verified npm version or published GitHub Release `.tgz` URL. A raw monorepo Git URL is not
 an installable distribution. Credential-bearing source values are rejected.
 The configured client launches the installed `ergo-mcp` command.
 

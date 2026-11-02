@@ -8,6 +8,8 @@ on:
       - scripts/package-mcp.py
       - scripts/test-npm-package.py
       - scripts/test-distribution.py
+      - scripts/publish-npm.py
+      - scripts/test-npm-publish.py
       - Cargo.toml
       - Cargo.lock
       - crates/mcp/**
@@ -19,6 +21,8 @@ on:
       - scripts/package-mcp.py
       - scripts/test-npm-package.py
       - scripts/test-distribution.py
+      - scripts/publish-npm.py
+      - scripts/test-npm-publish.py
 
 permissions:
   contents: read
@@ -36,4 +40,5 @@ jobs:
           package-manager-cache: false
       - run: python3 scripts/package-mcp.py version
       - run: python3 scripts/test-distribution.py
+      - run: python3 scripts/test-npm-publish.py
       - run: node --test packages/mcp/test/*.test.cjs

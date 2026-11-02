@@ -65,5 +65,25 @@ class Publication(unittest.TestCase):
             publisher.publish(pathlib.Path('npm-release/bundle.tgz'),'0.5.16',registry)
         finally:os.chdir(before)
         self.assertEqual([command[1] for command in calls],['view','publish','view'])
+    def test_registry_processing_polls_reads_without_republishing(self):
+        calls=[];waits=[]
+        def registry(command,**kwargs):
+            calls.append(command)
+            if command[1]=='publish':return subprocess.CompletedProcess(command,0,'','')
+            if len(calls)<5:return subprocess.CompletedProcess(command,1,json.dumps({'error':{'code':'E404'}}),'')
+            return subprocess.CompletedProcess(command,0,json.dumps(self.integrity()),'')
+        publisher.publish(self.tarball,'0.5.16',registry,waits.append)
+        self.assertEqual([command[1] for command in calls],['view','publish','view','view','view'])
+        self.assertEqual(waits,[10,10])
+    def test_processing_deadline_does_not_repeat_an_accepted_publication(self):
+        calls=[];waits=[]
+        def registry(command,**kwargs):
+            calls.append(command)
+            if command[1]=='publish':return subprocess.CompletedProcess(command,0,'','')
+            return subprocess.CompletedProcess(command,1,json.dumps({'error':{'code':'E404'}}),'')
+        with self.assertRaisesRegex(RuntimeError,'still processing'):
+            publisher.publish(self.tarball,'0.5.16',registry,waits.append)
+        self.assertEqual(sum(command[1]=='publish' for command in calls),1)
+        self.assertEqual(len(waits),60)
 
 if __name__=='__main__':unittest.main()

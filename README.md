@@ -43,15 +43,20 @@ The server owns authorization, static acceptance and persistence. Dynamic gravit
 earthquake/drop tests, editing feedback and actual image rendering run locally in
 WASM. The native MCP process is a thin I/O/stdio bridge.
 
-## Install the MCP client from GitHub
+<a id="install-the-mcp-client-from-github"></a>
+
+## Install the MCP client
 
 The prebuilt bundle includes native binaries and WASM assets; consumers need
 Node.js 20+ and Chrome/Chromium, not Rust.
 
 ```sh
-npm install --global --ignore-scripts 'https://github.com/ngrislain/ergo/releases/download/v0.5.16/ngrislain-ergo-mcp-0.5.16.tgz'
+npm install --global --ignore-scripts @ngrislain/ergo-mcp@0.5.17
 ergo-mcp --login --publish-url https://ergosandbox.com
 ```
+
+The [GitHub Release](https://github.com/ngrislain/ergo/releases/tag/v0.5.17)
+also provides the verified complete tarball and checksum.
 
 Generate/download a token in the signed-in browser, keep it in a private file,
 and configure the client:
