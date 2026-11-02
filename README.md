@@ -101,6 +101,9 @@ Public axes are X east, Y north, Z up. A storage cell is 1024³ brick units;
 the default address mapping is one arc-second per horizontal cell. The Paris
 reference is 48.8566° N, 2.3522° E. The reference is fixed; camera GPS is derived
 from your current position. Storage-cell membership is not a physical anchor.
+Virtual baseplates use [OSM-derived per-stud colours](docs/ground-and-coordinates.md),
+blending neighbouring map pixels and agreeing across plate edges. Generated colour
+fields are small display caches, independent of authored bricks and physics.
 
 Nominal geometry uses 8 mm stud pitch, 9.6 mm brick height and 3.2 mm plate height.
 The simulator uses sourced masses and SI gravity with box collision/inertia

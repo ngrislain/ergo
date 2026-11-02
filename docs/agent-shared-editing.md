@@ -55,7 +55,7 @@ cancel in the final part pose. Camera coordinates are not placement coordinates.
 2. Click **Edit here with an agent** (the command-symbol button in the header).
 3. The setup page carries the current view target in public construction
    coordinates, plus the selected/edited assembly ID when available. Generate
-   and download a short-lived token. Copy its MCP configuration into your agent.
+   and download a 365-day token. Copy its MCP configuration into your agent.
 4. Use a fresh, absolute cache path for that context. Keep the token in a private
    file and put only its path in the configuration.
 
@@ -184,7 +184,7 @@ usernames or a personal cryptographic signature.
   merely to repeat an unconfirmed import. On restart, a bound cache reloads the
   authoritative shared assembly.
 - A bounded authoring assembly is limited to the configured working-set budget
-  (normally 5,000 pieces/128 MiB; god-mode authoring has no piece-count cap).
+  (normally 10,000 pieces/128 MiB; god-mode authoring has no piece-count cap).
   Assemblies with external mechanical dependencies
   do not claim a complete isolated client simulation; server validation still
   follows the full affected dependency closure.

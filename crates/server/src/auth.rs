@@ -96,7 +96,7 @@ pub struct DelegationRequest {
     expires_in_seconds: u64,
 }
 fn delegation_lifetime() -> u64 {
-    3600
+    365 * 86400
 }
 #[derive(Serialize, Deserialize)]
 struct Login {
@@ -330,15 +330,11 @@ impl Auth {
         );
         let actor = self.check_write(headers)?;
         ensure!(
-            (1..=86400).contains(&lifetime),
-            "MCP delegation lifetime must be 1..86400 seconds"
+            (1..=delegation_lifetime()).contains(&lifetime),
+            "MCP delegation lifetime must be 1..31536000 seconds (365 days)"
         );
-        let mut expires = now() + lifetime;
-        if self.google {
-            let session: Session =
-                self.verify(cookie(headers, "ergo_session").context("Missing session")?)?;
-            expires = expires.min(session.expires);
-        }
+        // The session authorizes issuance, not the lifetime of the delegation.
+        let expires = now() + lifetime;
         let token = self.sign(&McpDelegation {
             purpose: "ergo-mcp-edit-v1".into(),
             actor,
@@ -662,11 +658,15 @@ mod tests {
     #[test]
     fn mcp_delegations_expire_are_audience_bound_and_cannot_become_sessions() {
         let (mut auth, session) = Auth::test_session("alice");
-        let (token, expires) = auth.delegate(&session, 3600).unwrap();
+        let request: DelegationRequest = serde_json::from_str("{}").unwrap();
+        assert_eq!(request.expires_in_seconds, 31_536_000);
+        let before = now();
+        let (token, expires) = auth.delegate(&session, request.expires_in_seconds).unwrap();
         let session_value: Session = auth
             .verify(cookie(&session, "ergo_session").unwrap())
             .unwrap();
-        assert_eq!(expires, session_value.expires);
+        assert!(expires > session_value.expires);
+        assert!((before + 31_536_000..=now() + 31_536_000).contains(&expires));
         let mut headers = HeaderMap::new();
         headers.insert(
             header::AUTHORIZATION,
@@ -680,7 +680,25 @@ mod tests {
         headers.insert("X-Ergo-Request", HeaderValue::from_static("1"));
         assert_eq!(auth.check_publish(&headers).unwrap(), "alice");
         assert!(auth.delegate(&headers, 60).is_err());
-        assert!(auth.delegate(&session, 86401).is_err());
+        assert!(auth.delegate(&session, 0).is_err());
+        assert!(auth.delegate(&session, 31_536_001).is_err());
+        assert!(auth.delegate(&session, 60).is_ok());
+        let mut expired_session = session.clone();
+        expired_session.insert(
+            header::COOKIE,
+            format!(
+                "ergo_session={}",
+                auth.sign(&Session {
+                    user_id: "alice".into(),
+                    expires: now() - 1,
+                })
+                .unwrap()
+            )
+            .parse()
+            .unwrap(),
+        );
+        assert!(auth.delegate(&expired_session, 60).is_err());
+        assert!(auth.shared_principal(&headers).is_ok());
 
         let mut cookie_headers = HeaderMap::new();
         cookie_headers.insert(

@@ -11,7 +11,7 @@ world_prefix = "world"
 max_scale     = 1
 # Increase only for diagnosed long operations; client deadlines are independent.
 request_timeout_seconds = 300
-free_bricks_per_period = 5000
+free_bricks_per_period = 10000
 edit_period_seconds   = 86400
 
 google_client_id = "YOUR-CLIENT.apps.googleusercontent.com"

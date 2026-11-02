@@ -35,8 +35,9 @@ def main():
         environment.update(ERGO_BIND=f'127.0.0.1:{port}', ERGO_PUBLIC_URL=base,
                            ERGO_DATA_DIR=str(directory / 'store'), ERGO_ISOLATED_FIXTURES='1',
                            ERGO_ASSET_FETCH='0', ERGO_GROUND_SOURCE='disabled',
-                           # Pacing is independent of the unchanged per-import
-                           # 5,000-piece authoring budget tested here.
+                           # Explicit smaller authoring budget, independent of
+                           # pacing and the normal 10,000-piece default.
+                           ERGO_SHARED_WORKING_PIECES='5000',
                            ERGO_EDIT_BRICKS_PER_PERIOD='10000')
         with tempfile.TemporaryFile(mode='w+t') as log:
             def start():
@@ -59,7 +60,7 @@ def main():
                                'geo': {'latitude': 48.8566, 'longitude': 2.3522, 'arcseconds_per_block': 1}})
                 mesh = request(base + '/api/parts/3068b.dat')['mesh']
                 names = []
-                # Each import stays below the unchanged 5,000-piece authoring
+                # Each import stays below the configured 5,000-piece authoring
                 # budget. Their combined region must render all 6,000 pieces.
                 for batch in range(2):
                     bricks = []

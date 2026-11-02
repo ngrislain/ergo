@@ -1520,6 +1520,7 @@ fn pump_ground(handle: Handle) {
                 && let Some(block) = c.world.as_ref().and_then(|w| {
                     w.ground.iter().find(|b| {
                         (b.coord.0, b.coord.2) == *key
+                            && b.surface.is_some()
                             && c.ground_provider
                                 .as_ref()
                                 .is_none_or(|provider| provider == &b.source)
@@ -1572,7 +1573,7 @@ fn pump_ground(handle: Handle) {
                         .set(format!("Ground: palette fallback ({reason})"));
                 } else {
                     c.ui.ground_status
-                        .set(format!("Ground: {} · standard brick palette", block.source));
+                        .set(format!("Ground: {} · blended stud colours", block.source));
                 }
                 if let Some(url) = &block.attribution_url {
                     c.ui.ground_attribution

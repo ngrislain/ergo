@@ -226,15 +226,22 @@ seven days.
 
 ## `ground/blocks/<signature>/<east>_<north>.cbor`: GroundBlock
 
-CBOR `{schema:2,coord,bricks,color,sample_rgb,source,attribution,attribution_url,
+CBOR `{schema:2,coord,bricks,color,surface?,sample_rgb,source,attribution,attribution_url,
 generated_at,source_tiles,fallback_reason}`. Public coord is `[east,north,0]` and
-bricks is empty. One palette color covers the virtual baseplate. Sample RGB is an
-optional 24-bit integer. Source/attribution explain the derived color.
+bricks is empty. `surface` is `{format:"ergo-ground-surface-1",rgb:[...]}` with
+exactly 65×65 unsigned 24-bit sRGB values, row-major east/north including cell
+boundaries. It supplies neighbour-blended per-stud colours; it is not a list of
+geometry instances. `color` is a representative palette code; `sample_rgb` is
+the optional average source RGB. Source/attribution explain the derived field.
 
 The configuration signature covers geographic origin/resolution, provider/template,
-attribution, enabled state, palette and the averaging algorithm. It is not a hash
+attribution, enabled state, palette, grid size and the sampling algorithm. It is not a hash
 of the payload. Successful cells have a seven-day TTL; fallback cells retry after
-60 seconds. A single `color` is required; old color-grid records are not accepted.
+60 seconds. The new signature separates generated fields from old uniform caches.
+Old records without `surface` remain readable; the live viewer refreshes those
+instead of treating them as current colour fields. Unknown field formats, wrong
+sample counts and values above 0xffffff are rejected. The earlier unversioned
+`colors` grid is still unsupported.
 
 ## Private account JSON
 

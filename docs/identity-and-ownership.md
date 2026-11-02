@@ -3,7 +3,7 @@
 The server validates Google OpenID Connect in the human's browser, including the
 configured audience/nonce and verified claims. It issues signed HttpOnly session
 cookies and stores the stable account profile privately in object storage.
-Agents receive short-lived, purpose/origin-bound delegated tokens instead of
+Agents receive expiring, purpose/origin-bound delegated tokens instead of
 Google credentials or S3 keys.
 
 ## Records and attribution

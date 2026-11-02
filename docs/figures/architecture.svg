@@ -16,7 +16,7 @@
     <rect x="525" y="126" width="245" height="301" rx="8" fill="white" stroke="#b2c9d7"/>
     <text x="525" y="103" font-size="18" font-weight="bold">Lightweight server</text>
     <text x="546" y="157" font-size="17" font-weight="bold">Axum REST API</text>
-    <g font-size="13"><text x="546" y="190">SSO, ownership, edit pacing</text><text x="546" y="219">Model and asset delivery</text><text x="546" y="248">Cache-first part fetching</text><text x="546" y="277">Lazy single-color ground</text><text x="546" y="306">Commit: non-overlap checks</text><text x="546" y="335">Commit: static equilibrium</text><text x="546" y="354">Capacity and FP tolerances</text></g>
+    <g font-size="13"><text x="546" y="190">SSO, ownership, edit pacing</text><text x="546" y="219">Model and asset delivery</text><text x="546" y="248">Cache-first part fetching</text><text x="546" y="277">Lazy per-stud ground colours</text><text x="546" y="306">Commit: non-overlap checks</text><text x="546" y="335">Commit: static equilibrium</text><text x="546" y="354">Capacity and FP tolerances</text></g>
     <text x="546" y="389" font-size="12" fill="#607e92">No rendering / time stepping</text>
     <text x="835" y="103" font-size="18" font-weight="bold">Persistence</text>
     <rect x="835" y="126" width="295" height="301" rx="8" fill="white" stroke="#b2c9d7"/>

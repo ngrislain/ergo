@@ -28,8 +28,10 @@ Sign in in the human's browser, generate/download the token, and configure only 
 private file path. Do not pass Google or S3 credentials to the agent. The bundle
 includes native/WASM assets; consumers need no Rust build.
 
-Tokens are purpose-, origin- and expiry-bound. The UI requests one hour; the API
-allows at most 86,400 seconds capped by the issuing session. The current
+Tokens are purpose-, origin- and expiry-bound. The UI and API default to 365 days
+(31,536,000 seconds), which is also the maximum; the API accepts shorter explicit
+lifetimes. A valid browser session is required at issuance, but its subsequent
+expiry does not shorten the delegation. The current
 `ergo-mcp-edit-v1` purpose permits shared reads/imports/edits and private own-user
 placement context, subject to authorization. It cannot mint another delegation,
 change grants/retention/account plans or create another hosted world.
@@ -39,8 +41,10 @@ Writes require `X-Ergo-Request: 1` and same-origin validation. JSON writes also 
 
 ## Pacing
 
-The default persistent token bucket permits a 5,000-change burst and refills 5,000
+The default persistent token bucket permits a 10,000-change burst and refills 10,000
 changes per 86,400 seconds. This is neither a midnight reset nor a world-size cap.
+Existing ledgers retain their remaining credits when the configured capacity
+changes; they then refill at the new rate, up to the new capacity.
 Imports charge their pieces; edits charge their changed/affected domain. Confirmed
 rejections refund reservations; uncertain outcomes retain them until resolution/
 refill and are not automatically repeated.

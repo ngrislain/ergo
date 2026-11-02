@@ -1120,7 +1120,10 @@ async fn dense_browser_regions_exceed_authoring_caps_without_truncation_or_cache
     dense.meshes = demo.meshes;
     let (head, imported) = seeded(&service, dense).await;
     service.pacing.set_unlimited("alice", false).await.unwrap();
-    assert_eq!(service.limits.pieces, 5000);
+    assert_eq!(service.limits.pieces, 10_000);
+    // Exercise independently configured authoring/read limits with a fixture
+    // just above the smaller authoring budget, rather than assuming a default.
+    service.limits.pieces = 5000;
     assert!(
         service
             .authoring_scene(&head.id, "alice", &imported.assembly, &head.revision)

@@ -37,7 +37,7 @@ designs live in `todo/` and are indexed by [TODO.md](../TODO.md).
 - [Block display pipeline, greedy surface LOD and rendering benchmarks](3d-display-indexing.md)
 - [Lighting and shadows](lighting.md)
 - [Stud-specific LOD](stud-lod.md)
-- [Ground, coordinates and placement snapping](ground-and-coordinates.md)
+- [Per-stud OSM ground colours, coordinates and placement snapping](ground-and-coordinates.md)
 - [Rigid-body and static physics](rigid-body-physics.md)
 - [Server acceptance gates](validation-gates.md)
 - [Sourced mass and connector calibration](physical-calibration.md)
@@ -56,7 +56,7 @@ designs live in `todo/` and are indexed by [TODO.md](../TODO.md).
 ## Boundaries
 
 The hosted service has one public world and no aggregate world piece-count cap.
-Individual operations are bounded: shared edits normally load at most 5,000 pieces
+Individual operations are bounded: shared edits normally load at most 10,000 pieces
 and 128 MiB of CBOR; god-mode authoring has no piece-count cap. Browser regions
 have independent budgets, by default 50,000 pieces/64 MiB of charged reads; local
 simulation uses a complete working set of at most 5,000 pieces. Imports have a 128 MiB upload

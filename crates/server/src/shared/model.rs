@@ -254,7 +254,7 @@ pub struct Limits {
 impl Default for Limits {
     fn default() -> Self {
         Self {
-            pieces: 5000,
+            pieces: 10_000,
             bytes: 128 * 1024 * 1024,
         }
     }

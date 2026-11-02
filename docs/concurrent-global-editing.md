@@ -117,7 +117,7 @@ budget is exceeded. No unloaded support is silently treated as empty space.
 
 ### Working-set limits, never world limits
 
-Defaults are 5,000 loaded/candidate identities and 128 MiB of charged CBOR data per
+Defaults are 10,000 loaded/candidate identities and 128 MiB of charged CBOR data per
 edit. An operator-owned unlimited account plan removes the authoring identity-count
 cap. Configure `ERGO_SHARED_WORKING_PIECES` and `ERGO_SHARED_WORKING_BYTES` to
 change the ordinary count/encoded-byte budgets. Oversized closures return HTTP 413 before
@@ -148,7 +148,7 @@ The common world permits public browsing; authoring workspaces require a signed-
 identity. Writes require that identity and the same-origin request header.
 Public coordinates remain X east, Y north, Z up.
 
-MCP/API clients can use a short-lived user delegation issued by `/api/auth/mcp-token`
+MCP/API clients can use an expiring user delegation issued by `/api/auth/mcp-token`
 for shared-world reads, creation, assembly imports, and geometry commits. It cannot
 change grants, retention, or account plans. `publish_construction` uses the routes below and
 confirms the accepted revision/assembly by read-back; it never accesses S3
@@ -258,7 +258,7 @@ accepted history first. See [transaction failure handling](transactional-storage
 ## Retention and maintenance
 
 HTTP 429 reports free-user edit pacing, independently of world size. The default
-capacity/refill is 5,000 brick changes per 86400 seconds, persisted per actor
+capacity/refill is 10,000 brick changes per 86400 seconds, persisted per actor
 across worlds and instances. Paid entitlement removes pacing, not authorization,
 physical validation, or working-set limits. See [access and pacing](access-and-onboarding.md).
 

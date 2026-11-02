@@ -15,8 +15,9 @@ file, not their Google credentials, browser cookies, or cloud/S3 credentials.
 There is no public remote MCP endpoint and no automatic device-code exchange.
 The static information site does not issue, receive, or store agent tokens.
 
-Tokens normally expire after one hour, never exceed 24 hours or the issuing
-session's expiry, and are bound to https://ergosandbox.com. They authorize
+Tokens default to 365 days (31,536,000 seconds), also the maximum, and are bound
+to https://ergosandbox.com. A browser session authorizes issuance; its later
+expiry does not shorten the delegation. The API accepts shorter lifetimes. They authorize
 permissioned shared-world reads, assembly import and geometry commits. The hosted
 Sandbox has one public world; creating additional worlds is disabled there.
 They cannot change grants, retention, private snapshots, account plans, or mint
@@ -96,7 +97,7 @@ and view_url; audit.actor_name is server-resolved. Do not automatically retry
 unknown or accepted_unconfirmed outcomes: first imports are not idempotent.
 
 get_edit_allowance reports the current allowance. Free accounts have capacity
-5,000 changed bricks, continuously refilling by 5,000 changes per 86400 seconds.
+10,000 changed bricks, continuously refilling by 10,000 changes per 86400 seconds.
 Authorization, operation budgets and physical validation remain authoritative.
 
 ## Direct REST access

@@ -1,8 +1,9 @@
 //! Shared immutable geometry, with independently culled color/depth instances.
 use crate::scene::{FramePlan, GeometryKey, TransparentDraw};
 use ergo_world::geometry::Mesh;
+use ergo_world::terrain::{GroundSurface, SAMPLE_GRID_SIZE};
 use std::collections::{BTreeMap, HashSet};
-use web_sys::{WebGl2RenderingContext as Gl, WebGlBuffer, WebGlVertexArrayObject};
+use web_sys::{WebGl2RenderingContext as Gl, WebGlBuffer, WebGlTexture, WebGlVertexArrayObject};
 
 #[derive(Clone, Copy)]
 pub(super) enum Pass {
@@ -24,6 +25,7 @@ pub(super) struct Geometry {
     stud_mode: i32,
     stud_offset: [f32; 2],
     instances: [Instances; 4],
+    ground_surface: Option<(WebGlTexture, GroundSurface)>,
 }
 impl Geometry {
     fn new(gl: &Gl, mesh: &Mesh) -> Self {
@@ -69,6 +71,7 @@ impl Geometry {
                 .map_or(0, |_| if mesh.quality == "body_lod" { 2 } else { 1 }),
             stud_offset: spec.map_or([0., 0.], |p| [p.width as f32 * 0.5, p.depth as f32 * 0.5]),
             instances,
+            ground_surface: None,
         }
     }
     fn update(&mut self, pass: Pass, data: &[f32]) -> bool {
@@ -87,10 +90,59 @@ impl Geometry {
         draw.data.extend_from_slice(data);
         true
     }
+    fn set_ground_surface(&mut self, surface: Option<&GroundSurface>) {
+        if self.ground_surface.as_ref().map(|(_, old)| old) == surface {
+            return;
+        }
+        if let Some((texture, _)) = self.ground_surface.take() {
+            self.gl.delete_texture(Some(&texture));
+        }
+        let Some(surface) = surface else {
+            return;
+        };
+        let Some(texture) = self.gl.create_texture() else {
+            return;
+        };
+        let gl = &self.gl;
+        gl.active_texture(Gl::TEXTURE1);
+        gl.bind_texture(Gl::TEXTURE_2D, Some(&texture));
+        for setting in [Gl::TEXTURE_MIN_FILTER, Gl::TEXTURE_MAG_FILTER] {
+            gl.tex_parameteri(Gl::TEXTURE_2D, setting, Gl::LINEAR as i32);
+        }
+        for setting in [Gl::TEXTURE_WRAP_S, Gl::TEXTURE_WRAP_T] {
+            gl.tex_parameteri(Gl::TEXTURE_2D, setting, Gl::CLAMP_TO_EDGE as i32);
+        }
+        let rgba: Vec<u8> = surface
+            .rgb
+            .iter()
+            .flat_map(|rgb| [(rgb >> 16) as u8, (rgb >> 8) as u8, *rgb as u8, 255])
+            .collect();
+        let uploaded = gl
+            .tex_image_2d_with_i32_and_i32_and_i32_and_format_and_type_and_opt_u8_array(
+                Gl::TEXTURE_2D,
+                0,
+                Gl::RGBA8 as i32,
+                SAMPLE_GRID_SIZE as i32,
+                SAMPLE_GRID_SIZE as i32,
+                0,
+                Gl::RGBA,
+                Gl::UNSIGNED_BYTE,
+                Some(&rgba),
+            );
+        gl.active_texture(Gl::TEXTURE0);
+        if uploaded.is_ok() {
+            self.ground_surface = Some((texture, surface.clone()));
+        } else {
+            gl.delete_texture(Some(&texture));
+        }
+    }
 }
 impl Drop for Geometry {
     fn drop(&mut self) {
         self.gl.delete_buffer(Some(&self.vertex_buffer));
+        if let Some((texture, _)) = &self.ground_surface {
+            self.gl.delete_texture(Some(texture));
+        }
         for draw in &self.instances {
             self.gl.delete_buffer(Some(&draw.buffer));
             self.gl.delete_vertex_array(Some(&draw.vao));
@@ -170,11 +222,19 @@ impl Batches {
             keep
         });
     }
-    pub fn update(&mut self, gl: &Gl, key: GeometryKey, mesh: &Mesh, plan: &FramePlan) {
+    pub fn update(
+        &mut self,
+        gl: &Gl,
+        key: GeometryKey,
+        mesh: &Mesh,
+        plan: &FramePlan,
+        surface: Option<&GroundSurface>,
+    ) {
         let gpu = self
             .geometry
             .entry(key.clone())
             .or_insert_with(|| Geometry::new(gl, mesh));
+        gpu.set_ground_surface(surface);
         for (pass, list) in [
             (Pass::Color, &plan.color),
             (Pass::Shadow, &plan.shadow),
@@ -196,6 +256,10 @@ impl Batches {
             .map(|mesh| {
                 mesh.vertices as usize * 36
                     + mesh
+                        .ground_surface
+                        .as_ref()
+                        .map_or(0, |(_, surface)| surface.rgb.len() * 4)
+                    + mesh
                         .instances
                         .iter()
                         .map(|i| i.data.len() * 4)
@@ -214,6 +278,12 @@ impl Batches {
         let mut calls = 0;
         let mut triangles = 0;
         let mut instances = 0;
+        if matches!(pass, Pass::Color) {
+            gl.uniform1i(
+                gl.get_uniform_location(program, "ground_surface").as_ref(),
+                1,
+            );
+        }
         gl.uniform1f(
             gl.get_uniform_location(program, "material_opacity")
                 .as_ref(),
@@ -242,8 +312,19 @@ impl Batches {
                 );
                 gl.uniform1i(
                     gl.get_uniform_location(program, "floor_mode").as_ref(),
-                    matches!(key, GeometryKey::Ground) as i32,
+                    matches!(key, GeometryKey::Ground(..)) as i32,
                 );
+                gl.uniform1i(
+                    gl.get_uniform_location(program, "ground_surface_enabled")
+                        .as_ref(),
+                    mesh.ground_surface.is_some() as i32,
+                );
+                gl.active_texture(Gl::TEXTURE1);
+                gl.bind_texture(
+                    Gl::TEXTURE_2D,
+                    mesh.ground_surface.as_ref().map(|(texture, _)| texture),
+                );
+                gl.active_texture(Gl::TEXTURE0);
             }
             gl.bind_vertex_array(Some(&draw.vao));
             gl.draw_arrays_instanced(Gl::TRIANGLES, 0, mesh.vertices, count);
@@ -286,6 +367,11 @@ impl Batches {
                         mesh.stud_offset[1],
                     );
                     gl.uniform1i(gl.get_uniform_location(program, "floor_mode").as_ref(), 0);
+                    gl.uniform1i(
+                        gl.get_uniform_location(program, "ground_surface_enabled")
+                            .as_ref(),
+                        0,
+                    );
                 }
                 gl.bind_vertex_array(Some(&instances_buffer.vao));
                 gl.bind_buffer(Gl::ARRAY_BUFFER, Some(&instances_buffer.buffer));

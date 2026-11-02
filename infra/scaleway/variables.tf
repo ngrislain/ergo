@@ -163,7 +163,7 @@ variable "extra_environment_variables" {
 variable "free_bricks_per_period" {
   description = "Free per-user brick-change token-bucket capacity and refill amount. Paid entitlements bypass pacing."
   type        = number
-  default     = 5000
+  default     = 10000
   validation {
     condition     = var.free_bricks_per_period >= 1 && var.free_bricks_per_period <= 1000000 && floor(var.free_bricks_per_period) == var.free_bricks_per_period
     error_message = "The free pacing amount must be an integer from 1 to 1000000."

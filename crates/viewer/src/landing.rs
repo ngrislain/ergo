@@ -170,7 +170,7 @@ fn TokenPanel(account: RwSignal<Option<Account>>) -> impl IntoView {
             let result: anyhow::Result<serde_json::Value> = async {
                 let response = Request::post("/api/auth/mcp-token")
                     .header("X-Ergo-Request", "1")
-                    .json(&serde_json::json!({"expires_in_seconds":3600}))?
+                    .json(&serde_json::json!({}))?
                     .send()
                     .await?;
                 let value: serde_json::Value = response.json().await?;
@@ -200,7 +200,7 @@ fn TokenPanel(account: RwSignal<Option<Account>>) -> impl IntoView {
     view! {
         <section class="token-panel" aria-labelledby="token-title"><div><h2 id="token-title">"Your MCP and API access token"</h2>
             <p class="account-id">{move ||account.get().and_then(|a|a.id).map(|id|format!("Account: {id}")).unwrap_or_default()}</p>
-            <p>"Tokens last up to one hour and never outlive the issuing session. S3 credentials stay on the server."</p>
+            <p>"Tokens last 365 days, independently of your browser session. S3 credentials stay on the server."</p>
             <p class="allowance-label">{move ||account.get().and_then(|a|a.edit_allowance).map(allowance_label).unwrap_or_else(||"Sign in to see your edit allowance.".into())}</p>
         </div><div class="token-actions">
             <button class="button primary" disabled=move ||busy.get()||!account.get().is_some_and(|a|a.signed_in||a.development) on:click=generate>{move ||if busy.get(){"Generating…"}else{"Generate access token"}}</button>

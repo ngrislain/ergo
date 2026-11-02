@@ -22,7 +22,7 @@ the [MCP guide](local-construction-mcp.md). The setup installs the prebuilt npm
 package with Node, not Rust. The current package is a public GitHub Release
 tarball; the npm-registry source can be selected after registry publication.
 Google login stays in the human's browser. The agent receives the path to a
-downloaded, short-lived token and the operator-selected API origin. The example
+downloaded, expiring delegation and the operator-selected API origin. The example
 prompt keeps its first construction local until the human requests publication.
 
 Keep the policy pages and agent guide synchronized with authentication,

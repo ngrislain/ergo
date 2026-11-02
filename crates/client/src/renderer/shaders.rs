@@ -78,6 +78,8 @@ in float v_stud_geometry;
 in float v_opacity;
 uniform vec3 eye;
 uniform int floor_mode;
+uniform int ground_surface_enabled;
+uniform sampler2D ground_surface;
 uniform int grid;
 uniform vec2 fog_limits;
 uniform vec3 sun_direction;
@@ -113,6 +115,16 @@ void main() {
     vec3 n = normalize(v_normal);
     if (!gl_FrontFacing) n = -n;
     vec3 base = max(v_color,vec3(0.0));
+    if (ground_surface_enabled == 1) {
+        // Grid rows run north; native Z runs south. One material per stud,
+        // blended from neighbouring field samples; filter continuously when
+        // studs become subpixel to avoid shimmer at distance.
+        vec2 local = vec2(v_local.x+0.5,0.5-v_local.z)*1024.0;
+        float footprint = max(length(dFdx(local)),length(dFdy(local)));
+        local = mix(floor(local)+0.5,local,smoothstep(1.0,2.0,footprint));
+        vec2 size = vec2(textureSize(ground_surface,0));
+        base = texture(ground_surface,(clamp(local/1024.0,0.0,1.0)*(size-1.0)+0.5)/size).rgb;
+    }
     if (floor_mode == 1 && n.y > 0.5) {
         vec2 cell = abs(fract(v_position.xz/4.0-0.5)-0.5)/fwidth(v_position.xz/4.0);
         float line = 1.0-min(min(cell.x,cell.y),1.0);

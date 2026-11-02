@@ -1,9 +1,11 @@
 #!/usr/bin/env python3
 """Run against an already-started, isolated development server."""
 import argparse
+import base64
 import math
 import pathlib
 import tempfile
+import time
 import json
 import re
 import urllib.request
@@ -67,6 +69,9 @@ def main():
         expect(token_field).to_be_visible()
         token = token_field.input_value()
         assert len(token) > 50
+        claim = token.split('.')[0]
+        expiry = json.loads(base64.urlsafe_b64decode(claim + '=' * (-len(claim) % 4)))['expires']
+        assert abs(expiry - time.time() - 365 * 86400) < 10, 'UI must request a one-year delegation'
         assert "ERGO_PUBLISH_TOKEN_FILE" in page.locator(".connection-code").first.inner_text()
         page.context.grant_permissions(["clipboard-read", "clipboard-write"])
         page.get_by_role("button", name="Copy token", exact=True).click()

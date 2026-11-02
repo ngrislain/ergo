@@ -249,7 +249,7 @@ attempt. No publication request is automatically retried.
 
 Native models are limited to 768KiB inline, imported text to128KiB. Local editing
 has no 5,000-piece cap; dynamics simulations remain limited to5,000 bodies.
-Shared operations normally budget5,000 identities/128MiB; god-mode authoring
+Shared operations normally budget10,000 identities/128MiB; god-mode authoring
 removes the identity-count cap. External dependencies prevent pretending a clipped local
 simulation is complete. Explicit ballpark diagnostics never acquire measured
 calibration status or override the server's measurement requirements.

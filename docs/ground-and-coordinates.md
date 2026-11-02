@@ -1,6 +1,6 @@
-# Z-up coordinates and lazy single-color baseplates
+# Z-up coordinates and lazy per-stud baseplate colours
 
-![Lazy ground cell sampling and one-color baseplate creation](figures/ground.svg)
+![Lazy ground sampling and neighbour-smoothed stud colours](figures/ground.svg)
 
 ## Public world and internal kernel
 
@@ -44,8 +44,8 @@ Z units are 9.6 mm. See [persistence indexing](persistence-indexing.md).
 
 ## The special baseplate
 
-Each horizontal cell has a **1024×1024 virtual baseplate with one standard
-material color**. It is not a regular imported catalog piece and is not counted
+Each horizontal cell has a **1024×1024 virtual baseplate with map-derived colours
+evaluated per stud**. It is not a regular imported catalog piece and is not counted
 as a movable brick. Its plate-body top is at Z=$-0.01$ brick-height units
 (-0.096 mm), and its thickness is one plate (3.2 mm). The physics support plane
 is Z=0, so placed piece bases have height zero without z-fighting the display.
@@ -98,59 +98,76 @@ finite fog range. The server:
 
 1. Checks the generated-cell cache in local storage or S3.
 2. On a miss/needed refresh, samples map pixels covering that geographic footprint.
-3. Classifies OSM map samples, selects their dominant natural terrain colour, and stores it.
-4. Returns an empty construction cell (`bricks: []`) plus its single-color
-   baseplate, source, timestamp, and attribution metadata.
+3. Classifies source pixels into the natural terrain palette, blends neighbouring
+   pixels, and stores a boundary-inclusive colour field.
+4. Returns an empty construction cell (`bricks: []`) plus the baseplate field,
+   representative colour, source, timestamp, and attribution metadata.
 
 There is no world-wide pre-generation or offline-region download job. Revisited
 cells reuse saved results. A snapshot can retain the viewed baseplate metadata,
 allowing MCP image tools to use it without requesting new map tiles in headless
 automation.
 
-The browser only preloads retained ground metadata matching the current
+The browser only preloads retained colour fields matching the current
 `ground_provider` advertised by `/api/config`; changing from OSM to satellite
 imagery therefore refreshes the live view instead of reusing an old cartographic
-snapshot color. MCP captures continue to use explicitly retained metadata offline.
+snapshot colour. Retained old uniform records are refreshed on demand in the live
+viewer; they remain readable offline, including in MCP captures. No model cache
+is erased to upgrade the derived ground display.
 
 ## Natural map palette
 
-The default OSM source classifies each sample before aggregation: map water
+The default OSM source classifies each source pixel before interpolation: map water
 colours become standard LEGO blue; land uses green/dark green, light/dark grey,
-yellow, white, brown and beige/tan. The dominant class supplies the cell's one
-material colour. This is raster map-colour classification, not a claimed vector
-land-cover dataset. The average sampled RGB remains provenance metadata.
+yellow, white, brown and beige/tan. This is raster map-colour classification,
+not a claimed vector land-cover dataset. Labels and other raster details can
+influence the result. The source resolution does not acquire stud-scale geographic
+detail merely because the renderer evaluates every stud separately.
 
-For the optional satellite/custom imagery path, average first and choose the
-nearest CIELAB swatch from that same restricted natural palette.
+For optional satellite/custom imagery, each source pixel selects the nearest
+CIELAB swatch from the same restricted natural palette. Both paths then bilinearly
+blend the four surrounding source pixels, including neighbours across tile edges.
+Longitude wraps at the dateline; pole-edge neighbour rows clamp to coverage.
 
-The server samples a 32×32 grid across the footprint, not a multicolor print.
-Convert source sRGB channels to linear light, compute their mean, and encode that
-mean back to sRGB:
-
-$$
-\bar{\mathbf c}_{lin}=\frac1N\sum_{n=1}^N
-\operatorname{linear}(\mathbf c_n).
-$$
-
-In the optional imagery path, the material code minimizes Euclidean CIELAB
-difference over the natural terrain palette $P$:
+The persisted `surface` is `ergo-ground-surface-1`: **65×65 row-major 24-bit sRGB
+samples**, columns east and rows north, including both cell boundaries. Samples
+are spaced 16 studs apart, occupying 16,900 uncompressed RGB32 bytes per cell,
+rather than storing a million colours or allocating a million meshes. Each
+stud's colour bilinearly blends its four field neighbours at its half-integer
+centre. For fractional field coordinates $(u,v)$:
 
 $$
-c^*=\arg\min_{c\in P}
-\|\operatorname{Lab}(\bar{\mathbf c})-\operatorname{Lab}(c)\|_2.
+\mathbf c=(1-u)(1-v)\mathbf c_{00}+u(1-v)\mathbf c_{10}
++(1-u)v\mathbf c_{01}+uv\mathbf c_{11}.
 $$
 
-The record stores `color` (one palette code) and `sample_rgb` (the average), not a
-per-stud texture. Lighting, fog, and the optional debug grid can vary rendered
-pixels; they do not add material colors to the baseplate. The display palette is
-defined in `catalog.rs` / `color_rgb`; RGB swatches are not spectral measurements.
+Interpolation is in encoded sRGB channels, matching the GPU's RGB8 linear sampler.
+Consequently blended colours need not be individual palette codes. The GPU uses
+one 65×65 RGBA8 texture per visible plate (16,900 bytes), with clamped edges. Nearby
+instanced stud cylinders use the same field and coordinate conversion. Below
+pixel resolution the shader transitions to continuous filtering to avoid shimmer.
+
+Adjacent cells sample identical geographic boundary positions at the same source
+zoom. With the same cached source pixels their boundary values therefore agree,
+including source-tile boundaries.
+The field is a discardable display derivative; it does not add parts, change
+physical geometry, consume edit allowance, or recolour authored constructions.
+
+`color` remains a representative palette code (dominant OSM class, or nearest
+swatch to average imagery). `sample_rgb` remains the linear-light average of
+sampled source colours, re-encoded to sRGB. Those fields support provenance and
+legacy/fallback display; they no longer flatten a successful field to one colour.
+The palette is defined in `catalog.rs` / `color_rgb`; RGB swatches are not spectral
+measurements. Implementation: `world/src/terrain.rs`, `assets/src/ground.rs`,
+`client/src/scene/ground.rs` and `client/src/renderer/{batches,shaders}.rs` under
+`crates/`.
 
 ## Map sources and projection
 
 The default `ERGO_GROUND_SOURCE=osm` uses **OpenStreetMap Carto**, with visible
 OSM contributor attribution. `satellite` optionally selects Esri World Imagery.
-The sampled footprint determines one standard baseplate colour; it is not a
-printed image. `ERGO_MAP_TILE_URL` supports alternative XYZ **PNG or JPEG**
+The sampled footprint determines the baseplate's spatial colour field.
+`ERGO_MAP_TILE_URL` supports alternative XYZ **PNG or JPEG**
 imagery with `{z}`, `{x}`, and `{y}` placeholders and 256×256 tiles. Set matching
 provider attribution when changing the source. `disabled` uses the labeled palette fallback.
 
@@ -162,7 +179,8 @@ v=\frac{2^\ell}{2}
 \left(1-\frac{\operatorname{asinh}(\tan\phi)}\pi\right).
 $$
 
-Here $\ell$ is chosen from cell angular span/latitude, capped at zoom 18.
+Here $\ell$ is chosen from cell angular span and the geographic reference latitude,
+capped at zoom 18 and shared by neighbouring cells.
 This avoids requesting hundreds of high-zoom tiles for an unusually large
 configured geographic cell. A generation is limited to 16 source tiles and
 Web Mercator's latitude coverage.

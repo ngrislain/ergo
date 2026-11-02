@@ -64,6 +64,10 @@ jobs:
           rustup default 1.97.1
           cargo install wasm-bindgen-cli --version 0.2.129 --locked
       - run: cargo xtask build-web
+      - name: Verify neighbour-smoothed per-stud ground in real WebGL
+        run: |
+          python3 -m pip install playwright pillow
+          python3 scripts/test-ground-colours.py
       - run: python3 scripts/package-mcp.py web --output target/distribution/web-runtime
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         with:

@@ -44,7 +44,7 @@ pub fn plan(
             (y as f64 + 0.5) * 1024.,
         ) - camera.origin;
         instance(
-            instances.entry(GeometryKey::Ground).or_default(),
+            instances.entry(GeometryKey::Ground(x, y)).or_default(),
             DMat4::from_scale_rotation_translation(
                 DVec3::new(1024., 1. / 3., 1024.),
                 DQuat::IDENTITY,
@@ -89,7 +89,19 @@ pub fn plan(
             } else {
                 16
             };
-            let color = ground.get(&cell).map_or(71, |block| block.color);
+            let rgb = ground
+                .get(&cell)
+                .map_or(ergo_world::color_rgb(71), |block| {
+                    block
+                        .surface
+                        .as_ref()
+                        .map_or(ergo_world::color_rgb(block.color), |surface| {
+                            surface.rgb_at(
+                                x.rem_euclid(1024) as f64 + 0.5,
+                                1024. - (z.rem_euclid(1024) as f64 + 0.5),
+                            )
+                        })
+                });
             instance(
                 instances
                     .entry(GeometryKey::GroundStuds(segments))
@@ -99,11 +111,61 @@ pub fn plan(
                     DQuat::IDENTITY,
                     position - camera.origin,
                 ),
-                ergo_world::color_rgb(color),
+                rgb,
                 false,
             );
             count += 1;
         }
     }
     (instances, count)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use ergo_world::terrain::{GroundSurface, SAMPLE_GRID_SIZE};
+
+    #[test]
+    fn nearby_studs_share_the_surface_field_with_correct_negative_and_north_axes() {
+        let mut block = GroundBlock::fallback(-1, -1, "fixture".into());
+        block.surface = Some(GroundSurface {
+            format: "ergo-ground-surface-1".into(),
+            rgb: (0..SAMPLE_GRID_SIZE)
+                .flat_map(|y| {
+                    (0..SAMPLE_GRID_SIZE).map(move |x| ((x * 3) as u32) << 16 | (y * 3) as u32)
+                })
+                .collect(),
+        });
+        let camera = Camera::new(
+            DVec3::new(-512., 12., 512.),
+            DVec3::new(-512., 0., 530.),
+            800.,
+            600.,
+            45.,
+            1000.,
+        );
+        let (instances, count) = plan(&camera, 1000., &HashMap::from([((-1, 0), block.clone())]));
+        assert!(instances.contains_key(&GeometryKey::Ground(-1, 0)));
+        assert!(count > 0 && count <= 193 * 193);
+        let mut colours = HashSet::new();
+        for (key, data) in &instances {
+            if !matches!(key, GeometryKey::GroundStuds(_)) {
+                continue;
+            }
+            for item in data.chunks_exact(20) {
+                let east = (item[12] as f64 + camera.origin.x).rem_euclid(1024.);
+                let north = 1024. - (item[14] as f64 + camera.origin.z).rem_euclid(1024.);
+                let expected = block.surface.as_ref().unwrap().rgb_at(east, north);
+                let actual = [16, 17, 18]
+                    .into_iter()
+                    .fold(0, |out, i| (out << 8) | (item[i] * 255.).round() as u32);
+                assert_eq!(actual, expected);
+                colours.insert(actual);
+            }
+        }
+        assert!(
+            colours.len() > 10,
+            "Nearby studs must not inherit one plate colour"
+        );
+    }
 }

@@ -3,16 +3,66 @@
 use crate::{BlockCoord, Brick, SCHEMA_VERSION, catalog::COLORS, color_rgb};
 use serde::{Deserialize, Serialize};
 
-pub const SAMPLE_GRID_SIZE: usize = 32;
+/// Boundary-inclusive field: one sample every 16 studs, evaluated per stud.
+pub const SAMPLE_GRID_SIZE: usize = 65;
 pub const GROUND_TOP: f64 = -0.01;
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct GroundSurface {
+    pub format: String,
+    /// Row-major sRGB; columns run east, rows run north, including cell edges.
+    pub rgb: Vec<u32>,
+}
+impl GroundSurface {
+    pub fn validate(&self) -> anyhow::Result<()> {
+        anyhow::ensure!(
+            self.format == "ergo-ground-surface-1"
+                && self.rgb.len() == SAMPLE_GRID_SIZE * SAMPLE_GRID_SIZE
+                && self.rgb.iter().all(|rgb| *rgb <= 0xffffff),
+            "Invalid ground colour surface"
+        );
+        Ok(())
+    }
+    /// Bilinear neighbour blend. Coordinates are east/north offsets in studs.
+    /// The renderer uses the same field, snapped to each stud centre.
+    pub fn rgb_at(&self, east: f64, north: f64) -> u32 {
+        let scale = (SAMPLE_GRID_SIZE - 1) as f64 / crate::BLOCK_SIZE;
+        let x = east.clamp(0., crate::BLOCK_SIZE) * scale;
+        let y = north.clamp(0., crate::BLOCK_SIZE) * scale;
+        let x0 = (x.floor() as usize).min(SAMPLE_GRID_SIZE - 2);
+        let y0 = (y.floor() as usize).min(SAMPLE_GRID_SIZE - 2);
+        blend_rgb(
+            [
+                self.rgb[y0 * SAMPLE_GRID_SIZE + x0],
+                self.rgb[y0 * SAMPLE_GRID_SIZE + x0 + 1],
+                self.rgb[(y0 + 1) * SAMPLE_GRID_SIZE + x0],
+                self.rgb[(y0 + 1) * SAMPLE_GRID_SIZE + x0 + 1],
+            ],
+            x - x0 as f64,
+            y - y0 as f64,
+        )
+    }
+}
+
+/// sRGB-channel interpolation, matching the renderer's RGB8 linear sampler.
+pub fn blend_rgb(rgb: [u32; 4], x: f64, y: f64) -> u32 {
+    [16, 8, 0].into_iter().fold(0, |out, shift| {
+        let c = rgb.map(|v| ((v >> shift) & 255) as f64);
+        let a = c[0] * (1. - x) + c[1] * x;
+        let b = c[2] * (1. - x) + c[3] * x;
+        out | (((a * (1. - y) + b * y).round().clamp(0., 255.) as u32) << shift)
+    })
+}
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(try_from = "GroundWire")]
 pub struct GroundBlock {
     pub schema: u32,
     pub coord: BlockCoord,
     pub bricks: Vec<Brick>,
-    /// One standard material color for the entire special baseplate.
+    /// Representative palette colour, also used for legacy/fallback records.
     pub color: u32,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub surface: Option<GroundSurface>,
     pub sample_rgb: Option<u32>,
     pub source: String,
     pub attribution: String,
@@ -28,6 +78,7 @@ impl GroundBlock {
             coord: BlockCoord::from([x, y, 0]),
             bricks: Vec::new(),
             color: 71,
+            surface: None,
             sample_rgb: None,
             source: "palette fallback".into(),
             attribution: String::new(),
@@ -38,6 +89,9 @@ impl GroundBlock {
         }
     }
     pub fn validate(&self) -> anyhow::Result<()> {
+        if let Some(surface) = &self.surface {
+            surface.validate()?;
+        }
         anyhow::ensure!(
             self.schema == SCHEMA_VERSION
                 && self.coord.1 == 0
@@ -61,6 +115,8 @@ struct GroundWire {
     bricks: Vec<Brick>,
     color: u32,
     #[serde(default)]
+    surface: Option<GroundSurface>,
+    #[serde(default)]
     sample_rgb: Option<u32>,
     source: String,
     attribution: String,
@@ -77,6 +133,7 @@ impl TryFrom<GroundWire> for GroundBlock {
             coord: w.coord,
             bricks: w.bricks,
             color: w.color,
+            surface: w.surface,
             sample_rgb: w.sample_rgb,
             source: w.source,
             attribution: w.attribution,
@@ -197,6 +254,40 @@ pub fn map_terrain_color(rgb: u32) -> u32 {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn ground_field_blends_neighbours_and_validates_retained_records() {
+        let mut surface = GroundSurface {
+            format: "ergo-ground-surface-1".into(),
+            rgb: (0..SAMPLE_GRID_SIZE)
+                .flat_map(|y| {
+                    (0..SAMPLE_GRID_SIZE)
+                        .map(move |x| ((x * 4).min(255) as u32) << 16 | (y * 4).min(255) as u32)
+                })
+                .collect(),
+        };
+        surface.validate().unwrap();
+        assert_eq!(surface.rgb_at(8., 8.), 0x020002);
+        assert_eq!(surface.rgb_at(16., 0.), 0x040000);
+        assert_eq!(surface.rgb_at(0., 1024.), 0x0000ff);
+        assert_ne!(surface.rgb_at(0.5, 0.5), surface.rgb_at(1023.5, 1023.5));
+        let mut block = GroundBlock::fallback(0, 0, "fixture".into());
+        block.surface = Some(surface.clone());
+        let encoded = serde_json::to_value(&block).unwrap();
+        serde_json::from_value::<GroundBlock>(encoded.clone()).unwrap();
+        let mut bad = encoded;
+        bad["surface"]["rgb"] = serde_json::json!([0]);
+        assert!(serde_json::from_value::<GroundBlock>(bad).is_err());
+        surface.rgb[0] = 0x1000000;
+        assert!(surface.validate().is_err());
+        let old = serde_json::to_value(GroundBlock::fallback(0, 0, "old".into())).unwrap();
+        assert!(old.get("surface").is_none());
+        assert!(
+            serde_json::from_value::<GroundBlock>(old)
+                .unwrap()
+                .surface
+                .is_none()
+        );
+    }
     #[test]
     fn map_water_and_land_use_the_requested_palette() {
         assert_eq!(map_terrain_color(0xaad3df), 1);

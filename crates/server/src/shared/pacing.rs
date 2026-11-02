@@ -93,7 +93,7 @@ impl Pacing {
     }
     pub fn from_env(store: Store) -> anyhow::Result<Self> {
         let bricks = std::env::var("ERGO_EDIT_BRICKS_PER_PERIOD")
-            .unwrap_or_else(|_| "5000".into())
+            .unwrap_or_else(|_| "10000".into())
             .parse()?;
         let seconds = std::env::var("ERGO_EDIT_PERIOD_SECONDS")
             .unwrap_or_else(|_| "86400".into())
@@ -311,6 +311,27 @@ impl Pacing {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn capacity_increases_preserve_credits_and_use_the_new_refill_rate() {
+        let mut ledger = Ledger::new(
+            Budget {
+                bricks: 5000,
+                seconds: 86400,
+            },
+            1000,
+        );
+        ledger.credits = 2000 * 86400;
+        let larger = Budget {
+            bricks: 10000,
+            seconds: 86400,
+        };
+        ledger.refill(larger, 1000);
+        assert_eq!(ledger.credits / 86400, 2000);
+        ledger.refill(larger, 1000 + 8640);
+        assert_eq!(ledger.credits / 86400, 3000);
+        ledger.refill(larger, 1000 + 86400);
+        assert_eq!(ledger.credits / 86400, 10000);
+    }
     use std::sync::Arc;
     fn pacing() -> Pacing {
         Pacing::test_budget(

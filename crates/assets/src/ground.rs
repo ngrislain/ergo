@@ -5,7 +5,8 @@ use anyhow::{Context, Result, ensure};
 use ergo_world::{
     BLOCK_SIZE, GeoReference,
     terrain::{
-        GroundBlock, SAMPLE_GRID_SIZE, average_rgb, map_terrain_color, nearest_terrain_color,
+        GroundBlock, GroundSurface, SAMPLE_GRID_SIZE, average_rgb, blend_rgb, map_terrain_color,
+        nearest_terrain_color,
     },
 };
 use futures::StreamExt;
@@ -158,7 +159,7 @@ impl GroundCache {
             .map(|code| (*code, ergo_world::color_rgb(*code)))
             .collect();
         let signature = hex::encode(Sha256::digest(format!(
-            "{:.12}:{:.12}:{:.12}:{}:{}:{}:{}:{}:ground-natural-map-v4:{palette:?}",
+            "{:.12}:{:.12}:{:.12}:{}:{}:{}:{}:{}:ground-stud-surface-v1:{SAMPLE_GRID_SIZE}:{palette:?}",
             geo.latitude,
             geo.longitude,
             geo.arcseconds_per_block,
@@ -184,11 +185,9 @@ impl GroundCache {
                 return Ok(block);
             }
         }
-        let [latitude, _] = geo.to_gps(glam_point(
-            (x as f64 + 0.5) * BLOCK_SIZE,
-            (y as f64 + 0.5) * BLOCK_SIZE,
-        ));
-        let zoom = (648000.0 * latitude.to_radians().cos().max(0.01) / geo.arcseconds_per_block)
+        // One zoom per geographic reference, including neighbouring cells at a
+        // zoom threshold. Both sides of a shared edge sample identical pixels.
+        let zoom = (648000.0 * geo.latitude.to_radians().cos().max(0.01) / geo.arcseconds_per_block)
             .log2()
             .floor()
             .clamp(0.0, 18.0) as u32;
@@ -197,13 +196,15 @@ impl GroundCache {
         for row in 0..SAMPLE_GRID_SIZE {
             for column in 0..SAMPLE_GRID_SIZE {
                 let p = glam_point(
-                    (x as f64 + (column as f64 + 0.5) / SAMPLE_GRID_SIZE as f64) * BLOCK_SIZE,
-                    (y as f64 + (row as f64 + 0.5) / SAMPLE_GRID_SIZE as f64) * BLOCK_SIZE,
+                    (x as f64 + column as f64 / (SAMPLE_GRID_SIZE - 1) as f64) * BLOCK_SIZE,
+                    (y as f64 + row as f64 / (SAMPLE_GRID_SIZE - 1) as f64) * BLOCK_SIZE,
                 );
                 let [lat, lon] = geo.to_gps(p);
-                let (tx, ty, px, py) = mercator(lat, lon, zoom)?;
-                locations.push((tx, ty, px, py));
-                needed.entry((tx, ty)).or_insert(());
+                let sample = source_sample(lat, lon, zoom)?;
+                for &(tx, ty, _, _) in &sample.pixels {
+                    needed.entry((tx, ty)).or_insert(());
+                }
+                locations.push(sample);
             }
         }
         ensure!(
@@ -219,18 +220,33 @@ impl GroundCache {
         }
         let samples: Vec<_> = locations
             .into_iter()
-            .map(|(tx, ty, px, py)| {
-                let (width, height, bytes) = &decoded[&(tx, ty)];
-                let index = ((py.min(*height - 1) * width + px.min(*width - 1)) * 3) as usize;
-                ((bytes[index] as u32) << 16)
-                    | ((bytes[index + 1] as u32) << 8)
-                    | bytes[index + 2] as u32
+            .map(|sample| {
+                let raw = sample.pixels.map(|(tx, ty, px, py)| {
+                    let (width, _, bytes) = &decoded[&(tx, ty)];
+                    let index = ((py * width + px) * 3) as usize;
+                    ((bytes[index] as u32) << 16)
+                        | ((bytes[index + 1] as u32) << 8)
+                        | bytes[index + 2] as u32
+                });
+                // Classify before blending: neighbouring water/land colours
+                // remain blue/green rather than classifying their mixed RGB.
+                let palette = raw.map(|rgb| {
+                    ergo_world::color_rgb(if self.map_colours {
+                        map_terrain_color(rgb)
+                    } else {
+                        nearest_terrain_color(rgb)
+                    })
+                });
+                (
+                    blend_rgb(raw, sample.x, sample.y),
+                    blend_rgb(palette, sample.x, sample.y),
+                )
             })
             .collect();
-        let rgb = average_rgb(samples.iter().copied());
+        let rgb = average_rgb(samples.iter().map(|(raw, _)| *raw));
         let color = if self.map_colours {
             let mut counts = BTreeMap::<u32, usize>::new();
-            for sample in samples {
+            for &(sample, _) in &samples {
                 *counts.entry(map_terrain_color(sample)).or_default() += 1;
             }
             counts
@@ -246,6 +262,10 @@ impl GroundCache {
             coord: ergo_world::BlockCoord::from([x, y, 0]),
             bricks: Vec::new(),
             color,
+            surface: Some(GroundSurface {
+                format: "ergo-ground-surface-1".into(),
+                rgb: samples.into_iter().map(|(_, rgb)| rgb).collect(),
+            }),
             sample_rgb: Some(rgb),
             source: self.provider.clone(),
             attribution: self.attribution.clone(),
@@ -374,6 +394,16 @@ fn glam_point(x: f64, north: f64) -> glam::DVec3 {
     glam::DVec3::new(x, 0.0, -north)
 }
 pub fn mercator(lat: f64, lon: f64, zoom: u32) -> Result<(u32, u32, u32, u32)> {
+    let (x, y) = mercator_position(lat, lon, zoom)?;
+    let n = (1_u32 << zoom) as f64;
+    Ok((
+        x.floor() as u32,
+        y.floor().clamp(0.0, n - 1.0) as u32,
+        ((x.fract() * 256.0).floor() as u32).min(255),
+        ((y.fract() * 256.0).floor() as u32).min(255),
+    ))
+}
+fn mercator_position(lat: f64, lon: f64, zoom: u32) -> Result<(f64, f64)> {
     ensure!(
         zoom <= 18
             && lat.is_finite()
@@ -385,12 +415,30 @@ pub fn mercator(lat: f64, lon: f64, zoom: u32) -> Result<(u32, u32, u32, u32)> {
     let n = (1_u32 << zoom) as f64;
     let x = ((lon + 180.0) / 360.0 * n).rem_euclid(n);
     let y = (1.0 - lat.to_radians().tan().asinh() / std::f64::consts::PI) * 0.5 * n;
-    Ok((
-        x.floor() as u32,
-        y.floor().clamp(0.0, n - 1.0) as u32,
-        ((x.fract() * 256.0).floor() as u32).min(255),
-        ((y.fract() * 256.0).floor() as u32).min(255),
-    ))
+    Ok((x, y))
+}
+struct SourceSample {
+    pixels: [(u32, u32, u32, u32); 4],
+    x: f64,
+    y: f64,
+}
+fn source_sample(lat: f64, lon: f64, zoom: u32) -> Result<SourceSample> {
+    let (x, y) = mercator_position(lat, lon, zoom)?;
+    // XYZ coordinates address pixel corners; bilinear interpolation addresses
+    // their centres. Include neighbours across tile edges and wrap longitude.
+    let x = x * 256. - 0.5;
+    let y = y * 256. - 0.5;
+    let size = (1_i64 << zoom) * 256;
+    let pixel = |dx: i64, dy: i64| {
+        let x = (x.floor() as i64 + dx).rem_euclid(size) as u32;
+        let y = (y.floor() as i64 + dy).clamp(0, size - 1) as u32;
+        (x / 256, y / 256, x % 256, y % 256)
+    };
+    Ok(SourceSample {
+        pixels: [pixel(0, 0), pixel(1, 0), pixel(0, 1), pixel(1, 1)],
+        x: x - x.floor(),
+        y: y - y.floor(),
+    })
 }
 fn decode(bytes: &[u8]) -> Result<(u32, u32, Vec<u8>)> {
     if bytes.starts_with(&[0xff, 0xd8]) {
@@ -492,6 +540,115 @@ mod tests {
         }
         bytes
     }
+    #[test]
+    fn source_neighbours_cross_tiles_and_wrap_the_dateline() {
+        let sample = source_sample(0., 0., 1).unwrap();
+        assert_eq!(
+            sample.pixels,
+            [
+                (0, 0, 255, 255),
+                (1, 0, 0, 255),
+                (0, 1, 255, 0),
+                (1, 1, 0, 0)
+            ]
+        );
+        assert_eq!((sample.x, sample.y), (0.5, 0.5));
+        let east = source_sample(0., 180., 1).unwrap();
+        let west = source_sample(0., -180., 1).unwrap();
+        assert_eq!(east.pixels, west.pixels);
+        assert_eq!((east.pixels[0].0, east.pixels[1].0), (1, 0));
+    }
+    #[tokio::test]
+    async fn map_surface_varies_inside_cells_and_agrees_on_every_shared_edge() {
+        let store: Arc<dyn ObjectStore> = Arc::new(object_store::memory::InMemory::new());
+        let mut service = cache(store);
+        service.map_colours = true;
+        let geo = GeoReference {
+            latitude: 0.,
+            longitude: 0.,
+            arcseconds_per_block: 1.,
+        };
+        let zoom = 18;
+        let provider = hex::encode(Sha256::digest(&service.template));
+        let mut cells = BTreeMap::new();
+        for (east, north) in [(0., 0.), (1., 0.), (0., 1.)] {
+            for row in 0..SAMPLE_GRID_SIZE {
+                for col in 0..SAMPLE_GRID_SIZE {
+                    let [lat, lon] = geo.to_gps(glam_point(
+                        (east + col as f64 / (SAMPLE_GRID_SIZE - 1) as f64) * BLOCK_SIZE,
+                        (north + row as f64 / (SAMPLE_GRID_SIZE - 1) as f64) * BLOCK_SIZE,
+                    ));
+                    for (x, y, _, _) in source_sample(lat, lon, zoom).unwrap().pixels {
+                        cells.insert((x, y), ());
+                    }
+                }
+            }
+        }
+        // Synthetic OSM colours with water, park and road bands. No public
+        // tile requests: seed every needed neighbour in the source cache.
+        for (x, y) in cells.keys() {
+            let mut image = Vec::new();
+            {
+                let mut encoder = png::Encoder::new(&mut image, 256, 256);
+                encoder.set_color(png::ColorType::Rgb);
+                encoder.set_depth(png::BitDepth::Eight);
+                let pixels: Vec<u8> = (0..256)
+                    .flat_map(|row| {
+                        (0..256).flat_map(move |col| {
+                            let rgb = [0xaad3df_u32, 0xadd19e, 0x999999, 0xf2efe9]
+                                [((col / 8 + row / 16) % 4) as usize];
+                            [(rgb >> 16) as u8, (rgb >> 8) as u8, rgb as u8]
+                        })
+                    })
+                    .collect();
+                encoder
+                    .write_header()
+                    .unwrap()
+                    .write_image_data(&pixels)
+                    .unwrap();
+            }
+            service
+                .put(
+                    &format!("ground/rasters/{provider}/{zoom}/{x}/{y}.cbor"),
+                    &Tile {
+                        format: "ergo-raster-1".into(),
+                        fetched_at: now(),
+                        etag: None,
+                        modified: None,
+                        media_type: "image/png".into(),
+                        image,
+                    },
+                )
+                .await
+                .unwrap();
+        }
+        let a = service.block(geo, 0, 0).await;
+        let east = service.block(geo, 1, 0).await;
+        let north = service.block(geo, 0, 1).await;
+        for block in [&a, &east, &north] {
+            assert!(
+                block.fallback_reason.is_none(),
+                "{:?}",
+                block.fallback_reason
+            );
+        }
+        let a = a.surface.unwrap();
+        let east = east.surface.unwrap();
+        let north = north.surface.unwrap();
+        assert!(
+            a.rgb
+                .iter()
+                .copied()
+                .collect::<std::collections::BTreeSet<_>>()
+                .len()
+                > 4
+        );
+        for offset in [0., 0.5, 11.5, 97.5, 512., 1023.5, 1024.] {
+            assert_eq!(a.rgb_at(1024., offset), east.rgb_at(0., offset));
+            assert_eq!(a.rgb_at(offset, 1024.), north.rgb_at(offset, 0.));
+        }
+        assert_ne!(a.rgb_at(100.5, 100.5), a.rgb_at(300.5, 100.5));
+    }
     #[tokio::test]
     async fn visible_ground_is_generated_quantized_persisted_and_reused() {
         let store: Arc<dyn ObjectStore> = Arc::new(object_store::memory::InMemory::new());
@@ -504,11 +661,12 @@ mod tests {
         for row in 0..SAMPLE_GRID_SIZE {
             for col in 0..SAMPLE_GRID_SIZE {
                 let [lat, lon] = geo.to_gps(glam_point(
-                    (col as f64 + 0.5) * BLOCK_SIZE / SAMPLE_GRID_SIZE as f64,
-                    (row as f64 + 0.5) * BLOCK_SIZE / SAMPLE_GRID_SIZE as f64,
+                    col as f64 * BLOCK_SIZE / (SAMPLE_GRID_SIZE - 1) as f64,
+                    row as f64 * BLOCK_SIZE / (SAMPLE_GRID_SIZE - 1) as f64,
                 ));
-                let (x, y, _, _) = mercator(lat, lon, zoom).unwrap();
-                cells.insert((x, y), ());
+                for (x, y, _, _) in source_sample(lat, lon, zoom).unwrap().pixels {
+                    cells.insert((x, y), ());
+                }
             }
         }
         for (x, y) in cells.keys() {
@@ -533,6 +691,10 @@ mod tests {
         assert!(a.fallback_reason.is_none(), "{:?}", a.fallback_reason);
         assert!(a.bricks.is_empty());
         assert_eq!(a.color, 2);
+        assert_eq!(
+            a.surface.as_ref().unwrap().rgb.len(),
+            SAMPLE_GRID_SIZE.pow(2)
+        );
         assert_eq!(<[i64; 3]>::from(a.coord), [0, 0, 0]);
         for key in keys {
             store.delete(&service.path(&key)).await.unwrap();
@@ -540,6 +702,7 @@ mod tests {
         let second = cache(store);
         let b = second.block(geo, 0, 0).await;
         assert_eq!(b.color, a.color);
+        assert_eq!(b.surface, a.surface);
         assert!(b.fallback_reason.is_none());
         assert_eq!(b.generated_at, a.generated_at);
     }

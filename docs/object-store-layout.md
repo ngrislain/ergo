@@ -49,7 +49,7 @@ object. Hashes name content; logical octree paths index records inside the root.
 of the reusable cache. Source imports are converted before persistence; source
 text only occupies a bounded transient import cache.
 
-Ground source tiles and derived single-color baseplates are separate cache
+Ground source tiles and derived per-stud baseplate colour fields are separate cache
 layers. Cached cells are not constructions, alternative worlds or physical anchors.
 World GC does not manage asset, terrain or account namespaces.
 

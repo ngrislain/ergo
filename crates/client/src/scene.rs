@@ -46,7 +46,7 @@ impl RenderPolicy {
 pub enum GeometryKey {
     Part(String, u8),
     Aggregate,
-    Ground,
+    Ground(i64, i64),
     GroundStuds(u8),
     Surface(usize),
 }

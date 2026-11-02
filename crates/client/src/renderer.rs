@@ -848,14 +848,21 @@ impl Renderer {
             .cloned()
             .collect();
         for key in keys {
+            // All baseplates use the same CPU box. GPU batches are per cell so
+            // each can bind its own tiny colour field, not per-stud geometry.
+            let geometry_key = if matches!(key, GeometryKey::Ground(..)) {
+                GeometryKey::Aggregate
+            } else {
+                key.clone()
+            };
             let cpu = match &key {
                 GeometryKey::Part(part, 0) => &self.meshes[part],
                 GeometryKey::Surface(index) => self.planner.surface_mesh(*index),
                 _ => self
                     .lod_meshes
-                    .entry(key.clone())
+                    .entry(geometry_key)
                     .or_insert_with(|| match &key {
-                        GeometryKey::Ground | GeometryKey::Aggregate => {
+                        GeometryKey::Ground(..) | GeometryKey::Aggregate => {
                             ergo_world::geometry::ground_mesh()
                         }
                         GeometryKey::GroundStuds(segments) => {
@@ -871,7 +878,13 @@ impl Renderer {
                         GeometryKey::Surface(_) => unreachable!(),
                     }),
             };
-            self.gpu.update(&self.gl, key, cpu, &plan);
+            let surface = match &key {
+                GeometryKey::Ground(x, z) => {
+                    self.ground.get(&(*x, *z)).and_then(|b| b.surface.as_ref())
+                }
+                _ => None,
+            };
+            self.gpu.update(&self.gl, key, cpu, &plan, surface);
         }
         self.gpu_bytes = self.gpu.bytes();
         self.gl.bind_vertex_array(None);
