@@ -158,3 +158,5 @@ invented strength values.
 
 Original [walkable monument recipes](docs/model-recipes.md) are in
 `scripts/build/`, including a corridor pyramid and a ten-level Seven Sisters-inspired tower.
+The [terraced park recipe](docs/model-recipes.md#terraced-park-recipe) adds a sourced,
+explicitly published landscape workflow with ponds, trees and summit walking checks.
