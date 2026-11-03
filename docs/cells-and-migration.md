@@ -62,6 +62,9 @@ historical record preservation.
 The browser uses `ergo-local-data-cell128-v1`, deleting older local databases and
 old read-packet CacheStorage. No lazy legacy import remains. The service worker
 deletes incompatible model caches and reloads app windows at the format cutover.
+App navigation is scheduled without awaiting it inside activation: the navigation
+itself waits for activation to finish. Real-browser tests cover first install and
+upgrading an existing worker, asserting one completed reload and cache deletion.
 Hash verification, permission revalidation, LRU and logout fencing still apply.
 
 Migration deletes old derived read/discovery/ground caches while retaining
