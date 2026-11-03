@@ -11,6 +11,8 @@ separate; see [coordinates](ground-and-coordinates.md).
 unloaded-cell navigation, ground meshes and geographic conversion. `/api/config`
 reports `block_size:128` and `block_height_plates:384`. Geometry units and public
 east/north/up axes have not changed.
+The viewer's coordinate panel derives its 128×128-stud span and 128-brick
+(384-plate) height from those same constants.
 
 ## One active format
 

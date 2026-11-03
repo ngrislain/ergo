@@ -8,6 +8,8 @@
   Waiting for a navigation inside activation can deadlock that controlled page.
 - Verify first-install and existing-worker upgrades in real Chrome, including
   incompatible-cache deletion, completed activation and exactly one app reload.
+- Derive visible cell dimensions from the shared constants, displaying the stud
+  span and brick/plate height; label ground colours as standard LEGO swatches.
 
 ## v0.5.18
 

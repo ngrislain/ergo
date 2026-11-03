@@ -1575,8 +1575,10 @@ fn pump_ground(handle: Handle) {
                     c.ui.ground_status
                         .set(format!("Ground: palette fallback ({reason})"));
                 } else {
-                    c.ui.ground_status
-                        .set(format!("Ground: {} · blended stud colours", block.source));
+                    c.ui.ground_status.set(format!(
+                        "Ground: {} · standard LEGO stud colours",
+                        block.source
+                    ));
                 }
                 if let Some(url) = &block.attribution_url {
                     c.ui.ground_attribution
@@ -2242,7 +2244,7 @@ fn ConstructionBrowser() -> impl IntoView {
     view! {
         <div class="dock-section world-coordinates"><div class="section-heading"><h2>"World coordinates"</h2><button class="icon-button" title="Go to GPS position" on:click=move |_|show_dialog("location-dialog")>"◎"</button></div>
             <div class="reference-origin"><span>"Coordinate reference"</span><strong>{move ||ui.current.get().map(|w|format!("{:.7}°, {:.7}°",w.geo.latitude,w.geo.longitude)).unwrap_or_default()}</strong><small>"Fixed origin, not your camera position. X east · Y north · Z up."</small></div>
-            <div class="coordinate-rule"><strong>"1,024 × 1,024 × 1,024"</strong><span>"brick units per storage cell"</span></div><p class="subtle">"Each cell spans 1 arc-second east and north. Cells locate pieces; they do not physically anchor them. Constructions rest on the ground or use explicit ground anchors."</p>
+            <div class="coordinate-rule"><strong>{format!("{} × {} studs", ergo_world::BLOCK_SIZE, ergo_world::BLOCK_SIZE)}</strong><span>{format!("{} bricks high ({} plates)", ergo_world::BLOCK_HEIGHT_PLATES / 3, ergo_world::BLOCK_HEIGHT_PLATES)}</span></div><p class="subtle">"Each cell spans 1 arc-second east and north. Cells locate pieces; they do not physically anchor them. Constructions rest on the ground or use explicit ground anchors."</p>
             <button class="text-button" on:click=move |_|show_dialog("location-dialog")>"Go to a location"<span>"↗"</span></button>
         </div>
         <div class="dock-section browser"><div class="section-heading"><h2>"Constructions"</h2><span class="count-badge">{move ||if ui.common_world.get().is_some(){ui.common_assemblies.get().len()}else{ui.worlds.get().len()}}</span></div>
