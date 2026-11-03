@@ -62,9 +62,10 @@ fn stud_anchor(a: &Brick, b: &Brick, tolerance: f64) -> Option<DVec3> {
         return None;
     }
     for (source, target) in [(a, b), (b, a)] {
-        let Some(grid) = crate::part_profiles::receiving_grid(&target.part) else {
+        let grids = crate::part_profiles::receiving_grids(&target.part);
+        if grids.is_empty() {
             continue;
-        };
+        }
         if (physical::metric_transform(source.transform).y_axis
             - physical::metric_transform(target.transform).y_axis)
             .length()
@@ -76,16 +77,17 @@ fn stud_anchor(a: &Brick, b: &Brick, tolerance: f64) -> Option<DVec3> {
         for stud in crate::part_profiles::stud_centres(&source.part) {
             let p = target.transform.inverse()
                 * (source.position + source.transform * stud - target.position);
-            let u = p.x - grid.first[0];
-            let v = p.z - grid.first[1];
-            if (p.y - grid.bottom).abs() <= tolerance
-                && (u - u.round()).abs() <= tolerance
-                && (v - v.round()).abs() <= tolerance
-                && u >= -tolerance
-                && u <= f64::from(grid.width - 1) + tolerance
-                && v >= -tolerance
-                && v <= f64::from(grid.depth - 1) + tolerance
-            {
+            if grids.iter().any(|grid| {
+                let u = p.x - grid.first[0];
+                let v = p.z - grid.first[1];
+                (p.y - grid.bottom).abs() <= tolerance
+                    && (u - u.round()).abs() <= tolerance
+                    && (v - v.round()).abs() <= tolerance
+                    && u >= -tolerance
+                    && u <= f64::from(grid.width - 1) + tolerance
+                    && v >= -tolerance
+                    && v <= f64::from(grid.depth - 1) + tolerance
+            }) {
                 engaged.push(source.position + source.transform * stud);
             }
         }
@@ -685,5 +687,19 @@ mod tests {
                 .apply(&[holder, wheel], &mut joints)
                 .is_err()
         );
+    }
+    #[test]
+    fn arch_feet_accept_studs_but_the_opening_cannot_be_welded() {
+        let mut arch = part("3308a.dat", 1);
+        arch.position.y = 2.;
+        update(&mut arch);
+        for x in [-3.5, 3.5] {
+            let mut support = part("3005.dat", 2);
+            support.position.x = x;
+            update(&mut support);
+            assert!(stud_connection(&support, &arch, 1e-6));
+        }
+        let unsupported = part("3005.dat", 3);
+        assert!(!stud_connection(&unsupported, &arch, 1e-6));
     }
 }

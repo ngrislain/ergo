@@ -35,7 +35,9 @@ class CommonParts(unittest.TestCase):
             self.assertTrue(entry['asset']['bytes'] > 0, id)
             self.assertTrue(entry['catalogue']['size'] or entry['catalogue'].get('nominal'), id)
             if not entry['catalogue']['size']:
-                self.assertTrue(entry['catalogue']['connectors'], id)
+                nominal = entry['catalogue']['nominal']
+                self.assertTrue(entry['catalogue'].get('connectors') or nominal.get('cavity')
+                                or nominal['studs_ldu'], id)
 
 
 if __name__ == '__main__': unittest.main()

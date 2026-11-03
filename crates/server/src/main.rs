@@ -730,6 +730,8 @@ async fn main() -> Result<()> {
         .route("/auth/google", get(auth::login))
         .route("/auth/google/callback", get(auth::callback))
         .route_service("/app", ServeFile::new("web/index.html"))
+        .route_service("/catalogue", ServeFile::new("web/catalogue.html"))
+        .route_service("/catalogue/", ServeFile::new("web/catalogue.html"))
         .route_service("/login", ServeFile::new("web/index.html"))
         .fallback_service(ServeDir::new("web").append_index_html_on_directories(true))
         .layer(DefaultBodyLimit::max(128 * 1024 * 1024))

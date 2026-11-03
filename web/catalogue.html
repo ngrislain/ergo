@@ -1,0 +1,55 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="robots" content="noindex,nofollow">
+  <meta name="color-scheme" content="light">
+  <title>Ergo parts catalogue</title>
+  <link rel="icon" href="/favicon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="/catalogue.css">
+  <script type="module" src="/catalogue.js"></script>
+</head>
+<body>
+  <header class="catalogue-header">
+    <a class="brand" href="/app" aria-label="Open Ergo">ergo<span>Parts catalogue</span></a>
+    <p>Genuine pieces. Their geometry, interfaces and colours.</p>
+    <a class="workbench-link" href="/app">Open the world</a>
+  </header>
+  <main>
+    <section class="library" aria-labelledby="catalogue-heading">
+      <div class="library-heading"><h1 id="catalogue-heading">Find your next piece.</h1><span id="part-count" role="status">Loading catalogue…</span></div>
+      <form id="filters" class="filters" role="search">
+        <label class="search-label">Search pieces<input id="search" type="search" placeholder="Name, part number or connection" autocomplete="off"></label>
+        <label>Family<select id="family"><option value="all">Every family</option><option value="bricks">Bricks</option><option value="plates">Plates</option><option value="tiles">Tiles</option><option value="architecture">Walls and architecture</option><option value="scenery">Trees and plants</option><option value="figures">Minifigure pieces</option><option value="animals">Animals and saddles</option><option value="mechanical">Mechanical pieces</option><option value="specialty">Other pieces</option></select></label>
+        <label>Features<select id="feature"><option value="all">Every feature</option><option value="studs">Top studs</option><option value="receivers">Receiving cavities</option><option value="grip">Bars and grips</option><option value="axle">Pins, axles and bores</option><option value="wheel">Wheels and tyres</option></select></label>
+      </form>
+      <p id="catalogue-error" class="error" role="alert" hidden></p>
+      <div id="empty" class="empty" hidden><h2>No matching pieces.</h2><p>Try a shorter name or clear the filters.</p><button id="clear-filters" type="button">Clear filters</button></div>
+      <ul id="part-results" class="part-grid" aria-label="Canonical base pieces"></ul>
+    </section>
+    <aside class="inspector" aria-labelledby="part-name">
+      <div class="inspector-title"><div><code id="part-id">Choose a piece</code><h2 id="part-name" tabindex="-1">A closer look</h2></div><button id="detail-toggle" type="button" aria-expanded="true" aria-controls="inspector-body">Hide details</button></div>
+      <div id="inspector-body">
+      <div class="preview-stage"><canvas id="part-preview" width="680" height="520" aria-label="Selected piece, shown from its genuine source mesh" tabindex="0"></canvas><span class="preview-origin">8 mm stud pitch</span></div>
+      <div class="preview-toolbar"><label><input id="show-interfaces" type="checkbox"> Show interfaces</label><button id="reset-view" type="button">Reset view</button></div>
+      <p class="gesture-help">Drag to turn. Scroll to zoom. Arrow keys turn the focused preview.</p>
+      <p id="preview-status" class="preview-status" role="status">Select a piece to inspect its source geometry.</p>
+      <button id="retry-preview" type="button" hidden>Retry geometry</button>
+      <dl id="part-facts" class="part-facts"></dl>
+      <div id="interface-details" class="interface-details"></div>
+      <section class="colours" aria-labelledby="colour-heading">
+        <div class="colour-heading"><h3 id="colour-heading">Preview colour</h3><label><input id="all-colours" type="checkbox"> All colours</label></div>
+        <p id="selected-colour" class="selected-colour"></p>
+        <div id="colour-swatches" class="colour-swatches" role="group" aria-label="LEGO and LDraw preview colours"></div>
+        <p class="small-note">Palette previews do not assert that every mould was manufactured in every colour. Printed details retain their source colours.</p>
+      </section>
+      <details class="credits"><summary>Sources and geometry credits</summary><div id="part-credits"></div></details>
+      <p class="small-note">Connection datums describe reviewed geometric fits. They do not supply measured holding strengths. Body dimensions are nominal physics envelopes; the preview uses the actual source mesh.</p>
+      <a class="back-to-results" href="#part-results">Back to pieces</a>
+      </div>
+    </aside>
+  </main>
+  <footer>Canonical IDs appear once. Official aliases remain searchable. This reference page is unlisted.</footer>
+</body>
+</html>

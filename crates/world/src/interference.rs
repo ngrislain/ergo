@@ -3,7 +3,7 @@
 //! bottom cavity, never through a sideways solid face.
 use crate::{
     Brick,
-    part_profiles::{receiving_grid, stud_centres},
+    part_profiles::{receiving_grids, stud_centres},
     physical::{SCALE, STUD_DIAMETER_M, STUD_HEIGHT_M, metric_transform},
     spatial::Octree,
 };
@@ -98,13 +98,13 @@ pub fn first_stud_collision(bricks: &[Brick], tolerance: f64) -> Option<String> 
                     continue;
                 }
                 let mut cavity = false;
-                if let Some(other) = receiving_grid(&target.part) {
+                for other in receiving_grids(&target.part) {
                     let target_up = metric_transform(target.transform) * DVec3::Y;
                     if up.dot(target_up) > 1. - 1e-8 {
                         let point = target.transform.inverse() * (base - target.position);
                         let u = point.x - other.first[0];
                         let v = point.z - other.first[1];
-                        cavity = point.y <= other.bottom + tolerance
+                        cavity |= point.y <= other.bottom + tolerance
                             && point.y >= other.bottom - STUD_HEIGHT_M / SCALE.y - tolerance
                             && (u - u.round()).abs() < tolerance
                             && (v - v.round()).abs() < tolerance

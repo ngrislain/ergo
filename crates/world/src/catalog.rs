@@ -130,6 +130,20 @@ pub struct Part {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub set_count: Option<u32>,
     pub connectors: Vec<ConnectorInfo>,
+    pub aliases: Vec<String>,
+    pub mass_kg: f64,
+    pub mass_source: String,
+    pub nominal_dimensions_mm: [f64; 3],
+    pub top_studs: usize,
+    pub receiving_grids: Vec<ReceivingGridInfo>,
+    pub library_revision: String,
+}
+#[derive(Serialize)]
+pub struct ReceivingGridInfo {
+    pub width: u32,
+    pub depth: u32,
+    /// First receiving centre in part-local public east/north/up units.
+    pub first: [f64; 3],
 }
 #[derive(Serialize)]
 pub struct ConnectorInfo {
@@ -152,26 +166,54 @@ pub fn catalog() -> Catalog {
         constructs: crate::constructs::catalog(),
         parts: PARTS
             .iter()
-            .map(|(id, name)| Part {
-                id,
-                name,
-                recommended: true,
-                set_count: crate::part_library::get(id).and_then(|entry| entry.catalogue.set_count),
-                connectors: crate::attachments::connectors(id)
-                    .iter()
-                    .map(|c| ConnectorInfo {
-                        kind: c.kind,
-                        start: crate::coordinates::public(
-                            crate::ldraw::conversion() * glam::DVec3::from_array(c.start),
-                        )
-                        .to_array(),
-                        end: crate::coordinates::public(
-                            crate::ldraw::conversion() * glam::DVec3::from_array(c.end),
-                        )
-                        .to_array(),
-                        radius_m: c.radius * 0.0004,
-                    })
-                    .collect(),
+            .map(|(id, name)| {
+                let entry = crate::part_library::get(id).expect("Catalogued source part");
+                let size = crate::coordinates::dimensions(
+                    crate::geometry::nominal_body_bounds(id)
+                        .expect("Reviewed nominal profile")
+                        .size(),
+                );
+                Part {
+                    id,
+                    name,
+                    recommended: true,
+                    set_count: crate::part_library::get(id)
+                        .and_then(|entry| entry.catalogue.set_count),
+                    connectors: crate::attachments::connectors(id)
+                        .iter()
+                        .map(|c| ConnectorInfo {
+                            kind: c.kind,
+                            start: crate::coordinates::public(
+                                crate::ldraw::conversion() * glam::DVec3::from_array(c.start),
+                            )
+                            .to_array(),
+                            end: crate::coordinates::public(
+                                crate::ldraw::conversion() * glam::DVec3::from_array(c.end),
+                            )
+                            .to_array(),
+                            radius_m: c.radius * 0.0004,
+                        })
+                        .collect(),
+                    aliases: entry.catalogue.aliases.clone(),
+                    mass_kg: entry.catalogue.mass_kg,
+                    mass_source: entry.catalogue.mass_source.clone(),
+                    nominal_dimensions_mm: [size.x * 8., size.y * 8., size.z * 9.6],
+                    top_studs: crate::part_profiles::stud_centres(id).len(),
+                    receiving_grids: crate::part_profiles::receiving_grids(id)
+                        .into_iter()
+                        .map(|grid| ReceivingGridInfo {
+                            width: grid.width,
+                            depth: grid.depth,
+                            first: crate::coordinates::public(glam::DVec3::new(
+                                grid.first[0],
+                                grid.bottom,
+                                grid.first[1],
+                            ))
+                            .to_array(),
+                        })
+                        .collect(),
+                    library_revision: entry.revision.clone(),
+                }
             })
             .collect(),
         colors: COLORS

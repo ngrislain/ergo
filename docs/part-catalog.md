@@ -23,7 +23,7 @@ The resolver verifies hash, schema and part identity when reading cached geometr
 
 ## Resolution
 
-The [canonical library](part-library.md) supplies 44 standard brick/plate/tile geometries, 80 source-only
+The [canonical library](part-library.md) supplies 44 standard brick/plate/tile geometries, 94 source-only
 architectural/figure/vehicle entries and 20 opaque colors. It exposes the sourced
 complete color palette and resolves other
 part IDs when actual geometry is available. These recommendations help minimize
@@ -46,7 +46,7 @@ scaled smaller plates. Its nominal dimensions and catalogue mass are sourced fro
 [BrickLink 3026](https://www.bricklink.com/v2/catalog/catalogitem.page?P=3026).
 
 Resolution is cache-first, then uses the checksum-verified native library pack.
-The complete 124-part pack is 2,278,268 bytes; only a requested part is decoded.
+The complete 138-part pack is 2,813,664 bytes; only a requested part is decoded.
 For additional source assets an import adapter can read a configured local source
 library or retrieve a missing source, bake it into Ergo geometry, and store its
 native description. Source text is transient in a bounded 32 MiB process cache;
@@ -105,6 +105,34 @@ Use `profile_scene --inventory` (see [render profiling](3d-display-indexing.md#m
 to list parts, source triangle cost, vertex fingerprints and display-profile coverage.
 The independent [greedy surface cache](3d-display-indexing.md#cached-greedy-surfaces-hidden-faces-and-coplanar-merging)
 can merge distant upright standard bodies without creating new catalogue pieces.
+
+## Unlisted HTML reference
+
+The server serves `/catalogue` and `/catalogue/` without adding a main-app
+navigation link. The page declares `noindex,nofollow`; it is an unlisted public
+reference for already-public catalogue data, not an authentication boundary.
+It reads `/api/catalog` and the ordinary JSON `/api/parts/{id}` asset route.
+
+`/api/catalog` part records include official aliases, `mass_kg`, `mass_source`,
+`nominal_dimensions_mm` in east/north/up order, `top_studs`, `receiving_grids`
+and `library_revision`, in addition to names, usage counts and mechanical ports.
+Each receiving grid supplies width/depth and its first centre in public part-local
+construction coordinates. Mechanical port radii remain SI metres.
+
+The reference page provides search, family/interface filters, real source-mesh
+thumbnails, an orbit/zoom/keyboard preview and optional interface markers. It
+distinguishes nominal physics envelopes from rendered envelopes including details
+and studs, and links catalogue mass records/component sums and geometry credits.
+Only source-quality meshes are shown; no generic box substitutes for missing geometry.
+
+Colour controls use the LEGO/LDraw preview palette and retain fixed printed face
+colours. They do not claim every mould was manufactured in every palette colour.
+Swatches use catalogue RGB/alpha; preview lighting and simple transparency are
+illustrative, not metallic/refraction/material qualification.
+
+Verification: `scripts/test-catalogue.py` runs against the isolated real server
+through `scripts/test-web-isolated.py`, checking all canonical entries, filters,
+source geometry, colour changes, keyboard orbit, interfaces and mobile layout.
 
 ## Physical and material limits
 

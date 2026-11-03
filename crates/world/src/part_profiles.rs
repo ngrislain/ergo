@@ -13,6 +13,8 @@ pub struct Nominal {
     pub studs_ldu: Vec<[f64; 3]>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub cavity: Option<NominalGrid>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub additional_cavities: Vec<NominalGrid>,
 }
 #[derive(Debug, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
@@ -37,6 +39,7 @@ pub struct Profile {
     pub grams: f64,
     pub source: String,
     pub cavity: Option<Grid>,
+    pub additional_cavities: Vec<Grid>,
     pub studs: Vec<DVec3>,
 }
 
@@ -58,9 +61,9 @@ pub(crate) fn stud_centres(part: &str) -> Vec<DVec3> {
     }
     profile(part).map_or_else(Vec::new, |p| p.studs)
 }
-pub(crate) fn receiving_grid(part: &str) -> Option<Grid> {
+pub(crate) fn receiving_grids(part: &str) -> Vec<Grid> {
     if let Some(spec) = crate::geometry::part_spec(part) {
-        return Some(grid(
+        return vec![grid(
             spec.width,
             spec.depth,
             [
@@ -68,9 +71,11 @@ pub(crate) fn receiving_grid(part: &str) -> Option<Grid> {
                 0.5 - f64::from(spec.depth) / 2.,
             ],
             -spec.height,
-        ));
+        )];
     }
-    profile(part).and_then(|p| p.cavity)
+    profile(part).map_or_else(Vec::new, |p| {
+        p.cavity.into_iter().chain(p.additional_cavities).collect()
+    })
 }
 
 fn grid(width: u32, depth: u32, first: [f64; 2], bottom: f64) -> Grid {
@@ -161,6 +166,14 @@ pub fn profile(part: &str) -> Option<Profile> {
     let entry = &crate::part_library::get(part)?.catalogue;
     if let Some(nominal) = &entry.nominal {
         let c = crate::ldraw::conversion();
+        let receiving = |g: &NominalGrid| {
+            grid(
+                g.width,
+                g.depth,
+                [g.first[0] / 20., -g.first[1] / 20. - f64::from(g.depth - 1)],
+                -g.bottom / 24.,
+            )
+        };
         return Some(Profile {
             bounds: Aabb::new(
                 DVec3::from_array(nominal.bounds_ldu[0]),
@@ -174,14 +187,8 @@ pub fn profile(part: &str) -> Option<Profile> {
                 .iter()
                 .map(|p| c * DVec3::from_array(*p))
                 .collect(),
-            cavity: nominal.cavity.as_ref().map(|g| {
-                grid(
-                    g.width,
-                    g.depth,
-                    [g.first[0] / 20., -g.first[1] / 20. - f64::from(g.depth - 1)],
-                    -g.bottom / 24.,
-                )
-            }),
+            cavity: nominal.cavity.as_ref().map(receiving),
+            additional_cavities: nominal.additional_cavities.iter().map(receiving).collect(),
         });
     }
     let id = entry
@@ -398,6 +405,7 @@ pub fn profile(part: &str) -> Option<Profile> {
         grams: entry.mass_kg * 1000.,
         source: entry.mass_source.clone(),
         cavity,
+        additional_cavities: Vec::new(),
         studs,
     })
 }

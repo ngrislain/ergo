@@ -3,8 +3,8 @@
 ## One reproducible library
 
 `crates/world/library/sources.lock.json` is the canonical catalogue used by Rust
-and Python authoring. It contains 124 selected parts: 44 rectangular brick, plate
-and tile shapes, plus 80 source-only architectural, figure, vehicle and Technic parts.
+and Python authoring. It contains 138 selected parts: 44 rectangular brick, plate
+and tile shapes, plus 94 source-only architectural, figure, vehicle and Technic parts.
 Names, dimensions, catalogue masses and aliases are read from this registry;
 there are no independent standard-size or standard-mass tables in the generator.
 
@@ -35,7 +35,7 @@ physical-model version or connector calibration.
 
 ## Compact native asset pack
 
-`crates/assets/library/parts.pack` ships the complete selected geometry in **2,278,268
+`crates/assets/library/parts.pack` ships the complete selected geometry in **2,813,664
 bytes**. It concatenates independent deterministic gzip members in canonical part-ID
 order. Each member decodes to one ordinary native Mesh CBOR object; it is not a ZIP
 or a top-level CBOR container. The lock records `asset:{offset,bytes,mesh_hash}` for
@@ -88,15 +88,17 @@ silently overwritten. Subsequent deterministic checks need no `--add-part` flag.
 ## Common-part selection and coverage
 
 The 2026-11-03 expansion adds **63 parts**, each individually recorded by its linked
-BrickLink item as appearing in **strictly more than seven sets**. The full library
-has 123 such individual-item usage records; the original factory torso uses a
+BrickLink item as appearing in **strictly more than seven sets**. The subsequent
+tree/Castle/garrison selection adds 14 more individually sourced common pieces.
+The full library has 137 such individual-item usage records; the original factory torso uses a
 component mass sum and has no inferred whole-unit set count. Counts are metadata
 snapshot values, not live statistics. Repeated colours and quantities are not set
 counts. Existing reviewed selections remain available independently of popularity.
 
 `scripts/common_parts.py` declares the reviewed candidate families: additional
 rectangular plates/tiles, Technic bricks and straight beams, cross axles, friction
-and frictionless pins, bushes, hand-held tools/bars, wheel holders, rims and tyres.
+and frictionless pins, bushes, hand-held tools/bars, wheel holders, rims and tyres,
+genuine oval/pine trees, Castle panels, arches, capes, helmets, factory horses and a saddle.
 Its profiles and functional datums use the pinned official geometry. Standalone
 tool/axle envelopes come from source triangles; genuine visual geometry is baked
 normally. No generic box is substituted for a missing part.
@@ -117,6 +119,27 @@ fails on gaps in the supplied corpus. The reviewed selection is **not an exhaust
 claim that every LEGO part used in eight sets is bundled**; a complete external
 inventory is needed to measure that broader target. The default audit's universe
 is explicitly the bundled items with recorded usage.
+
+### Scenic and Castle mould datums
+
+The selected additions are `3470` oval tree, `3471` pine tree, `4444` wall panel,
+`2345` corner panel, `3659`/`3307`/`3308a` arches, `4524` plastic cape,
+`50231c01` formed cloth cape, `3896`/`89520` helmets, `4493c01`/`4493c02` factory
+horses and `4491a` saddle. The corrected `3308a` source is used rather than the
+obsolete `3308` geometry; it is not falsely declared an official identity alias.
+
+Nominal profiles retain source datums: tree bases receive a 2×2 stud pattern at
+8 LDU; the 4444 panel has stepped stud rows; arches receive studs only at their
+two end feet; and horses have four separate hoof cavities. A nominal record can
+add `additional_cavities` beside its first cavity. Matching accepts the union of
+those reviewed grids, never a filled rectangle across an arch opening. Snapping
+uses a real receiving datum and grounded registration checks every grid.
+
+Factory horse back/body cores, saddle floors, helmet caps and cape neck rings are
+nominal bearing proxies, with full genuine details retained visually. Plastic
+cape collars are 2 LDU thick; the formed cloth source specifies a 0.6-LDU head
+lift. Cloth remains a fixed formed source shape, not a cloth dynamics model.
+No new retention capacities are supplied by these source records.
 
 `get_catalog` exposes `set_count` where sourced, and part-local connector endpoints
 in public east/north/up brick units with `radius_m` in SI. See

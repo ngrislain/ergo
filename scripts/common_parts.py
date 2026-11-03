@@ -15,11 +15,16 @@ BUSHES = ['3713', '4265c']
 ACCESSORIES = '30374 87994 4095 63965 3846 3837 4006 3835 3841 3847 3848 3849 3820'.split()
 WHEELS = '4600 4624 3641 3482 132'.split()
 FIGURES = ['973p4f', '3818', '3819', '4499']
-CANDIDATES = {id + '.dat': id for id in [*RECTANGULAR, *BRICKS, *BEAMS, *AXLES, *PINS, *BUSHES, *ACCESSORIES, *WHEELS, *FIGURES]}
+SCENERY = ['3470', '3471']
+CASTLE = ['4444', '2345', '3659', '3307', '3308a']
+GARRISON = ['4524', '50231c01', '3896', '89520', '4493c01', '4493c02', '4491a']
+CANDIDATES = {id + '.dat': id for id in [*RECTANGULAR, *BRICKS, *BEAMS, *AXLES, *PINS, *BUSHES, *ACCESSORIES, *WHEELS, *FIGURES, *SCENERY, *CASTLE, *GARRISON]}
 # BrickLink identifies the source moulds under these catalogue spellings.
 CANDIDATES['3820.dat'] = '983'
 CANDIDATES['132.dat'] = '3483'
 CANDIDATES.update({'973p4f.dat': '973px138', '3818.dat': '982', '3819.dat': '981'})
+CANDIDATES.update({'3308a.dat': '3308', '50231c01.dat': '522',
+                   '4493c01.dat': '4493c01pb02', '4493c02.dat': '4493c01pb04'})
 
 
 def port(kind, start, end, radius, **extra):
@@ -133,6 +138,57 @@ def nominal(id, bounds):
     elif id in BEAMS:
         n = BEAMS[id]
         value['bounds_ldu'] = [[-9, -10, -10*n+1], [9, 10, 10*n-1]]
+    elif id in SCENERY:
+        # Official rounded 2x2 bases contain the central inverted stud4 tube;
+        # the four receiving stud centres are +/-10 LDU, at the Y=8 underside.
+        value['cavity'] = dict(width=2, depth=2, first=[-10, -10], bottom=8)
+    elif id == '4444':
+        value['bounds_ldu'] = [[-50, 0, -10], [50, 144, 30]]
+        # This mould has stepped stud rows, not a fictional flat 2x5 grid.
+        value['studs_ldu'] = [[x, 0, 0] for x in [-20, 0, 20]] + [
+            [-40, 24, 0], [40, 24, 0]] + [[x, 8, 20] for x in [-20, 0, 20]]
+        value['cavity'] = dict(width=3, depth=1, first=[-20, 0], bottom=144)
+    elif id == '2345':
+        value['bounds_ldu'] = [[-30, 0, -30], [30, 144, 30]]
+        value['studs_ldu'] = [[x, 24, 20] for x in [-20, 0, 20]] + [
+            [-20, 24, 0], [-20, 24, -20]]
+        value['cavity'] = dict(width=2, depth=2, first=[-20, 0], bottom=144)
+    elif id in ['3659', '3307', '3308a']:
+        width, height = {'3659': (4, 24), '3307': (6, 48), '3308a': (8, 48)}[id]
+        value['bounds_ldu'] = [[-10*width, 0, -10], [10*width, height, 10]]
+        value['studs_ldu'] = [[x, 0, 0] for x in range(-10*width+10, 10*width, 20)]
+        # Only the two end feet receive studs; the arch opening is empty.
+        value['cavity'] = dict(width=1, depth=1, first=[-10*width+10, 0], bottom=height)
+        value['additional_cavities'] = [dict(width=1, depth=1, first=[10*width-10, 0], bottom=height)]
+    elif id in ['3896', '89520']:
+        # As for the existing Castle helmet: retain the actual source upper
+        # cap as the bearing core, with cheek/neck protection rendered in full.
+        value['bounds_ldu'] = [[-13, bounds[0][1], -13], [13, 0, 13]]
+        value['cavity'] = dict(width=1, depth=1, first=[0, 0], bottom=0)
+    elif id == '4524':
+        # Source neck ring is 2 LDU thick. 6080 places it two LDU above the
+        # torso, raising head/helmet by the same amount. Drape is visual.
+        value['bounds_ldu'] = [[-10, 0, -10], [10, 2, 10]]
+        value['cavity'] = dict(width=1, depth=1, first=[0, 0], bottom=2)
+    elif id == '50231c01':
+        # Official !HELP: cape at torso Y=0; head raised by 0.6 LDU.
+        # This is a fixed formed source shape, not a cloth simulation.
+        value['bounds_ldu'] = [[-10, -.6, -10], [10, 0, 10]]
+        value['cavity'] = dict(width=1, depth=1, first=[0, 0], bottom=0)
+    elif id in ['4493c01', '4493c02']:
+        # Factory unit: body/back bears at source Y=0; head and tail remain
+        # genuine rendered overhangs. Four separate hoof holes are reviewed
+        # in s/4494s01.dat, not one fictitious solid receiving rectangle.
+        value['bounds_ldu'] = [[bounds[0][0], 0, bounds[0][2]], [bounds[1][0], 57, bounds[1][2]]]
+        feet = [dict(width=1, depth=1, first=[x, z], bottom=57)
+                for z in [-25, 35] for x in [-10, 10]]
+        value['cavity'], value['additional_cavities'] = feet[0], feet[1:]
+    elif id == '4491a':
+        # The original 6080 assembly seats the saddle 8 LDU above the horse
+        # datum. Its actual floor is 0..8 LDU; raised sides/clips are visual.
+        value['bounds_ldu'] = [[-20, 0, -10], [20, 8, 10]]
+        value['studs_ldu'] = [[-10, 0, 0], [10, 0, 0]]
+        value['cavity'] = dict(width=2, depth=1, first=[-10, 0], bottom=8)
     return value
 
 

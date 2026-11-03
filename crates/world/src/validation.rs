@@ -263,16 +263,23 @@ pub fn validate_baseplate_registration(
         );
         // Factory feet and specialty profiles register their actual receiving
         // datums, not an envelope edge that may lie inside the moulded outline.
-        let registration = if let Some(grid) = crate::part_profiles::receiving_grid(&brick.part) {
-            let stud = brick.position
-                + brick.transform * DVec3::new(grid.first[0], grid.bottom, grid.first[1]);
-            [stud.x - 0.5, stud.z - 0.5]
+        let grids = crate::part_profiles::receiving_grids(&brick.part);
+        let registrations = if !grids.is_empty() {
+            grids
+                .iter()
+                .map(|grid| {
+                    let stud = brick.position
+                        + brick.transform * DVec3::new(grid.first[0], grid.bottom, grid.first[1]);
+                    [stud.x - 0.5, stud.z - 0.5]
+                })
+                .collect::<Vec<_>>()
         } else {
-            [brick.bounds.min.x, brick.bounds.max.z]
+            vec![[brick.bounds.min.x, brick.bounds.max.z]]
         };
         ensure!(
-            registration
+            registrations
                 .iter()
+                .flatten()
                 .all(|v| (v - v.round()).abs() <= tolerances.position_brick_units),
             "Grounded brick {} ({}) is off the baseplate stud grid at {:?}; snap the whole placement to integer X/Y stud coordinates",
             brick.id,
@@ -320,6 +327,27 @@ fn ground_support_points(brick: &Brick) -> Vec<DVec3> {
 #[cfg(test)]
 mod registration_tests {
     use super::*;
+    #[test]
+    fn horse_registers_all_four_hoof_holes_not_its_head_and_tail_envelope() {
+        let mut scene = crate::demo::Demo::new();
+        scene.add("4493c01", 70, 0., 0., 0.);
+        let horse = &mut scene.bricks[0];
+        horse.position = DVec3::new(0., 57. / 24., 0.);
+        horse.bounds = crate::geometry::nominal_body_bounds(&horse.part)
+            .unwrap()
+            .transformed(horse.transform, horse.position);
+        assert!(validate_baseplate_registration(&scene.bricks, Default::default()).is_err());
+        let correction = crate::placement::snap_bricks_translation(&scene.bricks, DVec3::ZERO);
+        assert!((correction - DVec3::new(0., 0., 0.25)).length() < 1e-9);
+        scene.bricks[0].translated(correction);
+        validate_baseplate_registration(&scene.bricks, Default::default()).unwrap();
+        assert_eq!(
+            crate::part_profiles::receiving_grids("4493c01.dat").len(),
+            4
+        );
+        scene.bricks[0].translated(DVec3::new(0.1, 0., 0.));
+        assert!(validate_baseplate_registration(&scene.bricks, Default::default()).is_err());
+    }
     #[test]
     fn grounded_tiles_also_need_registration_even_without_studs_of_their_own() {
         let mut d = crate::demo::Demo::new();
