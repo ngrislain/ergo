@@ -10,6 +10,16 @@
   inventing solid cavities through openings; preserve existing-part datums.
 - Add an unlisted HTML `/catalogue` with source previews, part features, sourced
   mass/dimensions and a LEGO/LDraw colour-preview palette.
+- Load shared views by physical viewing distance plus a 384-stud prefetch margin;
+  use bounded sparse-cell reads, explicit radius/fog budget fallback and verified
+  packet reuse across small-cell boundaries.
+- Fit sunlight shadows to resident geometry and ground receivers independently
+  of camera zoom, colour LOD, selection and display clipping.
+- Preserve mobile image proportions and verify responsive images and the actual
+  WebGL camera projection in browser regression checks.
+- Add verified genuine-tree park expansion and castle mountain/moat/arched-bridge
+  recipes, including plate-free standing figures, capes, helmets and horses.
+  Held weapons and archer poses remain deferred pending measured capacities.
 
 ## v0.5.19
 
