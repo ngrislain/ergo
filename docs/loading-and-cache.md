@@ -88,13 +88,16 @@ it or regenerate JSON. The district's two retained representations total about
 39.9 MB and fit the existing 64 MiB memory budget; retaining every JSON/CBOR/gzip
 representation could previously prevent that admission.
 
-For radius-1 views, a client can supply its previous centre as `from_x`, `from_y`, `from_z`. A
-one-cell camera move reuses the previous packet only for the exact same accepted
-revision and budgets, when all its occupied blocks remain inside the new region
+A client can supply its previous centre as `from_x`, `from_y`, `from_z`. A
+nearby camera move reuses the previous packet only for the exact same accepted
+revision, radius and budgets, when all its occupied blocks remain inside the new region
 and every newly included cell has no allocated-block directory entry. Otherwise
 the normal read runs. Allocated-but-empty cells conservatively prevent reuse.
 The hint never authorizes missing geometry or avoids the current permission check.
-If no useful hint is supplied, the server probes the 27 allocated-block directory
+Wider views prove newly added space empty through the sparse allocated-cell
+directory, avoiding another per-piece materialization merely because the camera
+crossed a small storage cell. Proof work retains the read-byte bound.
+For radius-1 views without a useful hint, the server probes the 27 allocated-block directory
 entries and tries one deterministic nearby center, computed from their coordinate
 extrema. The same empty-added-cell / retained-occupied-cell proof must pass before
 reuse. Clicking a construction whose first piece crosses a cell boundary can

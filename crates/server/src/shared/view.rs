@@ -241,7 +241,12 @@ fn with_work_timing(
 }
 
 fn in_region(block: [i64; 3], centre: [i64; 3]) -> bool {
-    (0..3).all(|axis| (i128::from(block[axis]) - i128::from(centre[axis])).abs() <= 1)
+    in_radius(block, centre, 1)
+}
+fn in_radius(block: [i64; 3], centre: [i64; 3], radius: u8) -> bool {
+    (0..3).all(|axis| {
+        (i128::from(block[axis]) - i128::from(centre[axis])).abs() <= i128::from(radius)
+    })
 }
 
 /// A construction's first member often lies across a cell boundary from its
@@ -291,9 +296,8 @@ async fn reuse_neighbor(
     key: &ViewKey,
     previous: [i64; 3],
 ) -> Option<Arc<EncodedView>> {
-    if key.radius != 1
-        || previous == key.coord
-        || !in_region(previous, key.coord)
+    if previous == key.coord
+        || !in_radius(previous, key.coord, key.radius)
         || previous.iter().any(|n| n.unsigned_abs() >= 1_000_000_000)
     {
         return None;
@@ -314,9 +318,20 @@ async fn reuse_neighbor(
     if cached
         .blocks
         .iter()
-        .any(|block| !in_region((*block).into(), key.coord))
+        .any(|block| !in_radius((*block).into(), key.coord, key.radius))
     {
         return None;
+    }
+    if key.radius > 1 {
+        let mut remaining = key.read_bytes.checked_sub(cached.logical_read_bytes)?;
+        let allocated = view_cells(snapshot, key, &mut remaining).await.ok()?;
+        if allocated
+            .iter()
+            .any(|cell| !in_radius((*cell).into(), previous, key.radius))
+        {
+            return None;
+        }
+        return Some(cached);
     }
     for dx in -1..=1 {
         for dy in -1..=1 {

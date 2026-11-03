@@ -185,7 +185,7 @@ directly. See [MCP setup and outcome handling](local-construction-mcp.md#publica
   `status=true` returns no geometry: it exposes the accepted revision, ephemeral
   phase and optional structured stage counters for the loading overlay. Polls can
   pin `revision=CID` to the same read. `from_x/from_y/from_z` are previous-centre
-   cache hints for radius-1 reads; reuse requires the same revision/budgets and a proof that all added
+   cache hints; reuse requires the same revision/radius/budgets and a proof that all added
   cells are unallocated and no occupied cell was removed. They never permit partial
   or stale geometry. Responses expose applicable stage durations in `Server-Timing`.
   See [read-packet caching](loading-and-cache.md).
