@@ -22,6 +22,8 @@ loaded rows. Complete selected constructions download as standard self-contained
 LDraw/MPD or native Ergo JSON.
 Accepted region reads use [compact compressed packets and revision-safe caches](docs/loading-and-cache.md);
 selecting fully resident constructions reuses their loaded geometry.
+Loading follows physical viewing distance with a 384-stud prefetch margin;
+sunlight caster coverage is independent of camera zoom, colour LOD and clipping.
 Read-only regions have independent budgets, defaulting to 50,000 pieces and
 64 MiB of charged reads, for denser neighborhoods.
 Storage operators can [warm an accepted region's discardable cache](docs/loading-and-cache.md#operator-warm-up)
@@ -160,5 +162,10 @@ Original [walkable monument recipes](docs/model-recipes.md) are in
 `scripts/build/`, including a corridor pyramid and a ten-level Seven Sisters-inspired tower.
 The [terraced park recipe](docs/model-recipes.md#terraced-park-recipe) adds a sourced,
 explicitly published landscape workflow with ponds, trees and summit walking checks.
+The [castle mountain recipe](docs/model-recipes.md#castle-mountain-proposal)
+prepares a moat, walkable arched bridge, genuine arrowslit panels and plate-free
+standing figures with capes, helmets and horses. Held weapons and archer poses
+remain pending measured connector capacities; local validation and shared
+publication are recorded separately.
 The server's unlisted `/catalogue` reference shows all canonical base pieces, genuine
 geometry previews, reviewed interfaces, mass sources and a LEGO/LDraw preview palette.

@@ -18,7 +18,7 @@ import sys
 ROOT = pathlib.Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT))
 from scripts.build import park
-from scripts.build.district import write, empty_workspace
+from scripts.build.district import write
 from scripts.mcp_client import Mcp
 from scripts.native_model import Model, instance, model_leaves
 
@@ -210,8 +210,12 @@ def main():
     write(args.output/'additions.model.json', delta)
     write(args.output/'complete.model.json', full_model())
     write(args.output/'walking.route.json', route())
-    write(workspace, empty_workspace(park.NAME) if args.publish else cache(source['scene']))
-    if args.publish:os.environ['ERGO_SHARED_ASSEMBLY_ID'] = ASSEMBLY
+    if args.publish:
+        # Shared startup creates this cache from the authenticated assembly.
+        # An existing local file is deliberately refused by the MCP binding.
+        os.environ['ERGO_SHARED_ASSEMBLY_ID'] = ASSEMBLY
+    else:
+        write(workspace, cache(source['scene']))
     client = Mcp(args.binary, workspace, args.url if args.publish else None, args.token_file if args.publish else None)
     try:
         if args.publish:

@@ -9,7 +9,7 @@ designs live in `todo/` and are indexed by [TODO.md](../TODO.md).
 - [MCP tools and installation](local-construction-mcp.md)
 - [Official/custom model search and reuse](model-library.md)
 - [Sourced building-technique library](local-construction-mcp.md#sourced-building-techniques)
-- [Walkable pyramid, ten-level tower and terraced park recipes](model-recipes.md)
+- [Walkable monument, genuine-tree park and castle mountain recipes](model-recipes.md)
 - [Camera navigation, GPS and construction list](navigation.md)
 - [Loading progress, timing diagnosis and revision-safe caches](loading-and-cache.md)
 - [Sign-in and access](access-and-onboarding.md)

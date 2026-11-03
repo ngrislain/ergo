@@ -297,12 +297,15 @@ removed when the request completes, fails or is cancelled.
 `Server-Timing: view;dur=...` reports server-side request duration. Use:
 
 ```sh
-python3 scripts/profile-shared-loading.py --cell 19 0 0 \
+python3 scripts/profile-shared-loading.py --cell 156 0 0 --radius 21 \
   --output target/loading-measurements.json
 ```
 
 It compares identity JSON, gzip JSON, gzip CBOR, a repeated read and conditional
 revalidation. It prints timing/size/header summaries, not private geometry.
+The default district centre is current cell 156; its physical position did not
+move during cell migration. The profiling radius defaults to 1; use 21 as above
+to reproduce the default navigator's coverage rather than a small point region.
 Measurements depend on server warmth, network and construction. Transfer timing
 does not measure WebGL frame time; resident-focus tests separately verify that
 cached navigation issues no location/region request.

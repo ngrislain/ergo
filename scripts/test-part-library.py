@@ -164,9 +164,13 @@ with tempfile.TemporaryDirectory(prefix='ergo-library-') as temporary:
             ('3470.dat',[34,1,2/3],2),('3471.dat',[42,1,2/3],2),
             ('4493c01.dat',[54,5.75,65/24],0),('4493c02.dat',[70,5.75,65/24],15),
             ('4491a.dat',[70,5.75,73/24],4)])
+        # A genuine stepped wall panel sits directly on ordinary floor studs.
+        # Its visual wings must not create a fictional solid five-stud foot.
+        references.extend(placed('part',part,position,colour) for part,position,colour in [
+            ('41539.dat',[86,6,1/3],288),('4444.dat',[86.5,5.5,6+1/3],71)])
         model={'format':'ergo-model-1','schema':2,'root':'main','definitions':{'main':references}}
         feedback=client.call('place_submodel',model=model)['structuredContent']
-        assert feedback['brick_count']==23 and feedback['overlap_free'],feedback
+        assert feedback['brick_count']==25 and feedback['overlap_free'],feedback
         assert feedback['static_under_current_joint_model'] and feedback['publication_ready'],feedback
         client.call('export_construction');accepted=json.loads(workspace.read_text())
         assert all(mesh['quality']=='source' for mesh in accepted['meshes'].values())

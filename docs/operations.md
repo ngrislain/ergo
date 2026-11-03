@@ -42,7 +42,7 @@ construction cache and its explicit route. It verifies continuous traversal,
 arrival heights and clearance with the same movement engine as the viewer.
 
 For read-only transfer timings and JSON/gzip/CBOR comparisons, run
-`python3 scripts/profile-shared-loading.py --cell 19 0 0 --output target/loading-measurements.json`.
+`python3 scripts/profile-shared-loading.py --cell 156 0 0 --radius 21 --output target/loading-measurements.json`.
 This reports wire/decoded sizes, server cache headers and TTFB, not WebGL frame
 time. Compare cold, persistent and warm requests explicitly; network warmth is
 not a performance guarantee. See [loading and caching](loading-and-cache.md).
@@ -62,8 +62,9 @@ gh release view v0.5.20 --repo ngrislain/ergo
 ```
 
 Verify the public tarball version/checksum, consumer install and actual MCP smoke
-before changing the displayed installation source. The verified npm release is
-`@ngrislain/ergo-mcp@0.5.20`; GitHub also hosts its identical complete tarball.
+before changing the displayed installation source. The latest verified npm release
+is `@ngrislain/ergo-mcp@0.5.19`; GitHub also hosts its identical complete tarball.
+The commands here target the next, not yet verified, 0.5.20 release.
 
 Registry CI uses the approved npm trusted publisher for `ngrislain/ergo` /
 `release.yml`, with `ERGO_NPM_PUBLISH=true`. Run

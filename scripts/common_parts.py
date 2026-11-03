@@ -146,7 +146,9 @@ def nominal(id, bounds):
         # down to the floor would invent collisions with neighbouring studs.
         value['bounds_ldu'] = [[-20, bounds[0][1], -20], [20, 8, 20]]
     elif id == '4444':
-        value['bounds_ldu'] = [[-50, 0, -10], [50, 144, 30]]
+        # The central 3x1 foot/header is the load-bearing core. Filling the
+        # stepped wings down to the floor invents collisions with floor studs.
+        value['bounds_ldu'] = [[-30, 0, -10], [30, 144, 10]]
         # This mould has stepped stud rows, not a fictional flat 2x5 grid.
         value['studs_ldu'] = [[x, 0, 0] for x in [-20, 0, 20]] + [
             [-40, 24, 0], [40, 24, 0]] + [[x, 8, 20] for x in [-20, 0, 20]]

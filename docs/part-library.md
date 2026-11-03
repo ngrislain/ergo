@@ -35,7 +35,7 @@ physical-model version or connector calibration.
 
 ## Compact native asset pack
 
-`crates/assets/library/parts.pack` ships the complete selected geometry in **2,813,613
+`crates/assets/library/parts.pack` ships the complete selected geometry in **2,813,617
 bytes**. It concatenates independent deterministic gzip members in canonical part-ID
 order. Each member decodes to one ordinary native Mesh CBOR object; it is not a ZIP
 or a top-level CBOR container. The lock records `asset:{offset,bytes,mesh_hash}` for
@@ -141,7 +141,9 @@ cape collars are 2 LDU thick; the formed cloth source specifies a 0.6-LDU head
 lift. Cloth remains a fixed formed source shape, not a cloth dynamics model.
 No new retention capacities are supplied by these source records.
 
-Tree bearing cores use their 2×2 base/trunk footprint; canopies remain genuine
+The 4444 panel uses its central 3×1 foot/header as its bearing core, leaving stepped
+wings/back details visual. Tree bearing cores use their 2×2 base/trunk footprint;
+canopies remain genuine
 visual overhangs rather than a fictitious solid column down to surrounding grass
 studs. Optional `collision_boxes_ldu` preserve open space between horse legs and
 under arches. Arch columns are conservatively derived from pinned source triangles;

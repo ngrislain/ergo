@@ -9739,8 +9739,8 @@
     },
     "4444.dat": {
       "asset": {
-        "bytes": 13351,
-        "mesh_hash": "ca2a8fab76b0dece0e7c0d585ac6cd873773f09acee3c1792b67ad8899083b95",
+        "bytes": 13355,
+        "mesh_hash": "f9471ee2f2a0967c3b3b6d6fb1ae99a71076c119f247f2dd29812a045b06cb32",
         "offset": 1933042
       },
       "catalogue": {
@@ -9752,14 +9752,14 @@
         "nominal": {
           "bounds_ldu": [
             [
-              -50,
+              -30,
               0,
               -10
             ],
             [
-              50,
+              30,
               144,
-              30
+              10
             ]
           ],
           "cavity": {
@@ -9838,15 +9838,15 @@
         "stud2a.dat",
         "stud3.dat"
       ],
-      "revision": "8252c25760cd51979608fb36655b770e68ce05ae7e4da9ab44d9de0b90f86988",
-      "source_revision": "6b88a7ce799867de08453de00d5c08ae479053ad53516392d3ebbcd087bf33bb",
+      "revision": "672d589c6c971c853df18ccf8b00850e6825a7cab25ccf2af3cc73b6bd69945d",
+      "source_revision": "6a4aeb196c10e55101beac5c2f49827366cb123738d52b489475aafa8b164eb8",
       "vertex_hash": "d92285f8cc252b1b0238aeca837409809b54c9b9642cc4bd919094083fc40de6"
     },
     "4477.dat": {
       "asset": {
         "bytes": 9325,
         "mesh_hash": "ea0dcb5641479bb75b29d183100fad16106556b440b4da4ce0d32e5326247617",
-        "offset": 1946393
+        "offset": 1946397
       },
       "catalogue": {
         "aliases": [],
@@ -9879,7 +9879,7 @@
       "asset": {
         "bytes": 10382,
         "mesh_hash": "649ea48dcd47a8affef11239fa0cf9a95996c2a66b9482ed67c13491743fdd02",
-        "offset": 1955718
+        "offset": 1955722
       },
       "catalogue": {
         "aliases": [],
@@ -9965,7 +9965,7 @@
       "asset": {
         "bytes": 193508,
         "mesh_hash": "edf6bd9d696064f117a0b92fe2b7284016e96257ba38d65194bd053a03f2ec31",
-        "offset": 1966100
+        "offset": 1966104
       },
       "catalogue": {
         "aliases": [],
@@ -10148,7 +10148,7 @@
       "asset": {
         "bytes": 193504,
         "mesh_hash": "32acf237b92ffde5117eaec581f11121a3faaab27cb54ab68229499498423b30",
-        "offset": 2159608
+        "offset": 2159612
       },
       "catalogue": {
         "aliases": [],
@@ -10331,7 +10331,7 @@
       "asset": {
         "bytes": 8364,
         "mesh_hash": "005fe35f6e547231759a38423e719a564392dd9f289f979e92cf242dd19ac45d",
-        "offset": 2353112
+        "offset": 2353116
       },
       "catalogue": {
         "aliases": [
@@ -10372,7 +10372,7 @@
       "asset": {
         "bytes": 3865,
         "mesh_hash": "b0b74fa4e81c9c2a487eab3f69cc3b13afb2aeae1d91bce02dea26062789ef1b",
-        "offset": 2361476
+        "offset": 2361480
       },
       "catalogue": {
         "aliases": [],
@@ -10420,7 +10420,7 @@
       "asset": {
         "bytes": 28959,
         "mesh_hash": "81fe6fd275973dd3371efc61e72b9b06002ee40d43683b14bc8e08971917e5fa",
-        "offset": 2365341
+        "offset": 2365345
       },
       "catalogue": {
         "aliases": [],
@@ -10498,7 +10498,7 @@
       "asset": {
         "bytes": 3180,
         "mesh_hash": "703e4dca06a3d57c090f0d27958e8fadf0341f6989455268c0b446d61ac7f58c",
-        "offset": 2394300
+        "offset": 2394304
       },
       "catalogue": {
         "aliases": [],
@@ -10561,7 +10561,7 @@
       "asset": {
         "bytes": 3296,
         "mesh_hash": "86a085a57593880e8440fe05972b8d8334d2cc59783e7a352a380897573e0765",
-        "offset": 2397480
+        "offset": 2397484
       },
       "catalogue": {
         "aliases": [],
@@ -10616,7 +10616,7 @@
       "asset": {
         "bytes": 9770,
         "mesh_hash": "2860c803ce3fe2e613c23dc540bc14c938732682d35ab522317d045598c80e53",
-        "offset": 2400776
+        "offset": 2400780
       },
       "catalogue": {
         "aliases": [],
@@ -10746,7 +10746,7 @@
       "asset": {
         "bytes": 8590,
         "mesh_hash": "5d07d29a86d42b0f43bfbd1667e3c24c5c3a792cc607171329c40c4627121045",
-        "offset": 2410546
+        "offset": 2410550
       },
       "catalogue": {
         "aliases": [
@@ -10839,7 +10839,7 @@
       "asset": {
         "bytes": 16990,
         "mesh_hash": "7daf7c9a4c2ac670f4c47300f14ddb6339845c3b81a24d923a4a6d45d9cc5fc1",
-        "offset": 2419136
+        "offset": 2419140
       },
       "catalogue": {
         "aliases": [],
@@ -10923,7 +10923,7 @@
       "asset": {
         "bytes": 6539,
         "mesh_hash": "c408d23b9af89f72a99b969b7bf79c4881388c25101ae42500afbe93d9026bbd",
-        "offset": 2436126
+        "offset": 2436130
       },
       "catalogue": {
         "aliases": [
@@ -10961,7 +10961,7 @@
       "asset": {
         "bytes": 13485,
         "mesh_hash": "cab2f5d9734f77cfaf0bc7b8dd43dbff9ba51dc911a2fec30fd8b91b483a2821",
-        "offset": 2442665
+        "offset": 2442669
       },
       "catalogue": {
         "aliases": [],
@@ -11014,7 +11014,7 @@
       "asset": {
         "bytes": 6759,
         "mesh_hash": "cfe0fa248fb1044fcea3b0270e1a38bbefbc4d49e9acb1fd53d6df597dd6b5f0",
-        "offset": 2456150
+        "offset": 2456154
       },
       "catalogue": {
         "aliases": [],
@@ -11063,7 +11063,7 @@
       "asset": {
         "bytes": 6506,
         "mesh_hash": "c3fb32508889e507b286fc7ecc2ed36e70ddad7dd9979261db1f5c7ce8b8c622",
-        "offset": 2462909
+        "offset": 2462913
       },
       "catalogue": {
         "aliases": [],
@@ -11105,7 +11105,7 @@
       "asset": {
         "bytes": 3231,
         "mesh_hash": "09bbc0a451022f9e8f2156df5a051083e536e5e9dad12664a0802a95c71cc4a0",
-        "offset": 2469415
+        "offset": 2469419
       },
       "catalogue": {
         "aliases": [
@@ -11142,7 +11142,7 @@
       "asset": {
         "bytes": 2318,
         "mesh_hash": "3c86f4348d6f9c452404aa2802d528778c3c5caccda5d928be1207b703a4f794",
-        "offset": 2472646
+        "offset": 2472650
       },
       "catalogue": {
         "aliases": [],
@@ -11216,7 +11216,7 @@
       "asset": {
         "bytes": 3807,
         "mesh_hash": "f58d45cc97c72bacb3a3227bc91715921f4ca835e9562fa8b8869fe86d041c2b",
-        "offset": 2474964
+        "offset": 2474968
       },
       "catalogue": {
         "aliases": [
@@ -11299,7 +11299,7 @@
       "asset": {
         "bytes": 3234,
         "mesh_hash": "e1ee1981e21756bd1517e6f682beeb43fe64d444e3a247e25830eca655845e5d",
-        "offset": 2478771
+        "offset": 2478775
       },
       "catalogue": {
         "aliases": [],
@@ -11334,7 +11334,7 @@
       "asset": {
         "bytes": 39991,
         "mesh_hash": "7352d94c40b552c6a74e25da834c63c44c109495f7d5ddbfcafba3ad381cbcfb",
-        "offset": 2482005
+        "offset": 2482009
       },
       "catalogue": {
         "aliases": [
@@ -11425,7 +11425,7 @@
       "asset": {
         "bytes": 47589,
         "mesh_hash": "d09b99c8a05a31b088cfd77b59c173efe5d326df8532ad301328a7935caee806",
-        "offset": 2521996
+        "offset": 2522000
       },
       "catalogue": {
         "aliases": [],
@@ -11516,7 +11516,7 @@
       "asset": {
         "bytes": 49862,
         "mesh_hash": "de3a943fdc2e57fa65b3a6963601c21b6a9e0e3032fc6be255a5eaa872b16660",
-        "offset": 2569585
+        "offset": 2569589
       },
       "catalogue": {
         "aliases": [],
@@ -11584,7 +11584,7 @@
       "asset": {
         "bytes": 3227,
         "mesh_hash": "edae2d91cc950018caddefe6aef218a90be767647cf804d1777b2af98892d640",
-        "offset": 2619447
+        "offset": 2619451
       },
       "catalogue": {
         "aliases": [],
@@ -11619,7 +11619,7 @@
       "asset": {
         "bytes": 1000,
         "mesh_hash": "9754a26ea8df905eb4857b6263a2df7ac82e8c926e42a7ab5013a4a3b7a21874",
-        "offset": 2622674
+        "offset": 2622678
       },
       "catalogue": {
         "aliases": [],
@@ -11677,7 +11677,7 @@
       "asset": {
         "bytes": 25939,
         "mesh_hash": "b1e728d2978409c1a00a3a32eb4cd12e93a0044f8eb5acbf789f5154c0b3a395",
-        "offset": 2623674
+        "offset": 2623678
       },
       "catalogue": {
         "aliases": [],
@@ -11737,7 +11737,7 @@
       "asset": {
         "bytes": 151599,
         "mesh_hash": "cb443d5adb74237cd00e4618434318fccdb69ba3df6a43b4570672d3baeae0a4",
-        "offset": 2649613
+        "offset": 2649617
       },
       "catalogue": {
         "aliases": [],
@@ -11779,7 +11779,7 @@
       "asset": {
         "bytes": 12401,
         "mesh_hash": "6ccd93168676e5a67e95996b15091b2e42899fe0bad90c13fc5bc51c2bac7746",
-        "offset": 2801212
+        "offset": 2801216
       },
       "catalogue": {
         "aliases": [],

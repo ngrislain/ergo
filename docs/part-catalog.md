@@ -46,7 +46,7 @@ scaled smaller plates. Its nominal dimensions and catalogue mass are sourced fro
 [BrickLink 3026](https://www.bricklink.com/v2/catalog/catalogitem.page?P=3026).
 
 Resolution is cache-first, then uses the checksum-verified native library pack.
-The complete 138-part pack is 2,813,613 bytes; only a requested part is decoded.
+The complete 138-part pack is 2,813,617 bytes; only a requested part is decoded.
 For additional source assets an import adapter can read a configured local source
 library or retrieve a missing source, bake it into Ergo geometry, and store its
 native description. Source text is transient in a bounded 32 MiB process cache;
