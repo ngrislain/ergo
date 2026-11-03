@@ -976,15 +976,26 @@ fn request_shared_region(handle: Handle, id: String, coord: [i64; 3], fit_view: 
                         }
                     }
                     let manifest = shared_manifest(&id, &scene, coord, &blocks);
-                    let focus = c.ui.focused_assembly.get_untracked().and_then(|assembly| {
-                        let shared = c.shared.as_ref()?;
-                        scene
-                            .bricks
-                            .iter()
-                            .filter(|brick| shared.assemblies.get(&brick.id) == Some(&assembly))
-                            .map(|brick| brick.render_bounds)
-                            .reduce(ergo_world::Aabb::union)
-                    });
+                    let focus = c
+                        .ui
+                        .focused_assembly
+                        .get_untracked()
+                        .and_then(|assembly| {
+                            let shared = c.shared.as_ref()?;
+                            scene
+                                .bricks
+                                .iter()
+                                .filter(|brick| shared.assemblies.get(&brick.id) == Some(&assembly))
+                                .map(|brick| brick.render_bounds)
+                                .reduce(ergo_world::Aabb::union)
+                        })
+                        .or_else(|| {
+                            Some(crate::residency::focus_bounds(
+                                &scene.bricks,
+                                &c.shared.as_ref()?.assemblies,
+                                coord,
+                            ))
+                        });
                     c.blocks = blocks;
                     c.known_cells = c.blocks.keys().copied().collect();
                     c.world = Some(manifest.clone());

@@ -19,6 +19,32 @@ pub fn contains(centre: [i64; 3], radius: u8, cell: ergo_world::BlockCoord) -> b
         .all(|axis| (i128::from(cell[axis]) - i128::from(centre[axis])).abs() <= i128::from(radius))
 }
 
+/// Background/caster residency must not zoom the camera out to distant models.
+/// Fit complete resident assemblies that intersect the requested local area.
+pub fn focus_bounds(
+    bricks: &[ergo_world::Brick],
+    assemblies: &std::collections::BTreeMap<u32, String>,
+    centre: [i64; 3],
+) -> ergo_world::Aabb {
+    let origin = ergo_world::BlockCoord::from(centre).origin();
+    let span = glam::DVec3::splat(ergo_world::BLOCK_SIZE);
+    let local = ergo_world::Aabb::new(origin - span, origin + span * 2.);
+    let nearby: std::collections::HashSet<_> = bricks
+        .iter()
+        .filter(|b| b.render_bounds.intersects(local))
+        .filter_map(|b| assemblies.get(&b.id))
+        .collect();
+    bricks
+        .iter()
+        .filter(|b| {
+            b.render_bounds.intersects(local)
+                || assemblies.get(&b.id).is_some_and(|id| nearby.contains(id))
+        })
+        .map(|b| b.render_bounds)
+        .reduce(ergo_world::Aabb::union)
+        .unwrap_or(ergo_world::Aabb::new(origin, origin + span))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -35,5 +61,24 @@ mod tests {
     fn coverage_handles_negative_north_and_vertical_cells() {
         assert!(contains([-4, -8, -2], 4, [-8, -12, -6].into()));
         assert!(!contains([-4, -8, -2], 4, [-8, -13, -6].into()));
+    }
+
+    #[test]
+    fn framing_includes_the_whole_nearby_assembly_but_not_distant_prefetch() {
+        let mut demo = ergo_world::demo::Demo::new();
+        demo.add("3003", 4, 640., 0., 0.);
+        demo.add("3003", 4, 1008., 0., 0.);
+        demo.add("3003", 4, 2304., 0., 0.);
+        let assemblies = std::collections::BTreeMap::from([
+            (1, "park".into()),
+            (2, "park".into()),
+            (3, "district".into()),
+        ]);
+        let fitted = focus_bounds(&demo.bricks, &assemblies, [5, 0, 0]);
+        assert!(fitted.intersects(demo.bricks[0].render_bounds));
+        assert!(fitted.intersects(demo.bricks[1].render_bounds));
+        assert!(!fitted.intersects(demo.bricks[2].render_bounds));
+        let empty = focus_bounds(&demo.bricks, &assemblies, [50, 0, 0]);
+        assert_eq!(empty.min, ergo_world::BlockCoord::from([50, 0, 0]).origin());
     }
 }

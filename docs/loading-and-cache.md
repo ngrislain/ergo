@@ -38,7 +38,9 @@ headers provide exact membership counts; legacy headers inspect membership pages
 only until completeness is established or a non-resident member is found.
 This is visual membership, not mechanical-dependency completeness.
 
-Clicking an assembly whose complete geometry is resident focuses its existing
+Initial location-based framing uses complete resident assemblies intersecting
+the requested local area, rather than distant models loaded only for background
+and caster coverage. Clicking an assembly whose complete geometry is resident focuses its
 bounds immediately. It does not fetch its location or reload the region. Unknown
 or partial membership falls back to the normal server-location path. Region
 refreshes retain unchanged LOD/GPU prototypes; changed/removed meshes are still
