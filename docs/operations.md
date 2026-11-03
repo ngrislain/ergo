@@ -24,6 +24,7 @@ With Playwright/Chrome/Pillow installed:
 python3 scripts/test-common-world.py
 python3 scripts/test-dense-world.py
 python3 scripts/test-web-isolated.py --script scripts/test-browser-cache.py
+python3 scripts/test-service-worker.py
 python3 scripts/test-web-isolated.py --script scripts/test-headlamp.py
 python3 scripts/test-web-isolated.py --script scripts/test-navigation-lighting.py
 npm ci --prefix site --ignore-scripts
@@ -56,12 +57,12 @@ prove an asset or image was published.
 
 ```sh
 gh run list --repo ngrislain/ergo --workflow release.yml --limit 5
-gh release view v0.5.18 --repo ngrislain/ergo
+gh release view v0.5.19 --repo ngrislain/ergo
 ```
 
 Verify the public tarball version/checksum, consumer install and actual MCP smoke
 before changing the displayed installation source. The verified npm release is
-`@ngrislain/ergo-mcp@0.5.18`; GitHub also hosts its identical complete tarball.
+`@ngrislain/ergo-mcp@0.5.19`; GitHub also hosts its identical complete tarball.
 
 Registry CI uses the approved npm trusted publisher for `ngrislain/ergo` /
 `release.yml`, with `ERGO_NPM_PUBLISH=true`. Run
@@ -81,7 +82,7 @@ After publication, set the public Pages variable and rebuild:
 
 ```sh
 gh variable set ERGO_MCP_PACKAGE --repo ngrislain/ergo \
-  --body '@ngrislain/ergo-mcp@0.5.18'
+  --body '@ngrislain/ergo-mcp@0.5.19'
 gh workflow run pages.yml --repo ngrislain/ergo --ref main
 ```
 
@@ -96,11 +97,12 @@ tofu -chdir=infra/scaleway init -input=false
 tofu -chdir=infra/scaleway validate
 tofu -chdir=infra/scaleway test
 tofu -chdir=infra/scaleway plan -input=false -var="image=$IMAGE" -out=deployment.tfplan
-tofu -chdir=infra/scaleway apply -input=false deployment.tfplan
+tofu -chdir=infra/scaleway apply -input=false -var="image=$IMAGE" deployment.tfplan
 ```
 
 `IMAGE` is the verified digest from the successful build. Ensure saved plan/input
-values agree. For a new deployment, follow [Scaleway setup](scaleway-deployment.md);
+values agree; pass the same image override when applying so automatically loaded
+variable files cannot supply a different image. For a new deployment, follow [Scaleway setup](scaleway-deployment.md);
 do not create duplicate resources instead of restoring existing state.
 
 ## Native-format migration

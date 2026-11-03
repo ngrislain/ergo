@@ -1,5 +1,60 @@
 # Walkable monument recipes
 
+## Terraced park recipe
+
+`scripts/build/park.py` prepares **Parc des Deux Sommets**, a 192×160-stud
+landscape with two stepped brick mountains, two blue-tile ponds, a walking loop,
+summit trails and sixteen centred brick-built conifers. It uses canonical parts,
+upright alternating masonry courses and gravity-supported canopies. Blue tiles
+represent pond surfaces; no fluid simulation is claimed.
+
+The design adapts the tree/mountain vocabulary of LEGO **31025 Mountain Hut**,
+modeled by **Stefan Frenz [smf]** in the
+[official OMR](https://library.ldraw.org/omr/sets/1141), and terrace colour/material
+choices from **3061 City Park Café**, modeled by **Philippe Hurbain [Philo]** in
+the [official OMR](https://library.ldraw.org/omr/sets/312). Both references carry
+CCAL version 2.0 attribution. The recipe retrieves the actual reference submodels
+before generation and retains their source records with its artifacts. It is an
+original landscape, not a replica of either set.
+
+```sh
+python3 scripts/build/park.py --output target/park-preview --origin 640 0 0
+```
+
+The default is a local draft. The driver resolves sourced part records, places
+at most 600 root occurrences per MCP request in supported order, records each
+outcome, captures actual studio renders, and checks the explicit loop/summit
+route with `ergo-client::walking::Walker`, without jumping or teleporting. A
+failed check is diagnostic evidence, not a passing walking guarantee.
+
+`--publish --token-file /absolute/private/token` explicitly enables the ordinary
+authoritative shared-edit path. Survey the chosen site first. Existing journals
+are never overwritten or replayed automatically: reconcile uncertain writes from
+accepted history/read-back before another attempt. Local previews and script
+availability do not establish live publication; accepted receipts are separate.
+
+Articulated walking pedestrians are **not implemented by this recipe**. The
+standing factory-leg construct does not supply independent posed legs, hip fits
+or measured retention capacities. Those data must be reviewed before a walking
+pose can be authored and accepted; no pedestal or invented capacity substitutes
+for them.
+
+### Accepted landscape checkpoint (2026-11-03)
+
+The landscape is published as assembly
+`6e8cdd606371e98850c23192750641a8931671d77eb3396c8b577d344cbda9fd`,
+with **6,244 pieces**, at accepted revision
+`d1cdd40bbbc743f9b8912e8c4ca481327233f7f1cc0eaf0097f47245d76cba22`.
+Open [the park](https://ergosandbox.com/app?x=5&y=0&z=0).
+
+A revision-pinned public packet matches the recipe's exact part/colour/pose
+multiset and contains the complete assembly. A read-only native interchange
+derived from that accepted packet passes **87 explicit waypoints**, including
+the pond loop, both summit trails and the return to the entrance, with no jumping
+or teleporting. Authoritative static acceptance, studio renders and walking evidence
+are separate checks. The sixteen trees and both tiled ponds are accepted;
+walking-pose pedestrians remain pending the reviewed physical data described above.
+
 ## District recipes and accepted construction
 
 The final accepted district has **73,660 pieces in the same 15 assemblies**

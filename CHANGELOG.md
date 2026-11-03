@@ -2,6 +2,15 @@
 
 ## Unreleased
 
+## v0.5.19
+
+- Schedule the app-window reload without waiting inside service-worker activation.
+  Waiting for a navigation inside activation can deadlock that controlled page.
+- Verify first-install and existing-worker upgrades in real Chrome, including
+  incompatible-cache deletion, completed activation and exactly one app reload.
+- Derive visible cell dimensions from the shared constants, displaying the stud
+  span and brick/plate height; label ground colours as standard LEGO swatches.
+
 ## v0.5.18
 
 - Resize cells to 128×128 studs and 128 bricks high (384 plates), retaining one
@@ -18,11 +27,9 @@
   used in more than seven catalogue sets. Expose recorded usage and source-datum
   grip, pin, axle, wheel-bearing and matching rim/tyre interfaces; add a distinct-set
   inventory coverage audit without claiming exhaustive worldwide coverage.
-- Add plate-free v2 figures, guards and cars. Register figure feet by their receiving
+- Add plate-free figures, guards and cars. Register figure feet by their receiving
   datums, seat wheels on rotating bearings, and hold equipment in actual hand grips.
   Retain measured capacity requirements for load-bearing joints.
-- Use standard LEGO ground colours only: nearest material samples, nearest GPU
-  lookup, no colour gradients, and display-time quantization of legacy fields.
 - Add six pinned genuine Castle parts, sourced catalogue masses, printed Lion
   Knights guard and supported pennant common constructs. Recognize only the
   reviewed coaxial antenna/flag bore clearance; retain support and measured

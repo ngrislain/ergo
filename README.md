@@ -51,11 +51,11 @@ The prebuilt bundle includes native binaries and WASM assets; consumers need
 Node.js 20+ and Chrome/Chromium, not Rust.
 
 ```sh
-npm install --global --ignore-scripts @ngrislain/ergo-mcp@0.5.18
+npm install --global --ignore-scripts @ngrislain/ergo-mcp@0.5.19
 ergo-mcp --login --publish-url https://ergosandbox.com
 ```
 
-The [GitHub Release](https://github.com/ngrislain/ergo/releases/tag/v0.5.18)
+The [GitHub Release](https://github.com/ngrislain/ergo/releases/tag/v0.5.19)
 also provides the verified complete tarball and checksum.
 
 Generate/download a token in the signed-in browser, keep it in a private file,
@@ -158,3 +158,5 @@ invented strength values.
 
 Original [walkable monument recipes](docs/model-recipes.md) are in
 `scripts/build/`, including a corridor pyramid and a ten-level Seven Sisters-inspired tower.
+The [terraced park recipe](docs/model-recipes.md#terraced-park-recipe) adds a sourced,
+explicitly published landscape workflow with ponds, trees and summit walking checks.

@@ -11,6 +11,14 @@ permissions:
   contents: read
 
 jobs:
+  browser-upgrade:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
+      - run: python3 -m pip install playwright
+      - run: python3 scripts/test-service-worker.py
   engine:
     runs-on: ubuntu-24.04
     steps:

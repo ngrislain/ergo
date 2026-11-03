@@ -11,6 +11,8 @@ separate; see [coordinates](ground-and-coordinates.md).
 unloaded-cell navigation, ground meshes and geographic conversion. `/api/config`
 reports `block_size:128` and `block_height_plates:384`. Geometry units and public
 east/north/up axes have not changed.
+The viewer's coordinate panel derives its 128×128-stud span and 128-brick
+(384-plate) height from those same constants.
 
 ## One active format
 
@@ -62,6 +64,9 @@ historical record preservation.
 The browser uses `ergo-local-data-cell128-v1`, deleting older local databases and
 old read-packet CacheStorage. No lazy legacy import remains. The service worker
 deletes incompatible model caches and reloads app windows at the format cutover.
+App navigation is scheduled without awaiting it inside activation: the navigation
+itself waits for activation to finish. Real-browser tests cover first install and
+upgrading an existing worker, asserting one completed reload and cache deletion.
 Hash verification, permission revalidation, LRU and logout fencing still apply.
 
 Migration deletes old derived read/discovery/ground caches while retaining

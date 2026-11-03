@@ -9,7 +9,9 @@ self.addEventListener('activate', event => event.waitUntil((async () => {
   await Promise.all((await caches.keys()).filter(name => name.startsWith('ergo-') && name !== CACHE).map(name => caches.delete(name)));
   await self.clients.claim();
   for (const client of await self.clients.matchAll({type:'window'})) {
-    if (new URL(client.url).pathname === '/app') await client.navigate(client.url);
+    // A navigation controlled by this worker waits for activation to finish.
+    // Awaiting it here would keep activation and the app reload waiting on each other.
+    if (new URL(client.url).pathname === '/app') void client.navigate(client.url).catch(() => {});
   }
 })()));
 self.addEventListener('fetch', event => {
