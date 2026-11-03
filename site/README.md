@@ -5,9 +5,9 @@ The public shared-renderer WebGL landing page and static agent guide for
 **https://ergosandbox.com**.
 
 Consumer setup is an npm installation, selected by public `ERGO_MCP_PACKAGE`.
-The live site currently installs verified `@ngrislain/ergo-mcp@0.5.19` from npm;
-the source default targets the next 0.5.20 release. The same setting can
-point at a verified GitHub Release tarball. The commands below are for **site maintainers**.
+The live site installs verified `@ngrislain/ergo-mcp@0.5.20` from npm. The same
+setting can point at a verified GitHub Release tarball. The commands below are
+for **site maintainers**.
 
 ```sh
 rustup target add wasm32-unknown-unknown

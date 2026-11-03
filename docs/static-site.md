@@ -19,8 +19,8 @@ tokens, receive credentials, proxy the API, or provide a remote MCP endpoint.
 
 Agent instructions follow [access and onboarding](access-and-onboarding.md) and
 the [MCP guide](local-construction-mcp.md). The setup installs the prebuilt npm
-package with Node, not Rust. The current package is a public GitHub Release
-tarball; the npm-registry source can be selected after registry publication.
+package with Node, not Rust. The verified public package is
+`@ngrislain/ergo-mcp@0.5.20` from npm, with a byte-identical GitHub Release tarball.
 Google login stays in the human's browser. The agent receives the path to a
 downloaded, expiring delegation and the operator-selected API origin. The example
 prompt keeps its first construction local until the human requests publication.

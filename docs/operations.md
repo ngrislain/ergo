@@ -62,9 +62,10 @@ gh release view v0.5.20 --repo ngrislain/ergo
 ```
 
 Verify the public tarball version/checksum, consumer install and actual MCP smoke
-before changing the displayed installation source. The latest verified npm release
-is `@ngrislain/ergo-mcp@0.5.19`; GitHub also hosts its identical complete tarball.
-The commands here target the next, not yet verified, 0.5.20 release.
+before changing the displayed installation source. The verified npm release is
+`@ngrislain/ergo-mcp@0.5.20`; GitHub also hosts its identical complete tarball and
+checksum. The public package includes all 138 source parts and the reviewed wall
+bearing profile, verified by an outside-checkout npm installation and WASM smoke.
 
 Registry CI uses the approved npm trusted publisher for `ngrislain/ergo` /
 `release.yml`, with `ERGO_NPM_PUBLISH=true`. Run

@@ -162,7 +162,7 @@ Original [walkable monument recipes](docs/model-recipes.md) are in
 `scripts/build/`, including a corridor pyramid and a ten-level Seven Sisters-inspired tower.
 The [terraced park recipe](docs/model-recipes.md#terraced-park-recipe) adds a sourced,
 explicitly published landscape workflow with ponds, trees and summit walking checks.
-The [castle mountain recipe](docs/model-recipes.md#castle-mountain-proposal)
+The [castle mountain recipe](docs/model-recipes.md#castle-mountain-recipe)
 prepares a moat, walkable arched bridge, genuine arrowslit panels and plate-free
 standing figures with capes, helmets and horses. Held weapons and archer poses
 remain pending measured connector capacities; local validation and shared

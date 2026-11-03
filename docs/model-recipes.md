@@ -90,7 +90,7 @@ consumes no invented joint-strength values. These checks do not establish
 calibrated clutch retention or dynamic survival. Walking-pose pedestrians remain
 pending the reviewed physical data described above.
 
-## Castle mountain proposal
+## Castle mountain recipe
 
 `scripts/build/castle_landscape.py` prepares an original adaptation of LEGO
 [31168](https://www.lego.com/en-fr/product/medieval-horse-knight-castle-31168),
@@ -119,7 +119,7 @@ held weapons or archer poses. Unsupported equipment is deferred rather than
 attached with invented capacities or concealed supports.
 
 ```sh
-python3 scripts/build/castle_landscape.py --input /private/accepted-castle-workspace.json \
+python3 scripts/build/castle_landscape.py --input /private/pre-update-castle-workspace.json \
   --output target/castle-mountain-preview --plate-free-garrison --validate
 ```
 
@@ -127,10 +127,16 @@ The native outputs include separate castle/terrain inspection files and a comple
 `combined.native.json` with unique IDs: retained castle local IDs remain intact,
 while additions receive fresh IDs. Validation, the 50-waypoint bridge route and
 studio images are local evidence; validation flushes the normalized native scene
-before optional REST materialization. They are not an accepted shared revision. The driver
-does not publish. An eventual ordinary authenticated replacement must include
-the castle and its terrain together; never raise the castle in an unsupported
+before optional REST materialization. They do not themselves establish shared
+acceptance. The driver does not publish. An ordinary authenticated replacement
+must include the castle and its terrain together; never raise it in an unsupported
 intermediate commit.
+
+This is a baseline conversion recipe: its input is the complete **13,224-piece
+pre-update workspace**, not the already landscaped castle. The standing-garrison
+mode requires the original 300 guard occurrences and refuses a converted model;
+existing output directories are never overwritten. Later authoring should open
+the current accepted assembly and edit it in place.
 
 For REST proposal preparation, the read-only `materialize_native` example converts
 native construction data into a public `WorldExport` scene, without authorizing or
@@ -144,6 +150,37 @@ cargo run --locked -p ergo-world --example materialize_native -- \
 `support_issue` is a read-only nominal compression diagnostic for a complete
 native construction; it reports a failing brick and its bearings, or a successful
 contact-only check. It supplies no connector capacities.
+
+### Accepted castle mountain checkpoint (2026-11-03)
+
+The original castle assembly
+`efe68a4fb360b019bff8aefef258ace047b3c5afda4bf946e3dcda692ffe3e3d`
+was replaced atomically at revision
+`461bc066e10257df74cc9720b7491f9ebb557a972ee7764de1e5668c427491d0`.
+Open [the castle landscape](https://ergosandbox.com/app?x=1&y=1&z=0).
+
+The accepted **27,833-piece** construction includes both mountains, the continuous
+tiled moat, arched bridge, two arched entrances, **60 genuine wall panels**, **300
+plate-free standing figures**, **200 capes**, three helmet variants and **four
+horses with saddles**. All 300 individual soldier bases and 300 shield stops are
+removed. Held weapons and archer poses are explicitly deferred pending measured
+connector capacities; the published figures do not pretend to carry them.
+
+The single normal authenticated replacement retained **10,419 birth identities**,
+removed 2,805 old occurrences and added 17,414 new ones. The assembly identity,
+creation attribution, frozen world model and policy are preserved. The server's
+static certificate uses **zero joint wrench** and assumes no clutch capacity.
+
+An independent revision-pinned public packet contains the complete castle and
+matches its intended part/colour/pose multiset. A read-only native diagnostic
+derived from that public geometry passes all **50 bridge-route waypoints**,
+including the neighbouring summit and return, without jumping or teleporting.
+Actual studio images were rendered from that same accepted geometry. These are
+separate static, walking and image checks, not a calibrated dynamic certificate.
+
+The wider packet contains 38,672 pieces including the unchanged 10,839-piece
+park. A separate old/new revision comparison verifies the unrelated district's
+**73,660 pieces in 15 assemblies** are exactly unchanged.
 
 ## District recipes and accepted construction
 
