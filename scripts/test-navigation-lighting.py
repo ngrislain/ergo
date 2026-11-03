@@ -5,6 +5,11 @@ import json
 import math
 from playwright.sync_api import expect, sync_playwright
 
+# Software WebGL on the two-core CI runner can stall a browser task while a
+# complete frame is submitted. Keep the same geometry assertions, but allow
+# the renderer's bounded frame wait rather than the five-second expect default.
+expect.set_options(timeout=30000)
+
 
 def project(matrix, point):
     clip = [sum(matrix[column * 4 + row] * point[column] for column in range(4))
@@ -51,7 +56,9 @@ with sync_playwright() as playwright:
             errors = []
             page.on('pageerror', lambda error: errors.append(str(error)))
             page.add_init_script('''const started=performance.now();
-              Date.now=()=>Date.UTC(2026,5,21,HOUR)+performance.now()-started;
+              // Navigation still advances, but slow software-GPU tests must not
+              // cross a solar-update minute while comparing a fixed sun map.
+              Date.now=()=>Date.UTC(2026,5,21,HOUR)+(performance.now()-started)%59000;
               window.__navigationLight={casters:[]};
               const proto=WebGL2RenderingContext.prototype,names=new WeakMap();
               const buffers=new WeakMap(),upload=proto.bufferData;
