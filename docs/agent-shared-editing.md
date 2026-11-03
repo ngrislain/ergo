@@ -49,7 +49,8 @@ rejects off-grid grounded footprints and scale/shear/reflection. Every hierarchy
 instance must be a proper metric isometry, even if nested invalid scales would
 cancel in the final part pose. Camera coordinates are not placement coordinates.
 
-Use the plate-free v2 car/minifigure/guard references. Their tyres or feet rest
+Use the plate-free `classic-car-v2`, `minifigure-v2`, `medieval-guard-v3` and
+`medieval-archer-v1` references. Their tyres or feet rest
 directly on the existing surface; do not add display plates, pedestals or shield
 support tiles. Equipment uses reviewed grip connections, with measured capacities
 required when publication consumes joint strength.
