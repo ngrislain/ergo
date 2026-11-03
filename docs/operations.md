@@ -24,6 +24,7 @@ With Playwright/Chrome/Pillow installed:
 python3 scripts/test-common-world.py
 python3 scripts/test-dense-world.py
 python3 scripts/test-web-isolated.py --script scripts/test-browser-cache.py
+python3 scripts/test-service-worker.py
 python3 scripts/test-web-isolated.py --script scripts/test-headlamp.py
 python3 scripts/test-web-isolated.py --script scripts/test-navigation-lighting.py
 npm ci --prefix site --ignore-scripts
@@ -96,11 +97,12 @@ tofu -chdir=infra/scaleway init -input=false
 tofu -chdir=infra/scaleway validate
 tofu -chdir=infra/scaleway test
 tofu -chdir=infra/scaleway plan -input=false -var="image=$IMAGE" -out=deployment.tfplan
-tofu -chdir=infra/scaleway apply -input=false deployment.tfplan
+tofu -chdir=infra/scaleway apply -input=false -var="image=$IMAGE" deployment.tfplan
 ```
 
 `IMAGE` is the verified digest from the successful build. Ensure saved plan/input
-values agree. For a new deployment, follow [Scaleway setup](scaleway-deployment.md);
+values agree; pass the same image override when applying so automatically loaded
+variable files cannot supply a different image. For a new deployment, follow [Scaleway setup](scaleway-deployment.md);
 do not create duplicate resources instead of restoring existing state.
 
 ## Native-format migration
