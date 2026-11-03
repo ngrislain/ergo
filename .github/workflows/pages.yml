@@ -10,6 +10,7 @@ on:
         "crates/world/**",
         "crates/xtask/**",
         "web/favicon.svg",
+        "scripts/test-site-proportions.py",
         "Cargo.toml",
         "Cargo.lock",
         ".github/workflows/pages.yml",
@@ -22,6 +23,7 @@ on:
         "crates/world/**",
         "crates/xtask/**",
         "web/favicon.svg",
+        "scripts/test-site-proportions.py",
         "Cargo.toml",
         "Cargo.lock",
         ".github/workflows/pages.yml",
@@ -57,6 +59,19 @@ jobs:
       - run: cargo test --locked -p ergo-client lighting::tests
       - run: npm run build --prefix site
       - run: npm test --prefix site
+      - name: Check responsive image and WebGL proportions
+        run: |
+          python3 -m pip install playwright
+          npm run preview --prefix site -- --port 4173 --strictPort > /tmp/ergo-site-preview.log 2>&1 &
+          preview_pid=$!
+          trap 'kill "$preview_pid"' EXIT
+          for attempt in $(seq 1 30); do
+            if curl --fail --silent --output /dev/null http://127.0.0.1:4173; then
+              break
+            fi
+            sleep 1
+          done
+          python3 scripts/test-site-proportions.py
       - uses: actions/upload-pages-artifact@7b1f4a764d45c48632c6b24a0339c27f5614fb0b # v4
         with:
           path: site/dist

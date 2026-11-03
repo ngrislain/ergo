@@ -57,6 +57,11 @@ decorative brick illustrations project the same `3003.dat` catalog mesh in metri
 proportions, with hidden-line removal. CSS preserves its aspect ratio rather than
 stretching its height or inventing stud spacing. The logo is a top view with
 20-LDU pitch / 12-LDU stud diameter on the 40×40-LDU 2×2 footprint.
+All image widths retain automatic intrinsic heights, including header/footer logos
+and mobile capability icons. Fixed image boxes use contained artwork rather than
+stretching it. The WebGL drawing buffer and camera projection follow the rendered
+canvas dimensions when the viewport changes; changing screen shape never scales
+the construction differently along its horizontal and vertical screen axes.
 The WASM renderer loads dynamically only on the home page; legal pages load no
 3D engine. There is no Three.js dependency. Manrope headings/wordmark and DM Sans
 body text match the apex interface and are self-hosted.
@@ -86,6 +91,11 @@ configuration, distribution boundaries, and current documentation semantics.
 Browser checks cover real WebGL mouse/scroll controls, tabs, clipboard, 320/390-pixel layouts,
 time-independent point lighting, shadow draw passes, reduced motion, WebGL-unavailable fallback,
 and readable no-JavaScript content.
+Run `python3 scripts/test-site-proportions.py --url http://127.0.0.1:4173`
+against the preview server to verify image ratios and the actual WebGL camera
+matrix at eight portrait/landscape/desktop sizes and device pixel ratios 1, 2 and 3.
+It also checks shared-page logos and the static no-JavaScript illustrations;
+the Pages workflow runs this regression before uploading its deployment artifact.
 
 ## Public package-source environment setting
 
