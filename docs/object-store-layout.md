@@ -17,8 +17,8 @@ s3://ergo/
     objects/<mesh-sha256>.cbor
     ground/rasters/<provider-hash>/<z>/<x>/<y>.cbor
     ground/blocks/<signature>/<east>_<north>.cbor
-    cache/read-views/v1/<region-and-limits-hash>.cbor
-    read-cache/metadata-v1/<world-id>/<00..15>.json
+    cache/read-views/cell128-v1/<region-and-limits-hash>.cbor
+    read-cache/metadata-cell128-v1/<world-id>/<00..15>.json
     users/<user-id>.json
     user-positions/<actor-hash>.json
     edit-pacing/<actor-hash>.json
@@ -55,13 +55,13 @@ World GC does not manage asset, terrain or account namespaces.
 
 ## Derived shared-region packets
 
-`cache/read-views/v1` stores discardable gzip-CBOR packets for occupied browser
+`cache/read-views/cell128-v1` stores discardable gzip-CBOR packets for occupied browser
 regions. Exact revision/limits and current permission checks precede every hit.
 One region/configuration slot is reused across edits; old packets are never world
 GC roots or authoring input. World GC does not manage this separate namespace.
 See [loading and caching](loading-and-cache.md).
 
-`read-cache/metadata-v1` contains sixteen bounded UTF-8 JSON catalogue-cache slots
+`read-cache/metadata-cell128-v1` contains sixteen bounded UTF-8 JSON catalogue-cache slots
 per world. Each wraps revision/ETag/checksum and an encoded JSON response string.
 These are separate from gzip-CBOR geometry packets and from authoritative state.
 

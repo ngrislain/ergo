@@ -1,6 +1,6 @@
 # Z-up coordinates and lazy per-stud baseplate colours
 
-![Lazy ground sampling and neighbour-smoothed stud colours](figures/ground.svg)
+![Lazy ground sampling with discrete standard stud colours](figures/ground.svg)
 
 ## Public world and internal kernel
 
@@ -24,7 +24,7 @@ retain the internal convention. Unsupported coordinate schemas are rejected.
 
 ## Cells and geographic location
 
-With $B=1024$, public cell indices are:
+With $B=128$, public cell indices are:
 
 $$
 (i,j,k)=\left(\lfloor x/B\rfloor,\lfloor y/B\rfloor,\lfloor z/B\rfloor\right).
@@ -44,14 +44,15 @@ Z units are 9.6 mm. See [persistence indexing](persistence-indexing.md).
 
 ## The special baseplate
 
-Each horizontal cell has a **1024×1024 virtual baseplate with map-derived colours
+Each horizontal cell has a **128×128 virtual baseplate with map-derived colours
 evaluated per stud**. It is not a regular imported catalog piece and is not counted
 as a movable brick. Its plate-body top is at Z=$-0.01$ brick-height units
 (-0.096 mm), and its thickness is one plate (3.2 mm). The physics support plane
 is Z=0, so placed piece bases have height zero without z-fighting the display.
 
 The surface has one stud per horizontal construction unit, so a full plate has
-1024×1024 stud positions. Nearby visible studs use instanced cylinders
+128×128 stud positions. Cell height is 128 bricks, equivalently 384 plates.
+Nearby visible studs use instanced cylinders
 (4.8 mm diameter, 1.6 mm high). The renderer considers at most a 193×193 local
 grid, then frustum/distance culls it. Near cylinders use 16 sides and distant
 cylinders use 8. Geometric height blends over a wide band into derivative-filtered
@@ -59,8 +60,10 @@ relief; the 94-unit radius stays inside the grid. See [stud LOD](stud-lod.md).
 Farther studs use derivative-filtered shader
 relief that fades when subpixel; a million separate meshes are never allocated.
 Studs do not change the flat navigation/dynamic-physics support plane. The static
-commit gate independently checks that grounded pieces are upright and registered
-to the baseplate grid; the visual studs are not the acceptance test.
+commit gate independently checks grounded receiving interfaces against the
+baseplate grid. Reviewed tyres instead bear on the flat ground below their axle
+line, without engaging studs or requiring a road/display plate. Visual studs are
+not the acceptance test.
 
 A part's reference origin can be above its base. For example, a brick placed
 with minimum-corner Z=0 can have reference-origin Z=1. `bounds.min.z` is its base
@@ -74,12 +77,14 @@ Z=0 layer, even for constructions crossing vertical indexing boundaries.
 Ground stud centres are at half-integer X/Y coordinates. Standard upright nominal
 part footprint edges therefore register on integer coordinates. CAD placements
 snap horizontally to one stud and vertically to one plate (1/3 native height),
-using nearest rounding with half ties away from zero. Nominal bounds are used,
-not cosmetic mesh gaps or protruding studs.
+using nearest rounding with half ties away from zero. Whole-model snapping uses
+the lowest upright receiving stud grid when available, with nominal union bounds
+as fallback. This preserves the registration of moulded figure feet even when
+held equipment or rounded foot envelopes extend outside that grid.
 
 `place_brick` snaps the requested minimum corner. Submodels, import previews,
 connected moves and authoring-group transforms receive one coherent translation
-of their nominal union corner; constituent poses and joint frames retain their
+of their receiving-grid datum or nominal union corner; constituent poses and joint frames retain their
 relative layout. Snapping does not repair an internally misregistered model.
 The independent commit check rejects grounded pieces whose footprint is still
 off grid. Odd-sized part centres need not be integers, and this is not a blanket
@@ -98,8 +103,8 @@ finite fog range. The server:
 
 1. Checks the generated-cell cache in local storage or S3.
 2. On a miss/needed refresh, samples map pixels covering that geographic footprint.
-3. Classifies source pixels into the natural terrain palette, blends neighbouring
-   pixels, and stores a boundary-inclusive colour field.
+3. Classifies the nearest source pixel into the standard terrain palette and
+   stores a boundary-inclusive colour field without colour interpolation.
 4. Returns an empty construction cell (`bricks: []`) plus the baseplate field,
    representative colour, source, timestamp, and attribution metadata.
 
@@ -117,7 +122,7 @@ is erased to upgrade the derived ground display.
 
 ## Natural map palette
 
-The default OSM source classifies each source pixel before interpolation: map water
+The default OSM source classifies source pixels into discrete materials: map water
 colours become standard LEGO blue; land uses green/dark green, light/dark grey,
 yellow, white, brown and beige/tan. This is raster map-colour classification,
 not a claimed vector land-cover dataset. Labels and other raster details can
@@ -125,27 +130,36 @@ influence the result. The source resolution does not acquire stud-scale geograph
 detail merely because the renderer evaluates every stud separately.
 
 For optional satellite/custom imagery, each source pixel selects the nearest
-CIELAB swatch from the same restricted natural palette. Both paths then bilinearly
-blend the four surrounding source pixels, including neighbours across tile edges.
+CIELAB swatch from the same restricted natural palette. Both paths choose the
+nearest source pixel, including neighbours across tile edges; they never blend
+material swatches into an intermediate colour.
 Longitude wraps at the dateline; pole-edge neighbour rows clamp to coverage.
 
 The persisted `surface` is `ergo-ground-surface-1`: **65×65 row-major 24-bit sRGB
 samples**, columns east and rows north, including both cell boundaries. Samples
-are spaced 16 studs apart, occupying 16,900 uncompressed RGB32 bytes per cell,
-rather than storing a million colours or allocating a million meshes. Each
-stud's colour bilinearly blends its four field neighbours at its half-integer
-centre. For fractional field coordinates $(u,v)$:
+are spaced two studs apart, occupying 16,900 uncompressed RGB32 bytes per cell.
+Every stud chooses an exact standard swatch at its half-integer centre. The four
+field corners contribute bilinear weights to colour classes; repeated colours
+combine their weights. For class $c$ and local field coordinates $(u,v)$:
 
 $$
-\mathbf c=(1-u)(1-v)\mathbf c_{00}+u(1-v)\mathbf c_{10}
-+(1-u)v\mathbf c_{01}+uv\mathbf c_{11}.
+w_c=\sum_{i\in\{00,10,01,11\}}w_i[c_i=c],\qquad c^*=\arg\max_c w_c,
+\quad(w_{00},w_{10},w_{01},w_{11})=((1-u)(1-v),u(1-v),(1-u)v,uv).
 $$
 
-Interpolation is in encoded sRGB channels, matching the GPU's RGB8 linear sampler.
-Consequently blended colours need not be individual palette codes. The GPU uses
-one 65×65 RGBA8 texture per visible plate (16,900 bytes), with clamped edges. Nearby
-instanced stud cylinders use the same field and coordinate conversion. Below
-pixel resolution the shader transitions to continuous filtering to avoid shimmer.
+Each displayed material is one exact standard palette RGB swatch, with lower RGB
+code breaking ties. Categorical voting rounds region corners instead of making
+hard rectangular sample patches or RGB gradients. The GPU fetches four swatches
+from one 65×65 RGBA8 texture per plate (16,900 bytes). Nearby stud cylinders use
+the same vote at their centres; the base evaluates it continuously to round
+borders between studs.
+Ordinary lighting, shadows and distance fog still shade those materials.
+
+Current fields require `cell_size:128`. Incompatible cached fields are deleted,
+not read in an old-grid mode. Source samples are projected into the standard
+palette before voting. The derived signature includes
+`ground-standard-categorical-v3` and the cell span. See [migration/cache
+invalidation](cells-and-migration.md); raw source-raster cache policy is unchanged.
 
 Adjacent cells sample identical geographic boundary positions at the same source
 zoom. With the same cached source pixels their boundary values therefore agree,

@@ -21,11 +21,13 @@ designs live in `todo/` and are indexed by [TODO.md](../TODO.md).
 - [Native construction/model format](construction-format.md)
 - [Native part descriptions](part-catalog.md)
 - [Canonical parts, compact common constructs and deterministic source updates](part-library.md)
-  includes genuine Castle equipment, printed Lion Knights torsos and supported pennant standards.
+  includes common-part usage audits, hand/wheel/Technic attachments, plate-free figures/cars,
+  printed Lion Knights torsos and supported pennant standards.
 - [S3 organization](object-store-layout.md)
 - [Every persisted record family](object-store-formats.md)
 - [Spatial persistence indexing](persistence-indexing.md)
-  includes packed block reads and the layout-2 backfill/writer-fence workflow.
+  includes packed block reads and projection backfill.
+- [128-stud cells, atomic migration and incompatible-cache deletion](cells-and-migration.md)
 - [Shared-world protocol](concurrent-global-editing.md)
 - [Transactional CBOR library](transactional-storage.md)
 - [Paging, history and maintenance](storage-operations.md)
@@ -38,7 +40,7 @@ designs live in `todo/` and are indexed by [TODO.md](../TODO.md).
 - [Block display pipeline, greedy surface LOD and rendering benchmarks](3d-display-indexing.md)
 - [Lighting and shadows](lighting.md)
 - [Stud-specific LOD](stud-lod.md)
-- [Per-stud OSM ground colours, coordinates and placement snapping](ground-and-coordinates.md)
+- [Discrete standard-colour OSM ground, coordinates and placement snapping](ground-and-coordinates.md)
 - [Rigid-body and static physics](rigid-body-physics.md)
 - [Server acceptance gates](validation-gates.md)
 - [Sourced mass and connector calibration](physical-calibration.md)

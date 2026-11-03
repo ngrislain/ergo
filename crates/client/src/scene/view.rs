@@ -75,7 +75,7 @@ pub struct Camera {
 }
 impl Camera {
     pub fn new(eye: DVec3, target: DVec3, width: f64, height: f64, fov: f64, far: f64) -> Self {
-        let origin = (target / 1024.).floor() * 1024.;
+        let origin = (target / ergo_world::BLOCK_SIZE).floor() * ergo_world::BLOCK_SIZE;
         let projection =
             DMat4::perspective_rh_gl(fov.to_radians(), width.max(1.) / height.max(1.), 0.1, far);
         let view_projection = projection

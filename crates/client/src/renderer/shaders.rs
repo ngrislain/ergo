@@ -80,6 +80,7 @@ uniform vec3 eye;
 uniform int floor_mode;
 uniform int ground_surface_enabled;
 uniform sampler2D ground_surface;
+uniform float ground_cell_span;
 uniform int grid;
 uniform vec2 fog_limits;
 uniform vec3 sun_direction;
@@ -116,14 +117,27 @@ void main() {
     if (!gl_FrontFacing) n = -n;
     vec3 base = max(v_color,vec3(0.0));
     if (ground_surface_enabled == 1) {
-        // Grid rows run north; native Z runs south. One material per stud,
-        // blended from neighbouring field samples; filter continuously when
-        // studs become subpixel to avoid shimmer at distance.
-        vec2 local = vec2(v_local.x+0.5,0.5-v_local.z)*1024.0;
-        float footprint = max(length(dFdx(local)),length(dFdy(local)));
-        local = mix(floor(local)+0.5,local,smoothstep(1.0,2.0,footprint));
-        vec2 size = vec2(textureSize(ground_surface,0));
-        base = texture(ground_surface,(clamp(local/1024.0,0.0,1.0)*(size-1.0)+0.5)/size).rgb;
+        // Categorical interpolation rounds material-region borders. Only an
+        // existing swatch wins: RGB values are never blended. Cylindrical stud
+        // instances independently use the same rule at their exact centres.
+        vec2 local = vec2(v_local.x+0.5,0.5-v_local.z)*ground_cell_span;
+        ivec2 size = textureSize(ground_surface,0);
+        vec2 field = clamp(local/ground_cell_span,0.0,1.0)*vec2(size-1);
+        ivec2 cell = min(ivec2(floor(field)),size-2);
+        vec2 t = field-vec2(cell);
+        vec3 c[4];
+        c[0]=texelFetch(ground_surface,cell,0).rgb;
+        c[1]=texelFetch(ground_surface,cell+ivec2(1,0),0).rgb;
+        c[2]=texelFetch(ground_surface,cell+ivec2(0,1),0).rgb;
+        c[3]=texelFetch(ground_surface,cell+ivec2(1,1),0).rgb;
+        float w[4];w[0]=(1.0-t.x)*(1.0-t.y);w[1]=t.x*(1.0-t.y);w[2]=(1.0-t.x)*t.y;w[3]=t.x*t.y;
+        float best=-1.0;float bestCode=16777216.0;
+        for(int i=0;i<4;i++) {
+            float score=0.0;
+            for(int j=0;j<4;j++) if(all(equal(c[i],c[j]))) score+=w[j];
+            float code=dot(round(c[i]*255.0),vec3(65536.0,256.0,1.0));
+            if(score>best || (score==best && code<bestCode)) {best=score;bestCode=code;base=c[i];}
+        }
     }
     if (floor_mode == 1 && n.y > 0.5) {
         vec2 cell = abs(fract(v_position.xz/4.0-0.5)-0.5)/fwidth(v_position.xz/4.0);

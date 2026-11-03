@@ -276,13 +276,16 @@ pub fn transform(
                 .meshes
                 .get(&b.part)
                 .context("Missing group geometry")?;
-            Ok(crate::placement::body_bounds(mesh).transformed(rotation * b.transform, position))
+            let mut destination = b.clone();
+            destination.position = position;
+            destination.transform = rotation * b.transform;
+            destination.bounds =
+                crate::placement::body_bounds(mesh).transformed(destination.transform, position);
+            Ok(destination)
         })
-        .collect::<Result<Vec<_>>>()?
-        .into_iter()
-        .reduce(Aabb::union);
+        .collect::<Result<Vec<_>>>()?;
     let translation = (translation
-        + destination.map_or(DVec3::ZERO, crate::placement::snapping_delta))
+        + crate::placement::snap_bricks_translation(&destination, DVec3::ZERO))
     .map(|v| if v.abs() < 1e-9 { 0. } else { v });
     let point = |p: DVec3| pivot + rotation * (p - pivot) + translation;
     let mut bricks = scene.bricks.clone();

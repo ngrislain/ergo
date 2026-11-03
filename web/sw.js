@@ -1,11 +1,17 @@
 // Only immutable, authenticated model objects are persisted. User lists, sessions,
 // manifests and app code always use the network. Logout clears this cache.
-const CACHE = 'ergo-model-objects-v1';
+const CACHE = 'ergo-model-objects-cell128-v1';
 const MAX_BYTES = 128 * 1024 * 1024;
 const MAX_ITEMS = 512;
 let maintenance = Promise.resolve();
 self.addEventListener('install', () => self.skipWaiting());
-self.addEventListener('activate', event => event.waitUntil(self.clients.claim()));
+self.addEventListener('activate', event => event.waitUntil((async () => {
+  await Promise.all((await caches.keys()).filter(name => name.startsWith('ergo-') && name !== CACHE).map(name => caches.delete(name)));
+  await self.clients.claim();
+  for (const client of await self.clients.matchAll({type:'window'})) {
+    if (new URL(client.url).pathname === '/app') await client.navigate(client.url);
+  }
+})()));
 self.addEventListener('fetch', event => {
   const url = new URL(event.request.url);
   if (event.request.method !== 'GET' || url.origin !== self.location.origin ||

@@ -1,0 +1,28 @@
+name: Engine and admission checks
+
+on:
+  pull_request:
+    paths: ["crates/**", "Cargo.toml", "Cargo.lock", "web/**", "scripts/**", "docs/**", ".github/workflows/engine-check.yml"]
+  push:
+    branches: [main]
+    paths: ["crates/**", "Cargo.toml", "Cargo.lock", "web/**", "scripts/**", "docs/**", ".github/workflows/engine-check.yml"]
+
+permissions:
+  contents: read
+
+jobs:
+  engine:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
+      - name: Install pinned Rust and formatter
+        run: |
+          rustup toolchain install 1.97.1 --profile minimal --component rustfmt
+          rustup default 1.97.1
+      - run: cargo test --workspace --locked
+      - run: cargo fmt --all -- --check
+      - run: python3 scripts/check-docs.py
+      - run: python3 scripts/test-common-parts.py
+      - run: python3 scripts/update-common-constructs.py --check

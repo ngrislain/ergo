@@ -336,8 +336,11 @@ mod tests {
         );
         let blocked = |c: BlockCoord| c.0 >= 1;
         let scene = Scene::new(&world.bricks, &world.tree, 4., &blocked);
-        let position = scene.fly_slide(DVec3::new(1020., 3., 0.5), DVec3::X * 20.);
-        assert!(position.x <= 1024. - RADIUS);
+        let position = scene.fly_slide(
+            DVec3::new(ergo_world::BLOCK_SIZE - 4., 3., 0.5),
+            DVec3::X * 20.,
+        );
+        assert!(position.x <= ergo_world::BLOCK_SIZE - RADIUS);
     }
 
     fn brick(min: [f64; 3], max: [f64; 3]) -> Brick {
@@ -553,16 +556,17 @@ mod tests {
             ..world.scene()
         };
         let mut walker = Walker::default();
-        let feet = walker.advance(&scene, DVec3::Y * 1019.0, DVec3::ZERO, 0.05, true);
+        let height = ergo_world::BLOCK_SIZE;
+        let feet = walker.advance(&scene, DVec3::Y * (height - 5.), DVec3::ZERO, 0.05, true);
         // Start airborne, falling remains allowed away from the blocked cell.
-        assert!(feet.y < 1019.0);
+        assert!(feet.y < height - 5.);
         let mut walker = Walker {
             vertical_velocity: 150.0,
             ..Default::default()
         };
-        let feet = walker.advance(&scene, DVec3::Y * 1019.0, DVec3::ZERO, 0.05, false);
-        assert!(feet.y + scene.height() <= 1024.0);
+        let feet = walker.advance(&scene, DVec3::Y * (height - 5.), DVec3::ZERO, 0.05, false);
+        assert!(feet.y + scene.height() <= height);
         assert!(scene.clear(feet));
-        assert!(!scene.clear(DVec3::Y * 1020.0));
+        assert!(!scene.clear(DVec3::Y * (height - 4.)));
     }
 }

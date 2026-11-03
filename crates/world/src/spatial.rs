@@ -1,4 +1,4 @@
-use crate::{Aabb, Brick, geometry::part_spec};
+use crate::{Aabb, Brick};
 use glam::DVec3;
 use serde::Serialize;
 
@@ -162,19 +162,36 @@ pub struct Relation {
     pub certainty: &'static str,
 }
 
-/// Broad-phase contacts are deliberately not called physical attachment. Only
-/// upright, unscaled catalogue parts with registered interfaces infer a connection.
-/// Inferred catalogue factory clips still have no assumed strength.
+/// Only proper metric poses with registered source interfaces infer attachment.
+/// A broad-phase contact alone remains a candidate; fits imply no joint strength.
 pub fn relation(a: &Brick, b: &Brick) -> Option<Relation> {
-    if crate::interference::registered_bar_clearance(a, b, 0.002) {
+    relation_with_tolerance(a, b, 0.002)
+}
+
+pub fn relation_with_tolerance(a: &Brick, b: &Brick, tolerance: f64) -> Option<Relation> {
+    if let Some(connection) = crate::attachments::connection(a, b, tolerance) {
+        return Some(Relation {
+            brick_id: b.id,
+            kind: connection.label,
+            certainty: "inferred",
+        });
+    }
+    if crate::interference::registered_bar_clearance(a, b, tolerance) {
         return Some(Relation {
             brick_id: b.id,
             kind: "catalogue bar and hollow-stud connection",
             certainty: "inferred",
         });
     }
+    if crate::attachments::stud_connection(a, b, tolerance) {
+        return Some(Relation {
+            brick_id: b.id,
+            kind: "stud connection",
+            certainty: "inferred",
+        });
+    }
     let overlap = a.bounds.max.min(b.bounds.max) - a.bounds.min.max(b.bounds.min);
-    let eps = 0.002;
+    let eps = tolerance;
     let touching_axes = (0..3).filter(|&i| overlap[i].abs() < eps).count();
     if touching_axes != 1 || (0..3).any(|i| overlap[i] < -eps) {
         return None;
@@ -187,48 +204,14 @@ pub fn relation(a: &Brick, b: &Brick) -> Option<Relation> {
         } else {
             (b, a)
         };
-        if let (Some(lo), Some(_hi)) = (part_spec(&lower.part), part_spec(&upper.part)) {
-            let upright = |brick: &Brick| {
-                let m = brick.transform;
-                (m.y_axis - DVec3::Y).length() < 1e-5
-                    && [m.x_axis, m.z_axis].iter().all(|v| {
-                        (v.length() - 1.0).abs() < 1e-5
-                            && v.y.abs() < 1e-5
-                            && (v.x.abs().max(v.z.abs()) - 1.0).abs() < 1e-5
-                    })
-            };
-            let aligned = [
-                a.bounds.min.x - b.bounds.min.x,
-                a.bounds.min.z - b.bounds.min.z,
-            ]
-            .iter()
-            .all(|v| (v - v.round()).abs() < eps);
-            inferred = lo.studs && upright(a) && upright(b) && aligned;
-        } else if crate::interference::axis_aligned(lower)
+        if crate::interference::axis_aligned(lower)
             && crate::interference::axis_aligned(upper)
             && (lower.transform.y_axis - DVec3::Y).length() < 1e-5
             && (upper.transform.y_axis - DVec3::Y).length() < 1e-5
         {
-            if let Some(grid) = crate::part_profiles::receiving_grid(&upper.part) {
-                inferred = crate::part_profiles::stud_centres(&lower.part)
-                    .into_iter()
-                    .any(|stud| {
-                        let point = upper.transform.inverse()
-                            * (lower.position + lower.transform * stud - upper.position);
-                        let u = point.x - grid.first[0];
-                        let v = point.z - grid.first[1];
-                        (point.y - grid.bottom).abs() < eps
-                            && (u - u.round()).abs() < eps
-                            && (v - v.round()).abs() < eps
-                            && u >= -eps
-                            && u <= f64::from(grid.width - 1) + eps
-                            && v >= -eps
-                            && v <= f64::from(grid.depth - 1) + eps
-                    });
-            }
             let lower_part = crate::part_library::profile_id(&lower.part);
             let upper_part = crate::part_library::profile_id(&upper.part);
-            let torso = |part: &str| ["76382p00.dat", "76382p4f.dat"].contains(&part);
+            let torso = |part: &str| ["76382p00.dat", "76382p4f.dat", "973p4f.dat"].contains(&part);
             factory_clip = ((lower_part == "970c00.dat" && torso(upper_part))
                 || (torso(lower_part) && ["3626a.dat", "3626ap01.dat"].contains(&upper_part)))
                 && (lower.position.x - upper.position.x).abs() < eps

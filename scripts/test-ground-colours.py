@@ -15,9 +15,8 @@ ROOT = Path(__file__).resolve().parents[1]
 
 def block(east, north):
     def rgb(x, y):
-        t = (east + x / 64) / 2
-        return (round(10 + y / 64 * 80) << 16) | (round(85 + 74 * t) << 8) | round(191 - 117 * t)
-    return dict(schema=2, coord=[east, north, 0], bricks=[], color=71,
+        return 0x1e5aa8 if east + x / 64 < 1.25 else 0x00852b
+    return dict(schema=2, cell_size=128, coord=[east, north, 0], bricks=[], color=71,
                 surface=dict(format='ergo-ground-surface-1', rgb=[rgb(x, y) for y in range(65) for x in range(65)]),
                 sample_rgb=None, source='Offline colour fixture', attribution='Synthetic fixture',
                 attribution_url=None, generated_at=0, source_tiles=[], fallback_reason=None)
@@ -49,18 +48,27 @@ def main():
                 scene = dict(schema=2, name='Ground display regression', geo=dict(latitude=0, longitude=0, arcseconds_per_block=1),
                              bricks=[], meshes={}, ground=[block(0, 0), block(1, 0)])
                 result = page.evaluate('''async scene => {
+                    const uploaded=[];
+                    const original=WebGL2RenderingContext.prototype.texImage2D;
+                    WebGL2RenderingContext.prototype.texImage2D=function(...args) {
+                        if(args[3]===65 && args[4]===65 && args[8] instanceof Uint8Array) {
+                            const rgba=args[8];for(let i=0;i<rgba.length;i+=4) uploaded.push((rgba[i]<<16)|(rgba[i+1]<<8)|rgba[i+2]);
+                        }
+                        return original.apply(this,args);
+                    };
                     const module=await import('/mcp-pkg/ergo_client.js');await module.default();
                     const runtime=new module.LocalClientRuntime(document.querySelector('canvas'),JSON.stringify(scene),' {"entries":[]}',0);
-                    const args={width:800,height:600,lighting:'studio',camera:{position_world:[1024,-100,1300],target_world:[1024,512,0],vertical_fov_degrees:55}};
+                    const args={width:800,height:600,lighting:'studio',camera:{position_world:[128,-12.5,162.5],target_world:[128,64,0],vertical_fov_degrees:55}};
                     const result=JSON.parse(runtime.execute('test_visual_appearance',JSON.stringify(args)));
                     const gl=document.querySelector('canvas').getContext('webgl2');
-                    return {result,error:gl.getError()};
+                    return {result,error:gl.getError(),material_colours:[...new Set(uploaded)]};
                 }''', scene)
                 assert not result['result'].get('isError'), result
                 assert result['error'] == 0, result['error']
+                assert set(result['material_colours']) == {0x1e5aa8, 0x00852b}, result['material_colours']
                 image = next(c['data'] for c in result['result']['content'] if c['type'] == 'image')
                 raw = base64.b64decode(image)
-                (args.artifacts / 'blended-two-plates.png').write_bytes(raw)
+                (args.artifacts / 'standard-two-plates.png').write_bytes(raw)
                 image = Image.open(io.BytesIO(raw)).convert('RGB')
                 # Both regions are on the same row and have identical lighting.
                 left = ImageStat.Stat(image.crop((180, 280, 220, 320))).mean
@@ -80,7 +88,7 @@ def main():
         server.shutdown()
         server.server_close()
         thread.join()
-    print('Ground colour WebGL checks passed: spatial variation, neighbour blending and continuous cell edges.')
+    print('Ground colour WebGL checks passed: standard materials only, discrete colour regions and matching cell edges.')
 
 
 if __name__ == '__main__':

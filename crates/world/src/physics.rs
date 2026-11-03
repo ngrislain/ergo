@@ -1,15 +1,11 @@
 //! A bounded rigid-body sandbox. Float64 world coordinates; nominal brick-body
-//! convex hulls, not decorative studs. Explicit compound colliders are a future
-//! asset-format extension for hollow/Technic parts.
+//! convex hulls, not decorative studs. Reviewed shields/spears use source-defined
+//! compound boxes; arbitrary hollow/Technic mesh collision remains unsupported.
 use crate::physical::{to_meters, to_world, world_transform};
-use crate::{
-    Aabb, BlockCoord, Brick, JointKind, JointSpec,
-    geometry::Mesh,
-    spatial::{Octree, relation},
-};
+use crate::{Aabb, BlockCoord, Brick, JointKind, JointSpec, geometry::Mesh};
 use anyhow::{Context, Result, ensure};
 use glam::{DMat3, DVec3};
-use rapier3d_f64::{na, parry::query, prelude::*};
+use rapier3d_f64::{na, prelude::*};
 use serde::Serialize;
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 
@@ -106,28 +102,7 @@ pub struct ConnectionBreak {
 }
 
 pub fn inferred_joints(bricks: &[Brick]) -> Vec<JointSpec> {
-    let tree = Octree::new(bricks.iter().map(|b| b.bounds).collect());
-    let mut out = Vec::new();
-    for (i, brick) in bricks.iter().enumerate() {
-        for j in tree.query(brick.bounds.expanded(0.003)) {
-            if j <= i {
-                continue;
-            }
-            let other = &bricks[j];
-            if relation(brick, other).is_some_and(|r| r.certainty == "inferred") {
-                out.push(JointSpec {
-                    a: brick.id,
-                    b: other.id,
-                    anchor: (brick.bounds.center() + other.bounds.center()) * 0.5,
-                    kind: JointKind::Fixed,
-                    break_force: None,
-                    break_torque: None,
-                    strength_source: None,
-                });
-            }
-        }
-    }
-    out
+    crate::constraints::inferred_joints(bricks)
 }
 
 pub fn validate_joints(bricks: &[Brick], joints: &[JointSpec], fixed: &[u32]) -> Result<()> {
@@ -259,8 +234,31 @@ impl Simulation {
             let rotation = na::UnitQuaternion::from_matrix(&na::Matrix3::from_column_slice(
                 &rotation.to_cols_array(),
             ));
-            let collider = ColliderBuilder::cuboid(half.x, half.y, half.z)
-                .translation(vector(offset))
+            let boxes = crate::part_profiles::collision_boxes(&brick.part);
+            let compound = boxes.len() > 1 && _mesh.physical.is_none();
+            let collider = if compound {
+                ColliderBuilder::compound(
+                    boxes
+                        .into_iter()
+                        .map(|bounds| {
+                            let half = to_meters(bounds.size() * 0.5);
+                            let center = to_meters(bounds.center());
+                            (
+                                na::Isometry3::translation(center.x, center.y, center.z),
+                                SharedShape::cuboid(half.x, half.y, half.z),
+                            )
+                        })
+                        .collect(),
+                )
+            } else {
+                ColliderBuilder::cuboid(half.x, half.y, half.z)
+            };
+            let collider = collider
+                .translation(if compound {
+                    vector(DVec3::ZERO)
+                } else {
+                    vector(offset)
+                })
                 .rotation(rotation.scaled_axis())
                 .mass(
                     _mesh
@@ -274,7 +272,7 @@ impl Simulation {
             s.colliders
                 .insert_with_parent(collider, handle, &mut s.bodies);
             s.handles.insert(brick.id, handle);
-            // Horizontal cells have finite 1024×1024 plates at public Z=0.
+            // Horizontal cells have finite 128×128 plates at public Z=0.
             let cell = BlockCoord::at(brick.bounds.min + DVec3::splat(1e-6));
             for dx in -1..=1 {
                 for dz in -1..=1 {
@@ -355,10 +353,11 @@ impl Simulation {
                 self.joints.insert(a, b, j, true)
             }
             JointKind::Revolute { axis, limits } => {
-                let mut j = RevoluteJointBuilder::new(na::Unit::new_normalize(vector(axis)))
-                    .local_anchor1(anchor_a)
-                    .local_anchor2(anchor_b)
-                    .contacts_enabled(false);
+                let mut j =
+                    RevoluteJointBuilder::new(na::Unit::new_normalize(vector(to_meters(axis))))
+                        .local_anchor1(anchor_a)
+                        .local_anchor2(anchor_b)
+                        .contacts_enabled(false);
                 if let Some(limits) = limits {
                     j = j.limits(limits);
                 }
@@ -696,49 +695,11 @@ impl Simulation {
     }
 }
 
-/// Preflight rigid translations with the same narrow-phase shapes used for physics.
+/// Preflight rigid translations with the shared catalogue collision rules.
 /// Checks many small increments to avoid skipping thin obstacles; large moves are
 /// rejected rather than undersampled. Revolute manipulation belongs to Simulation.
 pub fn can_translate(bricks: &[Brick], ids: &HashSet<u32>, delta: DVec3) -> Result<()> {
-    ensure!(
-        delta.is_finite() && delta.length() <= 32.0,
-        "Edit moves are limited to 32 brick units"
-    );
-    let steps = (delta.length() / 0.05).ceil().max(1.0) as usize;
-    let tree = Octree::new(bricks.iter().map(|b| b.bounds).collect());
-    for brick in bricks.iter().filter(|b| ids.contains(&b.id)) {
-        let half = brick.bounds.size() * 0.5;
-        let shape = Cuboid::new(vector(half));
-        for step in 1..=steps {
-            let p = brick.bounds.center() + delta * (step as f64 / steps as f64);
-            let box_ = Aabb::new(p - half, p + half);
-            ensure!(box_.min.y >= -0.002, "Move intersects the block baseplate");
-            for other in tree.query(box_) {
-                let other = &bricks[other];
-                if ids.contains(&other.id) {
-                    continue;
-                }
-                let other_shape = Cuboid::new(vector(other.bounds.size() * 0.5));
-                let hit = query::contact(
-                    &Isometry::translation(p.x, p.y, p.z),
-                    &shape,
-                    &Isometry::translation(
-                        other.bounds.center().x,
-                        other.bounds.center().y,
-                        other.bounds.center().z,
-                    ),
-                    &other_shape,
-                    0.0,
-                )?;
-                ensure!(
-                    !hit.is_some_and(|c| c.dist < -0.002),
-                    "Move blocked by brick {} (conservative body bounds)",
-                    other.id
-                );
-            }
-        }
-    }
-    Ok(())
+    crate::constraints::can_translate(bricks, ids, delta)
 }
 
 pub fn connected_group(id: u32, joints: &[JointSpec]) -> HashSet<u32> {

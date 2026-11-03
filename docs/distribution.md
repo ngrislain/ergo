@@ -5,14 +5,14 @@
 The current prebuilt client is published on npm with GitHub Actions provenance:
 
 ```sh
-npm install --global --ignore-scripts @ngrislain/ergo-mcp@0.5.17
+npm install --global --ignore-scripts @ngrislain/ergo-mcp@0.5.18
 ergo-mcp --version
 ```
 
 The identical complete tarball and `SHA256SUMS` are also available on the
-[v0.5.17 GitHub Release](https://github.com/ngrislain/ergo/releases/tag/v0.5.17).
-Its SHA-256 is `f6c7b93b231d58a8def2f19f903509db34b00314eeedf6a440b033ce3f39bb36`.
-Registry integrity, provenance and an actual installed MCP client were verified.
+[v0.5.18 GitHub Release](https://github.com/ngrislain/ergo/releases/tag/v0.5.18).
+Verify its `SHA256SUMS`, registry integrity/provenance and an installed MCP client
+using the release verification workflow below.
 
 It bundles native bridges for macOS/Linux ARM64/x64 and their matching WASM client.
 Consumers need Node20+ and Chrome/Chromium, not Rust. Supported baselines are
@@ -86,5 +86,5 @@ coordinated storage migration and matching client upgrade accompany a breaking
 format change. Bound caches reload authoritative state; they are not data roots.
 
 `ERGO_MCP_PACKAGE` is the public website's installation-source setting. Production
-uses `@ngrislain/ergo-mcp@0.5.17`; npm trusted publication is enabled. Never embed a token,
+uses `@ngrislain/ergo-mcp@0.5.18`; npm trusted publication is enabled. Never embed a token,
 S3 credentials or a credential-bearing URL in the package configuration.

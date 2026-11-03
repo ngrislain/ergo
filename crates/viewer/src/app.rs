@@ -453,14 +453,10 @@ impl Client {
             "Use Pull in simulation to move an articulated group"
         );
         let r = self.renderer.as_mut().unwrap();
-        let bounds = r
-            .bricks
-            .iter()
-            .filter(|b| group.contains(&b.id))
-            .map(|b| b.bounds)
-            .reduce(ergo_world::Aabb::union)
-            .ok_or_else(|| anyhow::anyhow!("Empty selection"))?;
-        let delta = ergo_world::placement::snap_translation(bounds, delta);
+        let delta = ergo_world::placement::snap_bricks_translation(
+            r.bricks.iter().filter(|b| group.contains(&b.id)),
+            delta,
+        );
         physics::can_translate(&r.bricks, &group, delta)?;
         let mut bricks = r.bricks.clone();
         for brick in &mut bricks {
@@ -636,9 +632,15 @@ fn shared_manifest(
     coord: [i64; 3],
     blocks: &BTreeMap<BlockCoord, Block>,
 ) -> WorldManifest {
-    let center = BlockCoord::from(coord).origin() + DVec3::new(512., 16., 512.);
+    let center = BlockCoord::from(coord).origin()
+        + DVec3::new(
+            ergo_world::BLOCK_SIZE / 2.,
+            16.,
+            ergo_world::BLOCK_SIZE / 2.,
+        );
     WorldManifest {
         schema: ergo_world::SCHEMA_VERSION,
+        cell_size: ergo_world::BLOCK_SIZE as u32,
         id: format!("shared:{id}"),
         name: scene.name.clone(),
         source: "Shared-world spatial view".into(),
@@ -1203,7 +1205,7 @@ fn open_world(handle: Handle, world: WorldManifest) {
                     r.set_ground(block.clone());
                 }
             }
-            if world.bounds.size().max_element() > 1024.0
+            if world.bounds.size().max_element() > ergo_world::BLOCK_SIZE
                 && let Some(first) = world.blocks.first()
             {
                 r.target = first.coord.origin() + DVec3::new(512.0, 32.0, 512.0);
@@ -1289,6 +1291,7 @@ fn open_draft(handle: Handle, scene: WorldExport) -> anyhow::Result<()> {
         c.ui.group_selection.set(Vec::new());
         let world = WorldManifest {
             schema: scene.schema,
+            cell_size: ergo_world::BLOCK_SIZE as u32,
             id: "draft".into(),
             name: scene.name,
             source: "Unpublished workspace".into(),
@@ -1384,7 +1387,7 @@ fn pump(handle: Handle) {
                     c.load_all
                         || visibility.contains(ergo_world::Aabb::new(
                             b.coord.origin(),
-                            b.coord.origin() + DVec3::splat(1024.0),
+                            b.coord.origin() + DVec3::splat(ergo_world::BLOCK_SIZE),
                         ))
                 })
                 .cloned()
@@ -1451,7 +1454,7 @@ fn pump(handle: Handle) {
                             && c.renderer.as_ref().is_some_and(|r| {
                                 !r.visibility().contains(ergo_world::Aabb::new(
                                     block.coord.origin(),
-                                    block.coord.origin() + DVec3::splat(1024.0),
+                                    block.coord.origin() + DVec3::splat(ergo_world::BLOCK_SIZE),
                                 ))
                             })
                         {
@@ -1504,8 +1507,8 @@ fn pump_ground(handle: Handle) {
         let mut cells = renderer.visible_ground_cells();
         cells.sort_by(|a, b| {
             let distance = |(x, y): (i64, i64)| {
-                ((x as f64 + 0.5) * 1024.0 - renderer.eye().x)
-                    .hypot((y as f64 + 0.5) * 1024.0 - renderer.eye().z)
+                ((x as f64 + 0.5) * ergo_world::BLOCK_SIZE - renderer.eye().x)
+                    .hypot((y as f64 + 0.5) * ergo_world::BLOCK_SIZE - renderer.eye().z)
             };
             distance(*a).total_cmp(&distance(*b))
         });
@@ -2056,8 +2059,10 @@ fn nearest_construction(handle: Handle) {
         .into_iter()
         .filter_map(|location| {
             let coord = location.coord?;
-            let bounds =
-                ergo_world::Aabb::new(coord.origin(), coord.origin() + DVec3::splat(1024.));
+            let bounds = ergo_world::Aabb::new(
+                coord.origin(),
+                coord.origin() + DVec3::splat(ergo_world::BLOCK_SIZE),
+            );
             location
                 .metadata
                 .geo

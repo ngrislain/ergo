@@ -140,6 +140,8 @@ impl Store {
                 let value: serde_json::Value = serde_json::from_slice(&bytes)?;
                 if value.get("schema").and_then(serde_json::Value::as_u64)
                     == Some(SCHEMA_VERSION as u64)
+                    && value.get("cell_size").and_then(serde_json::Value::as_u64)
+                        == Some(ergo_world::BLOCK_SIZE as u64)
                 {
                     worlds.push(serde_json::from_value(value)?);
                 }
@@ -257,6 +259,7 @@ impl Store {
         }
         let manifest = WorldManifest {
             schema: SCHEMA_VERSION,
+            cell_size: ergo_world::BLOCK_SIZE as u32,
             id,
             name: scene.name,
             source,
@@ -401,8 +404,8 @@ mod tests {
                 .is_err()
         );
         let mut untrusted = scene(true);
-        // A side-hung body really needs a bond; a standing stack can instead
-        // prove gravity balance without relying on any connector strength.
+        // This sideways weld has no registered interface, independently of the
+        // uploaded strength values or the pair's gravity balance.
         untrusted.bricks[1].translated(glam::DVec3::new(2., -0.5, 0.));
         untrusted.joints = vec![ergo_world::JointSpec {
             a: 1,
@@ -417,11 +420,7 @@ mod tests {
             .save(untrusted, "test".into(), Vec::new(), "alice".into())
             .await
             .unwrap_err();
-        assert!(
-            error
-                .to_string()
-                .contains("Missing measured connector capacity")
-        );
+        assert!(error.to_string().contains("Invalid attachment"));
         assert!(store.manifests(&principal).await.unwrap().is_empty());
         assert_eq!(
             store

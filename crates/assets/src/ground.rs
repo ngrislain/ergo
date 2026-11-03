@@ -120,16 +120,18 @@ impl GroundCache {
             Ok(key) => key,
             Err(e) => return GroundBlock::fallback(x, y, e.to_string()),
         };
-        if let Ok(Some(bytes)) = self.get(&key).await
-            && let Ok(block) = ciborium::from_reader::<GroundBlock, _>(bytes.as_slice())
-        {
-            let ttl = if block.fallback_reason.is_some() {
-                60
+        if let Ok(Some(bytes)) = self.get(&key).await {
+            if let Ok(block) = ciborium::from_reader::<GroundBlock, _>(bytes.as_slice()) {
+                let ttl = if block.fallback_reason.is_some() {
+                    60
+                } else {
+                    TTL
+                };
+                if now().saturating_sub(block.generated_at) < ttl {
+                    return block;
+                }
             } else {
-                TTL
-            };
-            if now().saturating_sub(block.generated_at) < ttl {
-                return block;
+                let _ = self.store.delete(&self.path(&key)).await;
             }
         }
         let result = if self.enabled {
@@ -159,7 +161,7 @@ impl GroundCache {
             .map(|code| (*code, ergo_world::color_rgb(*code)))
             .collect();
         let signature = hex::encode(Sha256::digest(format!(
-            "{:.12}:{:.12}:{:.12}:{}:{}:{}:{}:{}:ground-stud-surface-v1:{SAMPLE_GRID_SIZE}:{palette:?}",
+            "{:.12}:{:.12}:{:.12}:{}:{}:{}:{}:{}:ground-standard-categorical-v3:{BLOCK_SIZE}:{SAMPLE_GRID_SIZE}:{palette:?}",
             geo.latitude,
             geo.longitude,
             geo.arcseconds_per_block,
@@ -175,14 +177,17 @@ impl GroundCache {
         let _guard = self.gate.lock().await;
         let key = self.block_key(geo, x, y)?;
         if let Some(bytes) = self.get(&key).await? {
-            let block: GroundBlock = ciborium::from_reader(bytes.as_slice())?;
-            let ttl = if block.fallback_reason.is_some() {
-                60
+            if let Ok(block) = ciborium::from_reader::<GroundBlock, _>(bytes.as_slice()) {
+                let ttl = if block.fallback_reason.is_some() {
+                    60
+                } else {
+                    TTL
+                };
+                if now().saturating_sub(block.generated_at) < ttl {
+                    return Ok(block);
+                }
             } else {
-                TTL
-            };
-            if now().saturating_sub(block.generated_at) < ttl {
-                return Ok(block);
+                self.store.delete(&self.path(&key)).await?;
             }
         }
         // One zoom per geographic reference, including neighbouring cells at a
@@ -228,8 +233,8 @@ impl GroundCache {
                         | ((bytes[index + 1] as u32) << 8)
                         | bytes[index + 2] as u32
                 });
-                // Classify before blending: neighbouring water/land colours
-                // remain blue/green rather than classifying their mixed RGB.
+                // Choose a single classified source pixel. Adjacent materials
+                // keep standard palette colours without a blended gradient.
                 let palette = raw.map(|rgb| {
                     ergo_world::color_rgb(if self.map_colours {
                         map_terrain_color(rgb)
@@ -239,7 +244,7 @@ impl GroundCache {
                 });
                 (
                     blend_rgb(raw, sample.x, sample.y),
-                    blend_rgb(palette, sample.x, sample.y),
+                    palette[usize::from(sample.x >= 0.5) + 2 * usize::from(sample.y >= 0.5)],
                 )
             })
             .collect();
@@ -259,6 +264,7 @@ impl GroundCache {
         };
         let block = GroundBlock {
             schema: ergo_world::SCHEMA_VERSION,
+            cell_size: BLOCK_SIZE as u32,
             coord: ergo_world::BlockCoord::from([x, y, 0]),
             bricks: Vec::new(),
             color,
@@ -641,8 +647,13 @@ mod tests {
                 .copied()
                 .collect::<std::collections::BTreeSet<_>>()
                 .len()
-                > 4
+                == 4
         );
+        assert!(a.rgb.iter().all(|rgb| {
+            ergo_world::terrain::TERRAIN_COLORS
+                .iter()
+                .any(|c| ergo_world::color_rgb(*c) == *rgb)
+        }));
         for offset in [0., 0.5, 11.5, 97.5, 512., 1023.5, 1024.] {
             assert_eq!(a.rgb_at(1024., offset), east.rgb_at(0., offset));
             assert_eq!(a.rgb_at(offset, 1024.), north.rgb_at(offset, 0.));

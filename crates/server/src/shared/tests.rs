@@ -2,8 +2,12 @@ use super::*;
 use ergo_world::{SCHEMA_VERSION, WorldExport};
 use std::sync::Arc;
 
+#[path = "tests_attachments.rs"]
+mod attachments;
 #[path = "tests_bulk.rs"]
 mod packed;
+#[path = "tests_resize.rs"]
+mod resize;
 
 fn service() -> SharedWorlds {
     SharedWorlds::new(Store {
@@ -645,15 +649,15 @@ async fn upright_gravity_support_does_not_authorize_uncalibrated_hanging_bonds()
         Some(false)
     );
     let mut hung = ergo_world::demo::Demo::new();
-    hung.add("3003", 19, 100., 0., 0.);
-    hung.add("3003", 19, 102., 0.5, 0.);
+    hung.add("3001", 19, 100., 0., 0.);
+    hung.add("3001", 19, 103., 1., 0.);
     let mut candidate = scene(0.);
     candidate.bricks = hung.bricks;
     candidate.meshes = hung.meshes;
     candidate.joints = vec![ergo_world::JointSpec {
         a: 1,
         b: 2,
-        anchor: glam::DVec3::new(102., 0.75, 1.),
+        anchor: glam::DVec3::new(103.5, 1., 1.),
         kind: ergo_world::JointKind::Fixed,
         break_force: Some(1e20),
         break_torque: Some(1e20),
@@ -1235,7 +1239,7 @@ async fn dense_browser_regions_exceed_authoring_caps_without_truncation_or_cache
             .is_err()
     );
     let (app, alice) = http(&service);
-    let url = format!("/api/shared-worlds/{}/view", head.id);
+    let url = format!("/api/shared-worlds/{}/view?x=1&y=-1", head.id);
     let (status, packet) = json(&app, "GET", &url, &alice, None).await;
     assert_eq!(status, StatusCode::OK, "{packet}");
     assert_eq!(packet["scene"]["bricks"].as_array().unwrap().len(), 5001);
@@ -1402,7 +1406,10 @@ async fn neighboring_views_reuse_only_proven_identical_geometry_and_persist_pinn
     let service = service();
     let mut three = scene(100.);
     three.bricks.truncate(1);
-    for (id, x) in [(2, 1900.), (3, 2200.)] {
+    for (id, x) in [
+        (2, 2. * ergo_world::BLOCK_SIZE - 12.),
+        (3, 2. * ergo_world::BLOCK_SIZE + 12.),
+    ] {
         let mut brick = scene(x).bricks.remove(0);
         brick.id = id;
         three.bricks.push(brick);
@@ -2459,7 +2466,7 @@ async fn dense_block_edits_load_only_selected_piece_and_rule_pages() {
     let mut d = ergo_world::demo::Demo::new();
     for y in 0..10 {
         for x in 0..10 {
-            d.add("3003", 4, 10. + x as f64 * 80., 0., 10. + y as f64 * 80.);
+            d.add("3003", 4, 10. + x as f64 * 10., 0., 10. + y as f64 * 10.);
         }
     }
     initial.bricks = d.bricks;
@@ -2534,13 +2541,15 @@ async fn cross_assembly_joints_track_both_ends_and_prevent_dangling_deletions() 
         }],
     });
     let (head, first) = seeded(&service, scene(100.)).await;
+    let mut stacked = scene(100_000.);
+    stacked.bricks[0].translated(glam::DVec3::new(-99_900., 1., 0.));
     let second = service
         .import(
             &head.id,
             "alice",
             ImportRequest {
                 base: head.revision,
-                scene: scene(100_000.),
+                scene: stacked,
             },
         )
         .await
@@ -2568,7 +2577,7 @@ async fn cross_assembly_joints_track_both_ends_and_prevent_dangling_deletions() 
     let input = joints::JointInput {
         a: a.clone(),
         b: b.clone(),
-        anchor: glam::DVec3::ZERO,
+        anchor: glam::DVec3::new(101., 1., 101.),
         kind: ergo_world::JointKind::Fixed,
     };
     let request = CommitRequest {
@@ -2717,7 +2726,7 @@ async fn authoring_dependency_guard_stops_at_the_first_verified_external_piece()
 }
 
 #[tokio::test]
-async fn compact_authoring_guard_keeps_remote_explicit_dependencies() {
+async fn compact_authoring_guard_rejects_remote_forged_attachments() {
     let mut service = service();
     service.store.measurements = Arc::new(ergo_world::physical::ConnectionMeasurements {
         parts: vec![],
@@ -2758,12 +2767,12 @@ async fn compact_authoring_guard_keeps_remote_explicit_dependencies() {
         .await
         .unwrap();
     assert_eq!(independent["external_dependencies"], false);
-    let linked = service
+    let error = service
         .prepare(
             &head.id,
             "alice",
             CommitRequest {
-                base: second.accepted.revision,
+                base: second.accepted.revision.clone(),
                 pieces: vec![],
                 rules: vec![],
                 message: "remote dependency fixture".into(),
@@ -2779,15 +2788,19 @@ async fn compact_authoring_guard_keeps_remote_explicit_dependencies() {
             },
         )
         .await
-        .unwrap()
-        .publish()
+        .err()
+        .expect("A measured part-pair does not authorize a remote attachment");
+    assert!(error.to_string().contains("Invalid attachment"), "{error}");
+    let unchanged = service
+        .authoring_scene(
+            &head.id,
+            "alice",
+            &first.assembly,
+            &second.accepted.revision,
+        )
         .await
         .unwrap();
-    let guarded = service
-        .authoring_scene(&head.id, "alice", &first.assembly, &linked.revision)
-        .await
-        .unwrap();
-    assert_eq!(guarded["external_dependencies"], true);
+    assert_eq!(unchanged["external_dependencies"], false);
 }
 
 #[tokio::test]
@@ -3016,7 +3029,7 @@ async fn noncurrent_shared_layouts_are_rejected() {
     let service = service();
     let (head, _) = seeded(&service, scene(100.)).await;
     let current = serde_json::to_value(&head.metadata).unwrap();
-    for layout in [0, 1, 4] {
+    for layout in [0, 1, 2, 3, 5] {
         let mut value = current.clone();
         value["layout"] = serde_json::json!(layout);
         assert!(serde_json::from_value::<Metadata>(value).is_err());

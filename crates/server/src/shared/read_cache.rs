@@ -13,7 +13,7 @@ use std::{
     sync::{Arc, Mutex, Weak},
 };
 
-const FORMAT: u32 = 1;
+const FORMAT: u32 = 2;
 const MEMORY_BYTES: usize = 64 * 1024 * 1024;
 const MAX_PACKET_BYTES: usize = 64 * 1024 * 1024;
 
@@ -137,7 +137,7 @@ impl ViewKey {
             self.pieces,
             self.read_bytes,
         ))?);
-        Ok(store.path(&format!("cache/read-views/v1/{id}.cbor")))
+        Ok(store.path(&format!("cache/read-views/cell128-v1/{id}.cbor")))
     }
 }
 

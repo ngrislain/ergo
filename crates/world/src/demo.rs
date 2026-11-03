@@ -99,7 +99,34 @@ pub fn pavilion() -> Demo {
             }
         }
     }
-    for level in 0..6 {
+    // A bonded plate deck carries the roof across the open gallery. Staggered
+    // seams replace the old imaginary side-face welds between floating bricks.
+    for layer in 0..3 {
+        let first = d.bricks.len();
+        let height = 12.0 + 2.0 / 3.0 + f64::from(layer) / 3.;
+        for z in (12..36).step_by(2) {
+            d.add("4282", 3, 8., height, f64::from(z));
+            d.add("4282", 3, 24., height, f64::from(z));
+        }
+        for z in [8., 10., 36., 38.] {
+            d.add("2445", 3, 12., height, z);
+            d.add("2445", 3, 24., height, z);
+        }
+        if layer % 2 == 1 {
+            let rotation = DMat3::from_rotation_y(std::f64::consts::FRAC_PI_2);
+            let center = DVec3::new(24., 0., 24.);
+            for brick in &mut d.bricks[first..] {
+                brick.transform = rotation * brick.transform;
+                brick.position = center + rotation * (brick.position - center);
+                let mesh = &d.meshes[&brick.part];
+                brick.bounds = mesh
+                    .body_bounds
+                    .transformed(brick.transform, brick.position);
+                brick.render_bounds = mesh.bounds.transformed(brick.transform, brick.position);
+            }
+        }
+    }
+    for level in 1..6 {
         let lo = 10 + level * 2;
         let hi = 38 - level * 2;
         for x in (lo..hi).step_by(2) {
@@ -152,7 +179,16 @@ pub fn pavilion() -> Demo {
         for y in 2..6 {
             d.add("3005", 70, tx as f64, 1.0 / 3.0 + y as f64, tz as f64);
         }
-        for y in 0..4 {
+        for layer in 0..3 {
+            d.add(
+                "3031",
+                2,
+                tx as f64 - 1.,
+                6. + 1. / 3. + f64::from(layer) / 3.,
+                tz as f64 - 1.,
+            );
+        }
+        for y in 1..4 {
             for x in 0_i32..4 {
                 for z in 0_i32..4 {
                     if (x - 1).pow(2) + (z - 1).pow(2) < 7 - y {
@@ -194,41 +230,10 @@ pub fn physics_lab() -> Demo {
     d
 }
 
-/// Authored rigid bonds in the architecture example include touching side faces,
-/// so slabs behave as assembled slabs rather than independent loose columns.
+/// Example connections must be real registered interfaces, just as publication
+/// requires. A shared side face alone does not authorize a welded LEGO bond.
 pub fn authored_bonds(bricks: &[Brick]) -> Vec<crate::JointSpec> {
-    let tree = crate::spatial::Octree::new(bricks.iter().map(|b| b.bounds).collect());
-    let mut out = Vec::new();
-    let mut parent: Vec<_> = (0..bricks.len()).collect();
-    fn root(p: &mut [usize], i: usize) -> usize {
-        if p[i] != i {
-            p[i] = root(p, p[i]);
-        }
-        p[i]
-    }
-    for (i, b) in bricks.iter().enumerate() {
-        for j in tree.query(b.bounds.expanded(0.001)) {
-            if j <= i || crate::spatial::relation(b, &bricks[j]).is_none() {
-                continue;
-            }
-            let a = root(&mut parent, i);
-            let other = root(&mut parent, j);
-            if a == other {
-                continue;
-            }
-            parent[a] = other;
-            out.push(crate::JointSpec {
-                a: b.id,
-                b: bricks[j].id,
-                anchor: (b.bounds.center() + bricks[j].bounds.center()) * 0.5,
-                kind: crate::JointKind::Fixed,
-                break_force: None,
-                break_torque: None,
-                strength_source: None,
-            });
-        }
-    }
-    out
+    crate::constraints::inferred_joints_with_tolerance(bricks, crate::validation::OVERLAP_TOLERANCE)
 }
 
 #[cfg(test)]
@@ -238,7 +243,7 @@ mod tests {
     #[test]
     fn boundary_bricks_are_available_on_both_sides() {
         let mut demo = Demo::new();
-        demo.add("3001", 4, 1023.0, 0.0, 20.0);
+        demo.add("3001", 4, crate::BLOCK_SIZE - 1., 0.0, 20.0);
         let blocks = crate::partition(&demo.bricks).unwrap();
         assert!(blocks.contains_key(&crate::BlockCoord(0, 0, 0)));
         assert!(blocks.contains_key(&crate::BlockCoord(1, 0, 0)));

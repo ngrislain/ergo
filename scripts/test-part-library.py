@@ -1,10 +1,11 @@
 #!/usr/bin/env python3
 """Actual WASM checks for offline canonical retrofits and common car instances."""
-import argparse,json,math,os,pathlib,tempfile
+import argparse,base64,json,math,os,pathlib,tempfile
 from mcp_client import Mcp
 
 ROOT=pathlib.Path(__file__).resolve().parents[1]
 parser=argparse.ArgumentParser(description=__doc__);parser.add_argument('--binary',type=pathlib.Path,default=ROOT/'target/debug/ergo-mcp')
+parser.add_argument('--artifacts',type=pathlib.Path,help='Optional directory for actual plate-free car/guard WebGL captures')
 args=parser.parse_args();BINARY=str(args.binary.resolve())
 os.environ['ERGO_ASSET_FETCH']='0'
 
@@ -51,7 +52,7 @@ with tempfile.TemporaryDirectory(prefix='ergo-library-') as temporary:
     workspace=directory/'cars.ergo.json';client=Mcp(BINARY,workspace,None,None)
     try:
         catalog=client.call('get_catalog')['structuredContent']['catalog']
-        assert {entry['id'] for entry in catalog['constructs']}=={'minifigure-v1','classic-car-v1','medieval-guard-v1','castle-standard-v1'}
+        assert {entry['id'] for entry in catalog['constructs']}=={'minifigure-v2','classic-car-v2','medieval-guard-v3','medieval-archer-v1','castle-standard-v1'}
         road=[placed('part','2431.dat',[offset+x+2,n+.5,1/3],72) for offset in [0,16] for x in [0,4] for n in range(4)]
         model={'format':'ergo-model-1','schema':2,'root':'main','definitions':{'main':[
             *road,placed('construct','classic-car-v1',[0,0,1/3],4),placed('construct','classic-car-v1',[16,0,1/3],1)]}}
@@ -101,4 +102,51 @@ with tempfile.TemporaryDirectory(prefix='ergo-library-') as temporary:
         feedback=client.call('remove_bricks',ids=support)['structuredContent']
         assert not feedback['publication_ready'],'Unsupported flag gained invented attachment capacity'
     finally:client.close()
-print('Canonical library WASM checks passed: offline source assets, legacy alias/proxy retrofit, stable IDs/poses/metadata, shared car references and unknown-version rollback.')
+    workspace=directory/'plate-free.ergo.json';client=Mcp(BINARY,workspace,None,None)
+    try:
+        model={'format':'ergo-model-1','schema':2,'root':'main','definitions':{'main':[
+            placed('construct','classic-car-v2',[0,0,0],4),placed('construct','medieval-guard-v2',[14,4,0],1)]}}
+        feedback=client.call('place_submodel',model=model)['structuredContent']
+        assert feedback['brick_count']==33 and feedback['overlap_free'] and feedback['static_under_current_joint_model'],feedback
+        assert not feedback['publication_ready'] and feedback['calibration_issue'],feedback
+        bricks=client.call('list_bricks',limit=100)['structuredContent']['bricks']
+        grounded=[b for b in bricks if abs(b['bounds']['min'][2])<1e-6]
+        assert len(grounded)==5 and all(b['part'] in ['3815c01.dat','4624c01.dat'] for b in grounded),grounded
+        for holder in [b for b in bricks if b['part']=='4600.dat']:
+            detail=client.call('inspect_brick',id=holder['id'])['structuredContent']
+            assert sum(c['kind']=='wheel pin / bearing connection' for c in detail['contacts'])==2,detail
+        torso=next(b for b in bricks if b['part']=='76382p4f.dat')
+        detail=client.call('inspect_brick',id=torso['id'])['structuredContent']
+        assert sum(c['kind']=='minifigure grip / bar connection' for c in detail['contacts'])==2,detail
+        if args.artifacts:
+            args.artifacts.mkdir(parents=True,exist_ok=True)
+            for name,eye,target in [('car',[11,-10,8],[4,2,2]),('guard',[21,-5,7],[16,4,2.3])]:
+                image=client.call('test_visual_appearance',width=900,height=650,lighting='studio',
+                    camera={'position_world':eye,'target_world':target,'vertical_fov_degrees':35})
+                png=next(item['data'] for item in image['content'] if item['type']=='image')
+                (args.artifacts/f'plate-free-{name}.png').write_bytes(base64.b64decode(png))
+    finally:client.close()
+    workspace=directory/'reposed-garrison.ergo.json';client=Mcp(BINARY,workspace,None,None)
+    try:
+        model={'format':'ergo-model-1','schema':2,'root':'main','definitions':{'main':[
+            placed('construct','medieval-guard-v3',[0,0,0],4),placed('construct','medieval-archer-v1',[6,0,0],4)]}}
+        feedback=client.call('place_submodel',model=model)['structuredContent']
+        assert feedback['brick_count']==19 and feedback['overlap_free'] and feedback['static_under_current_joint_model'],feedback
+        assert not feedback['publication_ready'] and feedback['calibration_issue'],feedback
+        bricks=client.call('list_bricks',limit=100)['structuredContent']['bricks']
+        assert sum(b['part']=='4499.dat' for b in bricks)==1
+        grips=0
+        for hand in [b for b in bricks if b['part']=='3820.dat']:
+            detail=client.call('inspect_brick',id=hand['id'])['structuredContent']
+            assert sum(c['kind']=='minifigure wrist connection' for c in detail['contacts'])==1,detail
+            grips+=sum(c['kind']=='minifigure grip / bar connection' for c in detail['contacts'])
+        assert grips==3,'Spear, shield and bow must connect to the actual individual hands'
+        if args.artifacts:
+            args.artifacts.mkdir(parents=True,exist_ok=True)
+            for name,eye,target in [('reposed-guard',[7,-9,6],[2,1.5,3]),('archer',[13,-9,6],[8,1.5,3])]:
+                image=client.call('test_visual_appearance',width=900,height=700,lighting='studio',
+                    camera={'position_world':eye,'target_world':target,'vertical_fov_degrees':35})
+                png=next(item['data'] for item in image['content'] if item['type']=='image')
+                (args.artifacts/f'{name}.png').write_bytes(base64.b64decode(png))
+    finally:client.close()
+print('Canonical library WASM checks passed: offline source assets, stable legacy retrofits, genuine grip/wheel fits and plate-free cars/guards without invented capacities.')

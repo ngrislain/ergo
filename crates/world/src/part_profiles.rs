@@ -3,6 +3,25 @@
 //! boxes/grids are model approximations, not connector-strength measurements.
 use crate::Aabb;
 use glam::DVec3;
+use serde::{Deserialize, Serialize};
+
+/// Reviewed source-local proxy data. Coordinates are LDU, not public axes.
+#[derive(Debug, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct Nominal {
+    pub bounds_ldu: [[f64; 3]; 2],
+    pub studs_ldu: Vec<[f64; 3]>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub cavity: Option<NominalGrid>,
+}
+#[derive(Debug, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct NominalGrid {
+    pub width: u32,
+    pub depth: u32,
+    pub first: [f64; 2],
+    pub bottom: f64,
+}
 
 #[derive(Clone, Copy)]
 pub struct Grid {
@@ -71,10 +90,100 @@ fn centres(width: u32, depth: u32, first: [f64; 2]) -> Vec<DVec3> {
         .collect()
 }
 
+/// Source-defined shield face and two grip bars. Their union leaves the empty
+/// space behind a held shield free, unlike its overall mass/support envelope.
+pub fn collision_boxes(part: &str) -> Vec<Aabb> {
+    let id = crate::part_library::profile_id(part);
+    let boxes = if ["3846.dat", "3846p4h.dat"].contains(&id) {
+        vec![
+            ([-20., -14., -10.], [20., 32.37, -8.]),
+            ([-4., 0., -4.], [4., 18., 4.]),
+            ([-4., -4., -8.], [4., 4., 14.]),
+        ]
+    } else if id == "4497.dat" {
+        vec![
+            ([-4., 0., -4.], [4., 98., 4.]),
+            ([-7., -48., -3.], [7., 0., 3.]),
+        ]
+    } else if id == "4499.dat" {
+        let mut boxes = vec![
+            ([-4., -27.3, -4.], [4., 2.6, 4.]),
+            ([-2.5, -14.85, -14.], [2.5, -9.85, 44.5]),
+            ([-1.25, -17.35, -24.], [1.25, -7.35, -13.]),
+        ];
+        // Source cylindrical bow limbs and strings. Do not fill the empty
+        // space between the grip, curved limbs and string with one solid box.
+        let segments = [
+            ([0., 2.6, -0.25], [0., 13.1, 1.75], 3.),
+            ([0., 13.1, 1.75], [0., 22.1, 6.75], 3.),
+            ([0., 22.1, 6.75], [0., 26.9, 12.75], 3.),
+            ([0., 26.9, 12.75], [0., 32.0, 20.3], 3.),
+            ([0., -12.35, 33.], [0., 30.65, 17.5], 1.75),
+        ];
+        for (start, end, radius) in segments {
+            for mirror in [false, true] {
+                let mut start = DVec3::from_array(start);
+                let mut end = DVec3::from_array(end);
+                if mirror {
+                    start.y = -24.7 - start.y;
+                    end.y = -24.7 - end.y;
+                }
+                for i in 0..8 {
+                    let a = start.lerp(end, f64::from(i) / 8.);
+                    let b = start.lerp(end, f64::from(i + 1) / 8.);
+                    let r = DVec3::splat(radius);
+                    boxes.push(((a.min(b) - r).to_array(), (a.max(b) + r).to_array()));
+                }
+            }
+        }
+        boxes
+    } else {
+        vec![]
+    };
+    if !boxes.is_empty() {
+        let c = crate::ldraw::conversion();
+        return boxes
+            .into_iter()
+            .map(|(min, max)| {
+                Aabb::new(DVec3::from_array(min), DVec3::from_array(max))
+                    .transformed(c, DVec3::ZERO)
+            })
+            .collect();
+    }
+    crate::geometry::nominal_body_bounds(part)
+        .into_iter()
+        .collect()
+}
+
 /// Dimensions use BrickLink nominal stud sizes and LDraw's actual local datum;
 /// source meshes/credits are retained separately. Reviewed 2026-10-27.
 pub fn profile(part: &str) -> Option<Profile> {
     let entry = &crate::part_library::get(part)?.catalogue;
+    if let Some(nominal) = &entry.nominal {
+        let c = crate::ldraw::conversion();
+        return Some(Profile {
+            bounds: Aabb::new(
+                DVec3::from_array(nominal.bounds_ldu[0]),
+                DVec3::from_array(nominal.bounds_ldu[1]),
+            )
+            .transformed(c, DVec3::ZERO),
+            grams: entry.mass_kg * 1000.,
+            source: entry.mass_source.clone(),
+            studs: nominal
+                .studs_ldu
+                .iter()
+                .map(|p| c * DVec3::from_array(*p))
+                .collect(),
+            cavity: nominal.cavity.as_ref().map(|g| {
+                grid(
+                    g.width,
+                    g.depth,
+                    [g.first[0] / 20., -g.first[1] / 20. - f64::from(g.depth - 1)],
+                    -g.bottom / 24.,
+                )
+            }),
+        });
+    }
     let id = entry
         .profile_id
         .as_ref()
@@ -227,13 +336,42 @@ pub fn profile(part: &str) -> Option<Profile> {
             [-2., -2. / 3., -2.],
             [2., -1. / 3., 3.],
             Some(grid(4, 5, [-1.5, -1.5], -2. / 3.)),
-            vec![],
+            [-30., 30.]
+                .into_iter()
+                .flat_map(|x| {
+                    [-30., 30., 50.]
+                        .into_iter()
+                        .map(move |z| DVec3::new(x / 20., -1. / 3., -z / 20.))
+                })
+                .chain(
+                    [-10., 10.]
+                        .into_iter()
+                        .map(|x| DVec3::new(x / 20., -1. / 3., -2.5)),
+                )
+                .chain([-30., 30.].into_iter().flat_map(|x| {
+                    [-10., 10.]
+                        .into_iter()
+                        .map(move |z| DVec3::new(x / 20., 0., -z / 20.))
+                }))
+                .collect(),
         ),
         "3788" => (
             [-2., -2. / 3., -1.],
             [2., -1. / 3., 1.],
             Some(grid(4, 2, [-1.5, -0.5], -2. / 3.)),
-            vec![],
+            [-30., 30.]
+                .into_iter()
+                .flat_map(|x| {
+                    [-10., 10.]
+                        .into_iter()
+                        .map(move |z| DVec3::new(x / 20., 0., -z / 20.))
+                })
+                .chain(
+                    centres(2, 2, [-0.5, -0.5])
+                        .into_iter()
+                        .map(|p| p - DVec3::Y / 3.),
+                )
+                .collect(),
         ),
         "3823" => (
             [-2., -2., -1.5],

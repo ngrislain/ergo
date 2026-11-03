@@ -71,6 +71,7 @@ struct Config {
     storage: String,
     geo: GeoReference,
     block_size: u32,
+    block_height_plates: u32,
     simulation_limit: usize,
     ground_source: &'static str,
     ground_provider: String,
@@ -85,7 +86,8 @@ async fn config(State(s): State<AppState>) -> Json<Config> {
         common_world: s.shared.common_world.clone(),
         storage: s.store.kind,
         geo: s.geo,
-        block_size: 1024,
+        block_size: ergo_world::BLOCK_SIZE as u32,
+        block_height_plates: ergo_world::BLOCK_HEIGHT_PLATES,
         simulation_limit: ergo_world::MAX_SIMULATION_BRICKS,
         ground_source: if s.ground.is_enabled() {
             "raster"
@@ -515,6 +517,17 @@ async fn main() -> Result<()> {
                     "{}",
                     serde_json::to_string_pretty(&shared.migrate_namespace(&id, &target).await?)?
                 );
+            }
+            "shared-resize-cells" => {
+                anyhow::ensure!(
+                    args.next().is_none(),
+                    "Usage: ergo-server shared-resize-cells WORLD_ID"
+                );
+                println!(
+                    "{}",
+                    serde_json::to_string_pretty(&shared.resize_cells(&id).await?)?
+                );
+                return Ok(());
             }
             "shared-gc" => {
                 anyhow::ensure!(

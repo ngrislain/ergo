@@ -54,8 +54,8 @@ with color, mold revision, and measurement quality. They are a much better
 starting point than assigning one arbitrary mass or multiplying a solid body box
 by ABS density, but do not constitute a laboratory calibration of every part.
 
-The simulator assigns the sourced total mass to a uniform box inertia
-approximation. The current friction/restitution coefficients are solver assumptions,
+The simulator assigns the sourced total mass to a nominal box inertia approximation
+(or the reviewed compound boxes for shields and spears). The current friction/restitution coefficients are solver assumptions,
 not sourced material measurements, and are disclosed as such in validation reports.
 
 ## Connection strength must be measured
@@ -64,15 +64,17 @@ Additional source-only catalogue parts are described in
 [part profiles](part-catalog.md#physical-and-material-limits). Their masses and
 nominal datum/interface records are distinct from connector calibration. Collision
 boxes are approximations; figure core proxies omit rendered appendages and factory
-units do not model internal joints. Known rectangular catalogue behavior is
-unchanged. A new inferred interface still needs measured capacities whenever its
+units do not model internal joints. A new inferred interface still needs measured capacities whenever its
 force/torque is consumed; adding a mass/bounds profile supplies no clutch strength.
 
 The Castle profiles include the real printed Lion Knights factory torso, helmet,
 spear, shield, antenna and wavy pennant. The registered antenna/flag bore clearance
 permits the source assembly's hollow geometry, but supplies no force/torque values.
-`medieval-guard-v1` uses at-rest spear/shield bearing, and `castle-standard-v1`
-supports the cloth with a capped post. Removing that support does not produce a
+The recommended plate-free `medieval-guard-v3` and `medieval-archer-v1` use genuine
+separately posed arms/hands and source shoulder/wrist/grip interfaces. They require
+measured capacities to publish joint-dependent loads. Existing `medieval-guard-v1`
+retains its at-rest spear/shield bearing, and `castle-standard-v1` supports the
+cloth with a capped post. Removing that support does not produce a
 zero-joint-wrench proof: the server's existing operator-measurement gate still
 applies. Neither a source mesh nor a geometric factory-fit relation is calibration.
 

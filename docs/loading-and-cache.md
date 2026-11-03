@@ -53,7 +53,7 @@ piece/encoded-read budgets. A 64 MiB byte-budgeted server LRU shares the CBOR/gz
 responses among requests; concurrent identical misses share one build.
 
 A discardable gzip-CBOR packet is also saved under the application prefix:
-`cache/read-views/v1/<region-and-limits-hash>.cbor`. There is at most one latest
+`cache/read-views/cell128-v1/<region-and-limits-hash>.cbor`. There is at most one latest
 packet for an occupied region/configuration, rather than another large object
 for every edit. Empty regions are not persisted. Historical reads do not replace
 the persistent packet. Explicit reads pinned to the current revision remain eligible
@@ -93,19 +93,19 @@ feed commit validation, permission decisions or authoritative state recovery.
 
 Read-packet caching does not change canonical geometry hashes or accepted history.
 These packets can be discarded without losing constructions. The separately
-versioned, optional spatial projection below has its own layout-3 writer fence.
+versioned spatial projection below runs only in the current layout-4 cell format.
 
 ## Fewer storage round trips
 
-Layout-3 blocks marked `packed:true` use bulk spatial pages rather than the
+Current layout-4 blocks marked `packed:true` use bulk spatial pages rather than the
 per-brick reference walk. Pages contain complete Piece metadata plus mesh CIDs;
 their records are deduplicated and charged to the same logical piece/byte budgets.
-Each fetched page is at most 1 MiB/1,024 records. Unpacked/legacy blocks retain the
-reference path below; existing worlds need an explicit one-time backfill to gain
-the packed path. See [spatial packing](persistence-indexing.md#bulk-spatial-reads-and-local-traversal).
+Each fetched page is at most 1 MiB/1,024 records. Current unpacked cells use the
+reference path below and can be explicitly packed. Old cell layouts are migrated,
+not served through a compatibility reader. See [spatial packing](persistence-indexing.md#bulk-spatial-reads-and-local-traversal).
 
 Visual enumeration decodes the complete piece birth ID from each validated
-layout-2 spatial key, without downloading its unused bounding-box payload.
+unpacked spatial key, without downloading its unused bounding-box payload.
 Piece reads use ordered batches with at most 64 reads in flight.
 Immutable-object reads sharing a namespace/key coalesce into one
 verified download. Read-only spatial pages use four-level node lookahead with at
@@ -134,7 +134,7 @@ key canonicalization are unchanged.
 
 ## Local construction, index and specification caches
 
-The viewer's origin-local IndexedDB **`ergo-local-data-v2`** persists construction
+The viewer's origin-local IndexedDB **`ergo-local-data-cell128-v1`** persists construction
 CBOR/index packets and revalidatable discovery/location/part JSON. Its `entries`
 store maps normalized request URLs to ETag, SHA-256, byte length and last-use time;
 `blobs` stores immutable `Blob` data once per content hash. Identical packets for
@@ -156,9 +156,9 @@ large buffers synchronously in WASM. Corruption invalidates all aliases of the
 bad blob and becomes a network miss. Cache writes run **after decoding in the
 background**, outside the display completion path; bounded database operations,
 quota errors and unavailable storage never keep the loading overlay waiting.
-Old `ergo-read-packets-v1` CacheStorage entries migrate lazily after verification:
-an old entry is removed only after its replacement commits. No blanket cache or
-local-storage reset is required.
+Incompatible old databases and `ergo-read-packets-v1` CacheStorage are deleted
+on the cell-format cutover. Old packets are never lazily imported or served in a
+legacy grid mode. See [cell migration](cells-and-migration.md).
 
 Every use still sends a fresh conditional request: bytes are displayed only after
 an authorized HTTP 304, never as an offline/error fallback. Read denial evicts that

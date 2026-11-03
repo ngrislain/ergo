@@ -127,14 +127,14 @@ pub fn validate_static_with_measurements(
     }
     for brick in &scene.bricks {
         crate::physical::validate_pose(brick)?;
-        ensure!(
-            crate::interference::axis_aligned(brick),
-            "Cannot certify tilted brick {} ({}): the static contact certificate requires axis-aligned body faces; run an oriented gravity/perturbation test",
-            brick.id,
-            brick.part
-        );
     }
     constraints::validate_joints(&scene.bricks, &scene.joints, &scene.fixed_bricks)?;
+    crate::attachments::validate_joints(
+        &scene.bricks,
+        &scene.joints,
+        tolerances.position_brick_units,
+        tolerances.rotation_radians,
+    )?;
     validate_ground_anchors_with_tolerances(&scene.bricks, &scene.fixed_bricks, tolerances)?;
     validate_baseplate_registration(&scene.bricks, tolerances)?;
     let tree = Octree::new(scene.bricks.iter().map(|b| b.bounds).collect());
@@ -174,12 +174,29 @@ pub fn validate_static_with_measurements(
         .iter()
         .map(|j| (j.a.min(j.b), j.a.max(j.b)))
         .collect();
-    let inferred: Vec<_> = constraints::inferred_joints(&scene.bricks)
-        .into_iter()
-        .filter(|j| !pairs.contains(&(j.a.min(j.b), j.a.max(j.b))))
-        .collect();
+    let inferred: Vec<_> =
+        constraints::inferred_joints_with_tolerance(&scene.bricks, tolerances.position_brick_units)
+            .into_iter()
+            .filter(|j| !pairs.contains(&(j.a.min(j.b), j.a.max(j.b))))
+            .collect();
     let inferred_count = inferred.len();
     scene.joints.extend(inferred);
+    for brick in scene
+        .bricks
+        .iter()
+        .filter(|b| !crate::interference::axis_aligned(b))
+    {
+        ensure!(
+            brick.bounds.min.y > tolerances.position_brick_units
+                && scene
+                    .joints
+                    .iter()
+                    .any(|j| j.a == brick.id || j.b == brick.id),
+            "Cannot certify tilted brick {} ({}): tilted bodies require a joint-supported load path, not a bounding-box bearing face",
+            brick.id,
+            brick.part
+        );
+    }
     // A constructive contact-only proof is also valid when studs/joints exist:
     // all joint wrenches can be zero. It assumes no unknown clutch capacity.
     let compression_issue = if scene.fixed_bricks.is_empty() {
@@ -190,7 +207,7 @@ pub fn validate_static_with_measurements(
     let contact_only = scene.fixed_bricks.is_empty() && compression_issue.is_none();
     let report = ValidationReport {
         collision_model:
-            "nominal body boxes with registered antenna/flag bore clearance; visual studs excluded"
+            "nominal body boxes with finite registered connector clearance; visual studs excluded"
                 .into(),
         method: if contact_only {
             "static compression certificate (zero joint wrench; no simulation)"
@@ -228,6 +245,15 @@ pub fn validate_baseplate_registration(
         .iter()
         .filter(|b| b.bounds.min.y.abs() <= tolerances.position_brick_units)
     {
+        // Tyres rest on the virtual ground's flat bearing plane. They do not
+        // engage ground studs and need no fabricated display plate beneath them.
+        if crate::attachments::connectors(&brick.part)
+            .iter()
+            .any(|c| c.kind == crate::attachments::Kind::Tyre)
+            || crate::part_library::profile_id(&brick.part) == "4624c01.dat"
+        {
+            continue;
+        }
         ensure!(
             (crate::physical::metric_transform(brick.transform).y_axis - DVec3::Y).length()
                 <= tolerances.rotation_radians,
@@ -235,8 +261,17 @@ pub fn validate_baseplate_registration(
             brick.id,
             brick.part
         );
-        ensure!(
+        // Factory feet and specialty profiles register their actual receiving
+        // datums, not an envelope edge that may lie inside the moulded outline.
+        let registration = if let Some(grid) = crate::part_profiles::receiving_grid(&brick.part) {
+            let stud = brick.position
+                + brick.transform * DVec3::new(grid.first[0], grid.bottom, grid.first[1]);
+            [stud.x - 0.5, stud.z - 0.5]
+        } else {
             [brick.bounds.min.x, brick.bounds.max.z]
+        };
+        ensure!(
+            registration
                 .iter()
                 .all(|v| (v - v.round()).abs() <= tolerances.position_brick_units),
             "Grounded brick {} ({}) is off the baseplate stud grid at {:?}; snap the whole placement to integer X/Y stud coordinates",
@@ -250,6 +285,36 @@ pub fn validate_baseplate_registration(
         );
     }
     Ok(())
+}
+
+fn ground_support_points(brick: &Brick) -> Vec<DVec3> {
+    use crate::attachments::Kind;
+    if let Some(port) = crate::attachments::connectors(&brick.part)
+        .iter()
+        .find(|p| matches!(p.kind, Kind::Tyre | Kind::WheelSocket))
+    {
+        let axis = (brick.transform
+            * crate::ldraw::conversion()
+            * (DVec3::from_array(port.end) - DVec3::from_array(port.start)))
+        .normalize();
+        if axis.y.abs() < 1e-7 {
+            // A round tyre bears below its axle, not at the forward/rear corners
+            // of its envelope. This avoids inventing a rolling-resistance torque.
+            let half = brick.bounds.size() * 0.5;
+            let span = half.dot(axis.abs());
+            let center = DVec3::new(brick.bounds.center().x, 0., brick.bounds.center().z);
+            return vec![center - axis * span, center + axis * span];
+        }
+    }
+    [
+        (brick.bounds.min.x, brick.bounds.min.z),
+        (brick.bounds.max.x, brick.bounds.min.z),
+        (brick.bounds.max.x, brick.bounds.max.z),
+        (brick.bounds.min.x, brick.bounds.max.z),
+    ]
+    .into_iter()
+    .map(|(x, z)| DVec3::new(x, 0., z))
+    .collect()
 }
 
 #[cfg(test)]
@@ -315,7 +380,9 @@ fn support_certificate(
             }
             let overlap = brick.bounds.max.min(bricks[b].bounds.max)
                 - brick.bounds.min.max(bricks[b].bounds.min);
-            if overlap.y.abs() <= tol.position_brick_units
+            if crate::interference::axis_aligned(brick)
+                && crate::interference::axis_aligned(&bricks[b])
+                && overlap.y.abs() <= tol.position_brick_units
                 && overlap.x > tol.position_brick_units
                 && overlap.z > tol.position_brick_units
             {
@@ -393,13 +460,8 @@ fn support_certificate(
             forces[i] = DVec3::NEG_Y * m * GRAVITY_M_S2;
             moments[i] = p.cross(forces[i]);
             if bricks[i].bounds.min.y.abs() <= tol.position_brick_units {
-                for (x, z) in [
-                    (bricks[i].bounds.min.x, bricks[i].bounds.min.z),
-                    (bricks[i].bounds.max.x, bricks[i].bounds.min.z),
-                    (bricks[i].bounds.max.x, bricks[i].bounds.max.z),
-                    (bricks[i].bounds.min.x, bricks[i].bounds.max.z),
-                ] {
-                    let p = to_meters(DVec3::new(x, 0.0, z)) - origin;
+                for point in ground_support_points(&bricks[i]) {
+                    let p = to_meters(point) - origin;
                     supports.push((DVec2::new(p.x, p.z), i));
                 }
             }
@@ -568,6 +630,16 @@ pub fn compression_issue(
         !bricks.is_empty(),
         "Compression analysis needs at least one brick"
     );
+    if let Some(brick) = bricks
+        .iter()
+        .find(|b| !crate::interference::axis_aligned(b))
+    {
+        return Ok(Some(CompressionIssue {
+            brick_id: brick.id, part: brick.part.clone(),
+            reason: "Tilted body requires a joint-supported load path; an envelope face is not a bearing patch".into(),
+            loaded_center_world: brick.bounds.center(), support_polygon_world: vec![],
+        }));
+    }
     let origin = bricks[0].bounds.center();
     let tree = Octree::new(bricks.iter().map(|b| b.bounds).collect());
     let mut loads = Vec::with_capacity(bricks.len());
@@ -584,13 +656,8 @@ pub fn compression_issue(
         let center = moment / mass;
         let mut supports = Vec::new();
         if brick.bounds.min.y.abs() <= tol.position_brick_units {
-            for (x, z) in [
-                (brick.bounds.min.x, brick.bounds.min.z),
-                (brick.bounds.max.x, brick.bounds.min.z),
-                (brick.bounds.max.x, brick.bounds.max.z),
-                (brick.bounds.min.x, brick.bounds.max.z),
-            ] {
-                let p = to_meters(DVec3::new(x, 0., z) - origin);
+            for point in ground_support_points(brick) {
+                let p = to_meters(point - origin);
                 supports.push((DVec2::new(p.x, p.z), None));
             }
         } else {

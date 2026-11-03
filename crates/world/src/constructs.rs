@@ -26,6 +26,9 @@ pub struct PlacedPart {
     pub position: [f64; 3],
     #[serde(default)]
     pub quarter_turns: i32,
+    /// Optional proper metric rotation in public east/north/up axes.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub rotation: Option<[[f64; 3]; 3]>,
 }
 
 pub fn all() -> &'static [Construct] {
@@ -52,6 +55,15 @@ pub struct ConstructInfo {
 pub fn catalog() -> Vec<ConstructInfo> {
     all()
         .iter()
+        .filter(|entry| {
+            ![
+                "minifigure-v1",
+                "medieval-guard-v1",
+                "medieval-guard-v2",
+                "classic-car-v1",
+            ]
+            .contains(&entry.id.as_str())
+        })
         .map(|entry| ConstructInfo {
             id: &entry.id,
             name: &entry.name,
@@ -77,13 +89,20 @@ impl Construct {
                     2 => (-1., 0.),
                     _ => (0., -1.),
                 };
+                let metric = part
+                    .rotation
+                    .unwrap_or([[c, -s, 0.], [s, c, 0.], [0., 0., 1.]]);
+                let scale = [0.008, 0.008, 0.0096];
+                let matrix: [[f64; 3]; 3] = std::array::from_fn(|i| {
+                    std::array::from_fn(|j| metric[i][j] * scale[j] / scale[i])
+                });
                 Reference {
                     file: crate::catalog::canonical_part(&part.part),
                     color: part.color.unwrap_or(16),
                     matrix: Transform::from_world([
-                        [c, -s, 0., part.position[0]],
-                        [s, c, 0., part.position[1]],
-                        [0., 0., 1., part.position[2]],
+                        [matrix[0][0], matrix[0][1], matrix[0][2], part.position[0]],
+                        [matrix[1][0], matrix[1][1], matrix[1][2], part.position[1]],
+                        [matrix[2][0], matrix[2][1], matrix[2][2], part.position[2]],
                         [0., 0., 0., 1.],
                     ])
                     .expect("Checked-in construct poses must be valid"),
@@ -162,7 +181,16 @@ mod tests {
         let mut ids = BTreeSet::new();
         for entry in all() {
             assert!(ids.insert(&entry.id));
-            assert!(entry.id.ends_with("-v1"));
+            assert!(
+                entry
+                    .id
+                    .rsplit_once("-v")
+                    .unwrap()
+                    .1
+                    .parse::<u32>()
+                    .unwrap()
+                    > 0
+            );
             let references = entry.references();
             assert_eq!(references.len(), entry.parts.len());
             let model = Model {
@@ -285,6 +313,107 @@ mod tests {
             )
             .unwrap();
         nominal_scene(model)
+    }
+
+    #[test]
+    fn plate_free_models_stand_on_feet_or_tyres_and_use_real_equipment_connections() {
+        for id in ["minifigure-v2", "medieval-guard-v2", "classic-car-v2"] {
+            let model = instance(id, 4);
+            let mut scene = nominal_scene(model);
+            assert_eq!(
+                crate::placement::snap_scene(&mut scene).unwrap(),
+                glam::DVec3::ZERO,
+                "{id} must stay grid registered without a display plate"
+            );
+            let report = crate::validation::validate_static(&mut scene)
+                .unwrap_or_else(|e| panic!("{id}: {e:#}"));
+            let grounded: Vec<_> = scene
+                .bricks
+                .iter()
+                .filter(|b| b.bounds.min.y.abs() < 1e-6)
+                .collect();
+            assert!(!grounded.is_empty());
+            assert!(
+                grounded
+                    .iter()
+                    .all(|b| ["3815c01.dat", "4624c01.dat"].contains(&b.part.as_str())),
+                "{id}"
+            );
+            if id == "medieval-guard-v2" {
+                assert_eq!(report.checked_bricks, 6);
+                let torso = scene
+                    .bricks
+                    .iter()
+                    .find(|b| b.part == "76382p4f.dat")
+                    .unwrap();
+                for equipment in scene
+                    .bricks
+                    .iter()
+                    .filter(|b| ["3846p4h.dat", "4497.dat"].contains(&b.part.as_str()))
+                {
+                    assert!(crate::attachments::connection(torso, equipment, 0.002).is_some());
+                }
+                assert_eq!(report.joint_strength_required, Some(true));
+            }
+            if id == "classic-car-v2" {
+                assert_eq!(
+                    scene
+                        .joints
+                        .iter()
+                        .filter(|j| matches!(j.kind, crate::JointKind::Revolute { .. }))
+                        .count(),
+                    4
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn reposed_castle_guard_and_archer_use_real_wrists_and_vertical_equipment() {
+        for id in ["medieval-guard-v3", "medieval-archer-v1"] {
+            let mut scene = nominal_scene(instance(id, 4));
+            assert_eq!(
+                crate::placement::snap_scene(&mut scene).unwrap(),
+                glam::DVec3::ZERO
+            );
+            let report = crate::validation::validate_static(&mut scene)
+                .unwrap_or_else(|e| panic!("{id}: {e:#}"));
+            assert_eq!(
+                report.checked_bricks,
+                if id == "medieval-guard-v3" { 10 } else { 9 }
+            );
+            let mut kinds = BTreeMap::new();
+            for (i, a) in scene.bricks.iter().enumerate() {
+                for b in &scene.bricks[i + 1..] {
+                    if let Some(c) = crate::attachments::connection(a, b, 0.002) {
+                        *kinds.entry(c.label).or_insert(0) += 1;
+                    }
+                }
+            }
+            assert_eq!(
+                kinds.get("minifigure shoulder connection"),
+                Some(&2),
+                "{id}"
+            );
+            assert_eq!(kinds.get("minifigure wrist connection"), Some(&2), "{id}");
+            assert_eq!(
+                kinds.get("minifigure grip / bar connection"),
+                Some(&if id == "medieval-guard-v3" { 2 } else { 1 }),
+                "{id}"
+            );
+            for brick in scene
+                .bricks
+                .iter()
+                .filter(|b| ["4497.dat", "4499.dat", "3846p4h.dat"].contains(&b.part.as_str()))
+            {
+                let axis = crate::physical::metric_transform(brick.transform).y_axis;
+                assert!(
+                    (axis - glam::DVec3::Y).length() < 1e-8,
+                    "Equipment must follow the actual reposed hands, upright: {}",
+                    brick.part
+                );
+            }
+        }
     }
 
     #[test]

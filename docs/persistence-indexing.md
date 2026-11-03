@@ -6,7 +6,7 @@ different purposes; neither is a mechanical attachment graph.
 
 ## Coordinates and cells
 
-Public axes are X east, Y north, Z up. A storage cell has side B=1024 construction
+Public axes are X east, Y north, Z up. A storage cell has side B=128 construction
 units. For a position p, each cell index is `floor(p/B)`, including negative values.
 One default horizontal cell maps to one arc-second; geographic origin/resolution
 are stored in Metadata. This address mapping does not determine physical length.
@@ -40,7 +40,7 @@ local levels. An allocated-cell directory supports sparse bounded enumeration.
 
 ## Bulk spatial reads and local traversal
 
-Spatial layout 3 adds a complete read projection per packed block, alongside the
+Spatial layout 4 maintains a complete read projection per packed block, alongside the
 unchanged edit/contact index. Up to 256 bounded pages hold full brick metadata
 and shared-mesh references. A region reader bulk-downloads pages, deduplicates
 boundary replicas, then builds/traverses the resident octree locally. It avoids
@@ -55,15 +55,13 @@ Projection updates have a separate bounded 64 MiB allowance for loaded pages and
 added record bytes; overflow
 falls back to the reference index rather than rejecting otherwise valid geometry.
 
-New worlds use layout 3. Layout 2 remains readable/writable without packed pages.
-`shared-pack-block WORLD_ID X Y Z` performs an explicit one-block backfill and
-promotes metadata to layout 3 under a whole-root optimistic watch. It changes no
-Piece payload, birth, pose, geographic origin or physical model. Older layout-2-only
-writers reject layout 3, preventing writes that would omit page maintenance.
-Run only page-aware servers/operators after promotion; backfill refuses concurrent
-world changes. Untouched legacy blocks still use the normal fallback reader.
+Only layout 4 and `cell_size:128` run. Existing old blocks require the
+[atomic cell migration](cells-and-migration.md); no legacy grid mode remains.
+`shared-pack-block WORLD_ID X Y Z` backfills a current unpacked cell under a
+whole-root optimistic watch, without changing piece payloads, births, poses or
+physics. Current unpacked cells retain the normal reference reader until packed.
 
-The 4,096-brick cold-store test observed 574 GETs for packed reads versus 25,263
+The historical 4,096-brick cold-store fixture observed 574 GETs for packed reads versus 25,263
 for the reference/per-piece path, with identical scene geometry. This measures
 request-count reduction in an isolated store, not a production latency guarantee.
 

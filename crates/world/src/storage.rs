@@ -105,7 +105,22 @@ impl Construction {
 /// Construction files have one explicit envelope. Materialized WorldExport
 /// messages belong to the current REST/WASM protocol, not the file format.
 pub fn decode(bytes: &[u8]) -> Result<WorldExport> {
-    serde_json::from_slice::<Construction>(bytes)?.into_scene()
+    let mut value: serde_json::Value = serde_json::from_slice(bytes)?;
+    if value
+        .get("ground")
+        .and_then(serde_json::Value::as_array)
+        .is_some_and(|cells| {
+            cells.iter().any(|cell| {
+                cell.get("cell_size").and_then(serde_json::Value::as_u64)
+                    != Some(crate::BLOCK_SIZE as u64)
+            })
+        })
+    {
+        // Ground fields are disposable caches. Preserve authored geometry while
+        // deleting incompatible cell data instead of running an old grid mode.
+        value["ground"] = serde_json::json!([]);
+    }
+    serde_json::from_value::<Construction>(value)?.into_scene()
 }
 
 #[cfg(test)]

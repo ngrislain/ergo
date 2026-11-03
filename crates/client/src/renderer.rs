@@ -512,7 +512,10 @@ impl Renderer {
             return Vec::new();
         };
         self.tree
-            .query(brick.bounds.expanded(0.003))
+            .query(
+                ergo_world::attachments::bounds(brick)
+                    .expanded(ergo_world::attachments::PORT_OVERHANG + 0.003),
+            )
             .into_iter()
             .filter_map(|i| {
                 let other = &self.bricks[i];

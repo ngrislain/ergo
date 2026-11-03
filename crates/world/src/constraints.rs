@@ -1,9 +1,6 @@
 //! Lightweight graph and body-box operations shared by REST commit validation
 //! and the client. This module has no rigid-body engine dependency.
-use crate::{
-    Aabb, Brick, JointKind, JointSpec,
-    spatial::{Octree, relation},
-};
+use crate::{Aabb, Brick, JointKind, JointSpec, spatial::Octree};
 use anyhow::{Result, ensure};
 use glam::DVec3;
 use std::collections::{HashSet, VecDeque};
@@ -11,24 +8,26 @@ use std::collections::{HashSet, VecDeque};
 pub const INFERRED_JOINT_HALO: f64 = 0.003;
 
 pub fn inferred_joints(bricks: &[Brick]) -> Vec<JointSpec> {
-    let tree = Octree::new(bricks.iter().map(|b| b.bounds).collect());
+    inferred_joints_with_tolerance(bricks, 0.002)
+}
+
+pub fn inferred_joints_with_tolerance(bricks: &[Brick], tolerance: f64) -> Vec<JointSpec> {
+    let tree = Octree::new(bricks.iter().map(crate::attachments::bounds).collect());
     let mut out = Vec::new();
     for (i, brick) in bricks.iter().enumerate() {
-        for j in tree.query(brick.bounds.expanded(INFERRED_JOINT_HALO)) {
+        for j in tree
+            .query(crate::attachments::bounds(brick).expanded(INFERRED_JOINT_HALO.max(tolerance)))
+        {
             if j <= i {
                 continue;
             }
             let other = &bricks[j];
-            if relation(brick, other).is_some_and(|r| r.certainty == "inferred") {
-                out.push(JointSpec {
-                    a: brick.id,
-                    b: other.id,
-                    anchor: (brick.bounds.center() + other.bounds.center()) * 0.5,
-                    kind: JointKind::Fixed,
-                    break_force: None,
-                    break_torque: None,
-                    strength_source: None,
-                });
+            if crate::spatial::relation_with_tolerance(brick, other, tolerance)
+                .is_some_and(|r| r.certainty == "inferred")
+            {
+                out.push(crate::attachments::joint_with_tolerance(
+                    brick, other, tolerance,
+                ));
             }
         }
     }
@@ -50,7 +49,14 @@ pub fn validate_joint_ids(
         joints.len() <= ids.len().saturating_mul(12),
         "Too many constraints"
     );
+    let mut pairs = HashSet::new();
     for j in joints {
+        ensure!(
+            pairs.insert((j.a.min(j.b), j.a.max(j.b))),
+            "Duplicate attachment joint for pieces {} and {}",
+            j.a,
+            j.b
+        );
         ensure!(
             j.a != j.b && ids.contains(&j.a) && ids.contains(&j.b),
             "Joint references an absent or identical body"

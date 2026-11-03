@@ -17,6 +17,7 @@ import subprocess
 import tempfile
 import urllib.request
 import zipfile
+import common_parts
 
 ROOT=pathlib.Path(__file__).resolve().parents[1]
 OFFICIAL='https://library.ldraw.org/library/official'
@@ -80,27 +81,38 @@ class PageText(html.parser.HTMLParser):
     def __init__(self):super().__init__();self.text=[]
     def handle_data(self,data):self.text.append(data)
 
-def metadata_masses(parts):
+def metadata_masses(parts, refresh_masses=True, refresh_usage=False):
     urls={url for part in parts for url in re.findall(r'https://www\.bricklink\.com/v2/catalog/catalogitem\.page\?P=[A-Za-z0-9]+',part['mass_source'])}
     def fetch(url):
         request=urllib.request.Request(url,headers={'User-Agent':'Ergo authoritative catalogue updater/1'})
         with urllib.request.urlopen(request,timeout=30) as response:
-            if not response.url.startswith('https://www.bricklink.com/'):raise ValueError('Unexpected metadata authority')
+            if not response.url.startswith('https://www.bricklink.com/'):raise ValueError('Unexpected metadata authority for '+url+': '+response.url)
             raw=response.read(4*1024*1024+1)
             if len(raw)>4*1024*1024:raise ValueError('Metadata page exceeds bounds')
         parser=PageText();parser.feed(raw.decode('utf-8',errors='replace'))
         value=re.search(r'Weight:\s*([0-9.]+)\s*g',' '.join(parser.text))
         if not value or not 0<float(value[1])<10000:raise ValueError('Missing or invalid authoritative mass: '+url)
-        return url,float(value[1])
-    with concurrent.futures.ThreadPoolExecutor(max_workers=3) as pool:values=dict(pool.map(fetch,sorted(urls)))
+        usage=re.search(r'Item Appears In\s*([\d,]+)\s+Sets\b',' '.join(parser.text))
+        if refresh_usage and not usage:raise ValueError('Missing authoritative set count: '+url)
+        return url,(float(value[1]),int(usage[1].replace(',','')) if usage else None)
+    values={};errors=[]
+    with concurrent.futures.ThreadPoolExecutor(max_workers=3) as pool:
+        pending={pool.submit(fetch,url):url for url in sorted(urls)}
+        for future in concurrent.futures.as_completed(pending):
+            try:
+                url,value=future.result();values[url]=value
+            except Exception as error:errors.append(f'{pending[future]}: {error}')
+    if errors:raise ValueError('Catalogue metadata failures:\n'+'\n'.join(sorted(errors)))
     for part in parts:
         urls=re.findall(r'https://www\.bricklink\.com/v2/catalog/catalogitem\.page\?P=[A-Za-z0-9]+',part['mass_source'])
         if not urls:raise ValueError('No BrickLink mass source for '+part['id'])
         grams=0
         for url in urls:
             id=url.rsplit('=',1)[-1];quantity=re.search(r'(\d+)\s*x\s*'+re.escape(id)+r'\b',part['mass_source'])
-            grams+=values[url]*(int(quantity[1]) if quantity else 1)
-        part['mass_kg']=grams/1000
+            grams+=values[url][0]*(int(quantity[1]) if quantity else 1)
+        if refresh_masses:part['mass_kg']=grams/1000
+        # Component sums are not evidence of the complete factory unit's usage.
+        if refresh_usage and len(urls)==1:part['set_count']=values[urls[0]][1]
 
 def generate(source_root,previous,archive_hash=None,refresh_masses=False):
     source_root=source_root.resolve()
@@ -130,6 +142,7 @@ def generate(source_root,previous,archive_hash=None,refresh_masses=False):
         original=entry['id'];id=canonical(original)
         if entry['size'] is None:entry.setdefault('profile_id',original)
         entry['id']=id
+        common_parts.enrich(entry,source_root)
         if id in selected:raise ValueError('Selected records collapse to the same canonical part: '+id)
         selected[id]=entry
     aliases={id:[] for id in selected}
@@ -195,6 +208,8 @@ def main():
     parser.add_argument('--extract-to',type=pathlib.Path,help='Extract a downloaded archive under this directory')
     parser.add_argument('--archive-sha256',help='Previously verified complete archive SHA-256')
     parser.add_argument('--refresh-masses',action='store_true',help='Take current masses from the recorded BrickLink sources')
+    parser.add_argument('--refresh-usage',action='store_true',help='Record BrickLink distinct-set counts for linked individual items')
+    parser.add_argument('--add-common-parts',action='store_true',help='Select reviewed common families whose BrickLink set count is strictly greater than seven')
     parser.add_argument('--add-part',action='append',default=[],metavar='LDRAW_ID=BRICKLINK_ID',
         help='Add a reviewed source-only part with an implemented nominal profile; fetch its catalogue mass')
     parser.add_argument('--bake',action='store_true',help='Reproducibly bake and lock the full vertex fingerprints')
@@ -210,7 +225,11 @@ def main():
     if args.archive_sha256 and archive_hash!=args.archive_sha256:raise ValueError('Archive checksum differs from the requested snapshot')
     previous=json.loads((args.output if args.output.exists() else DEFAULT).read_text())
     additions=[]
-    for value in args.add_part:
+    requested=list(args.add_part)
+    if args.add_common_parts:
+        selected={id for entry in previous['parts'].values() for id in [entry['catalogue']['id'],*entry['catalogue']['aliases']]}
+        requested.extend(f'{id}={bl}' for id,bl in common_parts.CANDIDATES.items() if id not in selected)
+    for value in requested:
         match=re.fullmatch(r'([a-z0-9]+\.dat)=([A-Za-z0-9]+)',value)
         if not match:parser.error('--add-part requires normalized LDRAW_ID.dat=BRICKLINK_ID')
         id,metadata_id=match.groups()
@@ -219,8 +238,19 @@ def main():
             'mass_source':'https://www.bricklink.com/v2/catalog/catalogitem.page?P='+metadata_id,
             'size':None,'studs':None,'aliases':[],'profile_id':id}
         previous['parts'][id]={'catalogue':entry}
+        if id.removesuffix('.dat') in common_parts.RECTANGULAR:
+            entry['size']=[1,1,1]
+            entry['studs']=True
+            entry.pop('profile_id')
         additions.append(entry)
-    if additions:metadata_masses(additions)
+    if additions:metadata_masses(additions,refresh_usage=True)
+    excluded=[]
+    if args.add_common_parts:
+        for entry in additions:
+            if entry['set_count']<=7:
+                excluded.append(entry['id']);del previous['parts'][entry['id']]
+    if args.refresh_usage:
+        metadata_masses([entry['catalogue'] for entry in previous['parts'].values() if entry['catalogue'] not in additions],refresh_masses=False,refresh_usage=True)
     archive_hash=archive_hash or previous.get('source_archive_sha256')
     lock=generate(args.source_dir,previous,archive_hash,args.refresh_masses)
     if args.rebake:
@@ -254,6 +284,6 @@ def main():
         args.output.parent.mkdir(parents=True,exist_ok=True);args.output.write_bytes(value)
     lock=json.loads(value)
     print(json.dumps({'checked':args.check,'parts':len(lock['parts']),'source_files':len(lock['files']),'sha256':digest(value),'authorities':lock['authorities'],
-        'packed_mesh_bytes':PACK.stat().st_size,
+        'packed_mesh_bytes':PACK.stat().st_size,'excluded_at_or_below_seven_sets':excluded,
         'canonical_aliases':{alias:id for id,entry in lock['parts'].items() for alias in entry['catalogue']['aliases']}}))
 if __name__=='__main__':main()

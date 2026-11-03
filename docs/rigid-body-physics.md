@@ -13,11 +13,13 @@ connector measurements; a more detailed visual mesh does not make its box exact.
 Dynamic colliders use nominal local body dimensions, transformed centres and the
 actual metric-space orientation. They rotate with their bodies; a tilted plate
 is not replaced by its larger world-axis bounding box. The box still approximates
-hollow or bevelled geometry and is not exact mesh collision. Static support
-certificates currently require axis-aligned nominal body faces.
+hollow or bevelled geometry and is not exact mesh collision. Shields and spears
+use reviewed compound face/handle and blade/shaft boxes. Static compression
+contacts require axis-aligned bearing faces; tilted pieces may instead transmit
+their loads through joints, without treating an envelope face as bearing material.
 
 Public coordinates are X east, Y north, Z up; gravity points along $-Z$.
-Horizontal cells have $1024\times1024$ baseplates below the global Z=0 floor.
+Horizontal cells have $128\times128$ baseplates below the global Z=0 floor.
 Vertical storage boundaries do not create extra floors. The kernel uses an
 explicit east/up/south adapter internally; see [ground and coordinates](ground-and-coordinates.md).
 
@@ -46,7 +48,8 @@ For rotated boxes, broad-phase AABBs are insufficient for exact box collision.
 An OBB separating-axis test checks face normals of both boxes and cross-products
 of their edge axes (up to 15 axes for orthogonal boxes). A convex narrow phase
 such as GJK/EPA is another option. Rapier handles the dynamic analytic-box narrow
-phase. The editor's translation preflight deliberately uses conservative AABBs.
+phase. Static/edit checks use the shared oriented-box SAT and finite registered
+connector clearances after the octree's AABB broad phase.
 Contact structures are initialized without advancing time. Using analytic cuboids
 avoids degenerate zero-normal GJK contacts at exactly touching box faces in short
 equilibrium probes.
@@ -129,15 +132,20 @@ affect drift and apparent rigidity; they are not free accuracy.
 ## Connections are not the same as contact
 
 - **Bounding-box contact candidate:** two nominal boxes share a face.
-- **Inferred stud connection:** upright, unscaled catalog parts have coincident
-  stud lattices and a matching top/bottom contact, with studs on the lower part.
+- **Inferred stud connection:** properly rotated, unscaled catalogue parts have
+  coincident studs and receiving cavities, with compatible local stud directions.
+- **Inferred mechanical connection:** source-datum grips/bars, pin/axle bores,
+  wheel bearings and explicitly matched rim/tyre groups meet their geometric rules.
 - **Explicit constraint:** an authored fixed or revolute relationship, stored by
   brick IDs with a world-space reference anchor.
 
-Only inference supported by catalog rules becomes an automatic fixed connection.
+Only inference supported by catalogue rules becomes an automatic connection.
+Wheel bearings, frictionless pins and axles in round bores are revolute; friction
+pins, keyed axles and held accessories preserve their assembled pose with fixed joints.
 An AABB intersection alone must not magically glue arbitrary parts together.
-The pavilion example additionally has authored fixed bonds on touching faces so
-its architectural slabs behave as rigid assembled elements.
+The pavilion example uses a genuine cross-bonded plate deck and plate-supported
+tree crowns. Connections are registered stud engagements, not imaginary
+side-face welds.
 
 ## What “static before persistence” means
 
@@ -161,9 +169,9 @@ constraints, not dynamic velocities.
 
 See the [server validation source map](validation-gates.md) for the exact
 pre-commit call chain and source locations of the overlap, connector, and gravity
-checks. In particular, inferred stud joints are currently fixed even for a
-one-stud footprint; automatic single-stud rotation and connector-specific mating
-validation are not implemented. Generic authored revolute constraints are supported.
+checks. Inferred stud joints remain fixed even for a one-stud footprint;
+automatic single-stud rotation is not implemented. Mechanical mating and free
+axes follow the reviewed [connector definitions](part-catalog.md#hand-wheel-and-technic-attachments).
 
 ### Lightweight static certificate
 
@@ -177,7 +185,9 @@ $$
 $$
 
 Collect all direct horizontal baseplate-contact patches and take the convex hull
-$P$ of their XY corners. Under downward gravity alone, a component has an
+$P$ of their XY corners. Round tyres instead contribute their ground line below
+the axle, avoiding a false rolling-resistance moment from envelope corners.
+Under downward gravity alone, a component has an
 admissible vertical support-force distribution if:
 
 $$

@@ -61,12 +61,13 @@ mod tests {
     fn camera_motion_changes_gps_without_moving_the_reference() {
         let geo = GeoReference::default();
         let start = CameraLocation::new(geo, DVec3::ZERO);
-        let moved = CameraLocation::new(geo, coordinates::internal(DVec3::new(1024., 2048., 12.)));
+        let b = ergo_world::BLOCK_SIZE;
+        let moved = CameraLocation::new(geo, coordinates::internal(DVec3::new(b, 2. * b, 12.)));
         assert!((start.gps[0] - geo.latitude).abs() < 1e-10);
         assert!((start.gps[1] - geo.longitude).abs() < 1e-10);
         assert!((moved.gps[0] - geo.latitude - 2. / 3600.).abs() < 1e-10);
         assert!((moved.gps[1] - geo.longitude - 1. / 3600.).abs() < 1e-10);
-        assert_eq!(moved.position, [1024., 2048., 12.]);
+        assert_eq!(moved.position, [b, 2. * b, 12.]);
         assert_eq!(moved.block, [1, 2, 0]);
     }
     #[test]

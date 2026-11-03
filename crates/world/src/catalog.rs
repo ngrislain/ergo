@@ -127,6 +127,16 @@ pub struct Part {
     pub id: &'static str,
     pub name: &'static str,
     pub recommended: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub set_count: Option<u32>,
+    pub connectors: Vec<ConnectorInfo>,
+}
+#[derive(Serialize)]
+pub struct ConnectorInfo {
+    pub kind: crate::attachments::Kind,
+    pub start: [f64; 3],
+    pub end: [f64; 3],
+    pub radius_m: f64,
 }
 #[derive(Serialize)]
 pub struct Color {
@@ -146,6 +156,22 @@ pub fn catalog() -> Catalog {
                 id,
                 name,
                 recommended: true,
+                set_count: crate::part_library::get(id).and_then(|entry| entry.catalogue.set_count),
+                connectors: crate::attachments::connectors(id)
+                    .iter()
+                    .map(|c| ConnectorInfo {
+                        kind: c.kind,
+                        start: crate::coordinates::public(
+                            crate::ldraw::conversion() * glam::DVec3::from_array(c.start),
+                        )
+                        .to_array(),
+                        end: crate::coordinates::public(
+                            crate::ldraw::conversion() * glam::DVec3::from_array(c.end),
+                        )
+                        .to_array(),
+                        radius_m: c.radius * 0.0004,
+                    })
+                    .collect(),
             })
             .collect(),
         colors: COLORS
@@ -172,7 +198,7 @@ pub fn catalog() -> Catalog {
                     }),
             )
             .collect(),
-        part_resolution: "Any resolvable LDraw/Studio .dat ID; listed parts are recommendations, not an allowlist. Profiled specialty parts require genuine source geometry and use sourced catalogue masses with explicit nominal collision/interface proxies, not calibrated clutch strength. Other non-standard parts require frozen sourced physical records for publication.",
+        part_resolution: "Any resolvable LDraw/Studio .dat ID. The bundled selection includes reviewed common parts with recorded BrickLink set_count > 7; it is not an exhaustive catalogue-wide popularity guarantee. Connector endpoints are part-local public east/north/up brick units; radius_m is SI. Fits infer geometric connectivity, not calibrated strength. Other non-standard parts require frozen sourced physical records for publication.",
     }
 }
 

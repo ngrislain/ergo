@@ -1,7 +1,17 @@
 // Content-addressed binary storage; HTTP authorization/version revalidation is
 // owned by the caller. No cached bytes are an offline permission grant.
-const NAME = 'ergo-local-data-v2';
-const LEGACY = 'ergo-read-packets-v1';
+const NAME = 'ergo-local-data-cell128-v1';
+// Cell indexes are deliberately incompatible. Delete old caches rather than
+// lazily importing old-layout packets into the new coordinate scheme.
+const compatible = (async () => {
+  const names = await indexedDB.databases?.().then(values => values.map(v => v.name)).catch(() => []) || [];
+  for (const name of new Set(['ergo-local-data-v1', 'ergo-local-data-v2', ...names])) {
+    if (name && name !== NAME && name.startsWith('ergo-local-data-')) {
+      await new Promise(resolve => { const r = indexedDB.deleteDatabase(name); r.onsuccess = r.onerror = r.onblocked = resolve; });
+    }
+  }
+  await Promise.all((await caches.keys()).filter(name => name.startsWith('ergo-read-packets-')).map(name => caches.delete(name)));
+})().catch(() => {});
 const MAX_ENTRY = 64 * 1024 * 1024;
 const BUDGET = 512 * 1024 * 1024;
 const MAX_ENTRIES = 1024;
@@ -34,7 +44,7 @@ function key(url) {
 function db() {
   if (!enabled) return Promise.reject(new Error('Local cache suspended'));
   if (database) return Promise.resolve(database);
-  if (!opening) opening = new Promise((resolve, reject) => {
+  if (!opening) opening = compatible.then(() => new Promise((resolve, reject) => {
     const open = indexedDB.open(NAME, 1);
     open.onupgradeneeded = () => {
       open.result.createObjectStore('entries', {keyPath: 'url'});
@@ -48,7 +58,7 @@ function db() {
       database.onversionchange = () => { database.close(); database = undefined; opening = undefined; };
       resolve(database);
     };
-  }).catch(error => { opening = undefined; throw error; });
+  })).catch(error => { opening = undefined; throw error; });
   return opening;
 }
 async function hash(bytes) {
@@ -87,24 +97,8 @@ async function stored(url) {
   }).catch(() => {});
   return {etag: entry.etag, bytes};
 }
-async function legacy(url) {
-  if (!url.includes('/view?') || !(await caches.keys()).includes(LEGACY)) return null;
-  const cache = await caches.open(LEGACY);
-  const candidate = (await cache.keys()).find(candidate => key(candidate.url) === url);
-  if (!candidate) return null;
-  const response = await cache.match(candidate);
-  const amount = Number(response.headers.get('x-ergo-local-bytes'));
-  if (!Number.isFinite(amount) || amount > MAX_ENTRY) return null;
-  const bytes = new Uint8Array(await response.arrayBuffer());
-  const etag = response.headers.get('etag');
-  if (!etag || bytes.byteLength !== amount || await hash(bytes) !== response.headers.get('x-ergo-local-sha256')) return null;
-  // Lazy migration preserves the old entry until its verified replacement has
-  // committed. Several region URLs can then share one immutable blob.
-  cachePut(url, etag, bytes).then(saved => saved && cache.delete(candidate)).catch(() => {});
-  return {etag, bytes};
-}
 export async function cacheGet(url) {
-  try { if (!enabled) return null; url = key(url); return await bounded(stored(url).catch(() => null), url.includes('/view?') ? 4000 : 300) || await bounded(legacy(url), 4000); }
+  try { if (!enabled) return null; url = key(url); return await bounded(stored(url).catch(() => null), url.includes('/view?') ? 4000 : 300); }
   catch { return null; }
 }
 export async function cachePut(url, etag, bytes) {
@@ -165,10 +159,6 @@ export async function cacheForget(url) {
       for (const old of await request(tx.objectStore('blobs').getAllKeys())) if (!live.has(old)) tx.objectStore('blobs').delete(old);
       await done;
     });
-    if ((await caches.keys()).includes(LEGACY)) {
-      const cache = await caches.open(LEGACY);
-      for (const candidate of await cache.keys()) if (key(candidate.url) === url) await cache.delete(candidate);
-    }
   } catch {}
 }
 export function cachePin(url) {

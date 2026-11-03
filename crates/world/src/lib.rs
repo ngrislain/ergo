@@ -1,4 +1,5 @@
 pub mod assembly;
+pub mod attachments;
 pub mod catalog;
 pub mod constraints;
 pub mod constructs;
@@ -31,7 +32,10 @@ use glam::{DMat3, DVec3};
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 
-pub const BLOCK_SIZE: f64 = 1024.0;
+/// 128 horizontal studs and 128 native brick-height units vertically (384 plates).
+/// Geographic addressing remains one arc-second per horizontal cell.
+pub const BLOCK_SIZE: f64 = 128.0;
+pub const BLOCK_HEIGHT_PLATES: u32 = 384;
 pub const SCHEMA_VERSION: u32 = 2;
 pub const MAX_SIMULATION_BRICKS: usize = 5000;
 // Keep world positions comfortably inside JS's exact integer range, including offsets.
@@ -249,6 +253,8 @@ pub struct BlockInfo {
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct WorldManifest {
     pub schema: u32,
+    #[serde(deserialize_with = "current_manifest_cell_size")]
+    pub cell_size: u32,
     pub id: String,
     pub name: String,
     pub source: String,
@@ -271,6 +277,17 @@ pub struct WorldManifest {
     pub groups: Vec<groups::Group>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub model: Option<assembly::Model>,
+}
+fn current_manifest_cell_size<'de, D: serde::Deserializer<'de>>(
+    deserializer: D,
+) -> Result<u32, D::Error> {
+    let size = u32::deserialize(deserializer)?;
+    if size != BLOCK_SIZE as u32 {
+        return Err(serde::de::Error::custom(
+            "Incompatible cached cell size; discard the cache and reload",
+        ));
+    }
+    Ok(size)
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -465,7 +482,7 @@ mod tests {
     #[test]
     fn negative_cells_use_floor_not_truncation() {
         assert_eq!(
-            BlockCoord::at(DVec3::new(-0.1, -1024.0, -1024.1)),
+            BlockCoord::at(DVec3::new(-0.1, -BLOCK_SIZE, -BLOCK_SIZE - 0.1)),
             BlockCoord(-1, -1, -2)
         );
     }
@@ -476,10 +493,23 @@ mod tests {
         let p = geo
             .to_world(geo.latitude + 1.0 / 3600.0, geo.longitude - 1.0 / 3600.0)
             .unwrap();
-        assert!((p - DVec3::new(-1024.0, 0.0, -1024.0)).length() < 1e-6);
+        assert!((p - DVec3::new(-BLOCK_SIZE, 0.0, -BLOCK_SIZE)).length() < 1e-6);
         let gps = geo.to_gps(p);
         assert!((gps[0] - geo.latitude - 1.0 / 3600.0).abs() < 1e-10);
         assert!((gps[1] - geo.longitude + 1.0 / 3600.0).abs() < 1e-10);
+    }
+    #[test]
+    fn cells_are_128_studs_and_128_bricks_or_384_plates_high() {
+        assert_eq!(BLOCK_SIZE, 128.);
+        assert_eq!(BLOCK_HEIGHT_PLATES, 384);
+        assert!(
+            (f64::from(BLOCK_HEIGHT_PLATES) * physical::PLATE_HEIGHT_M
+                - BLOCK_SIZE * physical::BRICK_HEIGHT_M)
+                .abs()
+                < 1e-12
+        );
+        assert_eq!(BlockCoord::at(DVec3::Y * (BLOCK_SIZE - 1e-6)).1, 0);
+        assert_eq!(BlockCoord::at(DVec3::Y * BLOCK_SIZE).1, 1);
     }
 
     #[test]
