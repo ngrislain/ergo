@@ -207,7 +207,7 @@ pub fn catalog() -> Catalog {
                             first: crate::coordinates::public(glam::DVec3::new(
                                 grid.first[0],
                                 grid.bottom,
-                                grid.first[1],
+                                grid.first[1] + f64::from(grid.depth - 1),
                             ))
                             .to_array(),
                         })

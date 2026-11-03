@@ -167,10 +167,12 @@ pub fn profile(part: &str) -> Option<Profile> {
     if let Some(nominal) = &entry.nominal {
         let c = crate::ldraw::conversion();
         let receiving = |g: &NominalGrid| {
+            // These are source-local X/Z coordinates. North is flipped only
+            // by the public wire adapter, not inside the native grid.
             grid(
                 g.width,
                 g.depth,
-                [g.first[0] / 20., -g.first[1] / 20. - f64::from(g.depth - 1)],
+                [g.first[0] / 20., g.first[1] / 20.],
                 -g.bottom / 24.,
             )
         };

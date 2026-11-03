@@ -28,6 +28,10 @@ with sync_playwright() as playwright:
             assert part['mass_kg'] > 0 and all(v > 0 for v in part['nominal_dimensions_mm'])
             assert 'https://www.bricklink.com/' in part['mass_source']
             assert len(part['library_revision']) == 64
+        tree = next(part for part in catalogue['parts'] if part['id'] == '3470.dat')
+        assert tree['receiving_grids'][0]['first'][:2] == [-.5, -.5]
+        horse = next(part for part in catalogue['parts'] if part['id'] == '4493c01.dat')
+        assert {tuple(grid['first'][:2]) for grid in horse['receiving_grids']} == {(-.5, 1.25), (.5, 1.25), (-.5, -1.75), (.5, -1.75)}
         assert page.request.get(args.url+'/catalogue/').ok
         page.goto(args.url+'/catalogue', wait_until='domcontentloaded')
         page.wait_for_function("document.body.dataset.catalogueReady==='true'")

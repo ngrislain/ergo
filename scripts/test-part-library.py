@@ -149,4 +149,24 @@ with tempfile.TemporaryDirectory(prefix='ergo-library-') as temporary:
                 png=next(item['data'] for item in image['content'] if item['type']=='image')
                 (args.artifacts/f'{name}.png').write_bytes(base64.b64decode(png))
     finally:client.close()
-print('Canonical library WASM checks passed: offline source assets, stable legacy retrofits, genuine grip/wheel fits and plate-free cars/guards without invented capacities.')
+    workspace=directory/'scenic-garrison.ergo.json';client=Mcp(BINARY,workspace,None,None)
+    try:
+        references=[]
+        for index,(cape,helmet,lift) in enumerate([('4524.dat','3896.dat',2/24),('50231c01.dat','89520.dat',.6/24),(None,'3844.dat',0)]):
+            x=index*10
+            parts=[('3815c01.dat',[x+2,1.5,5/3],0),('76382p4f.dat',[x+2,1.5,3],1),
+                   ('3626ap01.dat',[x+2,1.5,4+lift],14),(helmet,[x+2,1.5,4+lift],72)]
+            if cape:parts.append((cape,[x+2,1.5,3+(2/24 if cape=='4524.dat' else 0)],4))
+            references.extend(placed('part',part,position,colour) for part,position,colour in parts)
+        references.extend(placed('part',part,position,colour) for part,position,colour in [
+            ('3470.dat',[34,1,1/3],2),('3471.dat',[42,1,1/3],2),
+            ('4493c01.dat',[54,6.25,57/24],0),('4493c02.dat',[70,6.25,57/24],15),
+            ('4491a.dat',[70,6.25,65/24],4)])
+        model={'format':'ergo-model-1','schema':2,'root':'main','definitions':{'main':references}}
+        feedback=client.call('place_submodel',model=model)['structuredContent']
+        assert feedback['brick_count']==19 and feedback['overlap_free'],feedback
+        assert feedback['static_under_current_joint_model'] and feedback['publication_ready'],feedback
+        client.call('export_construction');accepted=json.loads(workspace.read_text())
+        assert all(mesh['quality']=='source' for mesh in accepted['meshes'].values())
+    finally:client.close()
+print('Canonical library WASM checks passed: offline source assets, stable retrofits, genuine fits, plate-free figures/cars, sourced trees, capes and horses without invented capacities.')
