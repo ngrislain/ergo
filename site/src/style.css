@@ -67,6 +67,11 @@ summary:focus-visible {
 svg {
   display: block;
 }
+img {
+  max-width: 100%;
+  height: auto;
+  object-fit: contain;
+}
 p {
   line-height: 1.65;
 }
@@ -146,7 +151,8 @@ dd code {
 }
 .wordmark img {
   width: 38px;
-  height: 38px;
+  height: auto;
+  flex: none;
 }
 .site-nav {
   display: flex;
@@ -253,7 +259,7 @@ dd code {
 .tiny-brick {
   display: inline-block;
   width: 32px;
-  height: 32px;
+  height: auto;
   object-fit: contain;
 }
 .hero h1 {
@@ -488,6 +494,7 @@ dd code {
   transform: rotate(-8deg);
 }
 .symbol-build {
+  height: auto;
   object-fit: contain;
 }
 .symbol-share i {
@@ -929,7 +936,6 @@ dd code {
 }
 .site-footer .wordmark img {
   width: 26px;
-  height: 29px;
 }
 .footer-brand > p {
   font-size: 11px;
@@ -1230,7 +1236,6 @@ dd code {
   }
   .wordmark img {
     width: 28px;
-    height: 31px;
   }
   .site-nav {
     gap: 16px;
