@@ -7,14 +7,16 @@ def main():
     parser=argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--url',default='https://ergosandbox.com')
     parser.add_argument('--world')
-    parser.add_argument('--cell',nargs=3,type=int,default=[19,0,0])
+    parser.add_argument('--cell',nargs=3,type=int,default=[156,0,0])
+    parser.add_argument('--radius',type=int,default=1,help='Read radius in current storage cells (1..32); use 21 for the default navigator viewing range')
     parser.add_argument('--output',type=Path)
     args=parser.parse_args();base=args.url.rstrip('/');parsed=urllib.parse.urlsplit(base)
+    if not 1<=args.radius<=32:parser.error('--radius must be 1..32')
     if parsed.username or parsed.password or parsed.query or parsed.fragment:parser.error('Use an origin without credentials/query/fragment')
     if args.output and not args.output.parent.is_dir():parser.error('Output parent must exist')
     if not args.world:
         with urllib.request.urlopen(base+'/api/config',timeout=120) as response:args.world=json.load(response)['common_world']
-    x,y,z=args.cell;path=f'/api/shared-worlds/{args.world}/view?x={x}&y={y}&z={z}'
+    x,y,z=args.cell;path=f'/api/shared-worlds/{args.world}/view?x={x}&y={y}&z={z}&radius={args.radius}'
     results=[];etag=None
     for name,format,encoding,conditional in [('json-identity','json','identity',False),('json-gzip','json','gzip',False),
         ('cbor-gzip','cbor','gzip',False),('cbor-gzip-repeat','cbor','gzip',False),('conditional','cbor','gzip',True)]:
@@ -38,6 +40,6 @@ def main():
             row['server_phase_ms']={stage:float(duration) for stage,duration in re.findall(r'(view(?:_[a-z]+)*);dur=([0-9.]+)',row['server_timing'] or '')}
             if format=='cbor':etag=response.headers.get('ETag') or etag
             results.append(row);print(json.dumps(row),flush=True)
-    if args.output:args.output.write_text(json.dumps({'origin':base,'world':args.world,'cell':args.cell,'results':results},indent=2)+'\n')
+    if args.output:args.output.write_text(json.dumps({'origin':base,'world':args.world,'cell':args.cell,'radius':args.radius,'results':results},indent=2)+'\n')
 
 if __name__=='__main__':main()

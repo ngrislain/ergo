@@ -48,7 +48,8 @@ struct SharedPage {
     next: Option<String>,
 }
 struct SharedView {
-    failed_coord: Option<[i64; 3]>,
+    failed_coord: Option<([i64; 3], u8)>,
+    radius: u8,
     head_retry_ms: f64,
     assemblies: BTreeMap<u32, String>,
     fully_resident_assemblies: HashSet<String>,
@@ -62,10 +63,15 @@ struct SharedView {
 struct SharedRegion {
     scene: WorldExport,
     revision: String,
+    #[serde(default = "legacy_view_radius")]
+    radius: u8,
     #[serde(default)]
     assemblies: BTreeMap<u32, String>,
     #[serde(default)]
     fully_resident_assemblies: HashSet<String>,
+}
+fn legacy_view_radius() -> u8 {
+    1
 }
 
 #[derive(Clone, Copy)]
@@ -741,6 +747,7 @@ fn open_shared(handle: Handle, location: SharedLocation) {
         c.ui.busy.set(true);
         c.shared = Some(SharedView {
             failed_coord: None,
+            radius: 1,
             head_retry_ms: 5000.,
             assemblies: BTreeMap::new(),
             fully_resident_assemblies: HashSet::new(),
@@ -782,8 +789,11 @@ fn request_shared_region(handle: Handle, id: String, coord: [i64; 3], fit_view: 
     });
     spawn_local(async move {
         let deadline = deadline;
+        let mut radius = with_client(handle, |c| {
+            crate::residency::radius(c.renderer.as_ref().map_or(2200., |r| r.fog_distance))
+        });
         let mut url = format!(
-            "/api/shared-worlds/{id}/view?x={}&y={}&z={}&format=cbor",
+            "/api/shared-worlds/{id}/view?x={}&y={}&z={}&format=cbor&radius={radius}",
             coord[0], coord[1], coord[2]
         );
         if let Some(previous) = previous.filter(|previous| *previous != coord) {
@@ -792,6 +802,7 @@ fn request_shared_region(handle: Handle, id: String, coord: [i64; 3], fit_view: 
                 previous[0], previous[1], previous[2]
             ));
         }
+        let progress_url = Rc::new(RefCell::new(url.clone()));
         // Pin the read and its progress polls to one accepted revision. A new
         // head must not make this loader display another request's counters.
         #[derive(Deserialize)]
@@ -800,7 +811,14 @@ fn request_shared_region(handle: Handle, id: String, coord: [i64; 3], fit_view: 
         }
         if let Ok(head) = json::<HeadRevision>(&format!("/api/shared-worlds/{id}")).await {
             url.push_str(&format!("&revision={}", head.revision));
-            poll_region_progress(handle, url.clone(), head.revision, generation, request_id);
+            *progress_url.borrow_mut() = url.clone();
+            poll_region_progress(
+                handle,
+                progress_url.clone(),
+                head.revision,
+                generation,
+                request_id,
+            );
         }
         if !with_client(handle, |c| {
             c.generation == generation && c.region_request == request_id
@@ -808,12 +826,29 @@ fn request_shared_region(handle: Handle, id: String, coord: [i64; 3], fit_view: 
             return;
         }
         let result: anyhow::Result<SharedRegion> = async {
+          loop {
             let cached = crate::read_cache::get(&url).await;
             let mut request = Request::get(&url).header("Accept", "application/cbor").abort_signal(Some(&deadline.controller.signal()));
             if let Some(cached) = &cached {
                 request = request.header("If-None-Match", &cached.etag);
             }
             let response = request.send().await.context("Construction read interrupted or timed out; choose it again or select another construction")?;
+            if response.status()==413 && radius>crate::residency::MIN_RADIUS {
+                let previous_radius=radius;
+                radius=(radius/2).max(crate::residency::MIN_RADIUS);
+                url=url.replace(&format!("&radius={previous_radius}"),&format!("&radius={radius}"));
+                *progress_url.borrow_mut()=url.clone();
+                with_client(handle,|c|{
+                    if c.generation!=generation || c.region_request!=request_id {return;}
+                    if let Some(r)=&mut c.renderer {
+                        r.fog_distance=r.fog_distance.min(crate::residency::visible_distance(radius));
+                        r.distance=r.distance.min(r.fog_distance*0.85);
+                        r.changed();
+                    }
+                    c.ui.message.set("Display read budget reached · reducing the visible distance, retaining a prefetch margin".into());
+                });
+                continue;
+            }
             if response.status() == 304 {
                 let cached =
                     cached.context("Server revalidated an unavailable local construction")?;
@@ -864,7 +899,7 @@ fn request_shared_region(handle: Handle, id: String, coord: [i64; 3], fit_view: 
                         crate::read_cache::put_background(url.clone(), etag, bytes);
                     }
                 }
-                Ok(region)
+                return Ok(region);
             } else {
                 // Rolling-deployment compatibility with the previous JSON route.
                 let text = response.text().await?;
@@ -876,8 +911,9 @@ fn request_shared_region(handle: Handle, id: String, coord: [i64; 3], fit_view: 
                     "Reading brick geometry…",
                 );
                 gloo_timers::future::TimeoutFuture::new(16).await;
-                Ok(serde_json::from_str(&text)?)
+                return Ok(serde_json::from_str(&text)?);
             }
+          }
         }
         .await;
         if let Ok(region) = &result {
@@ -911,6 +947,7 @@ fn request_shared_region(handle: Handle, id: String, coord: [i64; 3], fit_view: 
                 Ok(region) => {
                     if let Some(shared) = &mut c.shared {
                         shared.coord = coord;
+                        shared.radius = region.radius;
                         shared.failed_coord = None;
                         shared.head_retry_ms = 5000.;
                         shared.assemblies = region.assemblies;
@@ -939,15 +976,26 @@ fn request_shared_region(handle: Handle, id: String, coord: [i64; 3], fit_view: 
                         }
                     }
                     let manifest = shared_manifest(&id, &scene, coord, &blocks);
-                    let focus = c.ui.focused_assembly.get_untracked().and_then(|assembly| {
-                        let shared = c.shared.as_ref()?;
-                        scene
-                            .bricks
-                            .iter()
-                            .filter(|brick| shared.assemblies.get(&brick.id) == Some(&assembly))
-                            .map(|brick| brick.render_bounds)
-                            .reduce(ergo_world::Aabb::union)
-                    });
+                    let focus = c
+                        .ui
+                        .focused_assembly
+                        .get_untracked()
+                        .and_then(|assembly| {
+                            let shared = c.shared.as_ref()?;
+                            scene
+                                .bricks
+                                .iter()
+                                .filter(|brick| shared.assemblies.get(&brick.id) == Some(&assembly))
+                                .map(|brick| brick.render_bounds)
+                                .reduce(ergo_world::Aabb::union)
+                        })
+                        .or_else(|| {
+                            Some(crate::residency::focus_bounds(
+                                &scene.bricks,
+                                &c.shared.as_ref()?.assemblies,
+                                coord,
+                            ))
+                        });
                     c.blocks = blocks;
                     c.known_cells = c.blocks.keys().copied().collect();
                     c.world = Some(manifest.clone());
@@ -959,9 +1007,16 @@ fn request_shared_region(handle: Handle, id: String, coord: [i64; 3], fit_view: 
                         renderer.explode = 0.;
                         renderer.set_meshes(scene.meshes);
                         renderer.set_bricks(scene.bricks);
+                        renderer.fog_distance = renderer
+                            .fog_distance
+                            .min(crate::residency::visible_distance(region.radius));
                         if fit_view {
                             renderer.fit(focus.unwrap_or(manifest.bounds));
                         }
+                        renderer.distance = renderer.distance.min(renderer.fog_distance * 0.85);
+                        let _ = renderer
+                            .canvas
+                            .set_attribute("data-resident-radius", &region.radius.to_string());
                     }
                     c.ready = true;
                     crate::read_cache::pin(&url);
@@ -975,7 +1030,7 @@ fn request_shared_region(handle: Handle, id: String, coord: [i64; 3], fit_view: 
                 }
                 Err(error) => {
                     if let Some(shared) = &mut c.shared {
-                        shared.failed_coord = Some(coord);
+                        shared.failed_coord = Some((coord, radius));
                     }
                     c.ui.fail(error)
                 }
@@ -1004,7 +1059,7 @@ fn region_loading_stage(
 
 fn poll_region_progress(
     handle: Handle,
-    url: String,
+    url: Rc<RefCell<String>>,
     revision: String,
     generation: u64,
     request_id: u64,
@@ -1022,13 +1077,16 @@ fn poll_region_progress(
             if !waiting {
                 return;
             }
+            let requested_url = url.borrow().clone();
             if let Ok(status) =
-                json_once::<crate::loading::ReadStatus>(&format!("{url}&status=true")).await
+                json_once::<crate::loading::ReadStatus>(&format!("{requested_url}&status=true"))
+                    .await
             {
                 with_client(handle, |c| {
                     if c.generation == generation
                         && c.region_request == request_id
                         && status.revision == revision
+                        && *url.borrow() == requested_url
                     {
                         c.ui.loading.update(|loading| {
                             if let Some(loading) = loading {
@@ -1050,16 +1108,18 @@ fn pump_shared(handle: Handle) {
             return None;
         }
         let eye = c.renderer.as_ref()?.eye();
+        let desired_radius = crate::residency::radius(c.renderer.as_ref()?.fog_distance);
         let shared = c.shared.as_mut()?;
         let coord: [i64; 3] = BlockCoord::at(eye).into();
         if shared.loading
-            || shared.failed_coord == Some(coord)
+            || shared.failed_coord == Some((coord, desired_radius))
             || (coord == shared.coord
+                && desired_radius == shared.radius
                 && js_sys::Date::now() - shared.last_check < shared.head_retry_ms)
         {
             return None;
         }
-        let same_region = coord == shared.coord;
+        let same_region = coord == shared.coord && desired_radius == shared.radius;
         shared.loading = true;
         Some((
             shared.id.clone(),
@@ -1379,13 +1439,12 @@ fn pump(handle: Handle) {
         let camera = BlockCoord::at(r.eye());
         let mut desired;
         loop {
-            let visibility = r.visibility();
             desired = world
                 .blocks
                 .iter()
                 .filter(|b| {
                     c.load_all
-                        || visibility.contains(ergo_world::Aabb::new(
+                        || r.needs_residency(ergo_world::Aabb::new(
                             b.coord.origin(),
                             b.coord.origin() + DVec3::splat(ergo_world::BLOCK_SIZE),
                         ))
@@ -1393,7 +1452,7 @@ fn pump(handle: Handle) {
                 .cloned()
                 .collect::<Vec<_>>();
             if c.load_all
-                || (desired.len() <= 128
+                || (desired.len() <= 1024
                     && desired.iter().map(|b| b.brick_count).sum::<usize>() <= 200_000)
             {
                 break;
@@ -1452,7 +1511,7 @@ fn pump(handle: Handle) {
                     Ok(block) => {
                         if !c.load_all
                             && c.renderer.as_ref().is_some_and(|r| {
-                                !r.visibility().contains(ergo_world::Aabb::new(
+                                !r.needs_residency(ergo_world::Aabb::new(
                                     block.coord.origin(),
                                     block.coord.origin() + DVec3::splat(ergo_world::BLOCK_SIZE),
                                 ))
@@ -1672,9 +1731,13 @@ pub fn App() -> impl IntoView {
                         NavigationInput::from_controls(c.navigation_controls.iter().copied());
                     let known = &c.known_cells;
                     let loaded = &c.blocks;
-                    let shared_view = c.shared.is_some();
+                    let shared_view = c.shared.as_ref().map(|s| (s.coord, s.radius));
                     r.navigate(input, delta, &|cell| {
-                        (shared_view || known.contains(&cell)) && !loaded.contains_key(&cell)
+                        if let Some((centre, radius)) = shared_view {
+                            !crate::residency::contains(centre, radius, cell)
+                        } else {
+                            known.contains(&cell) && !loaded.contains_key(&cell)
+                        }
                     });
                     r.render();
                     let status = r.navigation.status();

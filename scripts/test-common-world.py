@@ -102,7 +102,9 @@ with tempfile.TemporaryDirectory(prefix="ergo-common-") as directory:
         assert mcp.call("list_bricks")["structuredContent"]["total"]==3
         neighbor=helpers.Mcp(ROOT/"target/debug/ergo-mcp",directory/"neighbor.ergo.json",url,tokens["alice"],directory,env)
         processes.append(neighbor)
-        assert neighbor.call("place_brick",part="3003",color=2,min_corner=[70,70,0])["structuredContent"]["shared_commit"]["published"]
+        # Six current cells away: the old fixed 3x3x3 view loses this neighbour
+        # despite it being comfortably inside the default viewing distance.
+        assert neighbor.call("place_brick",part="3003",color=2,min_corner=[768,70,0])["structuredContent"]["shared_commit"]["published"]
         status,location=helpers.http(url+f"/api/shared-worlds/{head['id']}/assemblies/{assembly}/location")
         assert status==200 and location["assembly_id"]==assembly,location
         assert location["position_world"]==[9,13,1],location
@@ -120,6 +122,7 @@ with tempfile.TemporaryDirectory(prefix="ergo-common-") as directory:
             expect(guest.locator(".status-message")).to_contain_text(re.compile(r"Shared-world region loaded|Focused resident construction"),timeout=30000)
             expect(guest.locator("h1")).to_have_text("Ergo Sandbox")
             expect(guest.locator(".status-bar")).to_contain_text("4 bricks")
+            assert int(guest.locator('#world-canvas').get_attribute('data-resident-radius'))>=5
             resident_requests=[];guest.on('request',lambda request:resident_requests.append(request.url))
             guest.locator(f'[data-assembly-id="{assembly}"]').click()
             expect(guest.locator('.status-message')).to_contain_text('Focused resident construction')
@@ -181,7 +184,10 @@ with tempfile.TemporaryDirectory(prefix="ergo-common-") as directory:
             assert names==sorted(names,key=str.lower)
             assert panel.evaluate("el=>el.clientHeight")==short_list_height,"Pagination must stay inside the fixed-height zone"
             panel.evaluate("el=>el.scrollTop=0")
-            page.locator(f'[data-assembly-id="{assembly}"]').click()
+            with page.expect_response(lambda response:'/view?' in response.url and 'status=true' not in response.url):
+                with page.expect_request('**/location'):
+                    page.locator(f'[data-assembly-id="{assembly}"]').click()
+            expect(page.locator('.loading-panel')).not_to_be_visible(timeout=30000)
             expect(page.locator(".status-message")).to_contain_text("Shared-world region loaded",timeout=30000)
             expect(page.locator("h1")).to_have_text("Ergo Sandbox")
             expect(page.locator(".status-bar")).to_contain_text("4 bricks")

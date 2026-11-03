@@ -77,11 +77,15 @@ See [interchange export](construction-format.md#standard-ldrawmpd-export).
 
 ## Shared-region boundaries
 
-The browser loads a bounded 3×3×3 storage-cell neighborhood, by default at most
+The browser loads a world-distance-derived neighborhood with a 384-stud prefetch
+margin, requesting a cell radius of 5–32 (21 at the default viewing distance).
+The REST default remains radius 1 for explicit small-region callers. Reads default to at most
 50,000 pieces and 64 MiB of charged CBOR reads. Independent
 `ERGO_SHARED_VIEW_PIECES`/`ERGO_SHARED_VIEW_BYTES` budgets support dense districts
 without changing authoring or dynamics limits. Oversized views are rejected, not
-silently truncated. It checks the small accepted head every five seconds and
+silently truncated. On HTTP 413 the browser can reduce the requested read radius
+and its actual fog distance together, preserving the prefetch margin; failure at
+the minimum remains visible. It checks the small accepted head every five seconds and
 reloads when its revision or region changes. This navigation set is not a complete
 mechanical domain; direct clipped-fragment simulation is rejected.
 

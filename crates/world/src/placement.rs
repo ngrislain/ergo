@@ -55,7 +55,7 @@ pub fn snap_bricks_translation<'a>(
         {
             continue;
         }
-        if let Some(grid) = crate::part_profiles::receiving_grid(&brick.part) {
+        if let Some(grid) = crate::part_profiles::receiving_grids(&brick.part).first() {
             let point = brick.position
                 + brick.transform * DVec3::new(grid.first[0], grid.bottom, grid.first[1]);
             corner.x = point.x - 0.5;

@@ -2,6 +2,15 @@
 
 ## Unreleased
 
+## v0.5.20
+
+- Add genuine oval/pine tree pieces, Castle wall panels, arches, capes, helmet
+  variants, factory horses and saddle with pinned source geometry and catalogue masses.
+- Register disjoint receiving grids for arch feet and horse hooves instead of
+  inventing solid cavities through openings; preserve existing-part datums.
+- Add an unlisted HTML `/catalogue` with source previews, part features, sourced
+  mass/dimensions and a LEGO/LDraw colour-preview palette.
+
 ## v0.5.19
 
 - Schedule the app-window reload without waiting inside service-worker activation.

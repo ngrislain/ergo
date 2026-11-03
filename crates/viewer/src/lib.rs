@@ -10,6 +10,8 @@ mod loading;
 mod location;
 #[cfg(target_arch = "wasm32")]
 mod read_cache;
+#[cfg(any(target_arch = "wasm32", test))]
+mod residency;
 #[cfg(target_arch = "wasm32")]
 mod session;
 

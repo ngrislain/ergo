@@ -13,7 +13,7 @@ use std::{
     sync::{Arc, Mutex, Weak},
 };
 
-const FORMAT: u32 = 2;
+const FORMAT: u32 = 3;
 const MEMORY_BYTES: usize = 64 * 1024 * 1024;
 const MAX_PACKET_BYTES: usize = 64 * 1024 * 1024;
 
@@ -22,6 +22,7 @@ pub(super) struct ViewKey {
     pub world: String,
     pub revision: ContentId,
     pub coord: [i64; 3],
+    pub radius: u8,
     pub pieces: usize,
     pub read_bytes: usize,
 }
@@ -55,6 +56,7 @@ mod tests {
             world: "test-world".into(),
             revision: ContentId::of(b"accepted"),
             coord: [0; 3],
+            radius: 1,
             pieces: 5000,
             read_bytes: 16 * 1024 * 1024,
         };
@@ -134,6 +136,7 @@ impl ViewKey {
             FORMAT,
             &self.world,
             self.coord,
+            self.radius,
             self.pieces,
             self.read_bytes,
         ))?);
@@ -165,7 +168,9 @@ impl EncodedView {
     }
     fn check(packet: &ViewPacket, key: &ViewKey, logical_read_bytes: usize) -> Result<()> {
         ensure!(
-            packet.revision == key.revision && packet.scene.bricks.len() <= key.pieces,
+            packet.revision == key.revision
+                && packet.radius == key.radius
+                && packet.scene.bricks.len() <= key.pieces,
             "Invalid cached region"
         );
         ensure!(
@@ -270,7 +275,17 @@ impl ReadProgress<'_> {
             .unwrap()
             .insert(self.key.clone(), ProgressState { phase, work });
     }
+    #[cfg(test)]
     pub fn scanning(&self, completed: usize, found: usize, coord: Option<[i64; 3]>) {
+        self.scanning_total(completed, 27, found, coord);
+    }
+    pub fn scanning_total(
+        &self,
+        completed: usize,
+        total: usize,
+        found: usize,
+        coord: Option<[i64; 3]>,
+    ) {
         let phase = coord
             .map(|coord| format!("spatial index: block {coord:?}, {found} unique pieces"))
             .unwrap_or_else(|| format!("spatial references: {found} unique pieces"));
@@ -279,7 +294,7 @@ impl ReadProgress<'_> {
             Some(ReadWork {
                 stage: "discovering",
                 completed,
-                total: 27,
+                total,
                 found_pieces: Some(found),
             }),
         );

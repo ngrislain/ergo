@@ -26,15 +26,16 @@ shader retains filtered stud relief and fades that detail only as it becomes
 subpixel. The cap body color is unchanged; this is not alpha-fading whole bricks.
 
 The passes share one stud-deformation helper and Rust-generated thresholds.
-Interactive color geometry morphs. Auto/Performance shadow parts have an
+Interactive color geometry morphs. All interactive shadow parts have an
 independent **light-buffer** LOD: source, reviewed medium mesh or far mesh at
 6/1.25-texel projected stud thresholds before its independent per-pass budget
 divisor, with hysteresis. Shadow-budget pressure can omit geometric stud shadows
 so that a moving headlamp does not submit every tiny stud. Camera-color clipping
-does not remove resident offscreen casters. Unreviewed/source-only, selected and highlighted
-shadow pieces keep source geometry; High, capture and illustration policies keep
-all shadow parts at source detail. Ground studs use the same morphed instances
-in both passes. The global color-budget bias does not replace the actual stud
+does not remove resident offscreen casters. Unreviewed/source-only shadow pieces
+keep source geometry; capture and illustration policies keep all shadow parts at
+source detail. The shadow budget is independent of colour quality and selection.
+Camera-local ground studs receive shadows but do not enter the caster pass, so
+their camera-dependent morph cannot change shadows. The global color-budget bias does not replace the actual stud
 pixel size: a standard studded part retains stud-capable geometry until that
 transition reaches its flat endpoint. Source meshes, saved
 transforms, body bounds, picking and physics are unchanged. Full near detail keeps

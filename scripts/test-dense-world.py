@@ -9,6 +9,7 @@ import subprocess
 import tempfile
 import time
 import urllib.request
+import urllib.error
 
 from playwright.sync_api import expect, sync_playwright
 
@@ -18,8 +19,11 @@ ROOT = Path(__file__).resolve().parents[1]
 def request(url, body=None):
     headers = {'X-Ergo-Request': '1', 'Content-Type': 'application/json'}
     data = None if body is None else json.dumps(body).encode()
-    with urllib.request.urlopen(urllib.request.Request(url, data=data, headers=headers), timeout=300) as response:
-        return json.load(response)
+    try:
+        with urllib.request.urlopen(urllib.request.Request(url, data=data, headers=headers), timeout=300) as response:
+            return json.load(response)
+    except urllib.error.HTTPError as error:
+        raise AssertionError(f'Fixture request rejected ({error.code}): {error.read().decode()}') from error
 
 
 def main():
@@ -65,7 +69,10 @@ def main():
                 for batch in range(2):
                     bricks = []
                     for index in range(batch * 3000, (batch + 1) * 3000):
-                        position = [(index % 100) * 3 + 1, (index // 100) * 3 + 1, 1 / 3]
+                        # Keep imports in distinct current-format cells and
+                        # outside each other's mechanical dependency halo.
+                        local=index%3000
+                        position = [batch*512+(local % 100) * 3 + 1, (local // 100) * 3 + 1, 1 / 3]
                         translated = lambda bounds: {edge: [value + offset for value, offset in zip(bounds[edge], position)] for edge in ['min', 'max']}
                         bricks.append({'id': index % 3000 + 1, 'part': '3068b.dat', 'color': 19,
                                        'rgb': 0xE4CD9E, 'step': 0, 'position': position,
@@ -116,6 +123,8 @@ def main():
                                 route.fulfill(status=403,json={'error':'Read access revoked by test'})
                             elif hold_first[0]:
                                 held.append(route)
+                            elif '&radius=21' in route.request.url:
+                                route.fulfill(status=413,json={'error':'Browser view budget fixture'})
                             else:
                                 route.continue_()
                         page.route('**/api/shared-worlds/*/view?*',loading_route)
@@ -140,19 +149,32 @@ def main():
                         page.wait_for_timeout(2500)
                         expect(page.locator('.loading-percent')).to_have_text('83%')
                         hold_first[0]=False
-                        held[0].continue_()
+                        # A wider read can exceed a real deployment's read-only
+                        # budget. Reduce coverage and fog together, then accept
+                        # the complete smaller packet rather than truncating it.
+                        held[0].fulfill(status=413,json={'error':'Browser view budget fixture'})
                         expect(page.locator('.status-bar')).to_contain_text(re.compile(r'6,?000 bricks'), timeout=60000)
                         expect(page.locator('.status-bar')).to_contain_text(re.compile(r'[1-9]\d* draw calls'), timeout=60000)
                         expect(page.locator('.status-message')).to_contain_text('Shared-world region loaded', timeout=60000)
                         expect(page.locator('.loading-panel')).to_be_hidden(timeout=15000)
                         canvas=page.locator('#world-canvas')
+                        expect(canvas).to_have_attribute('data-resident-radius','10')
+                        expect(page.locator('label[for="fog-distance"] span')).to_have_text('896 studs')
                         quality=page.get_by_role('combobox',name='Render detail',exact=True)
                         expect(quality).to_have_value('auto')
+                        shadow_counts=canvas.get_attribute('data-shadow-lod-counts')
+                        shadow_scale=canvas.get_attribute('data-shadow-detail-scale')
+                        old=canvas.get_attribute('data-rendered-frames')
                         quality.select_option('high')
+                        page.wait_for_function("old=>document.querySelector('#world-canvas').dataset.renderedFrames!==old",arg=old)
                         expect(canvas).to_have_attribute('data-detail-scale','1')
-                        page.wait_for_function("JSON.parse(document.querySelector('#world-canvas').dataset.shadowLodCounts).slice(1).every(count=>count===0)")
+                        expect(canvas).to_have_attribute('data-shadow-lod-counts',shadow_counts)
+                        expect(canvas).to_have_attribute('data-shadow-detail-scale',shadow_scale)
+                        old=canvas.get_attribute('data-rendered-frames')
                         quality.select_option('performance')
-                        page.wait_for_function("JSON.parse(document.querySelector('#world-canvas').dataset.shadowLodCounts).slice(1).some(count=>count>0)")
+                        page.wait_for_function("old=>document.querySelector('#world-canvas').dataset.renderedFrames!==old",arg=old)
+                        expect(canvas).to_have_attribute('data-shadow-lod-counts',shadow_counts)
+                        expect(canvas).to_have_attribute('data-shadow-detail-scale',shadow_scale)
                         quality.select_option('auto')
                         expect(page.locator('.status-bar')).to_contain_text(re.compile(r'6,?000 bricks'))
                         requests = []
@@ -207,7 +229,8 @@ def main():
                         def hold_remote(route):
                             if 'status=true' in route.request.url:route.fulfill(json={'revision':head['revision'],'phase':'working'})
                             else:remote_reads.append(route)
-                        page.route('**/view?x=4&*',hold_remote)
+                        remote_pattern=f'**/view?x={4096//128}&*'
+                        page.route(remote_pattern,hold_remote)
                         page.locator(f'[data-assembly-id="{remote["assembly"]}"]').click()
                         expect(page.locator('.loading-panel')).to_be_visible(timeout=15000)
                         page.wait_for_timeout(300)
@@ -219,7 +242,7 @@ def main():
                         for route in remote_reads:
                             try:route.abort()
                             except Exception:pass
-                        page.unroute('**/view?x=4&*',hold_remote)
+                        page.unroute(remote_pattern,hold_remote)
                         page.evaluate('''() => {const original=window.setTimeout.bind(window);window.__shortReadTimeout=true;window.setTimeout=(callback,delay,...args)=>original(callback,window.__shortReadTimeout&&delay===15000?80:delay,...args);}''')
                         stalled_locations=[]
                         def hold_location(route):stalled_locations.append(route)
@@ -238,7 +261,7 @@ def main():
                         # A corrupted local packet must become a cache miss.
                         assert page.evaluate('''async () => {
                           const req=request=>new Promise((resolve,reject)=>{request.onsuccess=()=>resolve(request.result);request.onerror=()=>reject(request.error);});
-                          const db=await req(indexedDB.open('ergo-local-data-v2',1));
+                          const db=await req(indexedDB.open('ergo-local-data-cell128-v1',1));
                           const read=db.transaction(['entries','blobs'],'readonly');
                           const entries=await req(read.objectStore('entries').getAll());
                           const entry=entries.find(entry=>{const url=new URL(entry.url);return url.pathname.endsWith('/view')&&url.searchParams.get('x')==='0'&&url.searchParams.get('y')==='0';});
@@ -262,7 +285,7 @@ def main():
                 server.terminate()
                 server.wait(timeout=15)
                 assert server.returncode == 0, 'Dense-view server did not shut down cleanly'
-    print('Dense-region browser check passed: honest discovery and brick percentages, 6,000 rendered pieces, loading cleanup and resident focus without geometry requests.')
+    print('Dense-region browser check passed: complete 6,000-piece views, budget-aware radius/fog fallback, camera-independent shadow quality, read-cache revalidation/corruption, loading cancellation and resident focus.')
 
 
 if __name__ == '__main__':

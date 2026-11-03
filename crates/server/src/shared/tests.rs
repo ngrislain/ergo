@@ -1277,6 +1277,76 @@ async fn dense_browser_regions_exceed_authoring_caps_without_truncation_or_cache
 }
 
 #[tokio::test]
+async fn wider_browser_coverage_is_sparse_revision_pinned_and_cache_budget_safe() {
+    use axum::{
+        body::{Body, to_bytes},
+        http::Request,
+    };
+    use tower::ServiceExt;
+    let mut service = service();
+    let mut spread = scene(100.);
+    spread.bricks.truncate(1);
+    for (id, x) in [(2, 512.), (3, 1024.)] {
+        let mut brick = scene(x).bricks.remove(0);
+        brick.id = id;
+        spread.bricks.push(brick);
+    }
+    let (head, _) = seeded(&service, spread).await;
+    let (app, alice) = http(&service);
+    for (radius, count) in [(1, 1), (8, 3), (4, 2), (1, 1)] {
+        let url = format!(
+            "/api/shared-worlds/{}/view?radius={radius}&revision={}",
+            head.id, head.revision
+        );
+        let (status, packet) = json(&app, "GET", &url, &alice, None).await;
+        assert_eq!(status, StatusCode::OK, "{packet}");
+        assert_eq!(packet["radius"], radius);
+        assert_eq!(packet["revision"], serde_json::json!(head.revision));
+        assert_eq!(packet["scene"]["bricks"].as_array().unwrap().len(), count);
+    }
+    for (x, cache, count) in [(1, "neighbor", 3), (-1, "miss", 2)] {
+        let mut request = Request::get(format!(
+            "/api/shared-worlds/{}/view?radius=8&x={x}&from_x=0&from_y=0&from_z=0",
+            head.id
+        ))
+        .body(Body::empty())
+        .unwrap();
+        request.headers_mut().extend(alice.clone());
+        let response = app.clone().oneshot(request).await.unwrap();
+        assert_eq!(response.status(), StatusCode::OK);
+        assert_eq!(response.headers()["x-ergo-read-cache"], cache);
+        let packet: serde_json::Value =
+            serde_json::from_slice(&to_bytes(response.into_body(), 1024 * 1024).await.unwrap())
+                .unwrap();
+        assert_eq!(packet["scene"]["bricks"].as_array().unwrap().len(), count);
+    }
+    service.view_limits.pieces = 2;
+    let (limited, alice) = http(&service);
+    let url = format!("/api/shared-worlds/{}/view?radius=8", head.id);
+    assert_eq!(
+        json(&limited, "GET", &url, &alice, None).await.0,
+        StatusCode::PAYLOAD_TOO_LARGE
+    );
+    for radius in [0, 33] {
+        let url = format!("/api/shared-worlds/{}/view?radius={radius}", head.id);
+        assert_eq!(
+            json(&app, "GET", &url, &alice, None).await.0,
+            StatusCode::UNPROCESSABLE_ENTITY
+        );
+    }
+    assert_eq!(
+        service
+            .repo(&head.id)
+            .unwrap()
+            .checkout("main")
+            .await
+            .unwrap()
+            .id(),
+        &head.revision
+    );
+}
+
+#[tokio::test]
 async fn compressed_cbor_views_cache_revalidate_and_invalidate_on_appearance_edits() {
     use axum::{
         body::{Body, to_bytes},
@@ -1452,6 +1522,7 @@ async fn neighboring_views_reuse_only_proven_identical_geometry_and_persist_pinn
         world: head.id.clone(),
         revision: head.revision.clone(),
         coord: [1, 0, 0],
+        radius: 1,
         pieces: service.view_limits.pieces,
         read_bytes: service.view_limits.bytes,
     };
@@ -1523,6 +1594,7 @@ async fn read_progress_is_authorized_ephemeral_and_contains_no_geometry() {
         revision: head.revision.clone(),
         coord: [0; 3],
         pieces: service.view_limits.pieces,
+        radius: 1,
         read_bytes: service.view_limits.bytes,
     }
     .memory_key()

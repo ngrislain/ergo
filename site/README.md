@@ -5,7 +5,8 @@ The public shared-renderer WebGL landing page and static agent guide for
 **https://ergosandbox.com**.
 
 Consumer setup is an npm installation, selected by public `ERGO_MCP_PACKAGE`.
-It currently installs `@ngrislain/ergo-mcp@0.5.19` from npm; the same setting can
+The live site currently installs verified `@ngrislain/ergo-mcp@0.5.19` from npm;
+the source default targets the next 0.5.20 release. The same setting can
 point at a verified GitHub Release tarball. The commands below are for **site maintainers**.
 
 ```sh
@@ -27,6 +28,10 @@ Fonts and geometry are self-hosted; the site collects no credentials or analytic
 
 The visual system follows the application's white/slate/amber tokens, DM Sans
 body typography, canonical four-stud logo, and Manrope headings/wordmark.
+Images retain intrinsic aspect ratios at every breakpoint, and the WebGL camera
+uses the current canvas aspect ratio. With the preview server running, check both
+static artwork and the real mobile/desktop projection using
+`python3 ../scripts/test-site-proportions.py` (Playwright/Chrome required).
 The scene's night light stays fixed when the camera orbits. The main visual is
 a brick-built doorway, with a numbered build-manual layout for the actual
 human-to-agent handoff.

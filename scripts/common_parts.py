@@ -15,11 +15,16 @@ BUSHES = ['3713', '4265c']
 ACCESSORIES = '30374 87994 4095 63965 3846 3837 4006 3835 3841 3847 3848 3849 3820'.split()
 WHEELS = '4600 4624 3641 3482 132'.split()
 FIGURES = ['973p4f', '3818', '3819', '4499']
-CANDIDATES = {id + '.dat': id for id in [*RECTANGULAR, *BRICKS, *BEAMS, *AXLES, *PINS, *BUSHES, *ACCESSORIES, *WHEELS, *FIGURES]}
+SCENERY = ['3470', '3471']
+CASTLE = ['4444', '2345', '3659', '3307', '3308a']
+GARRISON = ['4524', '50231c01', '3896', '89520', '4493c01', '4493c02', '4491a']
+CANDIDATES = {id + '.dat': id for id in [*RECTANGULAR, *BRICKS, *BEAMS, *AXLES, *PINS, *BUSHES, *ACCESSORIES, *WHEELS, *FIGURES, *SCENERY, *CASTLE, *GARRISON]}
 # BrickLink identifies the source moulds under these catalogue spellings.
 CANDIDATES['3820.dat'] = '983'
 CANDIDATES['132.dat'] = '3483'
 CANDIDATES.update({'973p4f.dat': '973px138', '3818.dat': '982', '3819.dat': '981'})
+CANDIDATES.update({'3308a.dat': '3308', '50231c01.dat': '522',
+                   '4493c01.dat': '4493c01pb02', '4493c02.dat': '4493c01pb04'})
 
 
 def port(kind, start, end, radius, **extra):
@@ -133,6 +138,65 @@ def nominal(id, bounds):
     elif id in BEAMS:
         n = BEAMS[id]
         value['bounds_ldu'] = [[-9, -10, -10*n+1], [9, 10, 10*n-1]]
+    elif id in SCENERY:
+        # Official rounded 2x2 bases contain the central inverted stud4 tube;
+        # the four receiving stud centres are +/-10 LDU, at the Y=8 underside.
+        value['cavity'] = dict(width=2, depth=2, first=[-10, -10], bottom=8)
+        # The base/trunk is the bearing core. Filling the full canopy envelope
+        # down to the floor would invent collisions with neighbouring studs.
+        value['bounds_ldu'] = [[-20, bounds[0][1], -20], [20, 8, 20]]
+    elif id == '4444':
+        # The central 3x1 foot/header is the load-bearing core. Filling the
+        # stepped wings down to the floor invents collisions with floor studs.
+        value['bounds_ldu'] = [[-30, 0, -10], [30, 144, 10]]
+        # This mould has stepped stud rows, not a fictional flat 2x5 grid.
+        value['studs_ldu'] = [[x, 0, 0] for x in [-20, 0, 20]] + [
+            [-40, 24, 0], [40, 24, 0]] + [[x, 8, 20] for x in [-20, 0, 20]]
+        value['cavity'] = dict(width=3, depth=1, first=[-20, 0], bottom=144)
+    elif id == '2345':
+        value['bounds_ldu'] = [[-30, 0, -30], [30, 144, 30]]
+        value['studs_ldu'] = [[x, 24, 20] for x in [-20, 0, 20]] + [
+            [-20, 24, 0], [-20, 24, -20]]
+        value['cavity'] = dict(width=2, depth=2, first=[-20, 0], bottom=144)
+    elif id in ['3659', '3307', '3308a']:
+        width, height = {'3659': (4, 24), '3307': (6, 48), '3308a': (8, 48)}[id]
+        value['bounds_ldu'] = [[-10*width, 0, -10], [10*width, height, 10]]
+        value['studs_ldu'] = [[x, 0, 0] for x in range(-10*width+10, 10*width, 20)]
+        # Only the two end feet receive studs; the arch opening is empty.
+        value['cavity'] = dict(width=1, depth=1, first=[-10*width+10, 0], bottom=height)
+        value['additional_cavities'] = [dict(width=1, depth=1, first=[10*width-10, 0], bottom=height)]
+    elif id in ['3896', '89520']:
+        # As for the existing Castle helmet: retain the actual source upper
+        # cap as the bearing core, with cheek/neck protection rendered in full.
+        value['bounds_ldu'] = [[-13, bounds[0][1], -13], [13, 0, 13]]
+        value['cavity'] = dict(width=1, depth=1, first=[0, 0], bottom=0)
+    elif id == '4524':
+        # Source neck ring is 2 LDU thick. 6080 places it two LDU above the
+        # torso, raising head/helmet by the same amount. Drape is visual.
+        value['bounds_ldu'] = [[-10, 0, -10], [10, 2, 10]]
+        value['cavity'] = dict(width=1, depth=1, first=[0, 0], bottom=2)
+    elif id == '50231c01':
+        # Official !HELP: cape at torso Y=0; head raised by 0.6 LDU.
+        # This is a fixed formed source shape, not a cloth simulation.
+        value['bounds_ldu'] = [[-10, -.6, -10], [10, 0, 10]]
+        value['cavity'] = dict(width=1, depth=1, first=[0, 0], bottom=0)
+    elif id in ['4493c01', '4493c02']:
+        # Factory unit: body/back bears at source Y=0; head and tail remain
+        # genuine rendered overhangs. Four separate hoof holes are reviewed
+        # in s/4494s01.dat, not one fictitious solid receiving rectangle.
+        value['bounds_ldu'] = [[-20, 0, -35], [20, 57, 47]]
+        feet = [dict(width=1, depth=1, first=[x, z], bottom=57)
+                for z in [-25, 35] for x in [-10, 10]]
+        value['cavity'], value['additional_cavities'] = feet[0], feet[1:]
+        value['collision_boxes_ldu'] = [[[-20, 0, -35], [20, 20, 47]]] + [
+            [[x-10, 14.5, z-10], [x+10, 57, z+(12 if z==35 else 10)]]
+            for z in [-25, 35] for x in [-10, 10]]
+    elif id == '4491a':
+        # The original 6080 assembly seats the saddle 8 LDU above the horse
+        # datum. Its actual floor is 0..8 LDU; raised sides/clips are visual.
+        value['bounds_ldu'] = [[-20, 0, -10], [20, 8, 10]]
+        value['studs_ldu'] = [[-10, 0, 0], [10, 0, 0]]
+        value['cavity'] = dict(width=2, depth=1, first=[-10, 0], bottom=8)
     return value
 
 
@@ -167,9 +231,62 @@ def source_bounds(root, id):
     return [[min(p[i] for p in values) for i in range(3)], [max(p[i] for p in values) for i in range(3)]]
 
 
+def arch_boxes(root, id, width, height):
+    """Conservative 4-LDU source-triangle columns, retaining the empty archway."""
+    cache = {}
+    def triangles(name, active=()):
+        name = name.replace('\\', '/').lower()
+        if name in cache:return cache[name]
+        if name in active or len(active) > 64:raise ValueError('Cyclic/deep arch source')
+        path = next((root/p/name for p in ['p', 'parts'] if (root/p/name).is_file()), None)
+        if path is None:raise ValueError('Missing arch primitive '+name)
+        faces = []
+        for line in path.read_bytes().decode('utf-8-sig').splitlines():
+            f = line.split()
+            if not f:continue
+            if f[0] in ['3', '4']:
+                p = [list(map(float, f[i:i+3])) for i in range(2, len(f), 3)]
+                faces.append(p[:3])
+                if f[0] == '4':faces.append([p[0], p[2], p[3]])
+            elif f[0] == '1':
+                offset, matrix = list(map(float, f[2:5])), list(map(float, f[5:14]))
+                for face in triangles(' '.join(f[14:]), (*active, name)):
+                    faces.append([[offset[i]+sum(matrix[3*i+j]*p[j] for j in range(3)) for i in range(3)] for p in face])
+            if len(faces) > 100_000:raise ValueError('Arch source exceeds the reviewed proxy budget')
+        cache[name] = faces
+        return faces
+    def clip(points, boundary, lower):
+        output = []
+        for a, b in zip(points, points[1:]+points[:1]):
+            inside_a, inside_b = (a[0] >= boundary if lower else a[0] <= boundary), (b[0] >= boundary if lower else b[0] <= boundary)
+            if inside_a:output.append(a)
+            if inside_a != inside_b:
+                t = (boundary-a[0])/(b[0]-a[0])
+                output.append([a[i]+t*(b[i]-a[i]) for i in range(3)])
+        return output
+    faces = triangles(id)
+    boxes = []
+    for left in range(-10*width, 10*width, 4):
+        right = left+4
+        depths = []
+        for face in faces:
+            if max(p[0] for p in face) < left or min(p[0] for p in face) > right:continue
+            points = clip(clip(face, left, True), right, False)
+            depths.extend(p[1] for p in points)
+        bottom = min(height, max(depths, default=0))
+        if bottom <= 0:continue
+        if boxes and abs(boxes[-1][1][1]-bottom) < 1e-8:
+            boxes[-1][1][0] = right
+        else:boxes.append([[left, 0, -10], [right, bottom, 10]])
+    return boxes
+
+
 def enrich(entry, root):
     id = entry.get('profile_id', entry['id'])
     ports = connectors(id)
     if ports: entry['connectors'] = ports
     if id in CANDIDATES and entry['size'] is None:
         entry['nominal'] = nominal(id, source_bounds(root, entry['id']))
+        if id in ['3659', '3307', '3308a']:
+            width, height = {'3659': (4, 24), '3307': (6, 48), '3308a': (8, 48)}[id]
+            entry['nominal']['collision_boxes_ldu'] = arch_boxes(root, entry['id'], width, height)

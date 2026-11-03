@@ -6,6 +6,17 @@ use ergo_world::{Aabb, Brick, geometry::Mesh, spatial::Octree};
 use glam::{DMat4, DVec3};
 use std::collections::{BTreeMap, HashMap, HashSet};
 pub use view::{Camera, DISPLAY_SCALE, Visibility};
+pub const PREFETCH_DISTANCE: f64 = 384.;
+const SHADOW_TRIANGLE_BUDGET: usize = 2_000_000;
+
+/// Residency includes a turn/movement/caster halo, not just this frame's frustum.
+pub fn needs_residency(eye: DVec3, bounds: Aabb, visible_distance: f64) -> bool {
+    ((eye - eye.clamp(bounds.min, bounds.max)) * DISPLAY_SCALE).length()
+        <= visible_distance + PREFETCH_DISTANCE
+}
+fn shadow_budget(options: &SceneOptions<'_>) -> Option<usize> {
+    (!options.policy.full_detail).then_some(SHADOW_TRIANGLE_BUDGET)
+}
 
 /// Quality and visibility are explicit policies, independent of canvas alpha.
 #[derive(Clone, Copy)]
@@ -95,8 +106,6 @@ struct ShadowCache {
     resolution: Option<f64>,
     full_detail: bool,
     budget: Option<usize>,
-    selected: Option<u32>,
-    highlighted: HashSet<u32>,
     explode: f64,
     instances: Instances,
     transparent_instances: Instances,
@@ -172,14 +181,17 @@ fn color_surfaces(
 fn shadow_surfaces(
     surfaces: Option<&surfaces::Surfaces>,
     shadow: &Visibility,
-    bricks: &[Brick],
+    _bricks: &[Brick],
     options: &SceneOptions<'_>,
 ) -> Vec<bool> {
     let views: Vec<_> = surfaces
         .into_iter()
         .flat_map(|surfaces| &surfaces.chunks)
         .map(|chunk| SurfaceView {
-            visible: surface_allowed(chunk, bricks, options) && shadow.contains(chunk.bounds),
+            visible: options.explode == 0.
+                && options.merge_surfaces
+                && !options.policy.full_detail
+                && shadow.contains(chunk.bounds),
             pixels: 0.,
             stud_pixels: options
                 .shadow_resolution
@@ -189,7 +201,7 @@ fn shadow_surfaces(
                 }),
         })
         .collect();
-    surface_flags(&views, surface_scale(options), true)
+    surface_flags(&views, 4., true)
 }
 fn surface_flags(views: &[SurfaceView], scale: f64, shadow: bool) -> Vec<bool> {
     views
@@ -270,6 +282,10 @@ pub struct ScenePlanner {
     surfaces: Option<surfaces::Surfaces>,
 }
 impl ScenePlanner {
+    pub fn reset_color_detail(&mut self) {
+        self.previous_lod.clear();
+        self.detail_scale = 1.;
+    }
     pub fn reset_detail(&mut self) {
         self.previous_lod.clear();
         self.previous_shadow_lod.clear();
@@ -330,7 +346,6 @@ impl ScenePlanner {
         // bodies and must not rebuild derived chunk surfaces each solver tick.
         if self.surfaces.is_none()
             && bricks.len() >= 10_000
-            && options.policy.triangle_budget.is_some()
             && !options.policy.full_detail
             && options.merge_surfaces
             && options.explode == 0.
@@ -489,10 +504,8 @@ impl ScenePlanner {
             && cached.visibility == *shadow
             && cached.resolution == options.shadow_resolution
             && cached.full_detail == options.policy.full_detail
-            && cached.budget == options.policy.triangle_budget
+            && cached.budget == shadow_budget(&options)
             && cached.merge_surfaces == options.merge_surfaces
-            && cached.selected == options.selected
-            && cached.highlighted == *options.highlighted
             && cached.explode == options.explode
         {
             plan.shadow = cached.instances.clone();
@@ -545,11 +558,7 @@ impl ScenePlanner {
             });
         }
         let surfaces = self.surfaces.as_ref();
-        let scale = if let Some(budget) = options
-            .policy
-            .triangle_budget
-            .filter(|_| !options.policy.full_detail)
-        {
+        let scale = if let Some(budget) = shadow_budget(&options) {
             crate::lod::budget_scale(self.shadow_detail_scale.max(1.), budget, |scale| {
                 shadow_candidates
                     .iter()
@@ -608,18 +617,14 @@ impl ScenePlanner {
                 });
             }
         }
-        plan.shadow_budget_exceeded = options
-            .policy
-            .triangle_budget
-            .is_some_and(|budget| plan.estimated_shadow_triangles > budget);
+        plan.shadow_budget_exceeded =
+            shadow_budget(&options).is_some_and(|budget| plan.estimated_shadow_triangles > budget);
         if options.reuse_shadow {
             self.shadow_cache = Some(ShadowCache {
                 visibility: shadow.clone(),
                 resolution: options.shadow_resolution,
                 full_detail: options.policy.full_detail,
-                budget: options.policy.triangle_budget,
-                selected: options.selected,
-                highlighted: options.highlighted.clone(),
+                budget: shadow_budget(&options),
                 explode: options.explode,
                 instances: plan.shadow.clone(),
                 transparent_instances: plan.transparent_shadow.clone(),
@@ -643,8 +648,6 @@ fn shadow_level(
 ) -> u8 {
     if options.policy.full_detail
         || ergo_world::catalog::color_alpha(brick.color) < 255
-        || options.selected == Some(brick.id)
-        || options.highlighted.contains(&brick.id)
         || candidate.detail.part.is_none()
     {
         0
@@ -1027,7 +1030,7 @@ mod tests {
         assert!(result.estimated_shadow_triangles < capture.estimated_shadow_triangles);
     }
     #[test]
-    fn shadow_cache_reuses_static_lighting_but_rebuilds_for_pose_and_selection() {
+    fn shadow_cache_ignores_selection_but_rebuilds_for_actual_pose_changes() {
         let mut demo = Demo::new();
         demo.add("3007", 4, 0., 0., 0.);
         let camera = Camera::new(
@@ -1083,10 +1086,9 @@ mod tests {
             &light.visibility,
             options(Some(1)),
         );
-        assert!(
-            selected
-                .shadow
-                .contains_key(&GeometryKey::Part("3007.dat".into(), 0))
+        assert_eq!(
+            first.shadow, selected.shadow,
+            "Selection is not a light/geometry edit"
         );
         demo.bricks[0].position.x += 2.;
         demo.bricks[0].bounds.min.x += 2.;
@@ -1229,7 +1231,7 @@ mod tests {
     }
 
     #[test]
-    fn global_shadow_budget_coarsens_studs_but_keeps_the_selected_source_mesh() {
+    fn color_budget_and_selection_do_not_change_the_shadow_budget() {
         let mut demo = Demo::new();
         for index in 0..200 {
             demo.add(
@@ -1268,17 +1270,43 @@ mod tests {
                 selected: Some(1),
                 highlighted: &HashSet::new(),
                 explode: 0.,
-                shadow_resolution: Some(512.),
+                shadow_resolution: Some(1024.),
                 reuse_shadow: false,
                 merge_surfaces: true,
             },
         );
-        assert!(result.shadow_detail_scale > 1.);
-        assert!(result.estimated_shadow_triangles <= 3000);
+        assert_eq!(result.shadow_detail_scale, 1.);
+        assert!(result.estimated_shadow_triangles <= SHADOW_TRIANGLE_BUDGET);
         assert!(!result.shadow_budget_exceeded);
-        assert_eq!(
-            result.shadow[&GeometryKey::Part("3003.dat".into(), 0)].len() / 20,
-            1
-        );
+        for policy in [
+            RenderPolicy::INTERACTIVE,
+            RenderPolicy::PERFORMANCE,
+            RenderPolicy::DETAILED_INTERACTIVE,
+        ] {
+            let other = plan(&demo, &camera, &camera.visibility, policy);
+            assert_eq!(result.shadow, other.shadow);
+            assert_eq!(result.shadow_lod_counts, other.shadow_lod_counts);
+        }
+    }
+
+    #[test]
+    fn residency_keeps_distant_and_offscreen_cells_inside_the_physical_range() {
+        let eye = DVec3::new(0., 16., 0.);
+        for point in [
+            DVec3::new(1400., 0., 0.),
+            DVec3::new(-1400., 0., 0.),
+            DVec3::new(0., 0., 2000.),
+        ] {
+            assert!(needs_residency(
+                eye,
+                Aabb::new(point, point + DVec3::splat(128.)),
+                2200.
+            ));
+        }
+        assert!(!needs_residency(
+            eye,
+            Aabb::new(DVec3::splat(4000.), DVec3::splat(4128.)),
+            2200.
+        ));
     }
 }

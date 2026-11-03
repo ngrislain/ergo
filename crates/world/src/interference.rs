@@ -3,7 +3,7 @@
 //! bottom cavity, never through a sideways solid face.
 use crate::{
     Brick,
-    part_profiles::{receiving_grid, stud_centres},
+    part_profiles::{receiving_grids, stud_centres},
     physical::{SCALE, STUD_DIAMETER_M, STUD_HEIGHT_M, metric_transform},
     spatial::Octree,
 };
@@ -83,28 +83,44 @@ pub fn first_stud_collision(bricks: &[Brick], tolerance: f64) -> Option<String> 
                 {
                     continue;
                 }
-                let lo = target.bounds.min * SCALE;
-                let hi = target.bounds.max * SCALE;
-                if (center[axis] + half[axis]).min(hi[axis])
-                    - (center[axis] - half[axis]).max(lo[axis])
-                    <= epsilon
-                {
-                    continue;
-                }
-                let nearest = center.clamp(lo, hi);
-                let mut radial = center - nearest;
-                radial[axis] = 0.;
-                if radial.length() >= radius - epsilon {
+                // New compound mould profiles keep empty space between horse
+                // legs/arch feet empty. Existing profiles retain their original
+                // stud-clearance envelope; no prior part is reinterpreted.
+                let explicit = crate::part_library::get(&target.part)
+                    .and_then(|p| p.catalogue.nominal.as_ref())
+                    .is_some_and(|n| !n.collision_boxes_ldu.is_empty());
+                let bodies = if explicit {
+                    crate::part_profiles::collision_boxes(&target.part)
+                        .into_iter()
+                        .map(|bounds| bounds.transformed(target.transform, target.position))
+                        .collect()
+                } else {
+                    vec![target.bounds]
+                };
+                let intersects = bodies.iter().any(|bounds| {
+                    let lo = bounds.min * SCALE;
+                    let hi = bounds.max * SCALE;
+                    if (center[axis] + half[axis]).min(hi[axis])
+                        - (center[axis] - half[axis]).max(lo[axis])
+                        <= epsilon
+                    {
+                        return false;
+                    }
+                    let mut radial = center - center.clamp(lo, hi);
+                    radial[axis] = 0.;
+                    radial.length() < radius - epsilon
+                });
+                if !intersects {
                     continue;
                 }
                 let mut cavity = false;
-                if let Some(other) = receiving_grid(&target.part) {
+                for other in receiving_grids(&target.part) {
                     let target_up = metric_transform(target.transform) * DVec3::Y;
                     if up.dot(target_up) > 1. - 1e-8 {
                         let point = target.transform.inverse() * (base - target.position);
                         let u = point.x - other.first[0];
                         let v = point.z - other.first[1];
-                        cavity = point.y <= other.bottom + tolerance
+                        cavity |= point.y <= other.bottom + tolerance
                             && point.y >= other.bottom - STUD_HEIGHT_M / SCALE.y - tolerance
                             && (u - u.round()).abs() < tolerance
                             && (v - v.round()).abs() < tolerance

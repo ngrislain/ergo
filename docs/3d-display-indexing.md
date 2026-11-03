@@ -53,7 +53,7 @@ full source geometry for camera-visible pieces. The tiny homepage illustration
 keeps every color instance at full detail. All use light-volume culling for
 resident shadow casters; camera clipping no longer removes an offscreen caster.
 
-## Frustum- and fog-bounded streaming
+## Distance-bounded residency and prefetched shared views
 
 For camera position $\mathbf{c}$ and block side $B=128$:
 
@@ -61,28 +61,37 @@ $$
 \mathbf{k}_c=\left\lfloor\frac{\mathbf{c}}{B}\right\rfloor.
 $$
 
-Let $F$ be the view frustum and $d_f$ the fog cutoff. The desired persisted set is:
+Let $d_f$ be the fog cutoff and $m=384$ the prefetch/caster margin. The desired
+persisted set includes nearby cells in every direction, independently of camera
+clipping:
 
 $$
-\mathcal{R}=\{\mathbf{k}:B_{\mathbf{k}}\cap F\ne\varnothing,
-\quad \operatorname{dist}(\mathbf{c},B_{\mathbf{k}})\le d_f\}.
+\mathcal{R}=\{\mathbf{k}:\operatorname{dist}(\mathbf{c},B_{\mathbf{k}})\le d_f+m\}.
 $$
 
-Only existing construction cells in this set are fetched, with four concurrent
+Only existing persisted construction cells in this set are fetched, with four concurrent
 block requests. The ground layer independently creates missing **visible**
 horizontal cells lazily, each with one imagery-derived palette color. There is no
 infinite-world pre-generation; see [ground and coordinates](ground-and-coordinates.md).
 
 Fog starts at $0.65d_f$ and reaches the background color at $d_f$. The default
 cutoff is 2,200 stud-scaled render units; the UI range is 200–4,096. Residency is
-bounded to 128 construction blocks and 200,000 references. If the desired set
+bounded to 1,024 construction blocks and 200,000 references. If the desired set
 exceeds those bounds, the client shortens its effective fog distance instead of
 silently omitting cells inside that distance. A single dense cell can still need
 smaller render pages; an explicit budget failure is reported in that case.
 
 Requests carry a world-generation check, and late results outside the current
-view are discarded from memory. The current sparse manifest is scanned to select
+residency range are discarded from memory. The current sparse manifest is scanned to select
 candidate storage cells.
+
+Shared-world browsing requests a complete revision-pinned cube with radius
+`ceil((d_f + 384) / 128)`, clamped to 5–32; the default distance requests radius
+21. The server scans its sparse allocated-cell directory rather than all empty
+cells. Existing read piece/byte budgets still apply. HTTP 413 reduces the read
+radius and actual visible fog distance together, retaining the margin, down to
+radius 5; failure there remains explicit. Old geometry stays usable until the
+new packet arrives. See [shared read budgets and caches](loading-and-cache.md).
 
 ## Boundary-crossing bricks
 
@@ -173,10 +182,15 @@ colored envelopes would create overlapping bounds and damage the architecture.
 
 The navigator's **Render detail** control selects an explicit policy:
 
-- **Auto (balanced)** targets 2,000,000 estimated brick triangles **per pass**.
-- **Performance** targets 500,000 per pass.
+- **Auto (balanced)** targets 2,000,000 estimated colour-brick triangles.
+- **Performance** targets 500,000 colour-brick triangles.
 - **High (per-brick LOD)** retains the original per-brick thresholds without a
-  scene-wide target, and uses full source meshes for resident shadow casters.
+  scene-wide colour target.
+
+All three share the same independent 2,000,000-triangle shadow target and
+light-buffer detail policy. Colour-quality changes and selection do not change
+caster geometry or reset its detail history. Capture/illustration policies retain
+their full-source shadow geometry.
 
 For budgeted modes, the planner counts the cost of all camera-visible candidates
 at a common projected-size divisor of 1, 2, 4 or 8. It coarsens until the estimate
@@ -194,14 +208,17 @@ Shadow LOD uses the light buffer's projected stud size, rather than the color
 camera's distance: source mesh at 6 texels or more, reviewed medium mesh from
 1.25 texels, otherwise a reviewed far mesh, with 12% hysteresis. Its own 1/2/4/8
 detail divisor can coarsen that projected size to meet the separate pass target.
-Source-only, selected
-and highlighted pieces remain source geometry. The independent light-frustum
+Source-only pieces remain source geometry. The independent light-frustum
 query still includes resident offscreen casters. Its instance plan is cached
-until the light matrix/origin/resolution, scene/meshes, selection, explosion or
-policy changes. Camera-only color replans can reuse it; the existing GPU depth-map
+until the light matrix/origin/resolution, scene/meshes, explosion or full-detail
+capture policy changes. Camera-only color replans can reuse it; the existing GPU depth-map
 reuse remains separate. The shadow target is soft too: protected source geometry
 may exceed it. This matters especially at night, when a moving camera headlamp
 changes the shadow matrix on every view update.
+Sunlight coverage itself is fitted to complete resident geometry and its ground
+receivers, with a world-space texel-snapped centre, not to the camera zoom or
+colour frustum. Camera-local ground detail is a receiver only; its clipped and
+morphed instances cannot alter the shadow pass. See [shadow coverage](lighting.md#cast-shadows-and-limits).
 The [display part library](part-catalog.md#reviewed-display-detail-library) adds
 open-aperture window frames 60594/60592, annular round brick 87081 and verified
 parametric aliases; these specialties do not turn into solid body boxes. Its
@@ -235,14 +252,16 @@ string for each piece.
 Auto uses a conservative fixed chunk-detail divisor of 4; Performance uses 8.
 Color chunks require their largest member's projected size divided by that value
 to be below 8×0.88 px, and the **actual** projected stud diameter below 1.25×0.88 px.
-Shadow chunks use the light-buffer stud diameter divided by the same value.
+Shadow chunks use the light-buffer stud diameter divided by a fixed 4, independent
+of the colour quality setting.
 These chunk guards are separate from the remaining per-brick adaptive budgets.
 The chunk bounds include all members, so culling may submit offscreen members
 of an intersecting chunk; the GPU still clips them. LOD piece counters therefore
 report represented members, not an exact count of individually visible bricks.
 
-Selecting/highlighting a member restores individual rendering for that chunk.
-Explosion, High, captures and the homepage bypass merged surfaces. Pose/color or
+Selecting/highlighting a member restores individual colour rendering for that
+chunk. High bypasses colour surfaces; selection and High do not change shadow
+surfaces. Explosion, captures and the homepage bypass merged surfaces. Pose/color or
 prototype changes invalidate both derived CPU meshes and their GPU buffers.
 Specialty/custom shapes remain separate; source vertices/IDs, authoring exports,
 triangle picking and walking/physics bodies are not replaced. This is an exterior

@@ -176,7 +176,7 @@ mod tests {
                 }
             }
         }
-        assert_eq!(all().len(), 124);
+        assert_eq!(all().len(), 138);
         assert_eq!(rectangular, 44);
         for id in [
             "2780.dat",

@@ -22,6 +22,8 @@ loaded rows. Complete selected constructions download as standard self-contained
 LDraw/MPD or native Ergo JSON.
 Accepted region reads use [compact compressed packets and revision-safe caches](docs/loading-and-cache.md);
 selecting fully resident constructions reuses their loaded geometry.
+Loading follows physical viewing distance with a 384-stud prefetch margin;
+sunlight caster coverage is independent of camera zoom, colour LOD and clipping.
 Read-only regions have independent budgets, defaulting to 50,000 pieces and
 64 MiB of charged reads, for denser neighborhoods.
 Storage operators can [warm an accepted region's discardable cache](docs/loading-and-cache.md#operator-warm-up)
@@ -51,11 +53,11 @@ The prebuilt bundle includes native binaries and WASM assets; consumers need
 Node.js 20+ and Chrome/Chromium, not Rust.
 
 ```sh
-npm install --global --ignore-scripts @ngrislain/ergo-mcp@0.5.19
+npm install --global --ignore-scripts @ngrislain/ergo-mcp@0.5.20
 ergo-mcp --login --publish-url https://ergosandbox.com
 ```
 
-The [GitHub Release](https://github.com/ngrislain/ergo/releases/tag/v0.5.19)
+The [GitHub Release](https://github.com/ngrislain/ergo/releases/tag/v0.5.20)
 also provides the verified complete tarball and checksum.
 
 Generate/download a token in the signed-in browser, keep it in a private file,
@@ -93,7 +95,7 @@ brick units. They retain occurrence identities, colors, groups and physical meta
 Imported files are converted at the boundary. Stored assets are
 [Ergo part descriptions](docs/part-catalog.md) and geometry with source attribution.
 One [pinned canonical library](docs/part-library.md), derived from official LDraw
-and BrickLink, supplies 124 parts, reviewed common-part usage counts, hand/wheel/Technic
+and BrickLink, supplies 138 parts, reviewed common-part usage counts, hand/wheel/Technic
 interfaces and plate-free minifigure/car references,
 including [Lion Knights guards and supported genuine Castle pennants](docs/part-library.md#pre-assembled-common-constructs).
 Its compact native pack resolves the complete selected geometry offline.
@@ -160,3 +162,10 @@ Original [walkable monument recipes](docs/model-recipes.md) are in
 `scripts/build/`, including a corridor pyramid and a ten-level Seven Sisters-inspired tower.
 The [terraced park recipe](docs/model-recipes.md#terraced-park-recipe) adds a sourced,
 explicitly published landscape workflow with ponds, trees and summit walking checks.
+The [castle mountain recipe](docs/model-recipes.md#castle-mountain-proposal)
+prepares a moat, walkable arched bridge, genuine arrowslit panels and plate-free
+standing figures with capes, helmets and horses. Held weapons and archer poses
+remain pending measured connector capacities; local validation and shared
+publication are recorded separately.
+The server's unlisted `/catalogue` reference shows all canonical base pieces, genuine
+geometry previews, reviewed interfaces, mass sources and a LEGO/LDraw preview palette.

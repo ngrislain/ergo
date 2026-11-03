@@ -55,6 +55,96 @@ or teleporting. Authoritative static acceptance, studio renders and walking evid
 are separate checks. The sixteen trees and both tiled ponds are accepted;
 walking-pose pedestrians remain pending the reviewed physical data described above.
 
+### Genuine-tree expansion
+
+`scripts/build/park_expansion.py` prepares a 384×256-stud enlargement of the same
+assembly: 3.2 times the original area, with 64 genuine `3470`/`3471` tree pieces,
+a larger lake, connected forest paths and a low woodland hill. It replaces the
+160 original brick-built tree components while retaining all 6,084 other pieces
+and their IDs/poses. The complete expansion has 10,839 pieces and passes
+178 walking waypoints; its accepted checkpoint is recorded below.
+
+```sh
+python3 scripts/build/park_expansion.py --input /private/accepted-park-workspace.json \
+  --output target/park-expanded-preview
+```
+
+An explicit `--publish --token-file /private/delegation` opens the exact existing
+assembly and checks its accepted base before the single atomic replacement/addition.
+An existing attempt is never overwritten or replayed automatically.
+
+### Accepted genuine-tree expansion (2026-11-03)
+
+The same park assembly was enlarged at accepted revision
+`1ffc072f73875d7b50f91c799247033adb7091fc234e8ffc7b93255fb1c844f7`.
+It now contains **10,839 pieces**, including **64 genuine tree moulds**, over
+384×256 studs. The atomic edit retained all 6,084 non-tree pieces and their IDs
+and poses, replacing only the 160 original brick-built tree components.
+
+An independent, unauthenticated revision-pinned public read contains the complete
+assembly and matches its exact intended part/colour/pose multiset. A read-only
+native diagnostic derived from that public geometry passes **178 waypoints**,
+including the lake/woodland connections and new summit trail, without jumping or
+teleporting. Static acceptance uses a contact-only compression certificate and
+consumes no invented joint-strength values. These checks do not establish
+calibrated clutch retention or dynamic survival. Walking-pose pedestrians remain
+pending the reviewed physical data described above.
+
+## Castle mountain proposal
+
+`scripts/build/castle_landscape.py` prepares an original adaptation of LEGO
+[31168](https://www.lego.com/en-fr/product/medieval-horse-knight-castle-31168),
+[6080](https://brickset.com/sets/6080-1/King-s-Castle),
+[7094](https://brickset.com/sets/7094-1/King-s-Castle-Siege) and
+[10176](https://brickset.com/sets/10176-1/King-s-Castle). The inspected official
+OMR references are 6080 by Stefan Frenz [smf] and 10176 by Marc Giraudet
+[Mad_Marc], both CCAL 2.0. It is not a replica or a claim of downloadable OMR
+geometry for 31168/7094.
+
+The 384×320-stud scene raises the existing castle by 73/3 brick heights onto
+bonded mountain masonry, surrounds it with a continuous tiled moat, and connects
+a neighbouring summit with an arched masonry bridge. Sixty genuine `4444`
+panels provide arrowslits, and genuine `3308a` arches form the two entrances.
+`--varied-garrison` adds 200 genuine capes, three helmet variants and four horses
+with saddles to the 300 existing guards. These edits retain the old grounded
+weapon/support arrangements; plate-free archers, swords and independently posed
+hand-held equipment remain pending valid load paths and measured capacities.
+
+`--plate-free-garrison` instead removes all 300 individual display bases, 300
+shield stops and 600 legacy supported weapons. The 300 factory figures stand
+directly on the architecture, with the same cape/helmet/horse variations and
+subtle head turns. This supported standing-garrison proposal has 27,833 pieces;
+its contact-only static certificate consumes no joint strength. It does not claim
+held weapons or archer poses. Unsupported equipment is deferred rather than
+attached with invented capacities or concealed supports.
+
+```sh
+python3 scripts/build/castle_landscape.py --input /private/accepted-castle-workspace.json \
+  --output target/castle-mountain-preview --plate-free-garrison --validate
+```
+
+The native outputs include separate castle/terrain inspection files and a complete
+`combined.native.json` with unique IDs: retained castle local IDs remain intact,
+while additions receive fresh IDs. Validation, the 50-waypoint bridge route and
+studio images are local evidence; validation flushes the normalized native scene
+before optional REST materialization. They are not an accepted shared revision. The driver
+does not publish. An eventual ordinary authenticated replacement must include
+the castle and its terrain together; never raise the castle in an unsupported
+intermediate commit.
+
+For REST proposal preparation, the read-only `materialize_native` example converts
+native construction data into a public `WorldExport` scene, without authorizing or
+performing publication:
+
+```sh
+cargo run --locked -p ergo-world --example materialize_native -- \
+  target/castle-mountain-preview/combined.native.json target/castle-mountain-preview/scene.json
+```
+
+`support_issue` is a read-only nominal compression diagnostic for a complete
+native construction; it reports a failing brick and its bearings, or a successful
+contact-only check. It supplies no connector capacities.
+
 ## District recipes and accepted construction
 
 The final accepted district has **73,660 pieces in the same 15 assemblies**
@@ -67,8 +157,9 @@ The building-link/street baseline has **91,543 pieces in the same 15 assemblies*
 road-bridge and figure/car details in the 2026-10-28 baseline record.
 
 On 2026-10-28 the eleven new ten-storey buildings and three separate site assemblies
-were accepted in the common Sandbox around the unchanged cell-19 tower:
-https://ergosandbox.com/app?x=19&y=0&z=0. The new buildings contain 81,305 pieces;
+were accepted in the common Sandbox around the unchanged original tower (then
+cell 19; current 128-grid cell 156):
+https://ergosandbox.com/app?x=156&y=0&z=0. The new buildings contain 81,305 pieces;
 streets, furniture and two footbridges contain 4,998. Including the original
 4,962-piece tower, that initial district contained 91,265 pieces. Street life included eight
 cars, 24 figures, twelve benches and twelve lampposts.
@@ -85,7 +176,8 @@ accepted static validation, image rendering and dynamics remain separate evidenc
 Authoring recipes share `scripts/mcp_client.py`; they do not import a demo program
 for transport behavior.
 It uses publication's authoritative validation without a duplicate diagnostics gate.
-The eleven-site layout surrounds the existing cell-19 tower. The recipe implements
+The eleven-site layout surrounds the existing tower at `[19968,64,0]` (current
+cell 156). The recipe implements
 foundations, profile-specific five-to-ten nine-course structural storeys with the accepted tower's open
 switchback stairs, and supported roof decks. `--through roof --publish` grows the
 same assemblies in supported stages. `--through finished --publish` additionally
