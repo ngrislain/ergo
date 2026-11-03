@@ -166,8 +166,13 @@ directly. See [MCP setup and outcome handling](local-construction-mcp.md#publica
   Construction pieces, joints, fixed references, and groups are persisted; ground
   cache records are not authored terrain. The world uses the declared Z=0 floor.
 - `GET /api/shared-worlds/{id}`: small head/metadata only, never a world export.
-- `GET /api/shared-worlds/{id}/view?x=0&y=0&z=0`: bounded read-only 3×3×3-block
-  region for browser navigation, with accepted revision and geometry. It
+- `GET /api/shared-worlds/{id}/view?x=0&y=0&z=0`: bounded read-only block
+  region for browser navigation, with accepted revision and geometry. Optional
+  `radius=1..32` selects a `(2r+1)³` cell region; omitted radius retains 3×3×3.
+  Wider views traverse the sparse allocated-cell directory rather than every
+  empty cell, bounded to 4,096 selected allocated cells and 16,384 directory rows.
+  The response echoes `radius`. The navigator requests its fog distance plus a
+  384-stud prefetch margin, independently of storage-cell size. It
   defaults to 50,000 pieces and 64 MiB of charged CBOR reads, using independent
   `ERGO_SHARED_VIEW_PIECES`/`ERGO_SHARED_VIEW_BYTES` budgets; oversized requests are
   rejected rather than truncated. Configured bounds are 1–100,000 pieces and
@@ -180,7 +185,7 @@ directly. See [MCP setup and outcome handling](local-construction-mcp.md#publica
   `status=true` returns no geometry: it exposes the accepted revision, ephemeral
   phase and optional structured stage counters for the loading overlay. Polls can
   pin `revision=CID` to the same read. `from_x/from_y/from_z` are previous-centre
-  cache hints; reuse requires the same revision/budgets and a proof that all added
+   cache hints for radius-1 reads; reuse requires the same revision/budgets and a proof that all added
   cells are unallocated and no occupied cell was removed. They never permit partial
   or stale geometry. Responses expose applicable stage durations in `Server-Timing`.
   See [read-packet caching](loading-and-cache.md).

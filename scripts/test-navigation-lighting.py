@@ -52,8 +52,26 @@ with sync_playwright() as playwright:
             page.on('pageerror', lambda error: errors.append(str(error)))
             page.add_init_script('''const started=performance.now();
               Date.now=()=>Date.UTC(2026,5,21,HOUR)+performance.now()-started;
-              window.__navigationLight={};
+              window.__navigationLight={casters:[]};
               const proto=WebGL2RenderingContext.prototype,names=new WeakMap();
+              const buffers=new WeakMap(),upload=proto.bufferData;
+              proto.bufferData=function(target,value,...rest){
+                if(target===this.ARRAY_BUFFER&&ArrayBuffer.isView(value)){
+                  let hash=2166136261;for(const byte of new Uint8Array(value.buffer,value.byteOffset,value.byteLength))hash=Math.imul(hash^byte,16777619);
+                  buffers.set(this.getParameter(this.ARRAY_BUFFER_BINDING),hash>>>0);
+                }return upload.call(this,target,value,...rest);
+              };
+              const bind=proto.bindFramebuffer;
+              proto.bindFramebuffer=function(target,fb){if(target===this.FRAMEBUFFER&&fb)window.__navigationLight.casters=[];return bind.call(this,target,fb);};
+              const draw=proto.drawArraysInstanced;
+              proto.drawArraysInstanced=function(...args){
+                if(this.getParameter(this.DRAW_FRAMEBUFFER_BINDING))window.__navigationLight.casters.push([
+                  args[2],args[3],buffers.get(this.getVertexAttrib(0,this.VERTEX_ATTRIB_ARRAY_BUFFER_BINDING)),
+                  buffers.get(this.getVertexAttrib(3,this.VERTEX_ATTRIB_ARRAY_BUFFER_BINDING)),
+                  this.getUniform(this.getParameter(this.CURRENT_PROGRAM),this.getUniformLocation(this.getParameter(this.CURRENT_PROGRAM),'stud_mode'))
+                ].join(':'));
+                return draw.apply(this,args);
+              };
               const get=proto.getUniformLocation;
               proto.getUniformLocation=function(program,name){const value=get.call(this,program,name);if(value)names.set(value,name);return value;};
               const vector=proto.uniform3f;
@@ -72,6 +90,22 @@ with sync_playwright() as playwright:
                 canvas.dispatch_event('wheel', {'deltaY': 2700, 'cancelable': True})
                 page.wait_for_function("old=>document.querySelector('#world-canvas').dataset.renderedFrames!==old", arg=old)
             orbit = shadow_sample(page)
+            if hour == 12:
+                assert orbit['casters'], 'Expected actual resident shadow geometry'
+                for quality in ['performance','high','auto']:
+                    old=canvas.get_attribute('data-rendered-frames')
+                    page.get_by_label('Render detail',exact=True).select_option(quality)
+                    page.wait_for_function("old=>document.querySelector('#world-canvas').dataset.renderedFrames!==old",arg=old)
+                    current=shadow_sample(page)
+                    daylight_projection(orbit,current)
+                    assert sorted(current['casters'])==sorted(orbit['casters']), 'Colour quality changed actual shadow geometry'
+                for zoom in [900,-900]:
+                    old=canvas.get_attribute('data-rendered-frames')
+                    canvas.dispatch_event('wheel',{'deltaY':zoom,'cancelable':True})
+                    page.wait_for_function("old=>document.querySelector('#world-canvas').dataset.renderedFrames!==old",arg=old)
+                    current=shadow_sample(page)
+                    daylight_projection(orbit,current)
+                    assert sorted(current['casters'])==sorted(orbit['casters']), 'Camera zoom/ground LOD changed the shadow casters'
             modes = []
             for mode in ['Fly', 'Walk', 'Fly']:
                 old = canvas.get_attribute('data-rendered-frames')
@@ -104,4 +138,4 @@ with sync_playwright() as playwright:
             page.close()
     finally:
         browser.close()
-print('Navigation lighting checks passed:', json.dumps(results))
+print('Navigation lighting checks passed: stable sunlight volume/casters across colour quality, zoom and navigation;', json.dumps(results))

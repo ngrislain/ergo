@@ -29,6 +29,7 @@ pub(super) struct Observer {
     pub display_scale: DVec3,
     pub studio: bool,
     pub point_light: Option<DVec3>,
+    pub bounds: Option<ergo_world::Aabb>,
 }
 
 pub(super) struct LightFrame {
@@ -97,7 +98,11 @@ impl LightPass {
     }
 
     pub fn prepare(&mut self, observer: &Observer) -> LightFrame {
-        let gps = observer.geo.to_gps(observer.shadow.target);
+        let gps = observer.geo.to_gps(
+            observer
+                .bounds
+                .map_or(observer.shadow.target, |b| b.center()),
+        );
         let seconds = (js_sys::Date::now() / 60000.0).floor() * 60.0;
         let key = [
             (gps[0] * 10000.0).round() as i64,
@@ -138,24 +143,40 @@ impl LightPass {
                 forward,
             )
         } else if sun.daylight() {
-            let span = if observer.studio {
-                32.
+            if !observer.studio
+                && let Some(bounds) = observer.bounds
+            {
+                let (matrix, position) = crate::lighting::sunlight_volume(
+                    bounds,
+                    sun.direction,
+                    observer.origin,
+                    self.size as f64,
+                );
+                (
+                    matrix.as_mat4(),
+                    position.as_vec3(),
+                    -sun.direction.as_vec3(),
+                )
             } else {
-                (observer.shadow.distance * 0.7).clamp(18.0, 180.0) as f32
-            };
-            let direction = sun.direction.as_vec3();
-            let position = shadow_target + direction * span * 2.0;
-            let up = if direction.y.abs() > 0.98 {
-                Vec3::Z
-            } else {
-                Vec3::Y
-            };
-            let view = Mat4::look_at_rh(position, shadow_target, up);
-            (
-                Mat4::orthographic_rh_gl(-span, span, -span, span, 0.1, span * 4.0) * view,
-                position,
-                -direction,
-            )
+                let span = if observer.studio {
+                    32.
+                } else {
+                    (observer.shadow.distance * 0.7).clamp(18.0, 180.0) as f32
+                };
+                let direction = sun.direction.as_vec3();
+                let position = shadow_target + direction * span * 2.0;
+                let up = if direction.y.abs() > 0.98 {
+                    Vec3::Z
+                } else {
+                    Vec3::Y
+                };
+                let view = Mat4::look_at_rh(position, shadow_target, up);
+                (
+                    Mat4::orthographic_rh_gl(-span, span, -span, span, 0.1, span * 4.0) * view,
+                    position,
+                    -direction,
+                )
+            }
         } else {
             let direction = (target - eye).normalize();
             // A navigation headlamp is coaxial with the *rendered* camera ray.

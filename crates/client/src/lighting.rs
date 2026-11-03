@@ -2,6 +2,63 @@
 //! NOAA/Meeus solar coordinates; geometric elevation (no weather/refraction).
 use glam::DVec3;
 
+/// Fit sunlight to complete resident geometry and its ground receivers. No
+/// colour-camera position, FOV, selection, LOD or clipping enters this volume.
+#[cfg(any(target_arch = "wasm32", test))]
+pub(crate) fn sunlight_volume(
+    bounds: ergo_world::Aabb,
+    direction: DVec3,
+    origin: DVec3,
+    resolution: f64,
+) -> (glam::DMat4, DVec3) {
+    use glam::DMat4;
+    let up = if direction.y.abs() > 0.98 {
+        DVec3::Z
+    } else {
+        DVec3::Y
+    };
+    let rotation = DMat4::look_at_rh(DVec3::ZERO, -direction, up);
+    let mut low = DVec3::splat(f64::INFINITY);
+    let mut high = DVec3::splat(f64::NEG_INFINITY);
+    for x in [bounds.min.x, bounds.max.x] {
+        for y in [bounds.min.y, bounds.max.y] {
+            for z in [bounds.min.z, bounds.max.z] {
+                let point = DVec3::new(x, y, z) * crate::scene::DISPLAY_SCALE;
+                let receiver =
+                    point - direction * (point.y.max(0.) / direction.y.max(0.0001)).min(8192.);
+                for p in [point, receiver] {
+                    let p = rotation.transform_point3(p);
+                    low = low.min(p);
+                    high = high.max(p);
+                }
+            }
+        }
+    }
+    let padding = 2. + (high.x - low.x).max(high.y - low.y) / resolution.max(1.);
+    let span = (((high.x - low.x).max(high.y - low.y) * 0.5 + padding) / 16.)
+        .ceil()
+        .max(1.)
+        * 16.;
+    let texel = 2. * span / resolution.max(1.);
+    let centre = ((low + high) * 0.5 / texel).round() * texel;
+    let position =
+        rotation
+            .inverse()
+            .transform_point3(DVec3::new(centre.x, centre.y, high.z + padding));
+    let target = position - direction;
+    let base = origin * crate::scene::DISPLAY_SCALE;
+    let view = DMat4::look_at_rh(position - base, target - base, up);
+    let matrix = DMat4::orthographic_rh_gl(
+        -span,
+        span,
+        -span,
+        span,
+        0.1,
+        (high.z - low.z + padding * 2.).max(1.),
+    ) * view;
+    (matrix, position - base)
+}
+
 /// Lighting coverage is independent of the free camera's one-unit aiming ray.
 /// Retain the orbit footprint on entry, then follow actual camera translation.
 #[derive(Clone, Copy, Debug)]
@@ -105,6 +162,43 @@ pub fn solar_position(latitude: f64, longitude: f64, unix_seconds: f64) -> Solar
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn sunlight_covers_distant_casters_and_ground_receivers_after_rebasing() {
+        let bounds =
+            ergo_world::Aabb::new(DVec3::new(-800., 0., -300.), DVec3::new(900., 240., 500.));
+        for direction in [
+            DVec3::new(-0.6, 1., 0.8).normalize(),
+            DVec3::new(0.9, 0.05, 0.1).normalize(),
+        ] {
+            let (matrix, _) = sunlight_volume(bounds, direction, DVec3::ZERO, 2048.);
+            let origin = DVec3::new(512., 128., -256.);
+            let (rebased, _) = sunlight_volume(bounds, direction, origin, 2048.);
+            for x in [bounds.min.x, bounds.max.x] {
+                for y in [bounds.min.y, bounds.max.y] {
+                    for z in [bounds.min.z, bounds.max.z] {
+                        let point = DVec3::new(x, y, z) * crate::scene::DISPLAY_SCALE;
+                        let receiver = point - direction * (point.y / direction.y).min(8192.);
+                        for point in [point, receiver] {
+                            let projected = matrix.project_point3(point);
+                            assert!(
+                                projected.abs().max_element() < 1.,
+                                "Uncovered caster/receiver: {projected:?}"
+                            );
+                            assert!(
+                                (projected
+                                    - rebased.project_point3(
+                                        point - origin * crate::scene::DISPLAY_SCALE
+                                    ))
+                                .length()
+                                    < 1e-8
+                            );
+                        }
+                    }
+                }
+            }
+        }
+    }
 
     #[test]
     fn free_camera_aim_and_turning_do_not_shrink_or_recenter_orbit_shadows() {

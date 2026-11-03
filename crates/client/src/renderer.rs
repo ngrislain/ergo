@@ -28,6 +28,7 @@ pub struct Renderer {
     program: WebGlProgram,
     lighting: LightPass,
     shadow_focus: ShadowFocus,
+    shadow_bounds: Option<Aabb>,
     pub geo: ergo_world::GeoReference,
     pub ground_visible: bool,
     /// Studio fill/environment with a fixed key unless point_light overrides it.
@@ -121,6 +122,7 @@ impl Renderer {
             program,
             lighting,
             shadow_focus: ShadowFocus::default(),
+            shadow_bounds: None,
             geo: Default::default(),
             ground_visible: true,
             studio_lighting: transparent_background,
@@ -172,6 +174,7 @@ impl Renderer {
         self.gpu.invalidate_surfaces();
         self.planner.retain(&bricks);
         self.tree = Octree::new(bricks.iter().map(|b| b.render_bounds).collect());
+        self.shadow_bounds = bricks.iter().map(|b| b.render_bounds).reduce(Aabb::union);
         self.bricks = bricks;
         if self
             .selected
@@ -188,13 +191,22 @@ impl Renderer {
     /// Attribute/topology edits must invalidate derived surfaces as well as the
     /// frame; camera-only invalidation deliberately retains those caches.
     pub fn scene_changed(&mut self) {
+        self.shadow_bounds = self
+            .bricks
+            .iter()
+            .map(|b| b.render_bounds)
+            .reduce(Aabb::union);
         self.planner.retain(&self.bricks);
         self.gpu.invalidate_surfaces();
         self.dirty = true;
     }
     pub fn set_policy(&mut self, policy: RenderPolicy) {
+        if self.policy.full_detail != policy.full_detail {
+            self.planner.reset_detail();
+        } else {
+            self.planner.reset_color_detail();
+        }
         self.policy = policy;
-        self.planner.reset_detail();
         self.dirty = true;
     }
     /// Replacing prototypes invalidates derived LODs and GPU geometry, not just
@@ -234,6 +246,9 @@ impl Renderer {
     }
     pub fn visibility(&self) -> Visibility {
         self.camera().visibility
+    }
+    pub fn needs_residency(&self, bounds: Aabb) -> bool {
+        crate::scene::needs_residency(self.eye(), bounds, self.fog_distance)
     }
     fn camera(&self) -> Camera {
         Camera::new(
@@ -322,6 +337,7 @@ impl Renderer {
         self.lod_meshes.clear();
         self.ground.clear();
         self.bricks.clear();
+        self.shadow_bounds = None;
         self.tree = Octree::new(Vec::new());
         self.selected = None;
         self.highlighted.clear();
@@ -611,6 +627,12 @@ impl Renderer {
             projection_pixels: camera.projection_pixels,
             studio: self.studio_lighting,
             point_light: self.point_light,
+            bounds: self.shadow_bounds.map(|b| {
+                Aabb::new(
+                    b.min + DVec3::Y * b.min.y * self.explode,
+                    b.max + DVec3::Y * b.max.y * self.explode,
+                )
+            }),
         };
         let light = self.lighting.prepare(&observer);
         let replan = self.dirty || light.shadow_changed;
@@ -817,10 +839,7 @@ impl Renderer {
                 selected: self.selected,
                 highlighted: &self.highlighted,
                 explode: self.explode,
-                shadow_resolution: self
-                    .policy
-                    .triangle_budget
-                    .map(|_| self.lighting.size as f64),
+                shadow_resolution: (!self.policy.full_detail).then_some(self.lighting.size as f64),
                 reuse_shadow: true,
                 merge_surfaces: true,
             },
@@ -838,7 +857,8 @@ impl Renderer {
         if self.ground_visible {
             let (instances, count) = ground::plan(camera, self.fog_distance, &self.ground);
             self.ground_stud_instances = count;
-            plan.shadow.extend(instances.clone());
+            // Camera-local ground detail only receives shadows. Its clipped and
+            // morphed colour instances must never modify the caster geometry.
             plan.color.extend(instances);
         }
         self.gpu.begin(&plan);

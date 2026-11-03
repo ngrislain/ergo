@@ -6,6 +6,9 @@ use ergo_world::{BlockCoord, WorldExport, geometry::Mesh};
 use futures::{StreamExt, TryStreamExt};
 use std::sync::Arc;
 const INDEX_PAGE_SIZE: usize = 512;
+fn default_radius() -> u8 {
+    1
+}
 
 /// Read-only browser budgets are independent of authoring and dynamic bodies.
 #[derive(Clone, Copy)]
@@ -53,6 +56,8 @@ pub(super) struct ViewPacket {
     pub scene: WorldExport,
     pub revision: ContentId,
     pub(super) blocks: Vec<BlockCoord>,
+    #[serde(default = "default_radius")]
+    pub(super) radius: u8,
     assemblies: BTreeMap<u32, ContentId>,
     #[serde(default)]
     fully_resident_assemblies: BTreeSet<ContentId>,
@@ -67,6 +72,8 @@ pub(super) struct ViewQuery {
     y: i64,
     #[serde(default)]
     z: i64,
+    /// Read-only coverage; authoring and byte/piece limits are unchanged.
+    radius: Option<u8>,
     revision: Option<ContentId>,
     #[serde(default)]
     format: ViewFormat,
@@ -84,6 +91,11 @@ pub(super) async fn view(
     Query(query): Query<ViewQuery>,
 ) -> SharedResult<Response> {
     let started = std::time::Instant::now();
+    let radius = query.radius.unwrap_or(1);
+    ensure!(
+        (1..=32).contains(&radius),
+        "View radius must be 1..32 storage cells"
+    );
     ensure!(
         [query.x, query.y, query.z]
             .iter()
@@ -105,6 +117,7 @@ pub(super) async fn view(
         world: id,
         revision: snapshot.id().clone(),
         coord: [query.x, query.y, query.z],
+        radius,
         pieces: s.shared.view_limits.pieces,
         read_bytes: s.shared.view_limits.bytes,
     };
@@ -174,6 +187,7 @@ pub(super) async fn view(
         None
     };
     if reused.is_none()
+        && key.radius == 1
         && let Some(preferred) = preferred_cached_center(&snapshot, key.coord).await?
     {
         if preferred != key.coord && Some(preferred) != previous {
@@ -277,7 +291,8 @@ async fn reuse_neighbor(
     key: &ViewKey,
     previous: [i64; 3],
 ) -> Option<Arc<EncodedView>> {
-    if previous == key.coord
+    if key.radius != 1
+        || previous == key.coord
         || !in_region(previous, key.coord)
         || previous.iter().any(|n| n.unsigned_abs() >= 1_000_000_000)
     {
@@ -356,6 +371,7 @@ impl SharedWorlds {
             world: id.into(),
             revision: snapshot.id().clone(),
             coord,
+            radius: 1,
             pieces: self.view_limits.pieces,
             read_bytes: self.view_limits.bytes,
         };
@@ -534,9 +550,74 @@ fn accepts_gzip(headers: &HeaderMap) -> bool {
     explicit.unwrap_or(wildcard)
 }
 
+/// Wider views enumerate the sparse allocated-cell directory, not every empty
+/// cell in a large cube. Both directory work and materialization stay bounded.
+async fn view_cells(
+    snapshot: &Snapshot,
+    key: &ViewKey,
+    remaining: &mut usize,
+) -> SharedResult<Vec<BlockCoord>> {
+    if key.radius == 1 {
+        return Ok((-1..=1)
+            .flat_map(|x| {
+                (-1..=1).flat_map(move |y| {
+                    (-1..=1)
+                        .map(move |z| [key.coord[0] + x, key.coord[1] + y, key.coord[2] + z].into())
+                })
+            })
+            .collect());
+    }
+    let r = i64::from(key.radius);
+    let low = glam::DVec3::from_array(key.coord.map(|v| (v - r) as f64 * ergo_world::BLOCK_SIZE));
+    let high = glam::DVec3::from_array(
+        key.coord
+            .map(|v| (v + r + 1) as f64 * ergo_world::BLOCK_SIZE - 1e-5),
+    );
+    let a = ergo_world::coordinates::internal(low);
+    let b = ergo_world::coordinates::internal(high);
+    let bounds = ergo_world::Aabb::new(a.min(b), a.max(b));
+    let mut cells = BTreeSet::new();
+    let mut visited = 0usize;
+    for prefix in address::cover(bounds)? {
+        let mut path = prefix.octants().to_vec();
+        path[0] = 5;
+        let directory = OctreePath::new(path)?;
+        let mut after = None;
+        loop {
+            let page = snapshot
+                .scan_page(&directory, after.as_ref(), INDEX_PAGE_SIZE)
+                .await?;
+            for (path, cid) in page.leaves {
+                visited += 1;
+                if visited > 16384 {
+                    return Err(SharedError::working_limit("browser view directory"));
+                }
+                *remaining = remaining
+                    .checked_sub(canonical_cbor(&(&path, &cid))?.len())
+                    .ok_or_else(|| SharedError::working_limit("browser view bytes"))?;
+                let cell = spatial::coordinate(&path)?;
+                let public: [i64; 3] = cell.into();
+                if (0..3).all(|axis| {
+                    (i128::from(public[axis]) - i128::from(key.coord[axis])).abs() <= i128::from(r)
+                }) {
+                    cells.insert(cell);
+                    if cells.len() > 4096 {
+                        return Err(SharedError::working_limit("browser view allocated cells"));
+                    }
+                }
+            }
+            after = page.next;
+            if after.is_none() {
+                break;
+            }
+        }
+    }
+    Ok(cells.into_iter().collect())
+}
+
 async fn build(
     snapshot: &Snapshot,
-    query: &ViewQuery,
+    _query: &ViewQuery,
     key: &ViewKey,
     progress: &super::read_cache::ReadProgress<'_>,
 ) -> SharedResult<(ViewPacket, usize)> {
@@ -553,73 +634,70 @@ async fn build(
         .ok_or_else(|| SharedError::working_limit("browser view bytes"))?;
     let mut blocks = Vec::new();
     let mut checked_cells = 0;
-    for dx in -1..=1 {
-        for dy in -1..=1 {
-            for dz in -1..=1 {
-                let coord: BlockCoord = [query.x + dx, query.y + dy, query.z + dz].into();
-                progress.scanning(checked_cells, ids.len(), Some(coord.into()));
-                let mut packed_count = 0usize;
-                let packed = if metadata.layout >= 3 {
-                    bulk::read_block(snapshot, coord, |page| {
-                        packed_count += page.pieces.len();
-                        for (id, piece) in page.pieces {
-                            if let Some(previous) = preloaded.get(&id) {
-                                ensure!(
-                                    canonical_cbor(previous)? == canonical_cbor(&piece)?,
-                                    "Inconsistent packed block replicas"
-                                );
-                            } else {
-                                ids.insert(id.clone());
-                                if ids.len() > key.pieces {
-                                    return Err(SharedError::working_limit("browser view pieces"));
-                                }
-                                preloaded.insert(id, piece);
-                            }
-                        }
-                        progress.scanning(checked_cells, ids.len(), Some(coord.into()));
-                        Ok(())
-                    })
-                    .await?
-                } else {
-                    false
-                };
-                if packed {
-                    if packed_count > 0 {
-                        blocks.push(coord);
-                    }
-                    checked_cells += 1;
-                    progress.scanning(checked_cells, ids.len(), Some(coord.into()));
-                    continue;
-                }
-                let mut after = None;
-                loop {
-                    let page = snapshot
-                        .scan_page_prefetched(&block_path(coord), after.as_ref(), INDEX_PAGE_SIZE)
-                        .await?;
-                    if !page.leaves.is_empty() && !blocks.contains(&coord) {
-                        blocks.push(coord);
-                    }
-                    for (path, _) in page.leaves {
-                        ids.insert(spatial::reference_piece(&path, coord)?);
-                        if ids.len() % 2048 == 0 {
-                            progress.scanning(checked_cells, ids.len(), None);
-                        }
+    let coordinates = view_cells(snapshot, key, &mut remaining).await?;
+    let total_cells = coordinates.len();
+    for coord in coordinates {
+        progress.scanning_total(checked_cells, total_cells, ids.len(), Some(coord.into()));
+        let mut packed_count = 0usize;
+        let packed = if metadata.layout >= 3 {
+            bulk::read_block(snapshot, coord, |page| {
+                packed_count += page.pieces.len();
+                for (id, piece) in page.pieces {
+                    if let Some(previous) = preloaded.get(&id) {
+                        ensure!(
+                            canonical_cbor(previous)? == canonical_cbor(&piece)?,
+                            "Inconsistent packed block replicas"
+                        );
+                    } else {
+                        ids.insert(id.clone());
                         if ids.len() > key.pieces {
                             return Err(SharedError::working_limit("browser view pieces"));
                         }
+                        preloaded.insert(id, piece);
                     }
-                    after = page.next;
-                    if after.is_none() {
-                        break;
-                    }
+                }
+                progress.scanning_total(checked_cells, total_cells, ids.len(), Some(coord.into()));
+                Ok(())
+            })
+            .await?
+        } else {
+            false
+        };
+        if packed {
+            if packed_count > 0 {
+                blocks.push(coord);
+            }
+            checked_cells += 1;
+            progress.scanning_total(checked_cells, total_cells, ids.len(), Some(coord.into()));
+            continue;
+        }
+        let mut after = None;
+        loop {
+            let page = snapshot
+                .scan_page_prefetched(&block_path(coord), after.as_ref(), INDEX_PAGE_SIZE)
+                .await?;
+            if !page.leaves.is_empty() && !blocks.contains(&coord) {
+                blocks.push(coord);
+            }
+            for (path, _) in page.leaves {
+                ids.insert(spatial::reference_piece(&path, coord)?);
+                if ids.len() % 2048 == 0 {
+                    progress.scanning_total(checked_cells, total_cells, ids.len(), None);
                 }
                 if ids.len() > key.pieces {
                     return Err(SharedError::working_limit("browser view pieces"));
                 }
-                checked_cells += 1;
-                progress.scanning(checked_cells, ids.len(), Some(coord.into()));
+            }
+            after = page.next;
+            if after.is_none() {
+                break;
             }
         }
+        if ids.len() > key.pieces {
+            return Err(SharedError::working_limit("browser view pieces"));
+        }
+        checked_cells += 1;
+        progress.scanning_total(checked_cells, total_cells, ids.len(), Some(coord.into()));
     }
     let mut bricks = Vec::new();
     let total = ids.len();
@@ -733,6 +811,7 @@ async fn build(
             scene,
             revision: snapshot.id().clone(),
             blocks,
+            radius: key.radius,
             assemblies,
             fully_resident_assemblies,
             view_kind: "bounded_read_only_region".into(),

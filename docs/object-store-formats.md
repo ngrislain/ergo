@@ -175,8 +175,8 @@ mesh links. Old accepted roots keep their original projection versions.
 ## `cache/read-views/cell128-v1/<hash>.cbor`: discardable read packet
 
 Discardable `cache/read-views/cell128-v1/*.cbor` objects use a separate compressed read
-packet, not a canonical world record. Its envelope has `format:2`, `key`
-(world/revision/cell/limits), `logical_read_bytes`, `decoded_bytes`, `checksum` and
+packet, not a canonical world record. Its envelope has `format:3`, `key`
+(world/revision/cell/radius/limits), `logical_read_bytes`, `decoded_bytes`, `checksum` and
 gzip bytes. Authorization/revision checks and bounded decompression precede use;
 see [loading caches](loading-and-cache.md). Removing this cache does not remove
 accepted history or geometry.

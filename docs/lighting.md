@@ -150,33 +150,38 @@ percentage-closer filter and depth bias. The shadow map is 1024² when the canva
 is initially at most 600 CSS pixels wide, otherwise 2048². Sunlight uses a bounded
 orthographic volume near the target; the flashlight uses a bounded perspective
 volume. The map is reused while its matrix and uploaded geometry stay unchanged.
-The sun half-span remains `clamp(0.7 × orbit distance, 18, 180)` display units;
-the night far plane remains `clamp(3 × orbit eye/focus metric distance, 100, 1600)`.
-Free navigation preserves those fitted values across mode switches. This retains
-orbit's off-camera caster coverage rather than clipping tall/distant casters to
-a small volume around the free-camera aim point. It remains bounded resident
-coverage, not cascaded or whole-world shadows.
+Sunlight fits the complete resident render bounds and their projected ground
+receivers, independently of the colour camera, zoom, selection and clipping.
+The square half-span rounds up to 16 display-unit steps, with a light-texel-snapped
+world-space centre. Near-horizon receiver projection is bounded to 8,192 display
+units. Solar coordinates use the resident scene centre, not the camera aim point.
+The tiny studio preview retains its fixed 32-unit key-light half-span.
+The night far plane remains `clamp(3 × orbit eye/focus metric distance, 100, 1600)`;
+free navigation preserves that fitted reach across mode switches. A headlamp
+naturally moves with the camera. This remains bounded resident coverage, not
+cascaded or whole-world shadows.
 
 Shadow casters come from an **independent light-frustum query** of the resident
 octree. Camera clipping and color-body LOD do not remove a resident caster.
-Auto/Performance navigator policies select source/medium/far display geometry
+All interactive navigator policies select source/medium/far shadow geometry
 for reviewed parts according to projected stud size in the shadow
 buffer (6/1.25 texels before its adaptive detail divisor, 12% hysteresis).
-Each budgeted pass targets 2,000,000 brick triangles in Auto or 500,000 in
-Performance. The shadow budget can reduce stud detail independently of color;
+The shadow pass has its own fixed 2,000,000-brick-triangle target, independent of
+the Auto/Performance/High colour policy, selection and highlighting. It can reduce stud detail independently of color;
 it remains a soft target. Cached greedy chunk surfaces can replace eligible
 standard bodies in the light volume while preserving body-surface occlusion.
 Parts without a reviewed display profile
-retain source shadow geometry, as do
-selected and highlighted pieces. Window-frame far meshes retain their apertures
-and the round-brick far mesh retains its annular silhouette. High, MCP captures and the homepage retain
+retain source shadow geometry. Window-frame far meshes retain their apertures
+and the round-brick far mesh retains its annular silhouette. MCP captures and the homepage retain
 full source shadow parts. This is visual LOD, not a change to collision bodies.
 The caster-instance plan is reused while the light volume/origin/resolution,
-scene/meshes, selected/highlighted IDs, explosion and quality policy are unchanged;
+scene/meshes, explosion and full-detail capture policy are unchanged;
 the existing GPU map reuse then skips the depth draw when appropriate. Unlike a
 scene-fixed sun map, a moving night headlamp often needs a new map every frame,
 so a triangle budget and merged caster geometry are important in that case.
-Ground studs retain their bounded camera-local detail region.
+Camera-local ground baseplate/stud detail receives shadows but does not cast
+them: camera clipping and its morphed detail geometry cannot change the depth
+map. Ground surface shading retains its bounded camera-local relief.
 This is not a whole-world occlusion query: unloaded or light-volume-clipped
 casters can still be absent. Full-detail shadow prototypes share GPU geometry
 with full-detail color batches; adaptive color proxies need separate prototypes.
