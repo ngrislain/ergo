@@ -159,12 +159,14 @@ with tempfile.TemporaryDirectory(prefix='ergo-library-') as temporary:
             if cape:parts.append((cape,[x+2,1.5,3+(2/24 if cape=='4524.dat' else 0)],4))
             references.extend(placed('part',part,position,colour) for part,position,colour in parts)
         references.extend(placed('part',part,position,colour) for part,position,colour in [
-            ('3470.dat',[34,1,1/3],2),('3471.dat',[42,1,1/3],2),
-            ('4493c01.dat',[54,6.25,57/24],0),('4493c02.dat',[70,6.25,57/24],15),
-            ('4491a.dat',[70,6.25,65/24],4)])
+            ('41539.dat',[34,1,1/3],288),('41539.dat',[42,1,1/3],288),
+            ('41539.dat',[54,6,1/3],288),('41539.dat',[70,6,1/3],288),
+            ('3470.dat',[34,1,2/3],2),('3471.dat',[42,1,2/3],2),
+            ('4493c01.dat',[54,5.75,65/24],0),('4493c02.dat',[70,5.75,65/24],15),
+            ('4491a.dat',[70,5.75,73/24],4)])
         model={'format':'ergo-model-1','schema':2,'root':'main','definitions':{'main':references}}
         feedback=client.call('place_submodel',model=model)['structuredContent']
-        assert feedback['brick_count']==19 and feedback['overlap_free'],feedback
+        assert feedback['brick_count']==23 and feedback['overlap_free'],feedback
         assert feedback['static_under_current_joint_model'] and feedback['publication_ready'],feedback
         client.call('export_construction');accepted=json.loads(workspace.read_text())
         assert all(mesh['quality']=='source' for mesh in accepted['meshes'].values())

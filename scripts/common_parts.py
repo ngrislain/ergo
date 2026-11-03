@@ -142,6 +142,9 @@ def nominal(id, bounds):
         # Official rounded 2x2 bases contain the central inverted stud4 tube;
         # the four receiving stud centres are +/-10 LDU, at the Y=8 underside.
         value['cavity'] = dict(width=2, depth=2, first=[-10, -10], bottom=8)
+        # The base/trunk is the bearing core. Filling the full canopy envelope
+        # down to the floor would invent collisions with neighbouring studs.
+        value['bounds_ldu'] = [[-20, bounds[0][1], -20], [20, 8, 20]]
     elif id == '4444':
         value['bounds_ldu'] = [[-50, 0, -10], [50, 144, 30]]
         # This mould has stepped stud rows, not a fictional flat 2x5 grid.
@@ -179,10 +182,13 @@ def nominal(id, bounds):
         # Factory unit: body/back bears at source Y=0; head and tail remain
         # genuine rendered overhangs. Four separate hoof holes are reviewed
         # in s/4494s01.dat, not one fictitious solid receiving rectangle.
-        value['bounds_ldu'] = [[bounds[0][0], 0, bounds[0][2]], [bounds[1][0], 57, bounds[1][2]]]
+        value['bounds_ldu'] = [[-20, 0, -35], [20, 57, 47]]
         feet = [dict(width=1, depth=1, first=[x, z], bottom=57)
                 for z in [-25, 35] for x in [-10, 10]]
         value['cavity'], value['additional_cavities'] = feet[0], feet[1:]
+        value['collision_boxes_ldu'] = [[[-20, 0, -35], [20, 20, 47]]] + [
+            [[x-10, 14.5, z-10], [x+10, 57, z+(12 if z==35 else 10)]]
+            for z in [-25, 35] for x in [-10, 10]]
     elif id == '4491a':
         # The original 6080 assembly seats the saddle 8 LDU above the horse
         # datum. Its actual floor is 0..8 LDU; raised sides/clips are visual.
@@ -223,9 +229,62 @@ def source_bounds(root, id):
     return [[min(p[i] for p in values) for i in range(3)], [max(p[i] for p in values) for i in range(3)]]
 
 
+def arch_boxes(root, id, width, height):
+    """Conservative 4-LDU source-triangle columns, retaining the empty archway."""
+    cache = {}
+    def triangles(name, active=()):
+        name = name.replace('\\', '/').lower()
+        if name in cache:return cache[name]
+        if name in active or len(active) > 64:raise ValueError('Cyclic/deep arch source')
+        path = next((root/p/name for p in ['p', 'parts'] if (root/p/name).is_file()), None)
+        if path is None:raise ValueError('Missing arch primitive '+name)
+        faces = []
+        for line in path.read_bytes().decode('utf-8-sig').splitlines():
+            f = line.split()
+            if not f:continue
+            if f[0] in ['3', '4']:
+                p = [list(map(float, f[i:i+3])) for i in range(2, len(f), 3)]
+                faces.append(p[:3])
+                if f[0] == '4':faces.append([p[0], p[2], p[3]])
+            elif f[0] == '1':
+                offset, matrix = list(map(float, f[2:5])), list(map(float, f[5:14]))
+                for face in triangles(' '.join(f[14:]), (*active, name)):
+                    faces.append([[offset[i]+sum(matrix[3*i+j]*p[j] for j in range(3)) for i in range(3)] for p in face])
+            if len(faces) > 100_000:raise ValueError('Arch source exceeds the reviewed proxy budget')
+        cache[name] = faces
+        return faces
+    def clip(points, boundary, lower):
+        output = []
+        for a, b in zip(points, points[1:]+points[:1]):
+            inside_a, inside_b = (a[0] >= boundary if lower else a[0] <= boundary), (b[0] >= boundary if lower else b[0] <= boundary)
+            if inside_a:output.append(a)
+            if inside_a != inside_b:
+                t = (boundary-a[0])/(b[0]-a[0])
+                output.append([a[i]+t*(b[i]-a[i]) for i in range(3)])
+        return output
+    faces = triangles(id)
+    boxes = []
+    for left in range(-10*width, 10*width, 4):
+        right = left+4
+        depths = []
+        for face in faces:
+            if max(p[0] for p in face) < left or min(p[0] for p in face) > right:continue
+            points = clip(clip(face, left, True), right, False)
+            depths.extend(p[1] for p in points)
+        bottom = min(height, max(depths, default=0))
+        if bottom <= 0:continue
+        if boxes and abs(boxes[-1][1][1]-bottom) < 1e-8:
+            boxes[-1][1][0] = right
+        else:boxes.append([[left, 0, -10], [right, bottom, 10]])
+    return boxes
+
+
 def enrich(entry, root):
     id = entry.get('profile_id', entry['id'])
     ports = connectors(id)
     if ports: entry['connectors'] = ports
     if id in CANDIDATES and entry['size'] is None:
         entry['nominal'] = nominal(id, source_bounds(root, entry['id']))
+        if id in ['3659', '3307', '3308a']:
+            width, height = {'3659': (4, 24), '3307': (6, 48), '3308a': (8, 48)}[id]
+            entry['nominal']['collision_boxes_ldu'] = arch_boxes(root, entry['id'], width, height)

@@ -708,10 +708,12 @@ mod tests {
         panel.position.y = 7.;
         update(&mut panel);
         let mut support = part("3005.dat", 2);
-        support.position = DVec3::new(-1., 1., 1.);
+        support.position =
+            panel.position + crate::ldraw::conversion() * DVec3::new(-20., 144., 20.);
         update(&mut support);
         assert!(stud_connection(&support, &panel, 1e-6));
-        support.position.z = -1.;
+        support.position =
+            panel.position + crate::ldraw::conversion() * DVec3::new(-20., 144., -20.);
         update(&mut support);
         assert!(!stud_connection(&support, &panel, 1e-6));
     }

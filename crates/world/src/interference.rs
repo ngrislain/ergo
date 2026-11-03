@@ -83,18 +83,34 @@ pub fn first_stud_collision(bricks: &[Brick], tolerance: f64) -> Option<String> 
                 {
                     continue;
                 }
-                let lo = target.bounds.min * SCALE;
-                let hi = target.bounds.max * SCALE;
-                if (center[axis] + half[axis]).min(hi[axis])
-                    - (center[axis] - half[axis]).max(lo[axis])
-                    <= epsilon
-                {
-                    continue;
-                }
-                let nearest = center.clamp(lo, hi);
-                let mut radial = center - nearest;
-                radial[axis] = 0.;
-                if radial.length() >= radius - epsilon {
+                // New compound mould profiles keep empty space between horse
+                // legs/arch feet empty. Existing profiles retain their original
+                // stud-clearance envelope; no prior part is reinterpreted.
+                let explicit = crate::part_library::get(&target.part)
+                    .and_then(|p| p.catalogue.nominal.as_ref())
+                    .is_some_and(|n| !n.collision_boxes_ldu.is_empty());
+                let bodies = if explicit {
+                    crate::part_profiles::collision_boxes(&target.part)
+                        .into_iter()
+                        .map(|bounds| bounds.transformed(target.transform, target.position))
+                        .collect()
+                } else {
+                    vec![target.bounds]
+                };
+                let intersects = bodies.iter().any(|bounds| {
+                    let lo = bounds.min * SCALE;
+                    let hi = bounds.max * SCALE;
+                    if (center[axis] + half[axis]).min(hi[axis])
+                        - (center[axis] - half[axis]).max(lo[axis])
+                        <= epsilon
+                    {
+                        return false;
+                    }
+                    let mut radial = center - center.clamp(lo, hi);
+                    radial[axis] = 0.;
+                    radial.length() < radius - epsilon
+                });
+                if !intersects {
                     continue;
                 }
                 let mut cavity = false;

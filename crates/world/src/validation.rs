@@ -338,7 +338,9 @@ mod registration_tests {
             .transformed(horse.transform, horse.position);
         assert!(validate_baseplate_registration(&scene.bricks, Default::default()).is_err());
         let correction = crate::placement::snap_bricks_translation(&scene.bricks, DVec3::ZERO);
-        assert!((correction - DVec3::new(0., 0., -0.25)).length() < 1e-9);
+        assert!(
+            (crate::coordinates::public(correction) - DVec3::new(0., -0.25, 0.)).length() < 1e-9
+        );
         scene.bricks[0].translated(correction);
         validate_baseplate_registration(&scene.bricks, Default::default()).unwrap();
         assert_eq!(

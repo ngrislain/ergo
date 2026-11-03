@@ -15,6 +15,8 @@ pub struct Nominal {
     pub cavity: Option<NominalGrid>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub additional_cavities: Vec<NominalGrid>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub collision_boxes_ldu: Vec<[[f64; 3]; 2]>,
 }
 #[derive(Debug, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
@@ -98,6 +100,19 @@ fn centres(width: u32, depth: u32, first: [f64; 2]) -> Vec<DVec3> {
 /// Source-defined shield face and two grip bars. Their union leaves the empty
 /// space behind a held shield free, unlike its overall mass/support envelope.
 pub fn collision_boxes(part: &str) -> Vec<Aabb> {
+    if let Some(nominal) = crate::part_library::get(part).and_then(|p| p.catalogue.nominal.as_ref())
+        && !nominal.collision_boxes_ldu.is_empty()
+    {
+        let c = crate::ldraw::conversion();
+        return nominal
+            .collision_boxes_ldu
+            .iter()
+            .map(|bounds| {
+                Aabb::new(DVec3::from_array(bounds[0]), DVec3::from_array(bounds[1]))
+                    .transformed(c, DVec3::ZERO)
+            })
+            .collect();
+    }
     let id = crate::part_library::profile_id(part);
     let boxes = if ["3846.dat", "3846p4h.dat"].contains(&id) {
         vec![
@@ -167,12 +182,12 @@ pub fn profile(part: &str) -> Option<Profile> {
     if let Some(nominal) = &entry.nominal {
         let c = crate::ldraw::conversion();
         let receiving = |g: &NominalGrid| {
-            // These are source-local X/Z coordinates. North is flipped only
-            // by the public wire adapter, not inside the native grid.
+            // LDraw conversion flips source Z into native south. Start at the
+            // opposite end so native grid indices still increase positively.
             grid(
                 g.width,
                 g.depth,
-                [g.first[0] / 20., g.first[1] / 20.],
+                [g.first[0] / 20., -g.first[1] / 20. - f64::from(g.depth - 1)],
                 -g.bottom / 24.,
             )
         };

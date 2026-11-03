@@ -55,6 +55,25 @@ or teleporting. Authoritative static acceptance, studio renders and walking evid
 are separate checks. The sixteen trees and both tiled ponds are accepted;
 walking-pose pedestrians remain pending the reviewed physical data described above.
 
+### Genuine-tree expansion
+
+`scripts/build/park_expansion.py` prepares a 384×256-stud enlargement of the same
+assembly: 3.2 times the original area, with 64 genuine `3470`/`3471` tree pieces,
+a larger lake, connected forest paths and a low woodland hill. It replaces the
+160 original brick-built tree components while retaining all 6,084 other pieces
+and their IDs/poses. The complete local proposal has 10,839 pieces and passes
+178 walking waypoints. This is local verification; the earlier accepted checkpoint
+above remains the publication record until an accepted expansion receipt is recorded.
+
+```sh
+python3 scripts/build/park_expansion.py --input /private/accepted-park-workspace.json \
+  --output target/park-expanded-preview
+```
+
+An explicit `--publish --token-file /private/delegation` opens the exact existing
+assembly and checks its accepted base before the single atomic replacement/addition.
+An existing attempt is never overwritten or replayed automatically.
+
 ## District recipes and accepted construction
 
 The final accepted district has **73,660 pieces in the same 15 assemblies**
