@@ -86,9 +86,9 @@ variable "max_scale" {
 }
 
 variable "request_timeout_seconds" {
-  description = "Container processing deadline; increase for diagnosed long validated operations. Client deadlines are independent."
+  description = "Container processing deadline for long validated loads; client deadlines remain independent."
   type        = number
-  default     = 300
+  default     = 1800
   validation {
     condition     = var.request_timeout_seconds >= 1 && var.request_timeout_seconds <= 1800 && floor(var.request_timeout_seconds) == var.request_timeout_seconds
     error_message = "request_timeout_seconds must be an integer from 1 to 1800."

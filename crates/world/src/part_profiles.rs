@@ -80,6 +80,61 @@ pub(crate) fn receiving_grids(part: &str) -> Vec<Grid> {
     })
 }
 
+/// Horizontal bearing planes on the source-reviewed stepped 4444 mould. The
+/// broad mass proxy deliberately excludes its hanging wings and thin rear shelf;
+/// that does not make their real stud-landing faces disappear.
+pub(crate) fn upper_bearing_regions(brick: &crate::Brick) -> Vec<Aabb> {
+    let b = brick.bounds;
+    let mut faces = vec![Aabb::new(DVec3::new(b.min.x, b.max.y, b.min.z), b.max)];
+    if crate::part_library::profile_id(&brick.part) == "4444.dat"
+        && (crate::physical::metric_transform(brick.transform).y_axis - DVec3::Y).length() < 1e-8
+    {
+        let c = crate::ldraw::conversion();
+        // s/4444s01.dat: the end studs land at source Y=24, and the
+        // three-stud rear shelf at Y=8. These are rigid mould faces, not bonds.
+        for (lo, hi) in [
+            ([-50., 24., -10.], [-30., 24., 10.]),
+            ([30., 24., -10.], [50., 24., 10.]),
+            ([-30., 8., 10.], [30., 8., 30.]),
+        ] {
+            faces.push(
+                Aabb::new(DVec3::from_array(lo), DVec3::from_array(hi))
+                    .transformed(c, DVec3::ZERO)
+                    .transformed(brick.transform, brick.position),
+            );
+        }
+    }
+    faces
+}
+
+/// Compound arches and horses bear only on their declared end feet/hooves,
+/// never on empty space inside the overall envelope.
+pub(crate) fn lower_bearing_regions(brick: &crate::Brick) -> Vec<Aabb> {
+    let explicit = crate::part_library::get(&brick.part)
+        .and_then(|p| p.catalogue.nominal.as_ref())
+        .is_some_and(|n| !n.additional_cavities.is_empty());
+    if explicit
+        && (crate::physical::metric_transform(brick.transform).y_axis - DVec3::Y).length() < 1e-8
+    {
+        return receiving_grids(&brick.part)
+            .into_iter()
+            .map(|g| {
+                let lo = DVec3::new(g.first[0] - 0.5, g.bottom, g.first[1] - 0.5);
+                let hi = lo + DVec3::new(f64::from(g.width), 0., f64::from(g.depth));
+                Aabb::new(lo, hi).transformed(brick.transform, brick.position)
+            })
+            .collect();
+    }
+    let b = brick.bounds;
+    vec![Aabb::new(b.min, DVec3::new(b.max.x, b.min.y, b.max.z))]
+}
+
+pub(crate) fn bearing_bounds(brick: &crate::Brick) -> Aabb {
+    upper_bearing_regions(brick)
+        .into_iter()
+        .fold(brick.bounds, Aabb::union)
+}
+
 fn grid(width: u32, depth: u32, first: [f64; 2], bottom: f64) -> Grid {
     Grid {
         width,

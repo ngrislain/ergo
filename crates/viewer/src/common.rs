@@ -148,6 +148,7 @@ pub(super) fn open(handle: Handle, assembly: String) {
         if c.ui.busy.get_untracked() && !c.ui.navigating.get_untracked() {
             return None;
         }
+        c.restore_region_preview();
         c.navigation_request += 1;
         c.region_request += 1;
         if let Some(controller) = c.region_abort.take() {

@@ -628,6 +628,41 @@ async fn seeded(service: &SharedWorlds, initial: WorldExport) -> (Head, Imported
 }
 
 #[tokio::test]
+async fn concurrent_identical_imports_from_one_base_cannot_create_duplicate_geometry() {
+    let service = service();
+    let (head, _) = seeded(&service, scene(100.)).await;
+    let candidate = scene(200.);
+    let first = service.import(
+        &head.id,
+        "alice",
+        ImportRequest {
+            base: head.revision.clone(),
+            scene: candidate.clone(),
+        },
+    );
+    let second = service.import(
+        &head.id,
+        "alice",
+        ImportRequest {
+            base: head.revision.clone(),
+            scene: candidate,
+        },
+    );
+    let (a, b) = tokio::join!(first, second);
+    assert_eq!(usize::from(a.is_ok()) + usize::from(b.is_ok()), 1);
+    let (app, alice) = http(&service);
+    let (_, catalogue) = json(
+        &app,
+        "GET",
+        &format!("/api/shared-worlds/{}/assemblies?limit=128", head.id),
+        &alice,
+        None,
+    )
+    .await;
+    assert_eq!(catalogue["items"].as_array().unwrap().len(), 2);
+}
+
+#[tokio::test]
 async fn upright_gravity_support_does_not_authorize_uncalibrated_hanging_bonds() {
     let service = service();
     let mut d = ergo_world::demo::Demo::new();
@@ -1619,6 +1654,50 @@ async fn read_progress_is_authorized_ephemeral_and_contains_no_geometry() {
     assert_eq!(pieces["progress"]["stage"], "pieces");
     assert_eq!(pieces["progress"]["completed"], 2048);
     assert_eq!(pieces["progress"]["total"], 6000);
+    let mut preview = scene(100.);
+    preview.bricks = (1..=2049)
+        .map(|id| {
+            let mut brick = preview.bricks[0].clone();
+            brick.id = id;
+            brick
+        })
+        .collect();
+    progress.preview(&preview.bricks, &preview.meshes);
+    progress.membership(0, 1); // Phase changes retain available preview geometry.
+    assert!(json(&app, "GET", &url, &alice, None).await.1["preview"].is_null());
+    let batch_url = format!("{url}&revision={}&preview_after=0", head.revision);
+    let (_, first) = json(&app, "GET", &batch_url, &alice, None).await;
+    assert_eq!(first["preview"]["after"], 0);
+    assert_eq!(first["preview"]["next"], 1024);
+    assert_eq!(first["preview"]["bricks"].as_array().unwrap().len(), 1024);
+    assert_eq!(first["preview"]["meshes"].as_object().unwrap().len(), 1);
+    let (_, second) = json(
+        &app,
+        "GET",
+        &format!("{url}&preview_after=1024"),
+        &alice,
+        None,
+    )
+    .await;
+    assert_eq!(second["preview"]["next"], 2048);
+    assert_eq!(second["preview"]["bricks"][0]["id"], 1025);
+    assert!(second["preview"]["meshes"].as_object().unwrap().is_empty());
+    assert!(
+        json(
+            &app,
+            "GET",
+            &format!("{url}&radius=2&preview_after=0"),
+            &alice,
+            None
+        )
+        .await
+        .1["preview"]
+            .is_null()
+    );
+    assert_eq!(
+        json(&app, "GET", &batch_url, &bob, None).await.0,
+        StatusCode::FORBIDDEN
+    );
     assert_eq!(
         json(&app, "GET", &url, &bob, None).await.0,
         StatusCode::FORBIDDEN
@@ -1626,6 +1705,7 @@ async fn read_progress_is_authorized_ephemeral_and_contains_no_geometry() {
     drop(progress);
     assert!(json(&app, "GET", &url, &alice, None).await.1["phase"].is_null());
     assert!(json(&app, "GET", &url, &alice, None).await.1["progress"].is_null());
+    assert!(json(&app, "GET", &batch_url, &alice, None).await.1["preview"].is_null());
 }
 
 #[tokio::test]

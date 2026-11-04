@@ -9750,6 +9750,26 @@
         "mass_source": "https://www.bricklink.com/v2/catalog/catalogitem.page?P=4444",
         "name": "Panel  2 x  5 x  6 Wall",
         "nominal": {
+          "additional_cavities": [
+            {
+              "bottom": 120,
+              "depth": 1,
+              "first": [
+                -40,
+                0
+              ],
+              "width": 1
+            },
+            {
+              "bottom": 120,
+              "depth": 1,
+              "first": [
+                40,
+                0
+              ],
+              "width": 1
+            }
+          ],
           "bounds_ldu": [
             [
               -30,
@@ -9838,8 +9858,8 @@
         "stud2a.dat",
         "stud3.dat"
       ],
-      "revision": "672d589c6c971c853df18ccf8b00850e6825a7cab25ccf2af3cc73b6bd69945d",
-      "source_revision": "6a4aeb196c10e55101beac5c2f49827366cb123738d52b489475aafa8b164eb8",
+      "revision": "93cbf096163e83c975f777e32506887883a7058e5d584ad783e24bfcccc41200",
+      "source_revision": "b22e89a2e30e6ac566cf19713b558b84fa1f6f18a7063e747c2034a9319be776",
       "vertex_hash": "d92285f8cc252b1b0238aeca837409809b54c9b9642cc4bd919094083fc40de6"
     },
     "4477.dat": {

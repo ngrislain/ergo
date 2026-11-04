@@ -72,9 +72,9 @@ spear, shield, antenna and wavy pennant. The registered antenna/flag bore cleara
 permits the source assembly's hollow geometry, but supplies no force/torque values.
 The recommended plate-free `medieval-guard-v3` and `medieval-archer-v1` use genuine
 separately posed arms/hands and source shoulder/wrist/grip interfaces. They require
-measured capacities to publish joint-dependent loads. Existing `medieval-guard-v1`
-retains its at-rest spear/shield bearing, and `castle-standard-v1` supports the
-cloth with a capped post. Removing that support does not produce a
+measured capacities to publish joint-dependent loads. Obsolete guard versions
+are not supported. `castle-standard-v1` supports the cloth with a capped post.
+Removing that support does not produce a
 zero-joint-wrench proof: the server's existing operator-measurement gate still
 applies. Neither a source mesh nor a geometric factory-fit relation is calibration.
 
@@ -95,6 +95,21 @@ nonnegative contact-reaction proof may instead establish gravity balance with ze
 wrench at every joint, including inferred stud joints. In that case
 `joint_strength_required:false` records that no clutch strength was used or assumed.
 This does not calibrate those joints for dynamics or certify their earthquake strength.
+
+Compression uses source-reviewed finite bearing patches for upright compound
+parts: arch end feet, horse hooves, and the stepped wings/rear shelf of the 4444
+wall mould. Broadphase bounds include those real upper faces, but empty arch
+openings are not bearing surfaces. These patches add no tensile/clutch capacity
+and do not change the mass/collision core or genuine source vertices.
+
+The compression constructor first tries a centred reaction when the accumulated
+load centre lies within one actual closed bearing patch. Corner-only
+triangulation can otherwise route an unnecessary tipping moment into a supporting
+split plate even for a balanced roof. If the centred construction cannot finish,
+the original triangulated construction is also tried. Both require nonnegative
+reactions and the same force/moment tolerances; neither supplies clutch capacity.
+The split-plate regression verifies this additional constructive proof and keeps
+unsupported/tipping cases rejected.
 
 ## Measurement-book format
 

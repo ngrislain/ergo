@@ -16,7 +16,7 @@ For the standard studded catalog parts, positive-height stud geometry smoothly
 approaches the body surface as `w` decreases. A derivative-filtered local-space
 rim normal takes over with complementary weight. Known studded parts retain their
 stud-capable mesh until the geometric transition reaches its flat endpoint,
-instead of abruptly losing studs at the body-box threshold.
+except for the explicit budget-pressure rule below.
 
 Ground studs use the same projected-size weight plus a wide distance taper
 between 60% and 100% of the geometric radius. The radius is capped at 94 units,
@@ -35,9 +35,12 @@ does not remove resident offscreen casters. Unreviewed/source-only shadow pieces
 keep source geometry; capture and illustration policies keep all shadow parts at
 source detail. The shadow budget is independent of colour quality and selection.
 Camera-local ground studs receive shadows but do not enter the caster pass, so
-their camera-dependent morph cannot change shadows. The global color-budget bias does not replace the actual stud
-pixel size: a standard studded part retains stud-capable geometry until that
-transition reaches its flat endpoint. Source meshes, saved
+their camera-dependent morph cannot change shadows. The global colour-budget bias
+still uses actual stud pixel size. Under active budget pressure, rectangular
+studded parts can use analytic rim shading at up to **3 CSS pixels** of stud width
+(12% hysteresis); the corresponding geometric relief is subpixel. This avoids
+submitting hundreds of tiny cylinders for each large terrain brick. Close studs,
+selected pieces and full-detail captures retain geometric detail. Source meshes, saved
 transforms, body bounds, picking and physics are unchanged. Full near detail keeps
 nominal physical proportions. As with any LOD, the far image is an approximation.
 Automatic analytic stud relief applies only to the known rectangular studded

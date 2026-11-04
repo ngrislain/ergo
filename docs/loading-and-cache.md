@@ -137,6 +137,20 @@ transaction predicates. Acknowledged immutable uploads populate the server's 256
 verified-object LRU, avoiding a download immediately after writing the bytes.
 Mutable heads and explicit uncached CAS verification remain uncached. Uploads
 are never skipped based on an LRU hit, preserving GC/orphan safety.
+
+Large imports also warm the immutable index paths for their newly generated birth
+IDs before the ordinary identity-collision checks. This follows only requested
+paths in the transaction's pinned read snapshot, with at most 64 concurrent traversals and a
+64 KiB speculative-node limit. No application payloads or mutable heads are
+prefetched, no predicates are registered by speculation, and failed speculation
+falls back to the required reads. The unchanged `piece`/`put` checks still record
+identity dependencies and reject collisions. Pending edits remain authoritative.
+This avoids serial cold S3 node lookups across thousands of random birth IDs;
+it does not scan the world's geometry or raise admission budgets.
+
+Operator logs identify import preparation, identity-path prefetch, staging counts,
+validation and publication, with elapsed seconds. These are progress diagnostics,
+not accepted receipts or permission to replay an uncertain mutation.
 Required authoring rule rows and spatial-reference payloads are also loaded in
 ordered batches of at most 64 reads within their existing 128-row pages. Every
 record is still charged once to the working budget, and spatial predicates and
@@ -178,12 +192,36 @@ Incompatible old databases and `ergo-read-packets-v1` CacheStorage are deleted
 on the cell-format cutover. Old packets are never lazily imported or served in a
 legacy grid mode. See [cell migration](cells-and-migration.md).
 
-Every use still sends a fresh conditional request: bytes are displayed only after
+Every construction/discovery use still sends a fresh conditional request: bytes are displayed only after
 an authorized HTTP 304, never as an offline/error fallback. Read denial evicts that
 URL; logout suspends pending writes and clears origin storage. Cache failures do
 not prevent ordinary network reads.
 The renderer retains its local spatial octree while resident and rebuilds it
 from locally cached records after reload, rather than downloading an index again.
+
+### Complete current basic library
+
+`/api/config` advertises a `basic_library` content revision. The viewer starts a
+background fetch of `/api/library/{revision}/manifest.json` and `parts.pack` as
+soon as configuration arrives. These public immutable resources contain all
+**138 canonical sourced parts** and the **five current common constructs**, not
+just assets encountered in the current region. The revision covers the complete
+pack, reviewed source/nominal-profile lock and construct definitions. Obsolete
+construct versions are not included or resolved.
+
+The browser verifies the complete pack SHA-256 and length, stores both resources
+in the same content-addressed IndexedDB, and leases them alongside the active
+region. Identical pack bytes share one blob across manifest revisions. Individual
+part reads decompress only their member and verify its decoded mesh SHA-256.
+The public library can be reused offline after reload; world geometry still
+requires its normal authorized revision check. Quota/private-mode failures are
+best-effort cache misses, not a promise of browser-owned persistent storage.
+The native MCP distribution already embeds the complete pack and current
+construct definitions for offline use.
+
+Public floor colour fields have their own versioned, seven-day local cache;
+see [floor-pattern reuse](ground-and-coordinates.md#lazy-generation). They and the
+public basic library are distinct from permission-checked construction packets.
 
 ### Construction-list metadata
 
@@ -255,7 +293,7 @@ and generation/request guards reject late head/location/body callbacks. Authorin
 mutations remain exclusive. Each discovery GET attempt has a 15-second deadline;
 transport interruptions, HTTP 408 and 5xx responses get one idempotent retry after
 250 ms. Permission and protocol failures do not retry. Region reads retain a
-180-second deadline; a failed region is not immediately retried in a loop.
+**30-minute (1,800,000 ms) deadline**; a failed region is not immediately retried in a loop.
 Select it again or choose another construction to recover without reloading the app.
 Transient catalogue-refresh failures keep already loaded rows and show a scoped
 retry status. Automatic list retries back off from 5 to 60 seconds; a manual
@@ -263,6 +301,38 @@ refresh supersedes an older scheduled retry. Background revision polling backs o
 to at most 60 seconds and retains the current scene without a global timeout
 alert; a successful poll reports recovery. These are GET-only recovery paths,
 not mutation retries or permission-free/offline cache reuse.
+
+### Progressive read-only preview
+
+While a cold region builder is materializing brick records, progress polls opt in
+to `preview_after=<received-count>`. Each response carries at most 1,024 contiguous
+occurrences and only prototypes first introduced by those occurrences. Part
+geometry is sent once per preview cursor sequence and all occurrences refer to
+that shared prototype. The initial batch can appear after the first materialized
+brick; discovery itself does not expose unread geometry. The preview remains
+subject to the builder's normal piece/read-byte limits.
+
+Every poll rechecks current read permission and accepted-history membership for
+the exact world/revision/region/radius/budgets. These ephemeral, `no-store` batches
+do not start builds, write caches, advance cursors server-side, establish complete
+membership or claim mechanical certification. They disappear with the builder.
+Late or noncontiguous batches are ignored by the client. If the full response is
+already available, no partial batch is needed.
+
+Initial loads and construction selections show an explicitly labelled partial
+preview in orbit mode. Background navigation/refreshes retain the completed
+resident scene. Editing, export and walking are blocked on a partial preview;
+its geometry never enters the authoritative client blocks or a completed region
+cache. The previous completed scene/camera is retained for cancellation, error
+or radius fallback, including selection of a resident construction. Only a
+successfully decoded and partitioned full response replaces it.
+
+The MCP HTTP client also gives complete construction GETs (`workspace`, `view`,
+`download`) 30 minutes by default. Other requests retain their five-minute default;
+an explicit `ERGO_MCP_HTTP_TIMEOUT_SECONDS` still overrides both. The existing
+outer tool deadline remains 30 minutes. Hosting-proxy request limits are separate:
+the client deadline does not alter them; exceptionally cold deployments can still
+need the operator warm-up below.
 
 ### Operator warm-up
 
@@ -290,7 +360,9 @@ Warm-up does not make cold reconstruction intrinsically fast or raise read limit
 The same authorized view URL with `status=true` returns the accepted revision and
 an ephemeral `phase` and optional structured `progress` containing `stage`,
 `completed`, `total`, and `found_pieces` (null when not relevant). It is
-`private, no-store`, exposes no geometry, and does not start a build. Progress is
+`private, no-store` and does not start a build. Without `preview_after`, `preview`
+is null and no geometry is exposed. With an opt-in cursor, `preview` is null or
+`{after,next,bricks,meshes}` as described above. Progress and partial geometry are
 removed when the request completes, fails or is cancelled.
 
 `X-Ergo-Read-Cache` reports `miss`, `memory`, `persistent`, `neighbor` or `revalidated`;

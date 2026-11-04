@@ -75,7 +75,10 @@ pub struct Renderer {
     pub shadow_detail_scale: f64,
     pub shadow_budget_exceeded: bool,
     pub surface_pieces: usize,
+    pub occluded_pieces: usize,
     pub scene_plan_ms: f64,
+    pub ground_plan_ms: f64,
+    pub upload_ms: f64,
     pub rendered_frames: u64,
 }
 
@@ -165,7 +168,10 @@ impl Renderer {
             shadow_detail_scale: 1.,
             shadow_budget_exceeded: false,
             surface_pieces: 0,
+            occluded_pieces: 0,
             scene_plan_ms: 0.,
+            ground_plan_ms: 0.,
+            upload_ms: 0.,
             rendered_frames: 0,
         })
     }
@@ -237,6 +243,22 @@ impl Renderer {
     }
     pub fn meshes(&self) -> &BTreeMap<String, Mesh> {
         &self.meshes
+    }
+    /// Add disjoint prototypes without copying all resident geometry. Existing
+    /// prototypes must still go through set_meshes and its invalidation checks.
+    pub fn add_meshes(&mut self, meshes: BTreeMap<String, Mesh>) -> Result<(), JsValue> {
+        if meshes.keys().any(|part| self.meshes.contains_key(part)) {
+            return Err(JsValue::from_str(
+                "Cannot replace an existing prototype by appending",
+            ));
+        }
+        if !meshes.is_empty() {
+            self.meshes.extend(meshes);
+            self.planner.invalidate_meshes();
+            self.gpu.invalidate_surfaces();
+            self.dirty = true;
+        }
+        Ok(())
     }
     pub fn set_ground(&mut self, block: ergo_world::terrain::GroundBlock) {
         if block.validate().is_ok() {
@@ -596,7 +618,7 @@ impl Renderer {
             web_sys::window()
                 .map(|w| w.device_pixel_ratio())
                 .unwrap_or(1.0)
-                .min(2.0)
+                .min(self.policy.max_pixel_ratio)
         };
         let width = (self.canvas.client_width() as f64 * dpr).max(1.0) as u32;
         let height = (self.canvas.client_height() as f64 * dpr).max(1.0) as u32;
@@ -803,6 +825,17 @@ impl Renderer {
                 self.shadow_detail_scale.to_string(),
             ),
             ("data-scene-plan-ms", format!("{:.3}", self.scene_plan_ms)),
+            ("data-occluded-pieces", self.occluded_pieces.to_string()),
+            ("data-ground-plan-ms", format!("{:.3}", self.ground_plan_ms)),
+            ("data-upload-ms", format!("{:.3}", self.upload_ms)),
+            (
+                "data-ground-patterns",
+                self.gpu.ground_pattern_count().to_string(),
+            ),
+            (
+                "data-ground-pattern-uploads",
+                self.gpu.ground_pattern_uploads.to_string(),
+            ),
             (
                 "data-shadow-budget-estimate-exceeded",
                 self.shadow_budget_exceeded.to_string(),
@@ -853,7 +886,9 @@ impl Renderer {
         self.shadow_detail_scale = plan.shadow_detail_scale;
         self.shadow_budget_exceeded = plan.shadow_budget_exceeded;
         self.surface_pieces = plan.surface_pieces;
+        self.occluded_pieces = plan.occluded_pieces;
         self.ground_stud_instances = 0;
+        let ground_start = js_sys::Date::now();
         if self.ground_visible {
             let (instances, count) = ground::plan(camera, self.fog_distance, &self.ground);
             self.ground_stud_instances = count;
@@ -861,6 +896,7 @@ impl Renderer {
             // morphed colour instances must never modify the caster geometry.
             plan.color.extend(instances);
         }
+        self.ground_plan_ms = js_sys::Date::now() - ground_start;
         self.gpu.begin(&plan);
         let keys: std::collections::BTreeSet<_> = plan
             .color
@@ -894,9 +930,11 @@ impl Renderer {
                             ))
                         }
                         GeometryKey::Part(part, level) => {
-                            crate::part_lod::RenderPart::resolve(&self.meshes[part])
+                            let mut mesh = crate::part_lod::RenderPart::resolve(&self.meshes[part])
                                 .expect("Planned part LOD must have a reviewed display profile")
-                                .mesh(*level)
+                                .mesh(*level);
+                            mesh.credits = self.meshes[part].credits.clone();
+                            mesh
                         }
                         GeometryKey::Surface(_) => unreachable!(),
                     }),
@@ -911,6 +949,7 @@ impl Renderer {
         }
         self.gpu_bytes = self.gpu.bytes();
         self.gl.bind_vertex_array(None);
+        self.upload_ms = js_sys::Date::now() - start;
     }
 }
 

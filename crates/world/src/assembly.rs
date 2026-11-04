@@ -342,12 +342,81 @@ impl Model {
     }
 
     pub fn for_scene(scene: &WorldExport) -> Self {
-        scene
+        let original = scene
             .model
             .as_ref()
             .filter(|m| m.matches(&scene.bricks))
             .cloned()
-            .unwrap_or_else(|| Self::from_bricks(&scene.bricks))
+            .unwrap_or_else(|| Self::from_bricks(&scene.bricks));
+        let mut compact = original.clone();
+        // Applies equally to migrated existing constructions and new saves.
+        // Leaf order/occurrence metadata and independently edited geometry stay
+        // unchanged. Accepted source blobs themselves are never rewritten.
+        if compact.use_common_constructs().is_ok()
+            && compact.intern_definitions().is_ok()
+            && compact.matches(&scene.bricks)
+        {
+            compact
+        } else {
+            original
+        }
+    }
+
+    /// Intern identical definitions bottom-up, including differently named
+    /// copies in current-format models. Ordered children, colours and transforms are part
+    /// of identity; occurrences are never merged or reordered.
+    pub fn intern_definitions(&mut self) -> Result<()> {
+        self.references()?;
+        fn intern(
+            name: &str,
+            model: &Model,
+            names: &mut BTreeMap<String, String>,
+            definitions: &mut BTreeMap<String, Vec<Reference>>,
+            unique: &mut BTreeMap<Vec<u8>, String>,
+        ) -> Result<String> {
+            if let Some(name) = names.get(name) {
+                return Ok(name.clone());
+            }
+            let mut references = model.subparts[name].clone();
+            for reference in &mut references {
+                if model.subparts.contains_key(&reference.file) {
+                    reference.file = intern(&reference.file, model, names, definitions, unique)?;
+                }
+            }
+            let key = serde_json::to_vec(&references)?;
+            let id = if name != model.root {
+                unique.get(&key).cloned().unwrap_or_else(|| name.to_owned())
+            } else {
+                name.to_owned()
+            };
+            if id == name {
+                if name != model.root {
+                    unique.insert(key, id.clone());
+                }
+                definitions.insert(id.clone(), references);
+            }
+            names.insert(name.into(), id.clone());
+            Ok(id)
+        }
+        let mut names = BTreeMap::new();
+        let mut definitions = BTreeMap::new();
+        let mut unique = BTreeMap::new();
+        // Prefer immutable library IDs over aliases for the same prototype.
+        for name in self
+            .subparts
+            .keys()
+            .filter(|name| name.starts_with("library/"))
+            .chain(
+                self.subparts
+                    .keys()
+                    .filter(|name| !name.starts_with("library/")),
+            )
+        {
+            intern(name, self, &mut names, &mut definitions, &mut unique)?;
+        }
+        self.subparts = definitions;
+        self.references()?;
+        Ok(())
     }
 
     pub fn apply_transform(&mut self, matrix: Transform) -> Result<()> {

@@ -66,12 +66,6 @@ impl LocalClientRuntime {
                     .map(|reference| reference.name)
                     .collect())
             }),
-            "retrofit_library" => self
-                .scene
-                .bricks
-                .iter()
-                .map(|brick| library_part(&brick.part))
-                .collect(),
             _ => Ok(Default::default()),
         };
         serde_json::to_string(&parts.map_err(js_error)?).map_err(js_error)
@@ -145,19 +139,6 @@ fn canonical(part: &str) -> String {
     } else {
         format!("{part}.dat")
     })
-}
-fn library_part(part: &str) -> Result<String> {
-    let candidate = if part.starts_with("view/") || part.starts_with("readback-variants/") {
-        part.rsplit('/').next().unwrap()
-    } else {
-        part
-    };
-    let id = canonical(candidate);
-    ensure!(
-        ergo_world::part_library::get(&id).is_some(),
-        "No canonical library replacement for {part}"
-    );
-    Ok(id)
 }
 fn parse_submodel(
     args: &Value,
@@ -603,36 +584,6 @@ impl LocalClientRuntime {
                     feedback["replacement"] = json!({"removed_ids":replace_ids,"atomic":true,"remaining_ids_preserved":true});
                 }
                 Ok(text(feedback))
-            }
-            "retrofit_library" => {
-                let before = self.scene.meshes.len();
-                let feedback=self.update(|scene| {
-                    let mut model=ergo_world::assembly::Model::for_scene(scene);
-                    let definitions=model.subparts.keys().cloned().collect::<HashSet<_>>();
-                    for references in model.subparts.values_mut() {
-                        for reference in references {
-                            if !definitions.contains(&reference.file) {reference.file=library_part(&reference.file)?;}
-                        }
-                    }
-                    model.use_common_constructs()?;
-                    let mut meshes=BTreeMap::new();
-                    for brick in &mut scene.bricks {
-                        let id=library_part(&brick.part)?;
-                        let mesh=scene.meshes.get(&id).filter(|mesh|mesh.quality=="source").context("Resolve every canonical source part before retrofitting")?;
-                        let old_bounds=brick.bounds;
-                        let new_bounds=mesh.body_bounds.transformed(brick.transform,brick.position);
-                        ensure!((old_bounds.size()-new_bounds.size()).abs().max_element()<1e-5,"Canonical part dimensions differ for {}; use an explicit structural retrofit",brick.part);
-                        brick.position+=old_bounds.min-new_bounds.min;
-                        brick.part=id.clone();
-                        brick.bounds=mesh.body_bounds.transformed(brick.transform,brick.position);
-                        brick.render_bounds=mesh.bounds.transformed(brick.transform,brick.position).union(brick.bounds);
-                        meshes.entry(id).or_insert_with(||mesh.clone());
-                    }
-                    scene.meshes=meshes;scene.model=Some(model);Ok(())
-                })?;
-                Ok(text(
-                    json!({"retrofit":true,"piece_ids_preserved":true,"previous_meshes":before,"canonical_meshes":self.scene.meshes.len(),"feedback":feedback}),
-                ))
             }
             "move_brick" => {
                 let selected = id(&args, "id")?;

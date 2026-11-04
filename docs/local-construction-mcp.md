@@ -7,7 +7,7 @@ shared Sandbox. The bridge never grants itself acceptance or direct agent S3 acc
 ## Install and configure
 
 ```sh
-npm install --global --ignore-scripts @ngrislain/ergo-mcp@0.5.20
+npm install --global --ignore-scripts @ngrislain/ergo-mcp@0.5.21
 ergo-mcp --login --publish-url https://ergosandbox.com
 ```
 
@@ -115,12 +115,12 @@ Existing construction edits preserve their absolute accepted positions.
 
 ## Native construction and editing
 
-`retrofit_library` replaces existing legacy aliases/proxy meshes with pinned source
-parts in one ordinary edit. It preserves occurrence IDs, groups, joints and nominal
-world bounds, removes unused duplicate meshes and compacts matching common models.
-Unmapped parts or changed nominal dimensions require an explicit structural retrofit
-or removal; they do not silently become box substitutes. Authoritative shared
-validation and accepted readback still establish publication.
+Constructions already use the migrated canonical source library. Only current
+common-construct versions are supported; the completed migration's
+`retrofit_library` tool is retired. Native saves/exports intern identical local
+definitions and reference matching current common constructs without changing
+occurrence IDs/poses. Authoritative shared validation and accepted readback still
+establish publication.
 
 `place_submodel` optionally accepts `replace_ids`: remove those local piece IDs
 and place the replacement in **one WASM update / one accepted shared edit**.

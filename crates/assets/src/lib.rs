@@ -19,6 +19,41 @@ use std::{
 
 pub use ergo_world::geometry::GeometryCredit as Credit;
 pub const PART_FORMAT: &str = "ergo-part-1";
+
+/// Complete public basic library, independent of any world/read permission.
+/// Its immutable identity covers geometry, reviewed profiles and the current
+/// common constructs. Retired construct versions are not shipped or resolved.
+pub struct BasicLibrary {
+    pub revision: String,
+    pub manifest: Vec<u8>,
+    pub pack: &'static [u8],
+}
+pub fn basic_library() -> &'static BasicLibrary {
+    static LIBRARY: std::sync::LazyLock<BasicLibrary> = std::sync::LazyLock::new(|| {
+        let pack = include_bytes!("../library/parts.pack");
+        let lock = include_str!("../../world/library/sources.lock.json");
+        let constructs = include_str!("../../world/library/constructs.json");
+        let pack_hash = hex::encode(Sha256::digest(pack));
+        let mut digest = Sha256::new();
+        digest.update(pack_hash.as_bytes());
+        digest.update(lock.as_bytes());
+        digest.update(constructs.as_bytes());
+        let revision = hex::encode(digest.finalize());
+        let manifest = serde_json::to_vec(&serde_json::json!({
+            "format":"ergo-basic-library-1", "schema":ergo_world::SCHEMA_VERSION,
+            "revision":revision, "pack_hash":pack_hash, "pack_bytes":pack.len(),
+            "parts":serde_json::from_str::<serde_json::Value>(lock).unwrap(),
+            "constructs":ergo_world::constructs::all(),
+        }))
+        .unwrap();
+        BasicLibrary {
+            revision,
+            manifest,
+            pack,
+        }
+    });
+    &LIBRARY
+}
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct PartAsset {
     pub mesh: Mesh,
@@ -209,7 +244,7 @@ impl PartCache {
         let expected_revision =
             ergo_world::part_library::get(part).map(|entry| entry.revision.clone());
         if let Some(bytes) = self.get(&key).await? {
-            let mut record: PartDescription = serde_json::from_slice(&bytes)?;
+            let record: PartDescription = serde_json::from_slice(&bytes)?;
             ensure!(
                 record.format == PART_FORMAT
                     && record.schema == ergo_world::SCHEMA_VERSION
@@ -225,35 +260,36 @@ impl PartCache {
                     hex::encode(Sha256::digest(&mesh)) == record.mesh_hash,
                     "Ergo geometry hash mismatch"
                 );
-                let mut mesh: Mesh = ciborium::from_reader(mesh.as_slice())?;
+                let mesh: Mesh = ciborium::from_reader(mesh.as_slice())?;
                 ensure!(
                     mesh.schema == ergo_world::SCHEMA_VERSION && mesh.part == record.part,
                     "Ergo geometry identity mismatch"
                 );
-                // Upgrade derived descriptions created before a catalogue
-                // profile existed. Keep genuine vertices/credits unchanged;
-                // publish new native geometry bytes before its description.
-                if let Some(profile) = ergo_world::part_profiles::profile(&part) {
-                    if mesh.body_bounds.min != profile.bounds.min
-                        || mesh.body_bounds.max != profile.bounds.max
-                        || record.catalog_mass.is_none()
-                    {
-                        mesh.body_bounds = profile.bounds;
-                        let mut data = Vec::new();
-                        ciborium::into_writer(&mesh, &mut data)?;
-                        let hash = hex::encode(Sha256::digest(&data));
-                        self.put(&format!("objects/{hash}.cbor"), data).await?;
-                        record = PartDescription::from_mesh(&mesh, hash);
-                        self.put(&key, serde_json::to_vec(&record)?).await?;
-                    }
+                let current = mesh.quality == "source"
+                    && ergo_world::part_profiles::profile(&part).is_none_or(|profile| {
+                        mesh.body_bounds.min == profile.bounds.min
+                            && mesh.body_bounds.max == profile.bounds.max
+                    })
+                    && ergo_world::part_library::get(part).is_none_or(|entry| {
+                        let mut hash = Sha256::new();
+                        for value in &mesh.vertices {
+                            hash.update(ergo_world::geometry::vertex_bytes(*value));
+                        }
+                        record.catalog_mass.is_some()
+                            && entry.vertex_hash.as_deref()
+                                == Some(hex::encode(hash.finalize()).as_str())
+                    });
+                // A disposable stale/non-source asset is a miss, never a
+                // geometry migration or a compatibility mode.
+                if current {
+                    return Ok(PartAsset {
+                        mesh,
+                        credits: record.credits.clone(),
+                        cache_hit: true,
+                        warning: None,
+                        description: Some(record),
+                    });
                 }
-                return Ok(PartAsset {
-                    mesh,
-                    credits: record.credits.clone(),
-                    cache_hit: true,
-                    warning: None,
-                    description: Some(record),
-                });
             }
         }
         if let Some((when, message)) = self
@@ -554,9 +590,10 @@ impl PartCache {
 mod tests {
     use super::*;
     #[tokio::test]
-    async fn legacy_specialty_cache_upgrades_nominal_bounds_and_mass_without_changing_vertices() {
+    async fn stale_or_non_source_assets_are_discarded_instead_of_upgraded() {
         let store: Arc<dyn ObjectStore> = Arc::new(object_store::memory::InMemory::new());
-        let resolver = cache(store.clone());
+        let mut resolver = cache(store.clone());
+        resolver.builtin = true;
         let raw_bounds = ergo_world::Aabb::new(
             glam::DVec3::new(-2., -3., -0.5),
             glam::DVec3::new(2., 1. / 6., 0.5),
@@ -580,8 +617,9 @@ mod tests {
             .await
             .unwrap();
         let upgraded = resolver.resolve("60594.dat").await.unwrap();
-        assert!(upgraded.cache_hit);
-        assert_eq!(upgraded.mesh.vertices, old.vertices);
+        assert!(!upgraded.cache_hit);
+        assert_ne!(upgraded.mesh.vertices, old.vertices);
+        assert_eq!(upgraded.mesh.quality, "source");
         assert_eq!(upgraded.mesh.body_bounds.max.y, 0.);
         let updated = upgraded.description.unwrap();
         assert!((updated.catalog_mass.unwrap().kg - 0.00185).abs() < 1e-12);
@@ -593,6 +631,7 @@ mod tests {
                 .unwrap()
                 .is_some()
         );
+        resolver.builtin = false;
         assert!(
             resolver.resolve("3037.dat").await.is_err(),
             "A missing source slope must not become a rectangular substitute"

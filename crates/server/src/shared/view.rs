@@ -79,6 +79,8 @@ pub(super) struct ViewQuery {
     format: ViewFormat,
     #[serde(default)]
     status: bool,
+    /// Optional ephemeral display-only batch; never a complete view/cache hit.
+    preview_after: Option<usize>,
     from_x: Option<i64>,
     from_y: Option<i64>,
     from_z: Option<i64>,
@@ -129,9 +131,10 @@ pub(super) async fn view(
             .progress_status(&memory_key)
             .map(|(phase, work)| (Some(phase), work))
             .unwrap_or_default();
-        let mut response =
-            Json(serde_json::json!({"revision":key.revision,"phase":phase,"progress":progress}))
-                .into_response();
+        let preview = query
+            .preview_after
+            .and_then(|after| s.shared.read_cache.preview(&memory_key, after));
+        let mut response = Json(serde_json::json!({"revision":key.revision,"phase":phase,"progress":progress,"preview":preview})).into_response();
         response
             .headers_mut()
             .insert("cache-control", "private, no-store".parse().unwrap());
@@ -763,10 +766,12 @@ async fn build(
         bricks.push(geometry.brick(local, &meshes[&part])?);
         assemblies.insert(local, piece.assembly);
         index += 1;
-        if index % 1024 == 0 {
+        if index == 1 || index % 1024 == 0 {
+            progress.preview(&bricks, &meshes);
             progress.pieces(index, total, meshes.len());
         }
     }
+    progress.preview(&bricks, &meshes);
     progress.pieces(index, total, meshes.len());
     let scene = WorldExport {
         schema: ergo_world::SCHEMA_VERSION,

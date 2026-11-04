@@ -22,12 +22,15 @@ pub struct Chunk {
 pub struct Surfaces {
     pub chunks: Vec<Chunk>,
     pub membership: Vec<Option<usize>>,
+    pub buried: Vec<bool>,
+    pub occluders: Vec<bool>,
 }
 struct Body {
     index: usize,
     min: [i64; 3],
     max: [i64; 3],
     rgb: u32,
+    occluder: bool,
 }
 
 impl Surfaces {
@@ -37,7 +40,19 @@ impl Surfaces {
             .map(|(id, mesh)| {
                 (
                     id.as_str(),
-                    RenderPart::resolve(mesh).and_then(|part| part.rectangular()),
+                    RenderPart::resolve(mesh)
+                        .and_then(|part| part.rectangular())
+                        .map(|spec| {
+                            let trusted = mesh.quality == "source"
+                                && geometry::nominal_body_bounds(id).is_some_and(|bounds| {
+                                    bounds.min == mesh.body_bounds.min
+                                        && bounds.max == mesh.body_bounds.max
+                                })
+                                && ergo_world::part_library::get(id)
+                                    .and_then(|part| part.vertex_hash.as_deref())
+                                    .is_some_and(|hash| crate::part_lod::vertex_hash(mesh) == hash);
+                            (spec, trusted)
+                        }),
                 )
             })
             .collect();
@@ -81,18 +96,21 @@ impl Surfaces {
                 min,
                 max,
                 rgb: brick.rgb,
+                occluder: parts[brick.part.as_str()].is_some_and(|(_, trusted)| trusted),
             });
         }
         let mut result = Self {
             chunks: Vec::new(),
             membership: vec![None; bricks.len()],
+            buried: vec![false; bricks.len()],
+            occluders: vec![false; bricks.len()],
         };
         let mut bytes = 0;
-        for bodies in groups.into_values() {
+        for (key, bodies) in &groups {
             if bodies.len() < 8 {
                 continue;
             }
-            if let Some(chunk) = build(&bodies, bricks) {
+            if let Some(chunk) = build(bodies, bricks) {
                 let size = chunk.mesh.vertices.len() * 4;
                 if bytes + size > MAX_MESH_BYTES {
                     continue;
@@ -101,11 +119,110 @@ impl Surfaces {
                 for &index in &chunk.members {
                     result.membership[index] = Some(result.chunks.len());
                 }
+                let neighbours = (-1..=1)
+                    .flat_map(|dx| {
+                        (-1..=1).flat_map(move |dy| {
+                            (-1..=1).map(move |dz| [key[0] + dx, key[1] + dy, key[2] + dz])
+                        })
+                    })
+                    .filter_map(|key| groups.get(&key))
+                    .flatten();
+                for index in buried(bodies, neighbours, bricks) {
+                    result.buried[index] = true;
+                }
+                for body in bodies {
+                    result.occluders[body.index] = body.occluder;
+                }
                 result.chunks.push(chunk);
             }
         }
         result
     }
+}
+
+/// A current opaque rectangular source part is omitted only behind a complete
+/// one-voxel shell around its entire render bound (including studs). Neighbour
+/// chunks supply a halo; missing/unsupported/transparent cells conservatively
+/// keep the part. This is prepared once, not a camera-dependent approximation.
+fn buried<'a>(
+    bodies: &[Body],
+    neighbours: impl Iterator<Item = &'a Body>,
+    bricks: &[Brick],
+) -> Vec<usize> {
+    let scale = DVec3::new(1., 3., 1.);
+    let boxes: Vec<_> = bodies
+        .iter()
+        .map(|body| {
+            let bounds = bricks[body.index].render_bounds;
+            (
+                (bounds.min * scale)
+                    .floor()
+                    .as_i64vec3()
+                    .to_array()
+                    .map(|v| v - 1),
+                (bounds.max * scale)
+                    .ceil()
+                    .as_i64vec3()
+                    .to_array()
+                    .map(|v| v + 1),
+            )
+        })
+        .collect();
+    let min: [i64; 3] =
+        std::array::from_fn(|axis| boxes.iter().map(|(lo, _)| lo[axis]).min().unwrap());
+    let max: [i64; 3] =
+        std::array::from_fn(|axis| boxes.iter().map(|(_, hi)| hi[axis]).max().unwrap());
+    let dims: [usize; 3] = std::array::from_fn(|axis| (max[axis] - min[axis]) as usize);
+    let Some(count) = dims
+        .iter()
+        .try_fold(1usize, |n, d| n.checked_mul(*d))
+        .filter(|n| *n <= MAX_VOXELS)
+    else {
+        return Vec::new();
+    };
+    let mut solid = vec![false; count];
+    let address = |p: [i64; 3]| {
+        (p[0] - min[0]) as usize
+            + dims[0] * ((p[1] - min[1]) as usize + dims[1] * (p[2] - min[2]) as usize)
+    };
+    for body in neighbours.filter(|body| body.occluder) {
+        let lo: [i64; 3] = std::array::from_fn(|axis| body.min[axis].max(min[axis]));
+        let hi: [i64; 3] = std::array::from_fn(|axis| body.max[axis].min(max[axis]));
+        for z in lo[2]..hi[2] {
+            for y in lo[1]..hi[1] {
+                for x in lo[0]..hi[0] {
+                    solid[address([x, y, z])] = true;
+                }
+            }
+        }
+    }
+    bodies
+        .iter()
+        .zip(boxes)
+        .filter_map(|(body, (lo, hi))| {
+            if !body.occluder {
+                return None;
+            }
+            for axis in 0..3 {
+                let u = (axis + 1) % 3;
+                let v = (axis + 2) % 3;
+                for side in [lo[axis], hi[axis] - 1] {
+                    for row in lo[v]..hi[v] {
+                        for column in lo[u]..hi[u] {
+                            let mut p = [0; 3];
+                            p[axis] = side;
+                            p[u] = column;
+                            p[v] = row;
+                            if !solid[address(p)] {
+                                return None;
+                            }
+                        }
+                    }
+                }
+            }
+            Some(body.index)
+        })
+        .collect()
 }
 
 fn build(bodies: &[Body], bricks: &[Brick]) -> Option<Chunk> {
@@ -287,6 +404,41 @@ fn build(bodies: &[Body], bricks: &[Brick]) -> Option<Chunk> {
 mod tests {
     use super::*;
     use ergo_world::demo::Demo;
+    #[test]
+    fn buried_detection_needs_a_complete_opaque_shell_including_the_neighbour_halo() {
+        let mut demo = Demo::new();
+        for x in 0..3 {
+            for y in 0..3 {
+                for z in 0..3 {
+                    demo.add("3003", 4, x as f64 * 2., y as f64, z as f64 * 2.);
+                }
+            }
+        }
+        let scale = DVec3::new(1., 3., 1.);
+        let mut bodies: Vec<_> = demo
+            .bricks
+            .iter()
+            .enumerate()
+            .map(|(index, brick)| Body {
+                index,
+                min: (brick.bounds.min * scale).round().as_i64vec3().to_array(),
+                max: (brick.bounds.max * scale).round().as_i64vec3().to_array(),
+                rgb: brick.rgb,
+                occluder: true,
+            })
+            .collect();
+        assert_eq!(buried(&bodies, bodies.iter(), &demo.bricks), vec![13]);
+        assert_eq!(
+            buried(&bodies[13..14], bodies.iter(), &demo.bricks),
+            vec![13]
+        );
+        assert!(buried(&bodies[13..14], bodies[13..14].iter(), &demo.bricks).is_empty());
+        bodies[16].occluder = false; // A transparent/untrusted cap is not an occluder.
+        assert!(buried(&bodies, bodies.iter(), &demo.bricks).is_empty());
+        bodies[16].occluder = true;
+        bodies[13].occluder = false;
+        assert!(buried(&bodies, bodies.iter(), &demo.bricks).is_empty());
+    }
     #[test]
     fn a_solid_wall_merges_to_six_quads_and_preserves_surface_colors() {
         let mut demo = Demo::new();

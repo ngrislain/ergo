@@ -327,6 +327,56 @@ fn ground_support_points(brick: &Brick) -> Vec<DVec3> {
 #[cfg(test)]
 mod registration_tests {
     use super::*;
+    fn nominal_at(d: &mut crate::demo::Demo, part: &str, x: f64, y: f64, z: f64) {
+        d.add(part, 71, x, y, z);
+        let b = d.bricks.last_mut().unwrap();
+        let local = crate::geometry::nominal_body_bounds(&b.part).unwrap();
+        b.position = DVec3::new(x, y, z) - local.min;
+        b.bounds = local.transformed(b.transform, b.position);
+        b.render_bounds = b.bounds;
+    }
+    #[test]
+    fn wall_wing_ties_and_rear_shelf_have_real_compressive_bearings() {
+        let mut d = crate::demo::Demo::new();
+        nominal_at(&mut d, "4444", 1., 0., 1.);
+        nominal_at(&mut d, "3004", -1., 5., 1.);
+        nominal_at(&mut d, "3004", 4., 5., 1.);
+        nominal_at(&mut d, "3623", 1., 17. / 3., 0.);
+        let measurements = crate::physical::ConnectionMeasurements::default();
+        assert!(
+            compression_issue(&d.bricks, Default::default(), &measurements)
+                .unwrap()
+                .is_none()
+        );
+        d.bricks[3].translated(DVec3::Y * 0.1);
+        assert!(
+            compression_issue(&d.bricks, Default::default(), &measurements)
+                .unwrap()
+                .is_some(),
+            "A shelf does not supply pull-off or floating support"
+        );
+    }
+    #[test]
+    fn an_arch_cannot_bear_on_the_empty_middle_of_its_envelope() {
+        let measurements = crate::physical::ConnectionMeasurements::default();
+        let mut invalid = crate::demo::Demo::new();
+        nominal_at(&mut invalid, "3003", 3., 0., 0.);
+        nominal_at(&mut invalid, "3308a", 0., 1., 0.);
+        assert!(
+            compression_issue(&invalid.bricks, Default::default(), &measurements)
+                .unwrap()
+                .is_some()
+        );
+        let mut valid = crate::demo::Demo::new();
+        nominal_at(&mut valid, "3005", 0., 0., 0.);
+        nominal_at(&mut valid, "3005", 7., 0., 0.);
+        nominal_at(&mut valid, "3308a", 0., 1., 0.);
+        assert!(
+            compression_issue(&valid.bricks, Default::default(), &measurements)
+                .unwrap()
+                .is_none()
+        );
+    }
     #[test]
     fn horse_registers_all_four_hoof_holes_not_its_head_and_tail_envelope() {
         let mut scene = crate::demo::Demo::new();
@@ -655,6 +705,26 @@ pub fn compression_issue(
     tol: StaticTolerances,
     measurements: &crate::physical::ConnectionMeasurements,
 ) -> Result<Option<CompressionIssue>> {
+    // Both paths construct nonnegative reactions and check the same force/moment
+    // tolerances. Prefer a direct centred reaction on a real bearing patch;
+    // corner-only triangulation can needlessly tip the next supporting piece.
+    let preferred = compression_issue_with_strategy(bricks, tol, measurements, true)?;
+    if preferred.is_none() {
+        return Ok(None);
+    }
+    if compression_issue_with_strategy(bricks, tol, measurements, false)?.is_none() {
+        Ok(None)
+    } else {
+        Ok(preferred)
+    }
+}
+
+fn compression_issue_with_strategy(
+    bricks: &[Brick],
+    tol: StaticTolerances,
+    measurements: &crate::physical::ConnectionMeasurements,
+    centered: bool,
+) -> Result<Option<CompressionIssue>> {
     use crate::physical::{GRAVITY_M_S2, to_meters};
     ensure!(
         !bricks.is_empty(),
@@ -671,7 +741,12 @@ pub fn compression_issue(
         }));
     }
     let origin = bricks[0].bounds.center();
-    let tree = Octree::new(bricks.iter().map(|b| b.bounds).collect());
+    let tree = Octree::new(
+        bricks
+            .iter()
+            .map(crate::part_profiles::bearing_bounds)
+            .collect(),
+    );
     let mut loads = Vec::with_capacity(bricks.len());
     for brick in bricks {
         let mass = measurements.mass_kg(&brick.part)?;
@@ -685,6 +760,7 @@ pub fn compression_issue(
         let (mass, moment) = loads[i];
         let center = moment / mass;
         let mut supports = Vec::new();
+        let mut patches = Vec::new();
         if brick.bounds.min.y.abs() <= tol.position_brick_units {
             for point in ground_support_points(brick) {
                 let p = to_meters(point - origin);
@@ -696,21 +772,29 @@ pub fn compression_issue(
                     continue;
                 }
                 let lower = &bricks[j];
-                if lower.bounds.min.y >= brick.bounds.min.y
-                    || (lower.bounds.max.y - brick.bounds.min.y).abs() > tol.position_brick_units
-                {
+                if lower.bounds.min.y >= brick.bounds.min.y {
                     continue;
                 }
-                let lo = brick.bounds.min.max(lower.bounds.min);
-                let hi = brick.bounds.max.min(lower.bounds.max);
-                if hi.x - lo.x <= tol.position_brick_units
-                    || hi.z - lo.z <= tol.position_brick_units
-                {
-                    continue;
-                }
-                for (x, z) in [(lo.x, lo.z), (hi.x, lo.z), (hi.x, hi.z), (lo.x, hi.z)] {
-                    let p = to_meters(DVec3::new(x, brick.bounds.min.y, z) - origin);
-                    supports.push((DVec2::new(p.x, p.z), Some(j)));
+                for foot in crate::part_profiles::lower_bearing_regions(brick) {
+                    for face in crate::part_profiles::upper_bearing_regions(lower) {
+                        if (face.max.y - foot.min.y).abs() > tol.position_brick_units {
+                            continue;
+                        }
+                        let lo = foot.min.max(face.min);
+                        let hi = foot.max.min(face.max);
+                        if hi.x - lo.x <= tol.position_brick_units
+                            || hi.z - lo.z <= tol.position_brick_units
+                        {
+                            continue;
+                        }
+                        let a = to_meters(lo - origin);
+                        let b = to_meters(hi - origin);
+                        patches.push((DVec2::new(a.x, a.z), DVec2::new(b.x, b.z), j));
+                        for (x, z) in [(lo.x, lo.z), (hi.x, lo.z), (hi.x, hi.z), (lo.x, hi.z)] {
+                            let p = to_meters(DVec3::new(x, foot.min.y, z) - origin);
+                            supports.push((DVec2::new(p.x, p.z), Some(j)));
+                        }
+                    }
                 }
             }
         }
@@ -742,7 +826,20 @@ pub fn compression_issue(
             )));
         }
         let mut reactions = None;
+        if centered
+            && let Some((_, _, lower)) = patches
+                .iter()
+                .filter(|(lo, hi, _)| center.cmpge(*lo).all() && center.cmple(*hi).all())
+                .max_by(|(a, b, _), (c, d, _)| {
+                    ((b.x - a.x) * (b.y - a.y)).total_cmp(&((d.x - c.x) * (d.y - c.y)))
+                })
+        {
+            reactions = Some(vec![(center, 1., Some(*lower))]);
+        }
         for k in 1..hull.len() - 1 {
+            if reactions.is_some() {
+                break;
+            }
             let [a, b, c] = [hull[0], hull[k], hull[k + 1]];
             let area = (b - a).perp_dot(c - a);
             if area <= 1e-15 {
@@ -864,6 +961,40 @@ mod tests {
             assert!(model.joints.is_empty());
             model.bricks.rotate_left(1);
         }
+    }
+
+    #[test]
+    fn centered_bearings_do_not_artificially_tip_split_plates_under_a_balanced_roof() {
+        let mut demo = Demo::new();
+        demo.add("3001", 19, 0., 0., 1.);
+        for x in [0., 2.] {
+            demo.add("3020", 19, 0., 1., 0.);
+            let brick = demo.bricks.last_mut().unwrap();
+            let mesh = &demo.meshes[&brick.part];
+            brick.transform = glam::DMat3::from_rotation_y(std::f64::consts::FRAC_PI_2);
+            let bounds = mesh.body_bounds.transformed(brick.transform, DVec3::ZERO);
+            brick.position = DVec3::new(x, 1., 0.) - bounds.min;
+            brick.bounds = mesh
+                .body_bounds
+                .transformed(brick.transform, brick.position);
+            brick.render_bounds = mesh.bounds.transformed(brick.transform, brick.position);
+        }
+        for layer in 0..4 {
+            demo.add("3031", 15, 0., 4. / 3. + f64::from(layer) / 3., 0.);
+        }
+        let measurements = crate::physical::ConnectionMeasurements::default();
+        assert!(
+            compression_issue_with_strategy(&demo.bricks, Default::default(), &measurements, false)
+                .unwrap()
+                .is_some()
+        );
+        assert!(
+            compression_issue(&demo.bricks, Default::default(), &measurements)
+                .unwrap()
+                .is_none()
+        );
+        let report = validate_static(&mut scene(demo)).unwrap();
+        assert_eq!(report.joint_strength_required, Some(false));
     }
 
     #[test]

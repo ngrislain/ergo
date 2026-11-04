@@ -1,12 +1,40 @@
 //! Stage progress reports completed work, never an estimated overall duration.
 use serde::Deserialize;
 
+pub(crate) const CONSTRUCTION_TIMEOUT_MS: u32 = 30 * 60 * 1000;
+
 #[derive(Deserialize)]
 pub(crate) struct ReadStatus {
     pub revision: String,
     pub phase: Option<String>,
     #[serde(default)]
     pub progress: Option<ReadWork>,
+    #[serde(default)]
+    pub preview: Option<PreviewBatch>,
+}
+
+#[derive(Deserialize)]
+pub(crate) struct PreviewBatch {
+    pub after: usize,
+    pub next: usize,
+    pub bricks: Vec<ergo_world::Brick>,
+    pub meshes: std::collections::BTreeMap<String, ergo_world::geometry::Mesh>,
+}
+impl PreviewBatch {
+    pub fn valid_for(&self, count: usize, has_mesh: impl Fn(&str) -> bool) -> bool {
+        self.after == count
+            && !self.bricks.is_empty()
+            && self.next == count + self.bricks.len()
+            && self.next <= 100_000
+            && self
+                .meshes
+                .iter()
+                .all(|(part, mesh)| part == &mesh.part && !has_mesh(part))
+            && self.bricks.iter().enumerate().all(|(index, brick)| {
+                brick.id as usize == count + index + 1
+                    && (has_mesh(&brick.part) || self.meshes.contains_key(&brick.part))
+            })
+    }
 }
 
 #[derive(Deserialize)]
@@ -24,6 +52,7 @@ pub(crate) struct Loading {
     pub percent: Option<u8>,
     pub elapsed_s: u64,
     pub waiting_for_server: bool,
+    pub preview_pieces: usize,
     started_ms: f64,
 }
 
@@ -35,6 +64,7 @@ impl Loading {
             percent: None,
             elapsed_s: 0,
             waiting_for_server: true,
+            preview_pieces: 0,
             started_ms: now_ms,
         }
     }
@@ -130,6 +160,36 @@ fn number(value: usize) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn preview_batches_require_contiguous_occurrences_and_previously_defined_prototypes() {
+        let mut demo = ergo_world::demo::Demo::new();
+        demo.add("3003", 4, 0., 0., 0.);
+        demo.add("3003", 1, 4., 0., 0.);
+        let part = demo.bricks[0].part.clone();
+        let mut batch = PreviewBatch {
+            after: 0,
+            next: 1,
+            bricks: demo.bricks[..1].to_vec(),
+            meshes: demo.meshes,
+        };
+        assert!(batch.valid_for(0, |_| false));
+        assert!(!batch.valid_for(1, |_| true));
+        let meshes = std::mem::take(&mut batch.meshes);
+        assert!(!batch.valid_for(0, |_| false));
+        batch.after = 1;
+        batch.next = 2;
+        batch.bricks = demo.bricks[1..].to_vec();
+        assert!(batch.valid_for(1, |id| id == part));
+        batch.bricks[0].id = 1;
+        assert!(!batch.valid_for(1, |id| meshes.contains_key(id)));
+        let status: ReadStatus =
+            serde_json::from_value(serde_json::json!({"revision":"accepted","preview":null}))
+                .unwrap();
+        assert!(status.preview.is_none());
+        let loading = Loading::new(0.);
+        assert_eq!(loading.preview_pieces, 0);
+        assert!(CONSTRUCTION_TIMEOUT_MS > 180_000 && CONSTRUCTION_TIMEOUT_MS <= i32::MAX as u32);
+    }
     fn status(stage: &str, completed: usize, total: usize) -> ReadStatus {
         serde_json::from_value(serde_json::json!({"revision":"accepted","phase":"working","progress":{"stage":stage,"completed":completed,"total":total,"found_pieces":91265}})).unwrap()
     }

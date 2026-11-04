@@ -2,6 +2,32 @@
 
 ## Unreleased
 
+## v0.5.21
+
+- Allow 30-minute browser region and MCP complete-construction reads, with
+  revision-pinned read-only preview batches and cancellation/error rollback.
+- Cache the complete current basic library locally: 138 sourced parts and five
+  constructs, with verified immutable pack/manifest identities and offline reuse.
+- Intern duplicate nested definitions during native save/export while preserving
+  occurrence identity/order, poses, colours and physical metadata.
+- Remove obsolete construct versions, the completed `retrofit_library` migration
+  tool and browser legacy-geometry fallback; discard stale asset-cache entries.
+- Recognize genuine stepped wall bearing faces and compound-part feet in static
+  compression without introducing connector-strength assumptions.
+- Cache public floor colour fields locally with source/settings identities and
+  share identical GPU floor textures through a bounded pattern cache.
+- Omit fully enclosed, verified-source terrain bricks from budgeted colour passes;
+  use analytic subpixel stud relief under pressure and reduce Performance-mode
+  raster resolution on high-DPI screens. Preserve source/picking/physics and shadows.
+- Batch adjacent transparent instances without changing their depth/material order.
+- Warm requested immutable identity-index paths in bounded parallel traversals
+  before large imports, retaining every collision check and transaction predicate.
+- Construct centred compressive reactions on real bearing patches before the
+  conservative corner-only alternative, without inventing connector capacities.
+- Add verified-source, open-bore Technic display LODs and current-source
+  Saint-Sulpice/Eiffel Tower recipes with distinct static, walking, visual and
+  authenticated-publication evidence.
+
 ## v0.5.20
 
 - Add genuine oval/pine tree pieces, Castle wall panels, arches, capes, helmet

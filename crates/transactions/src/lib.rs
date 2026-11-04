@@ -897,6 +897,25 @@ impl Transaction {
         &self.base.id
     }
 
+    /// Optional immutable-index warm-up for the requested paths only. At most
+    /// 64 traversals run concurrently, with a 64 KiB speculative node limit.
+    /// No payloads, mutable heads or transaction predicates are read/registered.
+    /// Callers MUST still perform their normal get/put/scan checks afterwards;
+    /// failed speculation is simply a cache miss. Pending edits are untouched.
+    pub async fn prefetch_read_paths(&self, paths: impl IntoIterator<Item = OctreePath>) {
+        use futures::StreamExt;
+        let snapshot = &self.read_snapshot;
+        futures::stream::iter(paths)
+            .map(|path| async move {
+                let _ = Tree::bounded_read(snapshot.repo.clone())
+                    .get(snapshot.commit.root.as_ref(), &path)
+                    .await;
+            })
+            .buffer_unordered(64)
+            .for_each(|_| async {})
+            .await;
+    }
+
     pub fn pin_id(&self) -> Option<&str> {
         self.base.pin_id()
     }

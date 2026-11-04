@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Build plate-free constructs and reposed guards/archers from source datums."""
+"""Regenerate current guard/archer source datums; validate the current-only library."""
 import argparse
 import copy
 import json
@@ -113,8 +113,8 @@ def held_by_hand(part, hand, color, handle_index=0, along=.5, roll=0.0):
     return dict(part=part, color=color, position=sub(target, mul(matrix, public(p))), rotation=r)
 
 
-def articulated_garrison(old):
-    template = old['medieval-guard-v1']
+def articulated_garrison(current):
+    template = current['medieval-guard-v3']
     torso = dict(part='973p4f.dat', position=[2, 1.5, 3])
     arms, hands = articulated_limbs(torso)
     common = [dict(part='3815c01.dat', color=0, position=[2, 1.5, 5/3]), torso,
@@ -132,37 +132,18 @@ def articulated_garrison(old):
 
 
 def generate(entries):
-    old = {c['id']: c for c in entries}
-    additions = []
-    for name in ['minifigure', 'medieval-guard']:
-        value = copy.deepcopy(old[name+'-v1'])
-        value['id'] = name+'-v2'
-        value['parts'] = [p for p in value['parts'] if p['part'] not in ['3031.dat', '3070b.dat']]
-        for part in value['parts']: part['position'][2] -= 1/3
-        if name == 'medieval-guard':
-            torso = next(p for p in value['parts'] if p['part'] == '76382p4f.dat')
-            value['parts'] = [p for p in value['parts'] if p['part'] not in ['3846p4h.dat', '4497.dat']]
-            value['parts'].extend([held('3846p4h.dat', torso, 0, 4, handle_index=1), held('4497.dat', torso, 1, 70, .8)])
-            value['description'] = 'Plate-free Lion Knights guard. Genuine shield and spear align with the factory hand grips; feet stand directly on the ground stud grid. Instance colour selects the torso. Connector capacity remains separately calibrated.'
-        else:
-            value['description'] = 'Plate-free standing minifigure with genuine hair. Factory feet register directly on the ground stud grid. Instance colour selects the torso; navy legs, yellow head and black hair are fixed.'
-        additions.append(value)
-    car = copy.deepcopy(old['classic-car-v1'])
-    car['id'] = 'classic-car-v2'
-    car['description'] = 'Plate-free classic open-cabin car with four correctly seated rotating wheel bearings and two genuine 4600 wheel holders. Tyres stand directly on the ground; the internal chassis plate is structural. No road tile or display pedestal is added. Instance colour selects the body.'
-    for part in car['parts']:
-        if part['part'] == '4624c01.dat':
-            if part['position'][1] < 2: part['position'][1] = .475
-            else: part['position'][1] = 3.525; part['quarter_turns'] = 2
-        else:
-            part['position'][2] += 1/8
-    car['parts'].extend([dict(part='4600.dat', color=0, position=[x, 2, 23/24], quarter_turns=1) for x in [2, 6]])
-    # Two internal axle spacers connect each low wheel-holder floor to the
-    # chassis above the tyre crowns. These are vehicle structure, not a base.
-    car['parts'].extend([dict(part='3022.dat', color=0, position=[x, 2, height]) for x in [2, 6] for height in [31/24, 39/24]])
-    additions.append(car)
-    additions.extend(articulated_garrison(old))
-    return [c for c in entries if c['id'] not in {v['id'] for v in additions}]+additions
+    current = {c['id']: c for c in entries}
+    expected = {'castle-standard-v1', 'minifigure-v2', 'classic-car-v2',
+                'medieval-guard-v3', 'medieval-archer-v1'}
+    if set(current) != expected or len(entries) != len(expected):
+        raise ValueError('Only the five current common constructs are supported')
+    updated = {entry['id']: entry for entry in articulated_garrison(current)}
+    result = [updated.get(entry['id'], copy.deepcopy(entry)) for entry in entries]
+    canonical = json.loads((ROOT/'crates/world/library/sources.lock.json').read_text())['parts']
+    for entry in result:
+        if any(part['part'] not in canonical for part in entry['parts']):
+            raise ValueError('Common constructs must reference current canonical source parts')
+    return result
 
 
 def encoded(entries):

@@ -183,7 +183,8 @@ colored envelopes would create overlapping bounds and damage the architecture.
 The navigator's **Render detail** control selects an explicit policy:
 
 - **Auto (balanced)** targets 2,000,000 estimated colour-brick triangles.
-- **Performance** targets 500,000 colour-brick triangles.
+- **Performance** targets 500,000 colour-brick triangles and caps backing-store
+  resolution at one device pixel per CSS pixel (Auto/High cap at two).
 - **High (per-brick LOD)** retains the original per-brick thresholds without a
   scene-wide colour target.
 
@@ -204,6 +205,14 @@ Picking, collision, resident piece count and saved
 models retain their full geometry. Captures and the homepage illustration keep
 their full-detail policies independently of the navigator control.
 
+Under active colour-budget pressure, known rectangular studded parts can use the
+existing analytic rim shading for studs up to 3 CSS pixels wide, with the same
+12% hysteresis. Their vertical relief is subpixel at that size. Nearer studs,
+selected parts, full-detail captures and unreviewed specialty silhouettes retain
+their geometric detail. This exception does not change the independent shadow
+policy, source geometry, picking or physical bodies. Lower backing resolution
+also preserves the CSS camera aspect ratio/FOV and the independent shadow buffer.
+
 Shadow LOD uses the light buffer's projected stud size, rather than the color
 camera's distance: source mesh at 6 texels or more, reviewed medium mesh from
 1.25 texels, otherwise a reviewed far mesh, with 12% hysteresis. Its own 1/2/4/8
@@ -223,6 +232,15 @@ The [display part library](part-catalog.md#reviewed-display-detail-library) adds
 open-aperture window frames 60594/60592, annular round brick 87081 and verified
 parametric aliases; these specialties do not turn into solid body boxes. Its
 eight-sided standard studs also reduce the cost of medium and shadow detail.
+
+Current-source Technic bricks `6541`, `3700`, `3701`, `3894`, `3702`, `3895` and
+`3703` also have reviewed display derivatives. They retain each through-bore at
+the source Y=10-LDU centre and 6-LDU inner radius, with perforated front/back
+faces and coarse bore walls rather than a filled body box. Medium detail keeps
+hollow stud rings; far detail omits mould recesses/counterbores. Complete source
+vertex fingerprints and nominal bounds must match before these derivatives are
+used, including current view aliases. They never become physics, picking or
+export geometry; canonical source credits are retained by the renderer.
 
 ### Cached greedy surfaces: hidden faces and coplanar merging
 
@@ -268,6 +286,23 @@ triangle picking and walking/physics bodies are not replaced. This is an exterio
 LOD of the existing body proxies, not an exact hollow-solid reconstruction.
 The 10,000-piece threshold also excludes the bounded 5,000-body dynamic simulator.
 
+### Cached buried-part rejection
+
+The same static chunk preparation records fully buried standard rectangular
+parts. Only opaque, axis-aligned, grid-registered parts with the current canonical
+whole-vertex fingerprint and nominal body bounds may occlude. Neighbour chunks
+supply a halo; a complete one-voxel opaque shell must surround the candidate's
+entire render bound, including its studs. A gap, transparent/unsupported neighbour,
+untrusted source or exceeded voxel budget keeps the part. Preparation retains the
+one-million-voxel bound per chunk and runs only when static geometry changes.
+
+Budgeted colour passes can omit these buried occurrences even at close range,
+avoiding rendering the mountain's interior bricks. High, captures, exploded views,
+selected/highlighted pieces and a camera inside an occluder bypass this rejection.
+The full brick list/octree remains available for picking and collision. Shadow
+caster lists are unchanged, preserving camera/selection-independent sunlight.
+`data-occluded-pieces` reports the current camera-candidate count omitted.
+
 ### Idle rendering
 
 The navigator reuses its composited canvas while geometry, camera, viewport and
@@ -278,6 +313,32 @@ preview's point/studio-light path and full-detail capture policies remain explic
 `data-rendered-frames` counts actual draws; callback/FPS labels are not GPU timers.
 
 ### Measurements and repeatable profiling
+
+For a saved accepted CBOR view, `scripts/profile-walking.py` runs a read-only local
+walk under daylight/night lighting, Auto/Performance and two fog distances. It
+replays the exact packet rather than importing/publishing a replacement world:
+
+```sh
+python3 scripts/test-web-isolated.py --script scripts/profile-walking.py -- \
+  --packet /private/accepted-view.cbor --dpr 2 --seconds 4 \
+  --output target/walking-profile.json
+```
+
+`scripts/profile-meshes.py /private/accepted.scene.json` separately attributes
+resident source triangles by part. Renderer diagnostics include scene planning,
+floor planning and total instance-upload preparation (`data-scene-plan-ms`,
+`data-ground-plan-ms`, `data-upload-ms`); these CPU durations and actual-draw FPS
+are not GPU timer queries. Run profiles without concurrent GPU/browser tests.
+
+The accepted castle/park packet at `461bc066e102…` contains 38,672 pieces. A short
+M4 Max/ANGLE Metal first-person test at DPR2 submitted roughly 10–14 million
+colour triangles before buried-part rejection, reaching about 40 FPS by day and
+18 FPS with the moving night headlamp. With current rejection/LOD, representative
+short walks submitted roughly 1.9–2.6 million median colour triangles; Performance
+reached about 60 FPS and the night Auto walk about 60 FPS locally. These are
+machine/route-dependent observations, not an FPS guarantee or fixed-camera
+comparison: walking progress itself varies with frame timing. Source counts,
+shadow policy and accepted physical geometry stayed intact.
 
 The 2026-10-28 comparison uses the **actual shared-view packet**, revision
 `a569bdf47ce1dac69528a7be04161e7ab37677e4e078f857a257d289ab41ead5`,

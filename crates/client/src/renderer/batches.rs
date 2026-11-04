@@ -2,7 +2,10 @@
 use crate::scene::{FramePlan, GeometryKey, TransparentDraw};
 use ergo_world::geometry::Mesh;
 use ergo_world::terrain::{GroundSurface, SAMPLE_GRID_SIZE};
-use std::collections::{BTreeMap, HashSet};
+use std::{
+    collections::{BTreeMap, HashMap, HashSet},
+    rc::Rc,
+};
 use web_sys::{WebGl2RenderingContext as Gl, WebGlBuffer, WebGlTexture, WebGlVertexArrayObject};
 
 #[derive(Clone, Copy)]
@@ -25,7 +28,17 @@ pub(super) struct Geometry {
     stud_mode: i32,
     stud_offset: [f32; 2],
     instances: [Instances; 4],
-    ground_surface: Option<(WebGlTexture, GroundSurface)>,
+    ground_surface: Option<Rc<GroundPattern>>,
+}
+struct GroundPattern {
+    gl: Gl,
+    texture: WebGlTexture,
+    surface: GroundSurface,
+}
+impl Drop for GroundPattern {
+    fn drop(&mut self) {
+        self.gl.delete_texture(Some(&self.texture));
+    }
 }
 impl Geometry {
     fn new(gl: &Gl, mesh: &Mesh) -> Self {
@@ -90,20 +103,10 @@ impl Geometry {
         draw.data.extend_from_slice(data);
         true
     }
-    fn set_ground_surface(&mut self, surface: Option<&GroundSurface>) {
-        if self.ground_surface.as_ref().map(|(_, old)| old) == surface {
-            return;
-        }
-        if let Some((texture, _)) = self.ground_surface.take() {
-            self.gl.delete_texture(Some(&texture));
-        }
-        let Some(surface) = surface else {
-            return;
-        };
-        let Some(texture) = self.gl.create_texture() else {
-            return;
-        };
-        let gl = &self.gl;
+}
+impl GroundPattern {
+    fn new(gl: &Gl, surface: &GroundSurface) -> Option<Self> {
+        let texture = gl.create_texture()?;
         gl.active_texture(Gl::TEXTURE1);
         gl.bind_texture(Gl::TEXTURE_2D, Some(&texture));
         for setting in [Gl::TEXTURE_MIN_FILTER, Gl::TEXTURE_MAG_FILTER] {
@@ -132,18 +135,20 @@ impl Geometry {
             );
         gl.active_texture(Gl::TEXTURE0);
         if uploaded.is_ok() {
-            self.ground_surface = Some((texture, surface.clone()));
+            Some(Self {
+                gl: gl.clone(),
+                texture,
+                surface: surface.clone(),
+            })
         } else {
             gl.delete_texture(Some(&texture));
+            None
         }
     }
 }
 impl Drop for Geometry {
     fn drop(&mut self) {
         self.gl.delete_buffer(Some(&self.vertex_buffer));
-        if let Some((texture, _)) = &self.ground_surface {
-            self.gl.delete_texture(Some(texture));
-        }
         for draw in &self.instances {
             self.gl.delete_buffer(Some(&draw.buffer));
             self.gl.delete_vertex_array(Some(&draw.vao));
@@ -154,6 +159,9 @@ impl Drop for Geometry {
 #[derive(Default)]
 pub(super) struct Batches {
     geometry: BTreeMap<GeometryKey, Geometry>,
+    ground_patterns: HashMap<GroundSurface, (Rc<GroundPattern>, u64)>,
+    pattern_clock: u64,
+    pub ground_pattern_uploads: usize,
     pub uploaded_bytes: usize,
     pub shadow_changed: bool,
     pending_shadow_invalidation: bool,
@@ -169,6 +177,9 @@ impl Batches {
                     .is_empty()
         });
         self.geometry.clear();
+        // Public floor patterns belong to this WebGL context, not a particular
+        // construction. Keep the bounded LRU across scene replacements too;
+        // dropping Batches releases the textures when the renderer goes away.
         self.transparent_order.clear();
         self.transparent_shadow_order.clear();
     }
@@ -231,11 +242,42 @@ impl Batches {
         plan: &FramePlan,
         surface: Option<&GroundSurface>,
     ) {
+        let ground_surface = surface.and_then(|surface| {
+            if let Some(pattern) = self
+                .geometry
+                .get(&key)
+                .and_then(|geometry| geometry.ground_surface.as_ref())
+                && &pattern.surface == surface
+            {
+                return Some(pattern.clone());
+            }
+            self.pattern_clock += 1;
+            if let Some((pattern, used)) = self.ground_patterns.get_mut(surface) {
+                *used = self.pattern_clock;
+                return Some(pattern.clone());
+            }
+            let pattern = Rc::new(GroundPattern::new(gl, surface)?);
+            // At most 256 reusable 65x65 RGBA8 patterns (~4.2 MiB GPU),
+            // plus textures still owned by currently visible cells.
+            if self.ground_patterns.len() >= 256
+                && let Some(old) = self
+                    .ground_patterns
+                    .iter()
+                    .min_by_key(|(_, (_, used))| *used)
+                    .map(|(surface, _)| surface.clone())
+            {
+                self.ground_patterns.remove(&old);
+            }
+            self.ground_patterns
+                .insert(surface.clone(), (pattern.clone(), self.pattern_clock));
+            self.ground_pattern_uploads += 1;
+            Some(pattern)
+        });
         let gpu = self
             .geometry
             .entry(key.clone())
             .or_insert_with(|| Geometry::new(gl, mesh));
-        gpu.set_ground_surface(surface);
+        gpu.ground_surface = ground_surface;
         for (pass, list) in [
             (Pass::Color, &plan.color),
             (Pass::Shadow, &plan.shadow),
@@ -257,16 +299,25 @@ impl Batches {
             .map(|mesh| {
                 mesh.vertices as usize * 36
                     + mesh
-                        .ground_surface
-                        .as_ref()
-                        .map_or(0, |(_, surface)| surface.rgb.len() * 4)
-                    + mesh
                         .instances
                         .iter()
                         .map(|i| i.data.len() * 4)
                         .sum::<usize>()
             })
-            .sum()
+            .sum::<usize>()
+            + self.ground_pattern_count() * SAMPLE_GRID_SIZE * SAMPLE_GRID_SIZE * 4
+    }
+    pub fn ground_pattern_count(&self) -> usize {
+        self.ground_patterns
+            .values()
+            .map(|(pattern, _)| Rc::as_ptr(pattern))
+            .chain(
+                self.geometry
+                    .values()
+                    .filter_map(|geometry| geometry.ground_surface.as_ref().map(Rc::as_ptr)),
+            )
+            .collect::<HashSet<_>>()
+            .len()
     }
     /// Both passes consume the same prototype cache and attribute layout.
     pub fn draw(
@@ -328,7 +379,7 @@ impl Batches {
                 gl.active_texture(Gl::TEXTURE1);
                 gl.bind_texture(
                     Gl::TEXTURE_2D,
-                    mesh.ground_surface.as_ref().map(|(texture, _)| texture),
+                    mesh.ground_surface.as_ref().map(|pattern| &pattern.texture),
                 );
                 gl.active_texture(Gl::TEXTURE0);
             }
@@ -349,7 +400,9 @@ impl Batches {
                 gl.blend_func(Gl::ONE, Gl::ONE_MINUS_SRC_ALPHA);
                 gl.depth_mask(false);
             }
-            for draw in order {
+            for run in crate::scene::transparent_runs(order) {
+                let draw = &run[0];
+                let count = run.len();
                 let mesh = &self.geometry[&draw.key];
                 let instances_buffer = &mesh.instances[transparency_pass as usize];
                 gl.uniform1f(
@@ -393,10 +446,10 @@ impl Batches {
                     );
                 }
                 gl.vertex_attrib_pointer_with_i32(7, 4, Gl::FLOAT, false, 80, base + 64);
-                gl.draw_arrays_instanced(Gl::TRIANGLES, 0, mesh.vertices, 1);
+                gl.draw_arrays_instanced(Gl::TRIANGLES, 0, mesh.vertices, count as i32);
                 calls += 1;
-                triangles += mesh.vertices as usize / 3;
-                instances += 1;
+                triangles += mesh.vertices as usize * count / 3;
+                instances += count;
             }
             if matches!(pass, Pass::Color) {
                 gl.depth_mask(true);

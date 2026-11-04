@@ -24,32 +24,38 @@ pub struct RenderPolicy {
     pub full_detail: bool,
     pub cull_camera: bool,
     pub triangle_budget: Option<usize>,
+    pub max_pixel_ratio: f64,
 }
 impl RenderPolicy {
     pub const INTERACTIVE: Self = Self {
         full_detail: false,
         cull_camera: true,
         triangle_budget: Some(crate::lod::INTERACTIVE_TRIANGLE_BUDGET),
+        max_pixel_ratio: 2.,
     };
     pub const CAPTURE: Self = Self {
         full_detail: true,
         cull_camera: true,
         triangle_budget: None,
+        max_pixel_ratio: 2.,
     };
     pub const DETAILED_INTERACTIVE: Self = Self {
         full_detail: false,
         cull_camera: true,
         triangle_budget: None,
+        max_pixel_ratio: 2.,
     };
     pub const PERFORMANCE: Self = Self {
         full_detail: false,
         cull_camera: true,
         triangle_budget: Some(500_000),
+        max_pixel_ratio: 1.,
     };
     pub const ILLUSTRATION: Self = Self {
         full_detail: true,
         cull_camera: false,
         triangle_budget: None,
+        max_pixel_ratio: 2.,
     };
 }
 
@@ -69,6 +75,15 @@ pub struct TransparentDraw {
     pub first: usize,
     pub opacity: f32,
 }
+/// Keep global back-to-front order, batching only adjacent equal-state ranges.
+#[cfg(any(target_arch = "wasm32", test))]
+pub(crate) fn transparent_runs(
+    order: &[TransparentDraw],
+) -> impl Iterator<Item = &[TransparentDraw]> {
+    order.chunk_by(|a, b| {
+        a.key == b.key && a.opacity == b.opacity && a.first.checked_add(1) == Some(b.first)
+    })
+}
 
 #[derive(Default)]
 pub struct FramePlan {
@@ -87,6 +102,7 @@ pub struct FramePlan {
     pub shadow_detail_scale: f64,
     pub shadow_budget_exceeded: bool,
     pub surface_pieces: usize,
+    pub occluded_pieces: usize,
 }
 
 pub struct SceneOptions<'a> {
@@ -353,6 +369,15 @@ impl ScenePlanner {
             self.surfaces = Some(surfaces::Surfaces::build(bricks, meshes));
         }
         let flags = color_surfaces(self.surfaces.as_ref(), camera, bricks, &options);
+        let hide_buried = options.policy.triangle_budget.is_some()
+            && !options.policy.full_detail
+            && options.explode == 0.
+            && self.surfaces.as_ref().is_some_and(|surfaces| {
+                !tree
+                    .query(Aabb::new(camera.eye, camera.eye))
+                    .into_iter()
+                    .any(|index| surfaces.occluders[index])
+            });
         let mut aggregates = BTreeMap::<(i64, i64, i64, u32), Aabb>::new();
         let mut transparent = Vec::new();
         let candidates = if options.explode > 0. || !options.policy.cull_camera {
@@ -362,6 +387,17 @@ impl ScenePlanner {
         };
         let mut visible = Vec::new();
         for index in candidates {
+            if hide_buried
+                && self
+                    .surfaces
+                    .as_ref()
+                    .is_some_and(|surfaces| surfaces.buried[index])
+                && options.selected != Some(bricks[index].id)
+                && !options.highlighted.contains(&bricks[index].id)
+            {
+                plan.occluded_pieces += 1;
+                continue;
+            }
             if is_merged(index, self.surfaces.as_ref(), &flags) {
                 continue;
             }
@@ -683,10 +719,24 @@ fn color_level(
     if candidate.detail.part.is_none() && lod < 3 {
         lod = 0;
     }
-    // Preserve the existing geometric-to-analytic stud transition, even when
-    // that makes the global triangle target unattainable at close range.
+    // Large rectangular bricks can have hundreds of studs. Under actual budget
+    // pressure, subpixel relief may use analytic rims without changing the body
+    // silhouette. Keep close/selected/full-detail geometry and specialty holes.
+    let budget_analytic = scale > 1.
+        && candidate
+            .detail
+            .part
+            .is_some_and(|part| part.rectangular().is_some_and(|spec| spec.studs));
+    let analytic_threshold = if budget_analytic {
+        crate::lod::BUDGET_ANALYTIC_STUD_PX * if previous == Some(2) { 1.12 } else { 0.88 }
+    } else {
+        crate::lod::STUD_FLAT_PX
+    };
+    if budget_analytic && lod == 1 && candidate.stud_pixels <= analytic_threshold {
+        lod = 2;
+    }
     if lod == 2
-        && candidate.stud_pixels > crate::lod::STUD_FLAT_PX
+        && candidate.stud_pixels > analytic_threshold
         && candidate.detail.part.is_some_and(|part| part.studded())
     {
         lod = 1;
@@ -716,6 +766,76 @@ pub fn instance(out: &mut Vec<f32>, matrix: DMat4, rgb: u32, selected: bool) {
 mod tests {
     use super::*;
     use ergo_world::demo::Demo;
+    #[test]
+    fn transparent_batching_preserves_depth_order_and_splits_material_or_index_boundaries() {
+        let glass = GeometryKey::Part("3005.dat".into(), 0);
+        let pane = GeometryKey::Part("3068b.dat".into(), 0);
+        let draws = [
+            (glass.clone(), 0, 0.5),
+            (glass.clone(), 1, 0.5),
+            (pane, 0, 0.5),
+            (glass.clone(), 2, 0.5),
+            (glass.clone(), 4, 0.5),
+            (glass, 5, 0.7),
+        ]
+        .into_iter()
+        .map(|(key, first, opacity)| TransparentDraw {
+            key,
+            first,
+            opacity,
+        })
+        .collect::<Vec<_>>();
+        let runs = transparent_runs(&draws).collect::<Vec<_>>();
+        assert_eq!(
+            runs.iter().map(|run| run.len()).collect::<Vec<_>>(),
+            vec![2, 1, 1, 1, 1]
+        );
+        assert_eq!(
+            runs.into_iter().flatten().cloned().collect::<Vec<_>>(),
+            draws
+        );
+    }
+    #[test]
+    fn budgeted_large_bricks_use_subpixel_stud_relief_without_reducing_protected_detail() {
+        let mut demo = Demo::new();
+        demo.add("4204", 4, 0., 0., 0.);
+        let brick = &demo.bricks[0];
+        let mesh = &demo.meshes[&brick.part];
+        let profile = crate::part_lod::RenderPart::resolve(mesh).unwrap();
+        let mut candidate = Candidate {
+            index: 0,
+            bounds: brick.render_bounds,
+            offset: DVec3::ZERO,
+            pixels: 128.,
+            stud_pixels: 2.5,
+            previous: Some(1),
+            detail: PartDetail {
+                part: Some(profile),
+                triangles: [12536, 3084, 12],
+            },
+        };
+        let highlighted = HashSet::new();
+        let mut options = SceneOptions {
+            policy: RenderPolicy::INTERACTIVE,
+            selected: None,
+            highlighted: &highlighted,
+            explode: 0.,
+            shadow_resolution: Some(2048.),
+            reuse_shadow: false,
+            merge_surfaces: true,
+        };
+        assert_eq!(color_level(brick, &candidate, 8., Some(1), &options), 2);
+        assert_eq!(color_level(brick, &candidate, 1., Some(1), &options), 0);
+        candidate.stud_pixels = 3.2;
+        assert_eq!(color_level(brick, &candidate, 8., Some(2), &options), 2);
+        candidate.stud_pixels = 4.;
+        assert_eq!(color_level(brick, &candidate, 8., Some(2), &options), 1);
+        options.selected = Some(brick.id);
+        assert_eq!(color_level(brick, &candidate, 8., Some(1), &options), 0);
+        options.selected = None;
+        options.policy = RenderPolicy::CAPTURE;
+        assert_eq!(color_level(brick, &candidate, 8., Some(1), &options), 0);
+    }
     fn plan(demo: &Demo, camera: &Camera, shadow: &Visibility, policy: RenderPolicy) -> FramePlan {
         ScenePlanner::default().plan(
             &demo.bricks,

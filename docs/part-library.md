@@ -48,6 +48,12 @@ download or primitive-by-primitive upstream fetching is needed to use these part
 The pack and manifest are generated together from the two authorities; their
 byte-for-byte regeneration is checked with `--check --bake`.
 
+The browser proactively caches the complete current pack and construct manifest
+through public, content-versioned `/api/library/{revision}/…` resources. See
+[local basic-library caching](loading-and-cache.md#complete-current-basic-library).
+Stale asset-cache records are discarded and resolved from the checked pack;
+there is no runtime legacy-geometry upgrade path.
+
 ## Source updates
 
 Regenerate and verify an existing official snapshot:
@@ -141,8 +147,13 @@ cape collars are 2 LDU thick; the formed cloth source specifies a 0.6-LDU head
 lift. Cloth remains a fixed formed source shape, not a cloth dynamics model.
 No new retention capacities are supplied by these source records.
 
-The 4444 panel uses its central 3×1 foot/header as its bearing core, leaving stepped
-wings/back details visual. Tree bearing cores use their 2×2 base/trunk footprint;
+The 4444 panel uses its central 3×1 foot/header as its mass/collision core. Upright
+static compression also recognizes the real stepped upper wing faces (source
+Y=24), rear shelf (Y=8), and lower wing receivers (Y=120) alongside the central
+foot (Y=144). These finite mould faces support actual joining bricks without
+filling an arrow opening or inventing a retaining bond. Upright compound arches
+and horses bear only on their declared feet/hooves, never their empty envelope
+middle. Tree bearing cores use their 2×2 base/trunk footprint;
 canopies remain genuine
 visual overhangs rather than a fictitious solid column down to surrounding grass
 studs. Optional `collision_boxes_ldu` preserve open space between horse legs and
@@ -192,37 +203,27 @@ along with its ordinary transform and optional colour. The client/server expand
 the shared definition for rendering, identity assignment and physical validation;
 the model payload does not repeat its component placements. Unknown versions and
 conflicting definitions are rejected. A changed construct gets a new version ID.
-Old v1/v2 IDs retain immutable definitions. The catalogue recommends the new
-guard/archer poses and plate-free v2 people/cars. Regenerate/check poses using
+Only the five listed current IDs are shipped and resolved. The migrated obsolete
+`minifigure-v1`, `classic-car-v1` and `medieval-guard-v1/v2` definitions are removed;
+they are rejected rather than aliased, upgraded or cached. Regenerate/check current poses using
 `python3 scripts/update-common-constructs.py --check`; hand datums come from the
 same reviewed connector definitions as runtime inference.
 The regeneration check tolerates only 1e-12 numeric differences from platform
 `libm` rounding; it does not rewrite the stored immutable poses or relax metadata.
-The castle repair helper
-`scripts/repair-castle-garrison.py` prepares an explicitly local preview, matches
-old components by exact occurrence pose, retains architecture/flag identities,
-and uses elevated guard slots for archers. It never treats a failed static
-certificate or local preview as an accepted live edit.
-
-Repeated local definitions are also interned on append, with independent placement
-and colour inheritance. Matching existing prototypes can become library references;
-independently edited geometry remains explicit. In the native model regression,
-100 cars use 15,661 JSON bytes versus 317,223 bytes for flat part references.
-This measures the model section, not complete scene/mesh traffic or S3 request count.
+Repeated local definitions are interned both on append and on native save/export,
+with independent placement and colour inheritance. Bottom-up interning also shares
+duplicate nested definitions in existing migrated current-format models. Exact
+current common prototypes become construct references; independently edited
+geometry remains explicit. Depth-first leaf order, occurrence IDs, colours, steps,
+groups and joints are preserved. No geometry matching merges physical occurrences.
 
 ## Existing constructions
 
-`retrofit_library` resolves canonical source parts and performs one normal local/
-shared edit. It retains piece IDs, groups, joints and world-space nominal body
-bounds, drops unused duplicate meshes and replaces matching local prototypes with
-common-construct references. Unsupported parts or changed nominal dimensions reject
-the whole edit for an explicit structural retrofit or removal. Shared publication
-still uses ordinary permissions, authoritative validation, CAS and accepted readback.
-
-An inventory or local JSON rewrite is not evidence that the live world is converted.
-Record actual accepted receipts and a fresh complete inventory for migration results.
-Historical accepted roots keep their frozen resources; retention-aware collection
-is separate from replacing current legacy usage.
+The source-geometry/construct migration is complete; the `retrofit_library` tool
+is retired. Current readers and new saves use the same canonical sourced parts
+and current construct definitions. Save/export compaction is a derived encoding
+change, not a rewrite of accepted history. Ordinary authoring still requires
+permissions, authoritative validation, CAS and accepted readback.
 
 ### Accepted normalization checkpoint (2026-10-30)
 

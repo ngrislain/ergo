@@ -59,6 +59,12 @@ impl GroundCache {
     pub fn is_enabled(&self) -> bool {
         self.enabled
     }
+    /// Public discardable-pattern identity; contains no source credentials.
+    pub fn cache_revision(&self, geo: GeoReference) -> Result<String> {
+        Ok(hex::encode(Sha256::digest(
+            self.block_key(geo, 0, 0)?.as_bytes(),
+        )))
+    }
     pub fn new(store: Arc<dyn ObjectStore>, prefix: String) -> Result<Self> {
         let source = std::env::var("ERGO_GROUND_SOURCE").unwrap_or_else(|_| "osm".into());
         ensure!(
@@ -161,7 +167,7 @@ impl GroundCache {
             .map(|code| (*code, ergo_world::color_rgb(*code)))
             .collect();
         let signature = hex::encode(Sha256::digest(format!(
-            "{:.12}:{:.12}:{:.12}:{}:{}:{}:{}:{}:ground-standard-categorical-v3:{BLOCK_SIZE}:{SAMPLE_GRID_SIZE}:{palette:?}",
+            "{:.12}:{:.12}:{:.12}:{}:{}:{}:{}:{}:{}:ground-standard-categorical-v3:{BLOCK_SIZE}:{SAMPLE_GRID_SIZE}:{palette:?}",
             geo.latitude,
             geo.longitude,
             geo.arcseconds_per_block,
@@ -169,7 +175,8 @@ impl GroundCache {
             self.provider,
             self.attribution,
             self.attribution_url,
-            self.enabled
+            self.enabled,
+            self.map_colours
         )));
         Ok(format!("ground/blocks/{signature}/{x}_{y}.cbor"))
     }

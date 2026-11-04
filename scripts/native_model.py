@@ -114,7 +114,7 @@ def model_leaves(model,default_color=71):
                 yield from visit(model['definitions'][id],matrix,shade,[*stack,id])
             elif kind=='construct':
                 parts=CONSTRUCTS[id]['parts']
-                values=[instance('part',part['part'],part['position'],part.get('color'),yaw(part.get('quarter_turns',0)*math.pi/2)) for part in parts]
+                values=[instance('part',part['part'],part['position'],part.get('color'),part.get('rotation') or yaw(part.get('quarter_turns',0)*math.pi/2)) for part in parts]
                 yield from visit(values,matrix,shade,[*stack,'construct:'+id])
             elif kind=='part':
                 count+=1

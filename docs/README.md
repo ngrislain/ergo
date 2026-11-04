@@ -10,8 +10,9 @@ designs live in `todo/` and are indexed by [TODO.md](../TODO.md).
 - [Official/custom model search and reuse](model-library.md)
 - [Sourced building-technique library](local-construction-mcp.md#sourced-building-techniques)
 - [Walkable monument, genuine-tree park and castle mountain recipes](model-recipes.md)
+- [Saint-Sulpice and extremely tall Technic Eiffel Tower recipes](paris-landmarks.md)
 - [Camera navigation, GPS and construction list](navigation.md)
-- [Loading progress, timing diagnosis and revision-safe caches](loading-and-cache.md)
+- [Progressive loading, complete basic-library caching and timing diagnosis](loading-and-cache.md)
 - [Sign-in and access](access-and-onboarding.md)
 - [Nested groups](groups.md)
 - [Collision-aware positioning](interactive-constraints.md)
@@ -37,10 +38,10 @@ designs live in `todo/` and are indexed by [TODO.md](../TODO.md).
 ## Engine and validation
 
 - [Architecture and execution boundaries](architecture.md)
-- [Block display pipeline, greedy surface LOD and rendering benchmarks](3d-display-indexing.md)
+- [Block display pipeline, buried-part rejection, LOD and walking benchmarks](3d-display-indexing.md)
 - [Lighting and shadows](lighting.md)
 - [Stud-specific LOD](stud-lod.md)
-- [Discrete standard-colour OSM ground, coordinates and placement snapping](ground-and-coordinates.md)
+- [Cached floor patterns, discrete OSM ground and coordinate/placement rules](ground-and-coordinates.md)
 - [Rigid-body and static physics](rigid-body-physics.md)
 - [Server acceptance gates](validation-gates.md)
 - [Sourced mass and connector calibration](physical-calibration.md)

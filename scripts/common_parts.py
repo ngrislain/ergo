@@ -153,6 +153,10 @@ def nominal(id, bounds):
         value['studs_ldu'] = [[x, 0, 0] for x in [-20, 0, 20]] + [
             [-40, 24, 0], [40, 24, 0]] + [[x, 8, 20] for x in [-20, 0, 20]]
         value['cavity'] = dict(width=3, depth=1, first=[-20, 0], bottom=144)
+        # s/4444s01.dat has receiving recesses below both hanging wings at
+        # Y=120, one brick above the central foot. Ordinary 1x2 ties can engage
+        # these while bonding the panel into neighbouring masonry.
+        value['additional_cavities'] = [dict(width=1, depth=1, first=[x, 0], bottom=120) for x in [-40, 40]]
     elif id == '2345':
         value['bounds_ldu'] = [[-30, 0, -30], [30, 144, 30]]
         value['studs_ldu'] = [[x, 24, 20] for x in [-20, 0, 20]] + [

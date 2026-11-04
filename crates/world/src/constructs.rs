@@ -55,15 +55,6 @@ pub struct ConstructInfo {
 pub fn catalog() -> Vec<ConstructInfo> {
     all()
         .iter()
-        .filter(|entry| {
-            ![
-                "minifigure-v1",
-                "medieval-guard-v1",
-                "medieval-guard-v2",
-                "classic-car-v1",
-            ]
-            .contains(&entry.id.as_str())
-        })
         .map(|entry| ConstructInfo {
             id: &entry.id,
             name: &entry.name,
@@ -258,11 +249,11 @@ mod tests {
     }
 
     #[test]
-    fn adjacent_medieval_guards_have_printed_chests_and_supported_real_accessories() {
-        let mut model = instance("medieval-guard-v1", 4);
+    fn adjacent_medieval_guards_have_printed_chests_and_real_equipment_interfaces() {
+        let mut model = instance("medieval-guard-v3", 4);
         model
             .append(
-                &instance("medieval-guard-v1", 1),
+                &instance("medieval-guard-v3", 1),
                 Transform::from_world([
                     [1., 0., 0., 4.],
                     [0., 1., 0., 0.],
@@ -275,9 +266,9 @@ mod tests {
             .unwrap();
         let mut scene = nominal_scene(model);
         let report = crate::validation::validate_static(&mut scene).unwrap();
-        assert_eq!(report.checked_bricks, 16);
-        assert_eq!(report.joint_strength_required, Some(false));
-        for part in ["3844.dat", "3846p4h.dat", "4497.dat", "76382p4f.dat"] {
+        assert_eq!(report.checked_bricks, 20);
+        assert_eq!(report.joint_strength_required, Some(true));
+        for part in ["3844.dat", "3846p4h.dat", "4497.dat", "973p4f.dat"] {
             assert_eq!(
                 scene
                     .bricks
@@ -287,8 +278,13 @@ mod tests {
                 2
             );
         }
-        assert_eq!(scene.bricks[2].color, 4);
-        assert_eq!(scene.bricks[10].color, 1);
+        let torsos: Vec<_> = scene
+            .bricks
+            .iter()
+            .filter(|brick| brick.part == "973p4f.dat")
+            .collect();
+        assert_eq!(torsos[0].color, 4);
+        assert_eq!(torsos[1].color, 1);
     }
 
     fn standard_on_brick() -> crate::WorldExport {
@@ -317,7 +313,7 @@ mod tests {
 
     #[test]
     fn plate_free_models_stand_on_feet_or_tyres_and_use_real_equipment_connections() {
-        for id in ["minifigure-v2", "medieval-guard-v2", "classic-car-v2"] {
+        for id in ["minifigure-v2", "classic-car-v2"] {
             let model = instance(id, 4);
             let mut scene = nominal_scene(model);
             assert_eq!(
@@ -339,22 +335,7 @@ mod tests {
                     .all(|b| ["3815c01.dat", "4624c01.dat"].contains(&b.part.as_str())),
                 "{id}"
             );
-            if id == "medieval-guard-v2" {
-                assert_eq!(report.checked_bricks, 6);
-                let torso = scene
-                    .bricks
-                    .iter()
-                    .find(|b| b.part == "76382p4f.dat")
-                    .unwrap();
-                for equipment in scene
-                    .bricks
-                    .iter()
-                    .filter(|b| ["3846p4h.dat", "4497.dat"].contains(&b.part.as_str()))
-                {
-                    assert!(crate::attachments::connection(torso, equipment, 0.002).is_some());
-                }
-                assert_eq!(report.joint_strength_required, Some(true));
-            }
+            assert_eq!(report.checked_bricks, scene.bricks.len());
             if id == "classic-car-v2" {
                 assert_eq!(
                     scene
@@ -448,7 +429,7 @@ mod tests {
 
     #[test]
     fn hundred_cars_share_one_definition_and_roundtrip_distinct_poses_and_colours() {
-        let prototype = instance("classic-car-v1", 16);
+        let prototype = instance("classic-car-v2", 16);
         let mut model = Model {
             root: "main".into(),
             subparts: BTreeMap::from([("main".into(), vec![])]),
@@ -470,9 +451,9 @@ mod tests {
         }
         model.validate_isometries().unwrap();
         let leaves = model.references().unwrap();
-        assert_eq!(leaves.len(), 2100);
+        assert_eq!(leaves.len(), 2700);
         assert_eq!(leaves[5].color, 4);
-        assert_eq!(leaves[26].color, 1);
+        assert_eq!(leaves[32].color, 1);
         let wire = serde_json::to_vec(&model).unwrap();
         let decoded: Model = serde_json::from_slice(&wire).unwrap();
         assert_eq!(
@@ -511,17 +492,17 @@ mod tests {
             !value["definitions"]
                 .as_object()
                 .unwrap()
-                .contains_key("library/classic-car-v1/main")
+                .contains_key("library/classic-car-v2/main")
         );
-        assert_eq!(decoded.references().unwrap().len(), 2100);
+        assert_eq!(decoded.references().unwrap().len(), 2700);
     }
 
     #[test]
     fn edits_to_a_common_definition_remain_explicit_and_cannot_shadow_the_library() {
-        let mut model = instance("minifigure-v1", 4);
+        let mut model = instance("minifigure-v2", 4);
         model
             .subparts
-            .get_mut(&get("minifigure-v1").unwrap().root())
+            .get_mut(&get("minifigure-v2").unwrap().root())
             .unwrap()[0]
             .color = 14;
         let value = serde_json::to_value(&model).unwrap();
@@ -529,20 +510,20 @@ mod tests {
             value["definitions"]
                 .as_object()
                 .unwrap()
-                .contains_key("library/minifigure-v1/main")
+                .contains_key("library/minifigure-v2/main")
         );
         let decoded: Model = serde_json::from_value(value).unwrap();
         assert_eq!(decoded.references().unwrap()[0].color, 14);
-        let mut invalid = serde_json::to_value(instance("minifigure-v1", 4)).unwrap();
-        invalid["definitions"]["library/minifigure-v1/main"] = serde_json::json!([]);
+        let mut invalid = serde_json::to_value(instance("minifigure-v2", 4)).unwrap();
+        invalid["definitions"]["library/minifigure-v2/main"] = serde_json::json!([]);
         assert!(serde_json::from_value::<Model>(invalid).is_err());
-        let mut unknown = serde_json::to_value(instance("minifigure-v1", 4)).unwrap();
+        let mut unknown = serde_json::to_value(instance("minifigure-v2", 4)).unwrap();
         unknown["definitions"]["main"][0]["target"]["id"] = serde_json::json!("minifigure-v999");
         assert!(serde_json::from_value::<Model>(unknown).is_err());
     }
     #[test]
     fn an_existing_coloured_car_becomes_a_reference_without_moving_its_parts() {
-        let entry = get("classic-car-v1").unwrap();
+        let entry = get("classic-car-v2").unwrap();
         let mut parts = entry.references();
         for part in &mut parts {
             if part.color == 16 {

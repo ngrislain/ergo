@@ -92,6 +92,12 @@ pending the reviewed physical data described above.
 
 ## Castle mountain recipe
 
+This section records the completed v0.5.20 baseline conversion and its accepted
+checkpoint. Its pre-migration CLI is retired; do not rerun it or reconstruct
+obsolete guard versions. Current authoring opens the accepted assembly in place.
+`scripts/build/castle_landscape.py` retains shared terrain/native geometry helpers
+for current refinements, rather than a legacy-construction reader.
+
 `scripts/build/castle_landscape.py` prepares an original adaptation of LEGO
 [31168](https://www.lego.com/en-fr/product/medieval-horse-knight-castle-31168),
 [6080](https://brickset.com/sets/6080-1/King-s-Castle),
@@ -118,10 +124,8 @@ its contact-only static certificate consumes no joint strength. It does not clai
 held weapons or archer poses. Unsupported equipment is deferred rather than
 attached with invented capacities or concealed supports.
 
-```sh
-python3 scripts/build/castle_landscape.py --input /private/pre-update-castle-workspace.json \
-  --output target/castle-mountain-preview --plate-free-garrison --validate
-```
+The command was a one-time conversion of the original complete workspace, not a
+supported current-model or compatibility workflow.
 
 The native outputs include separate castle/terrain inspection files and a complete
 `combined.native.json` with unique IDs: retained castle local IDs remain intact,
@@ -132,11 +136,9 @@ acceptance. The driver does not publish. An ordinary authenticated replacement
 must include the castle and its terrain together; never raise it in an unsupported
 intermediate commit.
 
-This is a baseline conversion recipe: its input is the complete **13,224-piece
-pre-update workspace**, not the already landscaped castle. The standing-garrison
-mode requires the original 300 guard occurrences and refuses a converted model;
-existing output directories are never overwritten. Later authoring should open
-the current accepted assembly and edit it in place.
+The historical input was the complete **13,224-piece pre-update workspace**.
+The live castle is already converted; later authoring opens its current accepted
+assembly and edits it in place. The obsolete conversion is not supported.
 
 For REST proposal preparation, the read-only `materialize_native` example converts
 native construction data into a public `WorldExport` scene, without authorizing or

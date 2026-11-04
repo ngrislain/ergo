@@ -22,9 +22,9 @@ state, saved plans and `.env` are ignored and never belong in a source commit.
 - Application S3 access/secret, region, endpoint and prefix.
 - Google Web client ID/secret, stable session-signing key and public origin.
 - Common world ID/prefix, brick-change pacing and map-provider configuration.
-- `request_timeout_seconds`: container processing deadline, default 300 seconds,
-  configurable from 1 to 1800. Diagnosed long validated edits can use a larger
-  value; native MCP/client deadlines are separate. Longer deadlines do not retry
+- `request_timeout_seconds`: container processing deadline, default 1800 seconds,
+  configurable from 1 to 1800. Long validated loads and edits can use the full
+  30-minute deadline; native MCP/client deadlines are separate. Longer deadlines do not retry
   mutations or relax validation, permissions, or working-set budgets.
 
 Provisioning credentials are separate from application S3 credentials. Private

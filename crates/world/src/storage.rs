@@ -221,6 +221,52 @@ mod tests {
     }
 
     #[test]
+    fn duplicate_nested_definitions_are_interned_without_merging_occurrences() {
+        let mut old = construction();
+        let pillar = old.model.subparts["pillar.ldr"].clone();
+        old.model.subparts.insert("duplicate.ldr".into(), pillar);
+        old.model.subparts.get_mut("main.ldr").unwrap()[1].file = "duplicate.ldr".into();
+        for (name, target) in [("a.ldr", "pillar.ldr"), ("b.ldr", "duplicate.ldr")] {
+            old.model.subparts.insert(
+                name.into(),
+                vec![Reference {
+                    file: target.into(),
+                    color: 16,
+                    matrix: Transform::default(),
+                }],
+            );
+        }
+        old.model.subparts.get_mut("main.ldr").unwrap()[0].file = "a.ldr".into();
+        old.model.subparts.get_mut("main.ldr").unwrap()[1].file = "b.ldr".into();
+        let mut scene = old.into_scene().unwrap();
+        scene.bricks[0].id = 91;
+        scene.bricks[1].id = 74;
+        scene.bricks[1].step = 9;
+        let compact = Construction::from(&scene);
+        assert_eq!(compact.model.subparts.len(), 3);
+        assert_eq!(scene.model.as_ref().unwrap().subparts.len(), 5);
+        let reopened = decode(&serde_json::to_vec(&compact).unwrap()).unwrap();
+        assert_eq!(Construction::from(&reopened).model.subparts.len(), 3);
+        for (before, after) in scene.bricks.iter().zip(&reopened.bricks) {
+            assert_eq!(before.id, after.id);
+            assert_eq!(before.color, after.color);
+            assert_eq!(before.rgb, after.rgb);
+            assert_eq!(before.step, after.step);
+            assert_eq!(before.position, after.position);
+            assert_eq!(before.transform, after.transform);
+        }
+        let mut edited = scene.model.unwrap();
+        edited.subparts.get_mut("duplicate.ldr").unwrap()[0].matrix =
+            Transform::from_pose(DMat3::IDENTITY, DVec3::X * 40.);
+        edited.intern_definitions().unwrap();
+        assert_eq!(
+            edited.subparts.len(),
+            5,
+            "independent geometry edits must stay distinct"
+        );
+    }
+
+    #[test]
     fn leaf_files_are_rejected_and_edits_cannot_restore_stale_template_poses() {
         let mut scene = construction().into_scene().unwrap();
         let old = serde_json::to_vec(&scene).unwrap();

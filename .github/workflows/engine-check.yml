@@ -27,6 +27,9 @@ jobs:
       - run: python3 -m pip install playwright
       - run: python3 scripts/test-web-isolated.py --script scripts/test-catalogue.py
       - run: python3 scripts/test-web-isolated.py --script scripts/test-navigation-lighting.py
+      - run: python3 scripts/test-browser-cache.py
+      - run: python3 scripts/test-web-isolated.py --script scripts/test-basic-library.py
+      - run: python3 scripts/test-web-isolated.py --script scripts/test-ground-cache.py
       - run: python3 scripts/test-common-world.py
       - run: python3 scripts/test-dense-world.py
   browser-upgrade:

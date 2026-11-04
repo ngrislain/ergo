@@ -19,6 +19,14 @@ extern "C" {
     pub(crate) fn resume();
     #[wasm_bindgen(js_name = requestPersistence)]
     fn persist_storage() -> js_sys::Promise;
+    #[wasm_bindgen(js_name = warmBasicLibrary)]
+    fn warm_basic_library(revision: &str) -> js_sys::Promise;
+}
+pub(super) fn warm_library(revision: &str) {
+    let promise = warm_basic_library(revision);
+    wasm_bindgen_futures::spawn_local(async move {
+        let _ = JsFuture::from(promise).await;
+    });
 }
 pub(super) struct Cached {
     pub etag: String,
@@ -36,6 +44,19 @@ pub(super) async fn get(url: &str) -> Option<Cached> {
         bytes: js_sys::Uint8Array::new(&js_sys::Reflect::get(&value, &"bytes".into()).ok()?)
             .to_vec(),
     })
+}
+/// Public floor colour fields have an independent seven-day freshness policy;
+/// this never supplies cached construction geometry or authorizes a world read.
+pub(super) async fn ground(url: &str) -> Option<ergo_world::terrain::GroundBlock> {
+    let cached = get(url).await?;
+    let block: ergo_world::terrain::GroundBlock = serde_json::from_slice(&cached.bytes).ok()?;
+    let now = (js_sys::Date::now() / 1000.) as u64;
+    (block.validate().is_ok()
+        && block.surface.is_some()
+        && block.fallback_reason.is_none()
+        && block.generated_at <= now + 300
+        && now.saturating_sub(block.generated_at) < 7 * 86400)
+        .then_some(block)
 }
 pub(super) fn forget(url: &str) {
     let promise = forget_entry(url);

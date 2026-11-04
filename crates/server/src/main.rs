@@ -64,6 +64,7 @@ impl IntoResponse for ApiError {
 #[derive(Serialize)]
 struct Config {
     version: &'static str,
+    basic_library: &'static str,
     construction_format: &'static str,
     model_format: &'static str,
     part_format: &'static str,
@@ -75,11 +76,13 @@ struct Config {
     simulation_limit: usize,
     ground_source: &'static str,
     ground_provider: String,
+    ground_revision: String,
 }
 
 async fn config(State(s): State<AppState>) -> Json<Config> {
     Json(Config {
         version: env!("CARGO_PKG_VERSION"),
+        basic_library: &ergo_assets::basic_library().revision,
         construction_format: ergo_world::storage::FORMAT,
         model_format: ergo_world::assembly::FORMAT,
         part_format: ergo_assets::PART_FORMAT,
@@ -95,6 +98,10 @@ async fn config(State(s): State<AppState>) -> Json<Config> {
             "disabled"
         },
         ground_provider: s.ground.provider().to_owned(),
+        ground_revision: s
+            .ground
+            .cache_revision(s.geo)
+            .expect("Validated ground configuration"),
     })
 }
 
@@ -178,6 +185,46 @@ async fn part_asset(
     Ok(response)
 }
 
+async fn basic_library(
+    headers: HeaderMap,
+    Path((revision, file)): Path<(String, String)>,
+) -> Response {
+    let library = ergo_assets::basic_library();
+    if revision != library.revision {
+        return StatusCode::NOT_FOUND.into_response();
+    }
+    let (bytes, mime) = match file.as_str() {
+        "manifest.json" => (library.manifest.as_slice(), "application/json"),
+        "parts.pack" => (library.pack, "application/octet-stream"),
+        _ => return StatusCode::NOT_FOUND.into_response(),
+    };
+    let etag = format!("\"{revision}-{file}\"");
+    let unchanged = headers
+        .get("if-none-match")
+        .and_then(|value| value.to_str().ok())
+        .is_some_and(|value| {
+            value
+                .split(',')
+                .any(|value| value.trim() == etag || value.trim() == "*")
+        });
+    let mut response = if unchanged {
+        StatusCode::NOT_MODIFIED.into_response()
+    } else {
+        bytes.to_vec().into_response()
+    };
+    response
+        .headers_mut()
+        .insert(header::ETAG, etag.parse().unwrap());
+    response
+        .headers_mut()
+        .insert(header::CONTENT_TYPE, mime.parse().unwrap());
+    response.headers_mut().insert(
+        header::CACHE_CONTROL,
+        "public, max-age=31536000, immutable".parse().unwrap(),
+    );
+    response
+}
+
 #[derive(Deserialize)]
 struct GroundQuery {
     latitude: f64,
@@ -186,22 +233,55 @@ struct GroundQuery {
 }
 async fn ground_block(
     State(s): State<AppState>,
+    headers: HeaderMap,
     Path((x, y)): Path<(i64, i64)>,
     Query(q): Query<GroundQuery>,
-) -> Json<ergo_world::terrain::GroundBlock> {
-    Json(
-        s.ground
-            .block(
-                GeoReference {
-                    latitude: q.latitude,
-                    longitude: q.longitude,
-                    arcseconds_per_block: q.arcseconds_per_block,
-                },
-                x,
-                y,
-            )
-            .await,
-    )
+) -> Response {
+    let block = s
+        .ground
+        .block(
+            GeoReference {
+                latitude: q.latitude,
+                longitude: q.longitude,
+                arcseconds_per_block: q.arcseconds_per_block,
+            },
+            x,
+            y,
+        )
+        .await;
+    if block.fallback_reason.is_some() {
+        let mut response = Json(block).into_response();
+        response
+            .headers_mut()
+            .insert(header::CACHE_CONTROL, "no-store".parse().unwrap());
+        return response;
+    }
+    let bytes = serde_json::to_vec(&block).expect("Serializable ground field");
+    let etag = format!("\"ground-{}\"", ergo_transactions::ContentId::of(&bytes));
+    let unchanged = headers
+        .get("if-none-match")
+        .and_then(|value| value.to_str().ok())
+        .is_some_and(|value| {
+            value
+                .split(',')
+                .any(|value| value.trim() == etag || value.trim() == "*")
+        });
+    let mut response = if unchanged {
+        StatusCode::NOT_MODIFIED.into_response()
+    } else {
+        bytes.into_response()
+    };
+    response
+        .headers_mut()
+        .insert(header::CONTENT_TYPE, "application/json".parse().unwrap());
+    response
+        .headers_mut()
+        .insert(header::ETAG, etag.parse().unwrap());
+    response.headers_mut().insert(
+        header::CACHE_CONTROL,
+        "public, max-age=300, must-revalidate".parse().unwrap(),
+    );
+    response
 }
 async fn manifest(
     State(s): State<AppState>,
@@ -680,7 +760,7 @@ async fn main() -> Result<()> {
             } else {
                 Vec::new()
             };
-            let scene = WorldExport {
+            let mut scene = WorldExport {
                 schema: SCHEMA_VERSION,
                 name: name.into(),
                 geo,
@@ -692,7 +772,18 @@ async fn main() -> Result<()> {
                 groups: Vec::new(),
                 model: None,
             };
-            store.save(scene, "Built-in example".into(), vec!["Catalog parts use simplified solid-body geometry; studs are visual. The pavilion has authored fixed bonds on touching faces.".into()],"examples".into()).await?;
+            let parts = store.part_cache()?;
+            for (part, mesh) in &mut scene.meshes {
+                *mesh = parts.resolve(part).await?.mesh;
+            }
+            for brick in &mut scene.bricks {
+                let mesh = &scene.meshes[&brick.part];
+                brick.bounds = mesh
+                    .body_bounds
+                    .transformed(brick.transform, brick.position);
+                brick.render_bounds = mesh.bounds.transformed(brick.transform, brick.position);
+            }
+            store.save(scene, "Built-in example".into(), vec!["Canonical source geometry with nominal solid-body collision proxies. The pavilion has authored fixed bonds on touching faces.".into()],"examples".into()).await?;
         }
     }
     let parts = store.part_cache()?;
@@ -719,6 +810,7 @@ async fn main() -> Result<()> {
         )
         .route("/api/worlds", get(worlds).post(snapshot))
         .route("/api/parts/{part}", get(part_asset))
+        .route("/api/library/{revision}/{file}", get(basic_library))
         .route("/api/ground/{x}/{y}", get(ground_block))
         .route("/api/worlds/{id}", get(manifest))
         .route("/api/worlds/{id}/export", get(export))

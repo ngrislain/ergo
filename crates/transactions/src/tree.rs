@@ -50,6 +50,7 @@ pub(crate) struct Tree {
     nodes: BTreeMap<ContentId, Node>,
     pending: BTreeMap<ContentId, Bytes>,
     uploaded: BTreeSet<ContentId>,
+    node_read_limit: usize,
 }
 impl Tree {
     pub fn absorb(&mut self, other: Tree) {
@@ -85,7 +86,13 @@ impl Tree {
             nodes: BTreeMap::new(),
             pending: BTreeMap::new(),
             uploaded: BTreeSet::new(),
+            node_read_limit: usize::MAX,
         }
+    }
+    pub fn bounded_read(repo: Repository) -> Self {
+        let mut tree = Self::new(repo);
+        tree.node_read_limit = 64 * 1024;
+        tree
     }
     async fn prefetch_nodes(&mut self, ids: Vec<ContentId>) {
         // Read only four immutable node levels, never application payloads.
@@ -157,7 +164,7 @@ impl Tree {
         if let Some(n) = self.nodes.get(id) {
             return Ok(n.clone());
         }
-        let node: Node = decode(&self.repo.object(id).await?)?;
+        let node: Node = decode(&self.repo.object_limited(id, self.node_read_limit).await?)?;
         Self::validate_node(&node)?;
         self.nodes.insert(id.clone(), node.clone());
         Ok(node)

@@ -6,6 +6,56 @@ fn p(s: &str) -> OctreePath {
 }
 
 #[tokio::test]
+async fn identity_path_prefetch_does_not_replace_observation_or_pending_reads() {
+    let repo = Repository::new(Arc::new(InMemory::new()), "identity-prefetch").unwrap();
+    repo.create("main").await.unwrap();
+    let mut pending = repo.begin("main").await.unwrap();
+    pending.put(&p("1/2"), &42_u32).await.unwrap();
+    pending.prefetch_read_paths([p("1/2"), p("2/3")]).await;
+    assert_eq!(pending.get::<u32>(&p("1/2")).await.unwrap(), Some(42));
+    assert_eq!(pending.get::<u32>(&p("2/3")).await.unwrap(), None);
+    let mut competitor = repo.begin("main").await.unwrap();
+    competitor.put(&p("2/3"), &23_u32).await.unwrap();
+    competitor
+        .commit("b", "compete", Default::default())
+        .await
+        .unwrap();
+    assert!(matches!(
+        pending
+            .commit("a", "observed absence must conflict", Default::default())
+            .await,
+        Err(Error::Conflict { .. })
+    ));
+}
+
+#[tokio::test]
+async fn speculative_identity_paths_are_not_extra_transaction_dependencies() {
+    let repo = Repository::new(Arc::new(InMemory::new()), "speculative-identities").unwrap();
+    repo.create("main").await.unwrap();
+    let mut transaction = repo.begin("main").await.unwrap();
+    transaction.prefetch_read_paths([p("1/2")]).await;
+    let mut competitor = repo.begin("main").await.unwrap();
+    competitor.put(&p("1/2"), &12_u32).await.unwrap();
+    competitor
+        .commit("b", "independent", Default::default())
+        .await
+        .unwrap();
+    transaction.put(&p("3/4"), &34_u32).await.unwrap();
+    let accepted = transaction
+        .commit("a", "disjoint", Default::default())
+        .await
+        .unwrap();
+    assert_eq!(
+        accepted.snapshot.get::<u32>(&p("1/2")).await.unwrap(),
+        Some(12)
+    );
+    assert_eq!(
+        accepted.snapshot.get::<u32>(&p("3/4")).await.unwrap(),
+        Some(34)
+    );
+}
+
+#[tokio::test]
 async fn pagination_is_complete_ordered_and_protects_empty_predicates() {
     let repo = Repository::new(Arc::new(InMemory::new()), "pages")
         .unwrap()

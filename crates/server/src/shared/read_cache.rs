@@ -231,6 +231,19 @@ pub(super) struct ReadWork {
 struct ProgressState {
     phase: String,
     work: Option<ReadWork>,
+    preview: Preview,
+}
+#[derive(Clone, Default)]
+struct Preview {
+    bricks: Vec<ergo_world::Brick>,
+    meshes: BTreeMap<String, (usize, Arc<ergo_world::geometry::Mesh>)>,
+}
+#[derive(Serialize)]
+pub(super) struct PreviewBatch {
+    after: usize,
+    next: usize,
+    bricks: Vec<ergo_world::Brick>,
+    meshes: BTreeMap<String, ergo_world::geometry::Mesh>,
 }
 pub(super) struct ReadProgress<'a> {
     cache: &'a ReadCache,
@@ -269,11 +282,34 @@ impl ReadProgress<'_> {
             timer.since = std::time::Instant::now();
         }
         drop(timer);
-        self.cache
-            .progress
-            .lock()
-            .unwrap()
-            .insert(self.key.clone(), ProgressState { phase, work });
+        let mut active = self.cache.progress.lock().unwrap();
+        let state = active
+            .entry(self.key.clone())
+            .or_insert_with(|| ProgressState {
+                phase: String::new(),
+                work: None,
+                preview: Preview::default(),
+            });
+        state.phase = phase;
+        state.work = work;
+    }
+    pub fn preview(
+        &self,
+        bricks: &[ergo_world::Brick],
+        meshes: &BTreeMap<String, ergo_world::geometry::Mesh>,
+    ) {
+        let mut active = self.cache.progress.lock().unwrap();
+        let Some(state) = active.get_mut(&self.key) else {
+            return;
+        };
+        let preview = &mut state.preview;
+        for brick in &bricks[preview.bricks.len()..] {
+            preview
+                .meshes
+                .entry(brick.part.clone())
+                .or_insert_with(|| (preview.bricks.len(), Arc::new(meshes[&brick.part].clone())));
+            preview.bricks.push(brick.clone());
+        }
     }
     #[cfg(test)]
     pub fn scanning(&self, completed: usize, found: usize, coord: Option<[i64; 3]>) {
@@ -347,6 +383,25 @@ impl ReadCache {
             .unwrap()
             .get(key)
             .map(|state| (state.phase.clone(), state.work.clone()))
+    }
+    pub fn preview(&self, key: &str, after: usize) -> Option<PreviewBatch> {
+        let active = self.progress.lock().unwrap();
+        let preview = &active.get(key)?.preview;
+        if after >= preview.bricks.len() {
+            return None;
+        }
+        let next = (after + 1024).min(preview.bricks.len());
+        Some(PreviewBatch {
+            after,
+            next,
+            bricks: preview.bricks[after..next].to_vec(),
+            meshes: preview
+                .meshes
+                .iter()
+                .filter(|(_, (first, _))| *first >= after && *first < next)
+                .map(|(name, (_, mesh))| (name.clone(), mesh.as_ref().clone()))
+                .collect(),
+        })
     }
     pub fn start_progress(&self, key: &str) -> ReadProgress<'_> {
         let progress = ReadProgress {

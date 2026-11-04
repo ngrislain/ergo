@@ -393,6 +393,12 @@ impl SharedWorlds {
         actor: &str,
         mut request: ImportRequest,
     ) -> SharedResult<Imported> {
+        let started = std::time::Instant::now();
+        tracing::info!(
+            world = id,
+            pieces = request.scene.bricks.len(),
+            "Preparing bounded assembly import"
+        );
         self.destination(id)?;
         let mut ws = self.working(id, actor, &request.base).await?;
         if request.scene.bricks.len() > ws.piece_limit() {
@@ -486,7 +492,19 @@ impl SharedWorlds {
         };
         ws.stage_rules(rules)?;
         let changed: BTreeSet<_> = pieces.values().cloned().collect();
-        for mut piece in spawned {
+        tracing::info!(
+            world = id,
+            pieces = spawned.len(),
+            elapsed_s = started.elapsed().as_secs(),
+            "Prefetching import identity predicates"
+        );
+        let identity_paths = spawned
+            .iter()
+            .map(|piece| entity_path(3, &piece.id))
+            .collect::<Vec<_>>();
+        ws.tx.prefetch_read_paths(identity_paths).await;
+        let total = spawned.len();
+        for (index, mut piece) in spawned.into_iter().enumerate() {
             ensure!(
                 ws.piece(&piece.id).await?.is_none(),
                 "Creation-record identity already exists"
@@ -495,10 +513,29 @@ impl SharedWorlds {
             ws.permit(actor, &piece)?;
             ws.charge(&piece)?;
             ws.replace(None, Some(piece)).await?;
+            if (index + 1) % 2048 == 0 || index + 1 == total {
+                tracing::info!(
+                    world = id,
+                    completed = index + 1,
+                    total,
+                    elapsed_s = started.elapsed().as_secs(),
+                    "Staging bounded assembly import"
+                );
+            }
         }
+        tracing::info!(
+            world = id,
+            elapsed_s = started.elapsed().as_secs(),
+            "Checking bounded assembly import"
+        );
         ws.flush_rules(&BTreeSet::from([assembly.clone()])).await?;
         let affected = ws.discover(&changed).await?;
         let report = ws.validate(&affected).await?;
+        tracing::info!(
+            world = id,
+            elapsed_s = started.elapsed().as_secs(),
+            "Publishing bounded assembly import"
+        );
         self.advertise_blocks(id, ws.metadata.geo, &ws.new_blocks)
             .await?;
         let prepared = self

@@ -52,7 +52,11 @@ invalid paths are rejected. Expansion is bounded to 200,000 references/leaves,
 Common-construct instances use the same transform and colour inheritance. Their
 parts are supplied by the versioned client/server library, not copied into every
 model or loaded from an arbitrary URL. Exact local definitions are shared when
-models are appended. An independently edited library definition is saved explicitly.
+models are appended or saved/exported. Duplicate nested local definitions are
+interned bottom-up without merging/reordering occurrences. Matching current common
+prototypes serialize as construct references. An independently edited library
+definition is saved explicitly. Only current construct IDs are resolved; retired
+pre-migration versions are not compatibility formats.
 
 ## Physical transforms
 
@@ -107,8 +111,8 @@ Local editing has no 5,000-piece cap; dynamics simulations remain limited to
 brick-count cap, while encoded-byte/request budgets and physical checks apply.
 The MCP host resolves all referenced catalogue assets before a submodel is placed;
 missing source geometry no longer creates standard-part box fallbacks. Official
-identity aliases are normalized for new placements. `retrofit_library` explicitly
-converts existing part usage while preserving occurrence IDs and nominal world bounds.
+identity aliases are normalized for new placements. Source migration is complete;
+the legacy `retrofit_library` tool and obsolete common-construct versions are removed.
 
 Placement snaps the incoming model with one translation of its nominal bounding
 corner (one stud horizontally, one plate vertically). Internal geometry is not

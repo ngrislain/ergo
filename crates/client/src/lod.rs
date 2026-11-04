@@ -5,6 +5,9 @@ pub const GROUND_STUD_RADIUS: f64 = 94.0;
 pub const GROUND_GRID_RADIUS: i64 = 96;
 pub const INTERACTIVE_TRIANGLE_BUDGET: usize = 2_000_000;
 pub const MAX_DETAIL_SCALE: f64 = 8.;
+/// Under triangle-budget pressure a <=3 px stud has subpixel vertical relief;
+/// its round rim can use the existing analytic shading instead of cylinders.
+pub const BUDGET_ANALYTIC_STUD_PX: f64 = 3.;
 /// Twelve-percent hysteresis avoids rebuilding batches at a detail boundary.
 pub fn body_level(pixels: f64, previous: Option<u8>) -> u8 {
     discrete_level(pixels, previous, &[24., 8., 2.])

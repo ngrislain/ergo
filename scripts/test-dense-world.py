@@ -107,6 +107,7 @@ def main():
                                                           args=['--enable-unsafe-swiftshader'])
                     try:
                         page = browser.new_page(viewport={'width': 1440, 'height': 950})
+                        page.add_init_script('''const timeout=window.setTimeout.bind(window);window.__readDeadlines=[];window.setTimeout=(callback,delay,...args)=>{if(delay>=180000)window.__readDeadlines.push(delay);return timeout(callback,delay,...args);};''')
                         errors = []
                         page.on('pageerror', lambda error: errors.append(str(error)))
                         held=[]
@@ -144,6 +145,8 @@ def main():
                         progress.update(completed=5000)
                         expect(page.locator('.loading-percent')).to_have_text('83%',timeout=15000)
                         assert len(held)==1
+                        assert 1800000 in page.evaluate('window.__readDeadlines')
+                        assert 180000 not in page.evaluate('window.__readDeadlines')
                         assert 'revision='+head['revision'] in held[0].request.url
                         fail_status[0]=True
                         page.wait_for_timeout(2500)
@@ -227,21 +230,37 @@ def main():
                         # cancellable by another construction selection.
                         remote_reads=[]
                         def hold_remote(route):
-                            if 'status=true' in route.request.url:route.fulfill(json={'revision':head['revision'],'phase':'working'})
+                            if 'status=true' in route.request.url:
+                                preview=None
+                                if 'preview_after=0' in route.request.url:
+                                    preview={'after':0,'next':1,'bricks':remote_scene['bricks'],'meshes':remote_scene['meshes']}
+                                route.fulfill(json={'revision':head['revision'],'phase':'working','preview':preview})
                             else:remote_reads.append(route)
                         remote_pattern=f'**/view?x={4096//128}&*'
                         page.route(remote_pattern,hold_remote)
                         page.locator(f'[data-assembly-id="{remote["assembly"]}"]').click()
                         expect(page.locator('.loading-panel')).to_be_visible(timeout=15000)
-                        page.wait_for_timeout(300)
-                        expect(page.locator('.status-bar')).to_contain_text(re.compile(r'6,?000 bricks'))
+                        expect(canvas).to_have_attribute('data-preview-pieces','1',timeout=15000)
+                        expect(page.locator('.loading-preview')).to_contain_text('read-only')
+                        expect(page.locator('.status-bar')).to_contain_text(re.compile(r'1 brick'))
                         expect(page.locator(f'[data-assembly-id="{names[0]}"]')).to_be_enabled()
                         page.locator(f'[data-assembly-id="{names[0]}"]').click()
                         expect(page.locator('.status-message')).to_contain_text('Focused resident construction')
                         expect(page.locator('.loading-panel')).to_be_hidden()
+                        expect(page.locator('.status-bar')).to_contain_text(re.compile(r'6,?000 bricks'))
+                        assert canvas.get_attribute('data-preview-pieces') is None
                         for route in remote_reads:
                             try:route.abort()
                             except Exception:pass
+                        remote_reads.clear()
+                        page.locator(f'[data-assembly-id="{remote["assembly"]}"]').click()
+                        expect(canvas).to_have_attribute('data-preview-pieces','1',timeout=15000)
+                        remote_reads[-1].fulfill(status=503,json={'error':'Partial construction test failure'})
+                        expect(page.get_by_role('alert')).to_contain_text('Partial construction test failure')
+                        expect(page.locator('.status-bar')).to_contain_text(re.compile(r'6,?000 bricks'))
+                        assert canvas.get_attribute('data-preview-pieces') is None
+                        page.locator(f'[data-assembly-id="{names[0]}"]').click()
+                        expect(page.locator('.status-message')).to_contain_text('Focused resident construction')
                         page.unroute(remote_pattern,hold_remote)
                         page.evaluate('''() => {const original=window.setTimeout.bind(window);window.__shortReadTimeout=true;window.setTimeout=(callback,delay,...args)=>original(callback,window.__shortReadTimeout&&delay===15000?80:delay,...args);}''')
                         stalled_locations=[]
@@ -285,7 +304,7 @@ def main():
                 server.terminate()
                 server.wait(timeout=15)
                 assert server.returncode == 0, 'Dense-view server did not shut down cleanly'
-    print('Dense-region browser check passed: complete 6,000-piece views, budget-aware radius/fog fallback, camera-independent shadow quality, read-cache revalidation/corruption, loading cancellation and resident focus.')
+    print('Dense-region browser check passed: complete 6,000-piece views, 30-minute deadline, read-only partial previews with cancellation/error rollback, budget-aware radius/fog fallback, stable shadows, verified cache reuse and resident focus.')
 
 
 if __name__ == '__main__':

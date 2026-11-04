@@ -120,6 +120,16 @@ snapshot colour. Retained old uniform records are refreshed on demand in the liv
 viewer; they remain readable offline, including in MCP captures. No model cache
 is erased to upgrade the derived ground display.
 
+The current browser also persists successful public colour fields in its
+checksum-verified IndexedDB. Keys include coordinates, geographic reference and
+the `ground_revision` advertised by `/api/config`, derived from the server's
+source/provider/attribution, palette, sampling version and cell-format signature.
+Fresh fields are reusable locally for seven days, including after reload. Expired
+fields use conditional HTTP revalidation; palette fallback/error responses are
+`no-store` and retain their ordinary short retry policy. A provider/settings
+revision change cannot reuse the previous field. This public floor cache does
+not authorize offline access to constructions.
+
 ## Natural map palette
 
 The default OSM source classifies source pixels into discrete materials: map water
@@ -150,7 +160,11 @@ $$
 Each displayed material is one exact standard palette RGB swatch, with lower RGB
 code breaking ties. Categorical voting rounds region corners instead of making
 hard rectangular sample patches or RGB gradients. The GPU fetches four swatches
-from one 65×65 RGBA8 texture per plate (16,900 bytes). Nearby stud cylinders use
+from a 65×65 RGBA8 texture (16,900 bytes). Identical fields share one GPU texture
+across plates. A 256-pattern LRU retains reusable textures across camera-cell
+eviction and construction replacements within the same renderer, plus textures
+still referenced by visible plates; active references prevent premature GPU
+deletion. Nearby stud cylinders use
 the same vote at their centres; the base evaluates it continuously to round
 borders between studs.
 Ordinary lighting, shadows and distance fog still shade those materials.

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Actual WASM checks for offline canonical retrofits and common car instances."""
+"""Actual WASM checks for current-only offline canonical parts and shared constructs."""
 import argparse,base64,json,math,os,pathlib,tempfile
 from mcp_client import Mcp
 
@@ -9,57 +9,34 @@ parser.add_argument('--artifacts',type=pathlib.Path,help='Optional directory for
 args=parser.parse_args();BINARY=str(args.binary.resolve())
 os.environ['ERGO_ASSET_FETCH']='0'
 
-def legacy_box(part,width,depth,height):
-    lo=[-width/2,-depth/2,-height];hi=[width/2,depth/2,0]
-    p=[[x,y,z] for z in [lo[2],hi[2]] for y in [lo[1],hi[1]] for x in [lo[0],hi[0]]]
-    vertices=[]
-    for corners,normal in [([0,2,3,1],[0,0,-1]),([4,5,7,6],[0,0,1]),([0,1,5,4],[0,-1,0]),
-                           ([2,6,7,3],[0,1,0]),([0,4,6,2],[-1,0,0]),([1,3,7,5],[1,0,0])]:
-        for index in [0,1,2,0,2,3]:vertices.extend([*p[corners[index]],*normal,-1,-1,-1])
-    return {'schema':2,'part':part,'quality':'parametric','vertices':vertices,
-        'bounds':{'min':lo,'max':hi},'body_bounds':{'min':lo,'max':hi},'credits':[]}
-
 def placed(kind,id,position,color):
     return {'target':{'kind':kind,'id':id},'color':color,
         'transform':[[1,0,0,position[0]],[0,1,0,position[1]],[0,0,1,position[2]],[0,0,0,1]]}
 
 with tempfile.TemporaryDirectory(prefix='ergo-library-') as temporary:
-    directory=pathlib.Path(temporary);workspace=directory/'legacy.ergo.json'
-    old_alias='readback-variants/fixture/3003.dat'
-    document={'format':'ergo-construction-1','schema':2,'name':'Legacy retrofit fixture',
-        'geo':{'latitude':48.8566,'longitude':2.3522,'arcseconds_per_block':1},
-        'model':{'format':'ergo-model-1','schema':2,'root':'main','definitions':{'main':[
-            placed('part','3023.dat',[1,.5,1/3],4),placed('part',old_alias,[5,1,1],1)]}},
-        'pieces':[{'id':41,'rgb':0x112233,'step':2},{'id':99,'rgb':0x123456,'step':3}],
-        'meshes':{'3023.dat':legacy_box('3023.dat',2,1,1/3),old_alias:legacy_box(old_alias,2,2,1)},
-        'joints':[],'fixed_bricks':[],'groups':[],'ground':[]}
-    workspace.write_text(json.dumps(document))
+    directory=pathlib.Path(temporary);workspace=directory/'current-only.ergo.json'
     client=Mcp(BINARY,workspace,None,None)
     try:
-        before=client.call('list_bricks')['structuredContent']['bricks']
-        result=client.call('retrofit_library')['structuredContent'];assert result['piece_ids_preserved']
-        after=client.call('list_bricks')['structuredContent']['bricks']
-        assert {piece['id'] for piece in after}=={41,99}
-        for original,updated in zip(before,after):
-            assert original['position']==updated['position'] and original['bounds']==updated['bounds']
-        assert {piece['part'] for piece in after}=={'3023b.dat','3003.dat'}
-        client.call('export_construction');accepted=json.loads(workspace.read_text())
-        assert accepted['pieces']==document['pieces']
-        assert set(accepted['meshes'])=={'3023b.dat','3003.dat'}
-        assert all(mesh['quality']=='source' and mesh['credits'] for mesh in accepted['meshes'].values())
+        assert 'retrofit_library' not in {tool['name'] for tool in client.rpc('tools/list',{})['tools']}
+        for retired in ['minifigure-v1','classic-car-v1','medieval-guard-v1','medieval-guard-v2']:
+            model={'format':'ergo-model-1','schema':2,'root':'main','definitions':{'main':[placed('construct',retired,[0,0,0],4)]}}
+            result=client.rpc('tools/call',{'name':'place_submodel','arguments':{'model':model}})
+            assert result['isError'],retired
+        assert not client.call('list_bricks')['structuredContent']['bricks']
     finally:client.close()
 
     workspace=directory/'cars.ergo.json';client=Mcp(BINARY,workspace,None,None)
     try:
         catalog=client.call('get_catalog')['structuredContent']['catalog']
         assert {entry['id'] for entry in catalog['constructs']}=={'minifigure-v2','classic-car-v2','medieval-guard-v3','medieval-archer-v1','castle-standard-v1'}
-        road=[placed('part','2431.dat',[offset+x+2,n+.5,1/3],72) for offset in [0,16] for x in [0,4] for n in range(4)]
+        road=[]
         model={'format':'ergo-model-1','schema':2,'root':'main','definitions':{'main':[
-            *road,placed('construct','classic-car-v1',[0,0,1/3],4),placed('construct','classic-car-v1',[16,0,1/3],1)]}}
+            *road,placed('construct','classic-car-v2',[0,0,0],4),placed('construct','classic-car-v2',[16,0,0],1)]}}
         feedback=client.call('place_submodel',model=model)['structuredContent']
-        assert feedback['brick_count']==58 and feedback['publication_ready'],feedback
+        assert feedback['brick_count']==54 and feedback['overlap_free'] and feedback['static_under_current_joint_model'],feedback
+        assert not feedback['publication_ready'] and feedback['calibration_issue'],feedback
         client.call('export_construction');accepted=json.loads(workspace.read_text())
-        assert len(accepted['pieces'])==58
+        assert len(accepted['pieces'])==54
         assert all(mesh['quality']=='source' for mesh in accepted['meshes'].values())
         assert sum(item['target']['kind']=='construct' for items in accepted['model']['definitions'].values() for item in items)>=2
         before=client.call('list_bricks',limit=200)['structuredContent']['bricks']
@@ -78,13 +55,13 @@ with tempfile.TemporaryDirectory(prefix='ergo-library-') as temporary:
     try:
         model={'format':'ergo-model-1','schema':2,'root':'main','definitions':{'main':[
             placed('part','4201.dat',[4,4,1],71),
-            placed('construct','medieval-guard-v1',[1,1,1],4),
+            placed('construct','minifigure-v2',[1,1,1],4),
             placed('construct','castle-standard-v1',[6.5,2.5,1],1)]}}
         feedback=client.call('place_submodel',model=model)['structuredContent']
-        assert feedback['brick_count']==20 and feedback['publication_ready'],feedback
+        assert feedback['brick_count']==16 and feedback['publication_ready'],feedback
         assert feedback['stability_report']['joint_strength_required'] is False
         before=client.call('list_bricks',limit=100)['structuredContent']['bricks']
-        assert {'3844.dat','4497.dat','3846p4h.dat','76382p4f.dat','3957a.dat','4495a.dat'} <= {b['part'] for b in before}
+        assert {'76382p00.dat','3957a.dat','4495a.dat'} <= {b['part'] for b in before}
         flag=next(b for b in before if b['part']=='4495a.dat')
         replacement={'format':'ergo-model-1','schema':2,'root':'flag','definitions':{'flag':[
             placed('part','4495a.dat',[flag['position'][0]+.01,*flag['position'][1:]],1)]}}
@@ -95,8 +72,6 @@ with tempfile.TemporaryDirectory(prefix='ergo-library-') as temporary:
         assert after==before,'Incorrect flag-bore fit changed the working copy'
         client.call('export_construction');accepted=json.loads(workspace.read_text())
         assert all(mesh['quality']=='source' and mesh['credits'] for mesh in accepted['meshes'].values())
-        torso=accepted['meshes']['76382p4f.dat']
-        assert any(value>=0 for value in torso['vertices'][6::9]),'Heraldry must retain real source face colours'
         support=[b['id'] for b in before if math.isclose(b['position'][0],6.5) and math.isclose(b['position'][1],4.5)]
         assert len(support)==6
         feedback=client.call('remove_bricks',ids=support)['structuredContent']
@@ -105,9 +80,9 @@ with tempfile.TemporaryDirectory(prefix='ergo-library-') as temporary:
     workspace=directory/'plate-free.ergo.json';client=Mcp(BINARY,workspace,None,None)
     try:
         model={'format':'ergo-model-1','schema':2,'root':'main','definitions':{'main':[
-            placed('construct','classic-car-v2',[0,0,0],4),placed('construct','medieval-guard-v2',[14,4,0],1)]}}
+            placed('construct','classic-car-v2',[0,0,0],4),placed('construct','minifigure-v2',[14,4,0],1)]}}
         feedback=client.call('place_submodel',model=model)['structuredContent']
-        assert feedback['brick_count']==33 and feedback['overlap_free'] and feedback['static_under_current_joint_model'],feedback
+        assert feedback['brick_count']==31 and feedback['overlap_free'] and feedback['static_under_current_joint_model'],feedback
         assert not feedback['publication_ready'] and feedback['calibration_issue'],feedback
         bricks=client.call('list_bricks',limit=100)['structuredContent']['bricks']
         grounded=[b for b in bricks if abs(b['bounds']['min'][2])<1e-6]
@@ -115,9 +90,6 @@ with tempfile.TemporaryDirectory(prefix='ergo-library-') as temporary:
         for holder in [b for b in bricks if b['part']=='4600.dat']:
             detail=client.call('inspect_brick',id=holder['id'])['structuredContent']
             assert sum(c['kind']=='wheel pin / bearing connection' for c in detail['contacts'])==2,detail
-        torso=next(b for b in bricks if b['part']=='76382p4f.dat')
-        detail=client.call('inspect_brick',id=torso['id'])['structuredContent']
-        assert sum(c['kind']=='minifigure grip / bar connection' for c in detail['contacts'])==2,detail
         if args.artifacts:
             args.artifacts.mkdir(parents=True,exist_ok=True)
             for name,eye,target in [('car',[11,-10,8],[4,2,2]),('guard',[21,-5,7],[16,4,2.3])]:
@@ -175,4 +147,4 @@ with tempfile.TemporaryDirectory(prefix='ergo-library-') as temporary:
         client.call('export_construction');accepted=json.loads(workspace.read_text())
         assert all(mesh['quality']=='source' for mesh in accepted['meshes'].values())
     finally:client.close()
-print('Canonical library WASM checks passed: offline source assets, stable retrofits, genuine fits, plate-free figures/cars, sourced trees, capes and horses without invented capacities.')
+print('Canonical library WASM checks passed: current-only offline source assets, retired-version rejection, genuine fits, plate-free figures/cars, sourced trees, capes and horses without invented capacities.')

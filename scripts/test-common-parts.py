@@ -5,6 +5,7 @@ import json
 import pathlib
 import unittest
 import common_parts
+import native_model
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 spec = importlib.util.spec_from_file_location('coverage', ROOT/'scripts/check-common-parts.py')
@@ -14,6 +15,15 @@ spec.loader.exec_module(audit)
 
 
 class CommonParts(unittest.TestCase):
+    def test_current_construct_expansion_preserves_individually_posed_limbs(self):
+        model=native_model.Model();model.construct('medieval-archer-v1',color=4)
+        leaves=list(native_model.model_leaves(model.export()))
+        parts=native_model.CONSTRUCTS['medieval-archer-v1']['parts']
+        self.assertEqual(len(leaves),len(parts))
+        for leaf,part in zip(leaves,parts):
+            expected=native_model.instance('part',part['part'],part['position'],part.get('color'),part.get('rotation') or native_model.yaw(part.get('quarter_turns',0)*__import__('math').pi/2))
+            self.assertEqual(leaf['transform'],expected['transform'])
+        self.assertTrue(any(abs(leaf['transform'][0][2])>.01 for leaf in leaves))
     def test_distinct_sets_strictly_greater_than_seven_and_alias_union(self):
         library = json.loads((ROOT/'crates/world/library/sources.lock.json').read_text())
         rows = [dict(set_num=f'set-{i}', part='983' if i % 2 else '3820.dat') for i in range(8)]

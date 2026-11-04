@@ -16,7 +16,9 @@ const MAX_ENTRY = 64 * 1024 * 1024;
 const BUDGET = 512 * 1024 * 1024;
 const MAX_ENTRIES = 1024;
 let database, opening, maintenance = Promise.resolve(), enabled = true, epoch = 0, pinTimer;
-const versions = new Map(), pinned = new Set();
+const versions = new Map(), pinned = new Set(), libraryPinned = new Set();
+let basicLibrary;
+const isPinned = url => pinned.has(url) || libraryPinned.has(url);
 const request = value => new Promise((resolve, reject) => {
   value.onsuccess = () => resolve(value.result);
   value.onerror = () => reject(value.error);
@@ -98,7 +100,7 @@ async function stored(url) {
   return {etag: entry.etag, bytes};
 }
 export async function cacheGet(url) {
-  try { if (!enabled) return null; url = key(url); return await bounded(stored(url).catch(() => null), url.includes('/view?') ? 4000 : 300); }
+  try { if (!enabled) return null; url = key(url); return await bounded(stored(url).catch(() => null), url.includes('/view?') || url.includes('/api/library/') ? 4000 : 300); }
   catch { return null; }
 }
 export async function cachePut(url, etag, bytes) {
@@ -117,7 +119,7 @@ export async function cachePut(url, etag, bytes) {
       const entries = tx.objectStore('entries'), blobs = tx.objectStore('blobs');
       const previous = await request(entries.get(url));
       const all = (await request(entries.getAll())).filter(entry => entry.url !== url);
-      all.push({url, etag, hash: digest, bytes: data.size, lastUsed: Date.now(), pinnedUntil:Math.max(previous?.pinnedUntil||0,pinned.has(url)?Date.now()+75000:0)});
+      all.push({url, etag, hash: digest, bytes: data.size, lastUsed: Date.now(), pinnedUntil:Math.max(previous?.pinnedUntil||0,isPinned(url)?Date.now()+75000:0)});
       const refs = new Map();
       for (const entry of all) {
         const record = refs.get(entry.hash) || {count: 0, bytes: entry.bytes};
@@ -127,7 +129,7 @@ export async function cachePut(url, etag, bytes) {
       const removed = new Set();
       for (const entry of all.slice().sort((a, b) => a.lastUsed - b.lastUsed)) {
         if (total <= budget && count <= MAX_ENTRIES) break;
-        if (entry.url === url || pinned.has(entry.url) || entry.pinnedUntil>Date.now()) continue;
+        if (entry.url === url || isPinned(entry.url) || entry.pinnedUntil>Date.now()) continue;
         removed.add(entry.url); entries.delete(entry.url); count--;
         const record = refs.get(entry.hash);
         if (--record.count === 0) total -= record.bytes;
@@ -161,19 +163,69 @@ export async function cacheForget(url) {
     });
   } catch {}
 }
-export function cachePin(url) {
-  pinned.clear();clearInterval(pinTimer);
-  if (!url) return;
-  url=key(url);pinned.add(url);
+function refreshPins() {
+  clearInterval(pinTimer);
+  if (!enabled || !pinned.size && !libraryPinned.size) return;
   const heartbeat=()=>enqueue(async()=>{
-    if (!enabled||!pinned.has(url))return;
+    if (!enabled)return;
     const storage=await bounded(db()),tx=storage.transaction('entries','readwrite'),done=completed(tx);
-    const entries=tx.objectStore('entries'),entry=await request(entries.get(url));
-    if(entry)entries.put({...entry,lastUsed:Date.now(),pinnedUntil:Date.now()+75000});
+    const entries=tx.objectStore('entries');
+    for (const url of new Set([...pinned,...libraryPinned])) {
+      const entry=await request(entries.get(url));
+      if(entry)entries.put({...entry,lastUsed:Date.now(),pinnedUntil:Date.now()+75000});
+    }
     await done;
   }).catch(()=>{});
   heartbeat();pinTimer=setInterval(heartbeat,30000);
 }
+export function cachePin(url) { pinned.clear(); if(url)pinned.add(key(url)); refreshPins(); }
 export function cacheSuspend() { enabled = false; epoch++; clearInterval(pinTimer);if (database) database.close(); database = opening = undefined; }
-export function cacheResume() { enabled = true;if(pinned.size)cachePin([...pinned][0]); }
+export function cacheResume() { enabled = true;refreshPins(); }
 export async function requestPersistence() { try { return await navigator.storage?.persist?.(); } catch { return false; } }
+
+// Only public, content-versioned library data may be used without a world GET.
+// Construction packets still require fresh authorization, including HTTP 304.
+export async function warmBasicLibrary(revision) {
+  if (!/^[0-9a-f]{64}$/.test(revision) || !enabled) return false;
+  const started=epoch, root=`/api/library/${revision}/`;
+  const controller=new AbortController(), timer=setTimeout(()=>controller.abort(),1800000);
+  try {
+    const load=async file=>{
+      const url=root+file, cached=await cacheGet(url);
+      if(cached)return {url,bytes:cached.bytes,etag:cached.etag,stored:true};
+      const response=await fetch(url,{signal:controller.signal});
+      if(!response.ok)throw Error('Basic library unavailable');
+      const length=Number(response.headers.get('Content-Length'));
+      if(length>MAX_ENTRY)throw Error('Basic library too large');
+      const bytes=new Uint8Array(await response.arrayBuffer());
+      if(bytes.byteLength>MAX_ENTRY)throw Error('Basic library too large');
+      return {url,bytes,etag:response.headers.get('ETag')||revision,stored:false};
+    };
+    const manifest=await load('manifest.json'), value=JSON.parse(new TextDecoder().decode(manifest.bytes));
+    if(value.format!=='ergo-basic-library-1'||value.revision!==revision||value.schema!==2 || !Array.isArray(value.constructs))return false;
+    const pack=await load('parts.pack');
+    if(pack.bytes.length!==value.pack_bytes||await hash(pack.bytes)!==value.pack_hash) {
+      await cacheForget(pack.url);return false;
+    }
+    if(!enabled||epoch!==started)return false;
+    libraryPinned.clear();libraryPinned.add(key(manifest.url));libraryPinned.add(key(pack.url));
+    basicLibrary={manifest:value,pack:pack.bytes};
+    const savedManifest=manifest.stored || await cachePut(manifest.url,manifest.etag,manifest.bytes);
+    const savedPack=pack.stored || await cachePut(pack.url,pack.etag,pack.bytes);
+    refreshPins();
+    return savedManifest && savedPack;
+  } catch { return false; } finally { clearTimeout(timer); }
+}
+export async function basicPartBytes(part) {
+  try {
+    if(!enabled||!basicLibrary||!globalThis.DecompressionStream)return null;
+    const entry=Object.values(basicLibrary.manifest.parts.parts).find(entry=>entry.catalogue.id===part || entry.catalogue.aliases.includes(part));
+    const asset=entry?.asset;
+    if(!asset||asset.offset+asset.bytes>basicLibrary.pack.length)return null;
+    const compressed=basicLibrary.pack.slice(asset.offset,asset.offset+asset.bytes);
+    const stream=new Blob([compressed]).stream().pipeThrough(new DecompressionStream('gzip'));
+    const bytes=new Uint8Array(await new Response(stream).arrayBuffer());
+    if(bytes.length>32*1024*1024||await hash(bytes)!==asset.mesh_hash)return null;
+    return bytes;
+  } catch { return null; }
+}

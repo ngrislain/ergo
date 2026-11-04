@@ -6,7 +6,7 @@ use serde::{Deserialize, Serialize};
 /// Boundary-inclusive field: one sample every 16 studs, evaluated per stud.
 pub const SAMPLE_GRID_SIZE: usize = 65;
 pub const GROUND_TOP: f64 = -0.01;
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct GroundSurface {
     pub format: String,

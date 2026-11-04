@@ -70,6 +70,18 @@ struct SharedRegion {
     #[serde(default)]
     fully_resident_assemblies: HashSet<String>,
 }
+struct RegionPreview {
+    bricks: Vec<Brick>,
+    meshes: BTreeMap<String, ergo_world::geometry::Mesh>,
+    target: DVec3,
+    distance: f64,
+    yaw: f64,
+    pitch: f64,
+    mode: NavigationMode,
+    selected: Option<u32>,
+    highlighted: HashSet<u32>,
+    explode: f64,
+}
 fn legacy_view_radius() -> u8 {
     1
 }
@@ -236,6 +248,7 @@ struct Client {
     ground_pending: HashSet<(i64, i64)>,
     ground_retry: std::collections::HashMap<(i64, i64), f64>,
     ground_provider: Option<String>,
+    ground_revision: Option<String>,
     navigation_controls: HashSet<Control>,
     known_cells: HashSet<BlockCoord>,
     default_geo: ergo_world::GeoReference,
@@ -245,6 +258,7 @@ struct Client {
     common_request: u64,
     common_retry_ms: u32,
     region_abort: Option<web_sys::AbortController>,
+    region_preview: Option<RegionPreview>,
     ready: bool,
     load_all: bool,
     start_when_loaded: bool,
@@ -260,6 +274,82 @@ struct Client {
 }
 
 impl Client {
+    fn restore_region_preview(&mut self) {
+        if let Some(previous) = self.region_preview.take()
+            && let Some(renderer) = &mut self.renderer
+        {
+            renderer.set_meshes(previous.meshes);
+            renderer.set_bricks(previous.bricks);
+            renderer.set_navigation(previous.mode);
+            renderer.target = previous.target;
+            renderer.distance = previous.distance;
+            renderer.yaw = previous.yaw;
+            renderer.pitch = previous.pitch;
+            renderer.selected = previous.selected;
+            renderer.highlighted = previous.highlighted;
+            renderer.explode = previous.explode;
+            let _ = renderer.canvas.remove_attribute("data-preview-pieces");
+            renderer.changed();
+        }
+    }
+    fn show_region_preview(
+        &mut self,
+        batch: crate::loading::PreviewBatch,
+        fit_view: bool,
+    ) -> Option<usize> {
+        let renderer = self.renderer.as_mut()?;
+        // Background refresh/navigation keeps the complete resident view usable.
+        if !fit_view && !renderer.bricks.is_empty() && self.region_preview.is_none() {
+            return None;
+        }
+        let count = if self.region_preview.is_some() {
+            renderer.bricks.len()
+        } else {
+            0
+        };
+        if !batch.valid_for(count, |part| {
+            self.region_preview.is_some() && renderer.meshes().contains_key(part)
+        }) {
+            return None;
+        }
+        if self.region_preview.is_none() {
+            self.region_preview = Some(RegionPreview {
+                bricks: renderer.bricks.clone(),
+                meshes: renderer.meshes().clone(),
+                target: renderer.target,
+                distance: renderer.distance,
+                yaw: renderer.yaw,
+                pitch: renderer.pitch,
+                mode: renderer.navigation.status().mode,
+                selected: renderer.selected,
+                highlighted: renderer.highlighted.clone(),
+                explode: renderer.explode,
+            });
+            renderer.set_meshes(BTreeMap::new());
+            renderer.set_bricks(Vec::new());
+            renderer.selected = None;
+            renderer.highlighted.clear();
+            renderer.explode = 0.;
+            renderer.set_navigation(NavigationMode::Orbit);
+            self.navigation_controls.clear();
+        }
+        renderer.add_meshes(batch.meshes).ok()?;
+        let mut bricks = std::mem::take(&mut renderer.bricks);
+        bricks.extend(batch.bricks);
+        renderer.set_bricks(bricks);
+        if fit_view && let Some(bounds) = ergo_world::bounds(&renderer.bricks) {
+            renderer.fit(bounds);
+        }
+        let _ = renderer
+            .canvas
+            .set_attribute("data-preview-pieces", &batch.next.to_string());
+        self.ui.loading.update(|loading| {
+            if let Some(loading) = loading {
+                loading.preview_pieces = batch.next;
+            }
+        });
+        Some(batch.next)
+    }
     fn new(ui: Ui) -> Self {
         Self {
             presence: Default::default(),
@@ -274,6 +364,7 @@ impl Client {
             ground_pending: HashSet::new(),
             ground_retry: Default::default(),
             ground_provider: None,
+            ground_revision: None,
             default_geo: Default::default(),
             navigation_controls: HashSet::new(),
             known_cells: HashSet::new(),
@@ -283,6 +374,7 @@ impl Client {
             common_request: 0,
             common_retry_ms: 5000,
             region_abort: None,
+            region_preview: None,
             ready: false,
             load_all: false,
             start_when_loaded: false,
@@ -490,6 +582,9 @@ fn with_client<T>(handle: Handle, f: impl FnOnce(&mut Client) -> T) -> T {
 }
 fn act(handle: Handle, f: impl FnOnce(&mut Client) -> anyhow::Result<()>) {
     with_client(handle, |c| {
+        if c.region_preview.is_some() {
+            return;
+        }
         if c.ui.common_world.get_untracked().is_some() && c.ui.busy.get_untracked() {
             return;
         }
@@ -558,7 +653,8 @@ async fn json_once<T: serde::de::DeserializeOwned>(url: &str) -> anyhow::Result<
     let deadline = ReadDeadline::new(15_000)?;
     let cacheable = url.contains("/assemblies?")
         || url.contains("/assemblies/") && url.ends_with("/location")
-        || url.starts_with("/api/parts/");
+        || url.starts_with("/api/parts/")
+        || url.starts_with("/api/ground/");
     let mut cached = if cacheable {
         crate::read_cache::get(url).await
     } else {
@@ -694,6 +790,7 @@ fn open_shared(handle: Handle, location: SharedLocation) {
         .unwrap_or_else(|| BlockCoord::from([0, 0, 0]))
         .into();
     with_client(handle, |c| {
+        c.restore_region_preview();
         c.ui.focused_assembly.set(None);
         c.common_binding = None;
         c.common_attempt = None;
@@ -762,7 +859,7 @@ fn open_shared(handle: Handle, location: SharedLocation) {
 }
 
 fn request_shared_region(handle: Handle, id: String, coord: [i64; 3], fit_view: bool) {
-    let deadline = match ReadDeadline::new(180_000) {
+    let deadline = match ReadDeadline::new(crate::loading::CONSTRUCTION_TIMEOUT_MS) {
         Ok(deadline) => deadline,
         Err(error) => {
             with_client(handle, |c| c.ui.fail(error));
@@ -770,6 +867,7 @@ fn request_shared_region(handle: Handle, id: String, coord: [i64; 3], fit_view: 
         }
     };
     let (generation, request_id, previous) = with_client(handle, |c| {
+        c.restore_region_preview();
         if let Some(controller) = c.region_abort.replace(deadline.controller.clone()) {
             controller.abort();
         }
@@ -818,6 +916,7 @@ fn request_shared_region(handle: Handle, id: String, coord: [i64; 3], fit_view: 
                 head.revision,
                 generation,
                 request_id,
+                fit_view,
             );
         }
         if !with_client(handle, |c| {
@@ -840,6 +939,8 @@ fn request_shared_region(handle: Handle, id: String, coord: [i64; 3], fit_view: 
                 *progress_url.borrow_mut()=url.clone();
                 with_client(handle,|c|{
                     if c.generation!=generation || c.region_request!=request_id {return;}
+                    c.restore_region_preview();
+                    c.ui.loading.update(|loading| { if let Some(loading) = loading { loading.preview_pieces = 0; } });
                     if let Some(r)=&mut c.renderer {
                         r.fog_distance=r.fog_distance.min(crate::residency::visible_distance(radius));
                         r.distance=r.distance.min(r.fog_distance*0.85);
@@ -945,6 +1046,19 @@ fn request_shared_region(handle: Handle, id: String, coord: [i64; 3], fit_view: 
             }
             match result {
                 Ok(region) => {
+                    let scene = region.scene;
+                    let mut blocks = match ergo_world::partition(&scene.bricks) {
+                        Ok(blocks) => blocks,
+                        Err(error) => {
+                            c.restore_region_preview();
+                            c.ui.fail(error);
+                            return;
+                        }
+                    };
+                    c.region_preview = None;
+                    if let Some(renderer) = &c.renderer {
+                        let _ = renderer.canvas.remove_attribute("data-preview-pieces");
+                    }
                     if let Some(shared) = &mut c.shared {
                         shared.coord = coord;
                         shared.radius = region.radius;
@@ -954,14 +1068,6 @@ fn request_shared_region(handle: Handle, id: String, coord: [i64; 3], fit_view: 
                         shared.fully_resident_assemblies = region.fully_resident_assemblies;
                         shared.revision = region.revision.clone();
                     }
-                    let scene = region.scene;
-                    let mut blocks = match ergo_world::partition(&scene.bricks) {
-                        Ok(blocks) => blocks,
-                        Err(error) => {
-                            c.ui.fail(error);
-                            return;
-                        }
-                    };
                     for dx in -1..=1 {
                         for dy in -1..=1 {
                             for dz in -1..=1 {
@@ -1029,6 +1135,7 @@ fn request_shared_region(handle: Handle, id: String, coord: [i64; 3], fit_view: 
                     ));
                 }
                 Err(error) => {
+                    c.restore_region_preview();
                     if let Some(shared) = &mut c.shared {
                         shared.failed_coord = Some((coord, radius));
                     }
@@ -1063,12 +1170,16 @@ fn poll_region_progress(
     revision: String,
     generation: u64,
     request_id: u64,
+    fit_view: bool,
 ) {
     spawn_local(async move {
+        let mut after = 0;
+        let mut previous_url = String::new();
         loop {
             let waiting = with_client(handle, |c| {
                 c.generation == generation
                     && c.region_request == request_id
+                    && !c.ui.signing_out.get_untracked()
                     && c.ui
                         .loading
                         .get_untracked()
@@ -1078,16 +1189,31 @@ fn poll_region_progress(
                 return;
             }
             let requested_url = url.borrow().clone();
-            if let Ok(status) =
-                json_once::<crate::loading::ReadStatus>(&format!("{requested_url}&status=true"))
-                    .await
+            if requested_url != previous_url {
+                after = 0;
+                previous_url = requested_url.clone();
+            }
+            if let Ok(mut status) = json_once::<crate::loading::ReadStatus>(&format!(
+                "{requested_url}&status=true&preview_after={after}"
+            ))
+            .await
             {
                 with_client(handle, |c| {
                     if c.generation == generation
                         && c.region_request == request_id
                         && status.revision == revision
+                        && !c.ui.signing_out.get_untracked()
                         && *url.borrow() == requested_url
+                        && c.ui
+                            .loading
+                            .get_untracked()
+                            .is_some_and(|loading| loading.waiting_for_server)
                     {
+                        if let Some(batch) = status.preview.take()
+                            && let Some(next) = c.show_region_preview(batch, fit_view)
+                        {
+                            after = next;
+                        }
                         c.ui.loading.update(|loading| {
                             if let Some(loading) = loading {
                                 loading.server_status(status);
@@ -1194,6 +1320,9 @@ fn loading_indicator(ui: Ui) -> impl IntoView {
                         <span class="loading-percent">{move ||ui.loading.get().and_then(|loading|loading.percent).map(|percent|format!("{percent}%"))}</span>
                     </div>
                     <div class="loading-detail">{move ||ui.loading.get().map(|loading|loading.detail).unwrap_or_default()}</div>
+                    <Show when=move ||ui.loading.get().is_some_and(|loading|loading.preview_pieces>0)>
+                        <div class="loading-preview">{move ||ui.loading.get().map(|loading|format!("Partial preview · {} bricks · read-only",number(loading.preview_pieces))).unwrap_or_default()}</div>
+                    </Show>
                 </div>
                 <progress max="100" value=move ||ui.loading.get().and_then(|loading|loading.percent)
                     aria-label=move ||ui.loading.get().map(|loading|loading.title).unwrap_or_default()
@@ -1289,18 +1418,8 @@ fn open_world(handle: Handle, world: WorldManifest) {
         let result: anyhow::Result<BTreeMap<String, ergo_world::geometry::Mesh>> = async {
             let mut meshes = BTreeMap::new();
             for (part, hash) in &world.geometry {
-                let mut mesh: ergo_world::geometry::Mesh = object(&world.id, hash).await?;
-                if mesh.quality != "source" {
-                    #[derive(Deserialize)]
-                    struct PartAsset {
-                        mesh: ergo_world::geometry::Mesh,
-                    }
-                    if let Ok(asset) = json::<PartAsset>(&format!("/api/parts/{part}")).await
-                        && asset.mesh.quality == "source"
-                    {
-                        mesh = asset.mesh;
-                    }
-                }
+                let mesh: ergo_world::geometry::Mesh = object(&world.id, hash).await?;
+                anyhow::ensure!(mesh.quality == "source", "Construction contains non-source geometry for {part}; only migrated source geometry is supported");
                 meshes.insert(part.clone(), mesh);
             }
             Ok(meshes)
@@ -1609,18 +1728,29 @@ fn pump_ground(handle: Handle) {
             .into_iter()
             .map(|(x, y)| {
                 c.ground_pending.insert((x, y));
-                (x, y, geo, c.generation)
+                (x, y, geo, c.generation, c.ground_revision.clone())
             })
             .collect::<Vec<_>>()
     });
-    for (x, y, geo, generation) in requests {
+    for (x, y, geo, generation, revision) in requests {
         spawn_local(async move {
             let north = !y;
-            let url = format!(
+            let mut url = format!(
                 "/api/ground/{x}/{north}?latitude={}&longitude={}&arcseconds_per_block={}",
                 geo.latitude, geo.longitude, geo.arcseconds_per_block
             );
-            let result = json::<ergo_world::terrain::GroundBlock>(&url).await;
+            if let Some(revision) = &revision {
+                url.push_str(&format!("&cache_revision={revision}"));
+            }
+            let cached = if revision.is_some() {
+                crate::read_cache::ground(&url).await
+            } else {
+                None
+            };
+            let result = match cached {
+                Some(block) => Ok(block),
+                None => json::<ergo_world::terrain::GroundBlock>(&url).await,
+            };
             with_client(handle, |c| {
                 if c.generation != generation {
                     return;
@@ -1732,13 +1862,15 @@ pub fn App() -> impl IntoView {
                     let known = &c.known_cells;
                     let loaded = &c.blocks;
                     let shared_view = c.shared.as_ref().map(|s| (s.coord, s.radius));
-                    r.navigate(input, delta, &|cell| {
-                        if let Some((centre, radius)) = shared_view {
-                            !crate::residency::contains(centre, radius, cell)
-                        } else {
-                            known.contains(&cell) && !loaded.contains_key(&cell)
-                        }
-                    });
+                    if c.region_preview.is_none() {
+                        r.navigate(input, delta, &|cell| {
+                            if let Some((centre, radius)) = shared_view {
+                                !crate::residency::contains(centre, radius, cell)
+                            } else {
+                                known.contains(&cell) && !loaded.contains_key(&cell)
+                            }
+                        });
+                    }
                     r.render();
                     let status = r.navigation.status();
                     if status.mode != NavigationMode::Orbit || ticks % 15 == 0 {
@@ -1810,11 +1942,15 @@ pub fn App() -> impl IntoView {
             #[derive(Deserialize)]
             struct Config {
                 #[serde(default)]
+                basic_library: Option<String>,
+                #[serde(default)]
                 common_world: Option<String>,
                 storage: String,
                 geo: ergo_world::GeoReference,
                 #[serde(default)]
                 ground_provider: Option<String>,
+                #[serde(default)]
+                ground_revision: Option<String>,
             }
             #[derive(Deserialize)]
             struct Me {
@@ -1830,11 +1966,15 @@ pub fn App() -> impl IntoView {
                 }
             });
             if let Ok(config) = json::<Config>("/api/config").await {
+                if let Some(revision) = &config.basic_library {
+                    crate::read_cache::warm_library(revision);
+                }
                 ui.common_world.set(config.common_world);
                 ui.storage.set(config.storage);
                 with_client(handle, |c| {
                     c.default_geo = config.geo;
                     c.ground_provider = config.ground_provider;
+                    c.ground_revision = config.ground_revision;
                 });
                 if ui.common_world.get_untracked().is_some() {
                     ui.navigating.set(true);

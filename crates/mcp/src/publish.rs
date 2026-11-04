@@ -14,6 +14,7 @@ pub struct Publisher {
     base: Url,
     token: Option<String>,
     client: Client,
+    construction_timeout: Duration,
 }
 
 #[derive(Deserialize)]
@@ -160,13 +161,17 @@ impl Publisher {
                 "Invalid MCP publication token format"
             );
         }
+        let configured_timeout = env::var("ERGO_MCP_HTTP_TIMEOUT_SECONDS").ok();
         Ok(Self {
             base,
             token,
+            construction_timeout: if configured_timeout.is_some() {
+                http_timeout(configured_timeout.as_deref())?
+            } else {
+                Duration::from_secs(30 * 60)
+            },
             client: Client::builder()
-                .timeout(http_timeout(
-                    env::var("ERGO_MCP_HTTP_TIMEOUT_SECONDS").ok().as_deref(),
-                )?)
+                .timeout(http_timeout(configured_timeout.as_deref())?)
                 .retry(reqwest::retry::never())
                 .redirect(reqwest::redirect::Policy::none())
                 .build()?,
@@ -187,6 +192,14 @@ impl Publisher {
             .client
             .request(method.clone(), self.url(path)?)
             .header("X-Ergo-Request", "1");
+        let endpoint = path.split('?').next().unwrap_or(path);
+        if method == Method::GET
+            && ["/workspace", "/view", "/download"]
+                .iter()
+                .any(|suffix| endpoint.ends_with(suffix))
+        {
+            request = request.timeout(self.construction_timeout);
+        }
         if let Some(token) = &self.token {
             request = request.bearer_auth(token);
         }
