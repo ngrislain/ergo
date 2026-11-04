@@ -184,7 +184,7 @@
               <div class="small-note">
                 <strong>Your Google login stays with you.</strong> The agent
                 gets a limited delegation, not your password or browser cookies.
-                Tokens default to one hour and expire within 24 hours.
+                Tokens default to 365 days; shorter lifetimes are available.
               </div>
             </div>
             <div
@@ -195,10 +195,10 @@
                 <span class="slip-notch"></span> Permission to build
               </div>
               <p><span>✓</span> Read permitted shared worlds</p>
-              <p><span>✓</span> Create worlds and import assemblies</p>
+              <p><span>✓</span> Import assemblies into the shared sandbox</p>
               <p><span>✓</span> Commit authorized geometry edits</p>
               <div class="slip-bottom">
-                Your identity. Your permissions.<br />A short-lived token.
+                Your identity. Your permissions.<br />An expiring delegated token.
               </div>
             </div>
           </article>
@@ -411,17 +411,17 @@ curl --fail "$ERGO_URL/api/shared-worlds/allowance" \
         </div>
         <dl>
           <div>
-            <dt>One hour to play</dt>
+            <dt>A delegation that expires</dt>
             <dd>
-              That’s the default token lifetime. Generate a fresh delegation
-              when it expires. Logging out doesn’t individually revoke an
-              existing token.
+              Tokens default to 365 days, also the maximum. Generate a fresh
+              delegation when it expires. Logging out doesn’t individually
+              revoke an existing token.
             </dd>
           </div>
           <div>
-            <dt>5,000 changes, refilling daily</dt>
+            <dt>10,000 changes, refilling daily</dt>
             <dd>
-              The free edit allowance refills continuously by 5,000 brick
+              The free edit allowance refills continuously by 10,000 brick
               changes per day. It’s an edit budget, not a limit on the whole
               world.
             </dd>
@@ -429,9 +429,9 @@ curl --fail "$ERGO_URL/api/shared-worlds/allowance" \
           <div>
             <dt>Shared means shared</dt>
             <dd>
-              MCP-created worlds allow signed-in collaborators by default. Use
-              <code>authenticated_editing: false</code> when creating an
-              owner/grant-only world.
+              Hosted edits go to one public sandbox. Signed-in collaborators
+              can build there under its permissions, edit allowance and
+              authoritative validation checks.
             </dd>
           </div>
         </dl>

@@ -42,8 +42,15 @@ tofu -chdir=infra/scaleway init -input=false
 tofu -chdir=infra/scaleway validate
 tofu -chdir=infra/scaleway test
 tofu -chdir=infra/scaleway plan -input=false -var="image=$IMAGE" -out=deployment.tfplan
-tofu -chdir=infra/scaleway apply -input=false deployment.tfplan
+tofu -chdir=infra/scaleway apply -input=false -var="image=$IMAGE" deployment.tfplan
 ```
+
+OpenTofu versions that check current inputs against a saved plan require the same
+variable files and explicit overrides at apply time. For example, pass the same
+`-var=request_timeout_seconds=1800` at both steps when overriding private tfvars.
+These values must match the inspected saved plan; they do not change its actions.
+An input-mismatch rejection occurs before any provider action. Reconcile the
+saved plan and actual provider state before correcting such an invocation.
 
 For a first deployment, bootstrap with `bind_custom_domain=false`, apply, resolve
 the returned alias target publicly, then plan/apply the bound domain. Updates use

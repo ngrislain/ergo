@@ -120,9 +120,10 @@
             </p>
             <p>
               Agent delegations are created only after an explicit request from
-              a signed-in user. A delegation normally lasts one hour, cannot
-              exceed 24 hours or the issuing session’s expiry, and is bound to
-              the sandbox origin. The token is held in the setup page’s memory
+              a signed-in user. A delegation normally lasts 365 days, also its
+              maximum lifetime; shorter lifetimes are available. It is bound to
+              the sandbox origin. The issuing session’s later expiry does not
+              shorten the delegation. The token is held in the setup page’s memory
               until you copy or download it; it is not saved in local or session
               storage by that page.
             </p>

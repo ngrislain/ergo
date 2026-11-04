@@ -23,11 +23,15 @@ package with Node, not Rust. The verified public package is
 `@ngrislain/ergo-mcp@0.5.21` from npm, with a byte-identical GitHub Release tarball.
 Google login stays in the human's browser. The agent receives the path to a
 downloaded, expiring delegation and the operator-selected API origin. The example
-prompt keeps its first construction local until the human requests publication.
+prompt explicitly asks for a shared construction; accepted production mutations
+publish atomically under the delegated identity.
 
 Keep the policy pages and agent guide synchronized with authentication,
 permissions, storage, provider, and retention changes. They describe current
 behavior and the actual authentication/storage guarantees.
+The home, privacy, terms and agent-guide copy describe the same current defaults:
+365-day delegations (shorter lifetimes are supported), a 10,000-change daily
+refilling free allowance, and one public hosted Sandbox.
 
 ## Build and preview
 

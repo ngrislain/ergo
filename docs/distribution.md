@@ -35,7 +35,7 @@ manifest. Platform checks prevent accidentally packaging a host-only binary.
 The consumer check installs the assembled package outside the checkout and exercises
 real MCP discovery, local WASM editing and images. `scripts/test-distribution.py`
 checks release boundaries; `scripts/test-npm-package.py` checks an actual bundle.
-Canonical-library/retrofit checks launch the package's `bin/ergo-mcp.cjs`
+Current-only canonical-library checks launch the package's `bin/ergo-mcp.cjs`
 entrypoint, which supplies its bundled `ERGO_WEB_DIR`; a bare native executable
 does not discover a package's separate WASM directory automatically.
 
@@ -88,3 +88,23 @@ format change. Bound caches reload authoritative state; they are not data roots.
 `ERGO_MCP_PACKAGE` is the public website's installation-source setting. Production
 uses `@ngrislain/ergo-mcp@0.5.21`; npm trusted publication is enabled. Never embed a token,
 S3 credentials or a credential-bearing URL in the package configuration.
+
+## Verified v0.5.21 release
+
+The tagged source is `1c03e4e2340300b7df5f8432dd42f8fa667d6ab3`.
+[Release workflow 41804627564](https://github.com/ngrislain/ergo/actions/runs/41804627564)
+passed all four native platforms, matching web/WASM, package/consumer checks and
+container verification. The public npm and GitHub tarballs are byte-identical to
+the tested CI artifact. Their SHA-256 is
+`c87fbb6dadbd88e3c0ab0b83827fbb8b6eca1aa935afd906cda0684b1a6f5e65`.
+An independent outside-checkout npm installation passed actual native/WASM
+editing/rendering and current-only library checks: 138 sourced parts, five
+constructs and 30 MCP tools.
+
+Production runs the verified Linux/AMD64 image
+`ghcr.io/ngrislain/ergo@sha256:dad962af48e3f1fbc3be01d1c0726d60145bf3fc1a0ca223e72a1ddce07dbd96`.
+The inspected rollout changed only the image and container timeout (to 1800
+seconds); authentication/environment, world metadata, frozen physical model and
+policy were preserved. Post-deployment OpenTofu verification found no drift with
+the same explicit image/timeout inputs. The public Pages package source is
+`@ngrislain/ergo-mcp@0.5.21`.
