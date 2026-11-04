@@ -10,7 +10,7 @@ designs live in `todo/` and are indexed by [TODO.md](../TODO.md).
 - [Official/custom model search and reuse](model-library.md)
 - [Sourced building-technique library](local-construction-mcp.md#sourced-building-techniques)
 - [Walkable monument, genuine-tree park and castle mountain recipes](model-recipes.md)
-- [Saint-Sulpice and extremely tall Technic Eiffel Tower recipes](paris-landmarks.md)
+- [Published Saint-Sulpice and Technic Eiffel Tower: recipes and accepted verification](paris-landmarks.md)
 - [Camera navigation, GPS and construction list](navigation.md)
 - [Progressive loading, complete basic-library caching and timing diagnosis](loading-and-cache.md)
 - [Sign-in and access](access-and-onboarding.md)

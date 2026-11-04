@@ -41,8 +41,9 @@ read-only partial previews while materializing. The complete current basic libra
 obsolete pre-migration construct versions are rejected. Native saves/exports share
 identical reusable definitions while retaining every placed occurrence.
 Current-source [Paris landmark recipes](docs/paris-landmarks.md) prepare detailed
-Saint-Sulpice and an extremely tall Technic Eiffel Tower at their real coordinates,
-with separate static, walking, visual and accepted-publication evidence.
+Saint-Sulpice and an extremely tall Technic Eiffel Tower at their real coordinates.
+Both are published with exact public geometry/source-credit readback and checked
+walking routes, recorded separately from static and visual evidence.
 The navigator's [Render detail control](docs/3d-display-indexing.md#scene-wide-budget-and-quality-controls)
 adds scene-wide distance LOD with soft triangle targets and independent shadow
 detail; full geometry remains available for editing, picking and collisions.

@@ -12,7 +12,7 @@ from [Saint-Sulpice](https://en.wikipedia.org/wiki/Saint-Sulpice,_Paris).
 The [parish](https://paroissesaintsulpice.paris/) also records its 73-metre real
 height. The model is an interpretation, not a dimensionally exact replica.
 
-The local checked draft has **64,727 pieces** and reaches **148⅓ brick heights**.
+The published model has **64,727 pieces** and reaches **148⅓ brick heights**.
 It uses unequal twin towers, two west-front colonnade orders, a long arcaded nave,
 side aisles, chapels, corbelled barrel roof, sanctuary, a golden meridian-like
 floor line, organ cases, 30 pews and many genuine `3308a` arches. Stained glass is
@@ -22,10 +22,23 @@ actual curved arch feet. Two-way joist grillages and rear-room columns support
 the tower floors; no unmeasured clutch strength substitutes for missing support.
 
 The current static kernel and actual WASM validation both find a zero-joint-wrench
-gravity certificate. The street-to-nave/side-aisle route uses the real walking
-engine without jumping or teleporting. These local checks are **not a publication
-receipt**. Publication through the updated server and exact accepted readback
-remain separate steps.
+gravity certificate. The updated authoritative server accepted it, and independent
+public readback verifies the exact part/colour/pose multiset, source vertices and
+credits. All 21 street-to-nave/side-aisle waypoints pass against the accepted
+geometry with the real walker, without jumping or teleporting. This is a static
+compression certificate, not a calibrated shake/impact test.
+
+- Assembly: `6a54c03a243cd4330abbf4f277763f27416c608a8c25f75a34a55c84980ce354`.
+- Accepted revision: `ab98f1b44dc1b1f806d1970100cad09661e9eaaeeddd8273fcefb18b38342424`.
+- [Open Saint-Sulpice](https://ergosandbox.com/app?shared_world=fde184c4-222b-4a16-8a1f-c320da8a2f35&x=-63&y=-20&z=0).
+- Geometry-multiset SHA-256:
+  `38a54a384a331a6c73afaa23442a35d7ec3fba79dd4dd73072027d7c65976daa`.
+- Complete public CBOR packet SHA-256:
+  `2179feada4d760caf921a285406ab9251102a4f6c29623aa7143060ab8a41129`.
+
+Anonymous real-browser checks of both public landmark links load all pieces,
+finish the complete region (not a partial preview) and render without page errors.
+Final actual-WASM nave/stained-glass views were also inspected.
 
 ## Technic Eiffel Tower
 
@@ -36,7 +49,7 @@ model `ldraw:81:87`, by **Damien Roux [Darats]**, CCAL version 2.0. Its rotated
 four-leg/tiered silhouette informed the larger original design; no source model
 parts or transforms were scaled.
 
-The checked draft contains **78,046 pieces**, reaches **567⅓ brick heights**, and
+The published model contains **78,046 pieces**, reaches **567⅓ brick heights**, and
 uses genuine pin-holed Technic posts and two-way girder grillages throughout its
 open lower legs and upper shaft. Progressively dropping outer post lines creates
 the flared/tapered silhouette while exposed inner load-bearing posts remain
@@ -68,6 +81,16 @@ successful import used optimized v0.5.21 through a temporary production-backed A
 worker with the same authentication, pacing, frozen model, validation and atomic
 overlap/CAS predicates. It made no unchecked bucket edits. Never replay the old
 attempt directories or clear durable activity pins merely because a client timed out.
+
+Both final publications used the same optimized production-backed API worker;
+it was stopped after both receipts were confirmed and public readback completed.
+The world retains its original policy, coordinate reference and frozen physical
+model CID. The earlier failed public request returned a hosting-proxy read
+timeout despite the 1800-second container deadline. Client/container deadlines do
+not guarantee that every intermediary or resource limit can sustain a request.
+The local worker's observed resident memory exceeded 4 GiB during import; logical
+CBOR and cache budgets are not a complete process-heap quota. No specific hosted
+out-of-memory cause was established from the unavailable request logs.
 
 ## Developer workflow
 
