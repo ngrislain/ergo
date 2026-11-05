@@ -55,7 +55,7 @@ with sync_playwright() as playwright:
           if(await cache.cacheGet('/api/cache-test/a')!==null)throw Error('Read-denied entry survived eviction');
           const originalEstimate=navigator.storage.estimate.bind(navigator.storage);
           navigator.storage.estimate=async()=>({quota:640*1024*1024,usage:0});
-          const big=new Uint8Array(32*1024*1024);
+           const big=new Uint8Array(48*1024*1024);
           big.fill(1);await cache.cachePut('/api/cache-test/hot','hot',big);
           big.fill(2);await cache.cachePut('/api/cache-test/cold','cold',big);
           if(!await cache.cacheGet('/api/cache-test/hot'))throw Error('Hot entry missing');
@@ -67,13 +67,27 @@ with sync_playwright() as playwright:
           IDBObjectStore.prototype.put=function(value,...args){if(this.name==='blobs')throw new DOMException('Simulated quota failure','QuotaExceededError');return originalPut.call(this,value,...args);};
           big.fill(4);if(await cache.cachePut('/api/cache-test/quota','quota',big))throw Error('Quota failure was reported as a cache hit');
           IDBObjectStore.prototype.put=originalPut;
-          if(!await cache.cacheGet('/api/cache-test/new'))throw Error('Failed write discarded unrelated retained data');
-          navigator.storage.estimate=originalEstimate;
+           if(!await cache.cacheGet('/api/cache-test/new'))throw Error('Failed write discarded unrelated retained data');
+           navigator.storage.estimate=async()=>({quota:320*1024*1024,usage:0});
+           let info=await cache.cacheInfo();
+           if(info.capacityBytes!==128*1024*1024||info.maxEntryBytes!==64*1024*1024||info.maxEntries!==4096)throw Error('Large-model cache limits drifted');
+           if(info.writes.skipped<1||info.writes.lastSkipReason!=='QuotaExceededError')throw Error('Skipped writes must be diagnosable');
+           const maximum=new Uint8Array(64*1024*1024);maximum.fill(5);
+           const region='/api/shared-worlds/cache-fixture/view?format=cbor&revision=accepted';
+           if(!await cache.cachePut(region,'complete-region',maximum))throw Error('A maximum-sized valid region must fit alongside pinned data');
+           cache.cachePin(region);
+           if(!await cache.cachePut('/api/library/fixture/manifest.json','library',bytes))throw Error('Library metadata must fit beside a large region');
+           if((await cache.cacheGet(region))?.bytes.byteLength!==maximum.byteLength)throw Error('Large complete region was not retained');
+           info=await cache.cacheInfo();
+           if(info.regionEntries!==1||info.libraryEntries!==1||info.storedBytes<maximum.byteLength||info.protectedBytes<maximum.byteLength)throw Error('Cache usage diagnostics do not match retained data');
+           navigator.storage.estimate=async()=>({quota:20*1024*1024*1024,usage:0});
+           if((await cache.cacheInfo()).capacityBytes!==2*1024*1024*1024)throw Error('Disk cache must be bounded to 2 GiB without allocating it');
+           navigator.storage.estimate=originalEstimate;
           const pending=cache.cachePut('/api/cache-test/late','late',big);cache.cacheSuspend();
           if(await pending)throw Error('A suspended/logged-out write committed');
           cache.cacheResume();
           if(await cache.cacheGet('/api/cache-test/late')!==null)throw Error('Logged-out bytes reappeared');
-          state=await inspect();return {deduplicated:true,incompatible_caches_deleted:true,corruption_healed:true,lru_and_active_pin:true,logout_fenced:true,entries:state.entries.length,blobs:state.blobs.length};
+           state=await inspect();return {deduplicated:true,incompatible_caches_deleted:true,corruption_healed:true,lru_and_active_pin:true,large_region_retained:true,usage_and_skipped_writes_visible:true,logout_fenced:true,entries:state.entries.length,blobs:state.blobs.length};
         }''',args.url+'/pkg/'+module.removeprefix('./'))
         assert not errors,errors
         print('Browser cache checks passed:',report)

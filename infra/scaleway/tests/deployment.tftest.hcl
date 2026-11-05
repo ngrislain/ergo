@@ -17,18 +17,23 @@ mock_provider "scaleway" {
 }
 
 variables {
-  project_id           = "11111111-1111-4111-8111-111111111111"
-  image                = "rg.fr-par.scw.cloud/test/ergo:test"
-  google_client_id     = "synthetic.apps.googleusercontent.com"
-  google_client_secret = "synthetic-oauth-secret"
-  session_secret       = "synthetic-session-secret-at-least-32-characters"
-  s3_access_key_id     = "synthetic-access-key"
-  s3_secret_access_key = "synthetic-secret-key"
-  common_world_id      = "33333333-3333-4333-8333-333333333333"
+  project_id              = "11111111-1111-4111-8111-111111111111"
+  image                   = "rg.fr-par.scw.cloud/test/ergo:test"
+  google_client_id        = "synthetic.apps.googleusercontent.com"
+  google_client_secret    = "synthetic-oauth-secret"
+  session_secret          = "synthetic-session-secret-at-least-32-characters"
+  s3_access_key_id        = "synthetic-access-key"
+  s3_secret_access_key    = "synthetic-secret-key"
+  common_world_id         = "33333333-3333-4333-8333-333333333333"
+  request_timeout_seconds = 3600
 }
 
 run "scale_zero_existing_bucket_and_apex_domain" {
   command = apply
+  assert {
+    condition     = scaleway_container.api.timeout == 3600
+    error_message = "Large-model requests need the supported one-hour container deadline."
+  }
   assert {
     condition     = scaleway_container.api.environment_variables["ERGO_COMMON_WORLD_ID"] == var.common_world_id && scaleway_container.api.environment_variables["ERGO_WORLD_PREFIX"] == "world"
     error_message = "The hosted container must target the single migrated world namespace."
@@ -75,6 +80,18 @@ run "reject_unstable_signing_secret" {
   command = plan
   variables { session_secret = "short" }
   expect_failures = [var.session_secret]
+}
+
+run "reject_timeout_above_one_hour" {
+  command = plan
+  variables { request_timeout_seconds = 3601 }
+  expect_failures = [var.request_timeout_seconds]
+}
+
+run "reject_timeout_below_provider_minimum" {
+  command = plan
+  variables { request_timeout_seconds = 1 }
+  expect_failures = [var.request_timeout_seconds]
 }
 
 run "reject_public_development_identity" {

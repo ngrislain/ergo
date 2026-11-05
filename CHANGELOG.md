@@ -1,5 +1,18 @@
 # Changelog
 
+## v0.5.23
+
+- Allow one-hour browser and MCP complete-construction reads, basic-library warming
+  and queued MCP jobs. Support the same one-hour hosting deadline, with a 65-minute
+  MCP host allowance; ordinary metadata and publication request defaults stay short.
+- Expand the adaptive origin-local data cache to 20% of reported quota, bounded to
+  128 MiB–2 GiB and 4,096 URLs. Preserve the 64 MiB per-packet cap and existing
+  compatible data, active leases and authorization revalidation.
+- Expose on-demand local cache counts, capacity, persistence and skipped-write
+  diagnostics through `ergoCacheInfo()`, without exposing geometry or URLs.
+- Document completed-cache retention versus non-resumable partial previews and
+  cold server reconstruction; extending deadlines is not a speed guarantee.
+
 ## v0.5.22
 
 - Style OSM vector ground with natural areas, water, roads, street/place names

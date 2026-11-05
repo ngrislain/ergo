@@ -146,8 +146,8 @@ production tool schema.
 
 ## Acceptance, conflicts, and cache recovery
 
-Native publication HTTP requests default to 300 seconds. Source-built bridges
-after v0.5.11 support `ERGO_MCP_HTTP_TIMEOUT_SECONDS` from 1–1800 for a diagnosed long
+Native publication HTTP requests default to 300 seconds. Bridges in v0.5.23 and
+later support `ERGO_MCP_HTTP_TIMEOUT_SECONDS` from 1–3600 for a diagnosed long
 operation; the server/proxy deadline
 and the enclosing MCP job deadline still apply. Increasing a timeout never retries
 a mutation. Transport errors include the HTTP method and preserve their cause;

@@ -540,7 +540,7 @@ cargo run --release --locked -p ergo-world --features simulation \
 This uses the same `ergo-world` solver/load-case implementation and parameters as
 the WASM tool, but reports native execution explicitly. It requires the developer
 Rust toolchain. `--wasm-estimated-connectors` instead selects the bounded MCP/WASM
-job; large dense models may exceed its 1,800-second deadline. A timeout is not a
+job; large dense models may exceed its 3,600-second deadline. A timeout is not a
 physical failure or a successful stability result.
 
 All estimated diagnostics disclose `ergo-stud-ballpark-v2`, retain

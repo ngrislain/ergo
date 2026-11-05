@@ -7,7 +7,7 @@ shared Sandbox. The bridge never grants itself acceptance or direct agent S3 acc
 ## Install and configure
 
 ```sh
-npm install --global --ignore-scripts @ngrislain/ergo-mcp@0.5.22
+npm install --global --ignore-scripts @ngrislain/ergo-mcp@0.5.23
 ergo-mcp --login --publish-url https://ergosandbox.com
 ```
 
@@ -31,7 +31,7 @@ opens the minimal client. Quit/restart the MCP client after configuration/token 
         "ERGO_PUBLISH_TOKEN_FILE":"/absolute/private/path/ergo-mcp-token"
       },
       "enabled":true,
-      "timeout":2100000
+      "timeout":3900000
     }
   }
 }
@@ -243,9 +243,11 @@ automatically repeated. The `.shared.json` journal stores origin, world, assembl
 base revision and pending state, not a credential. Bound caches reload server
 authority instead of interpreting stale local file formats.
 
-Each publication/read-back HTTP request has a 300-second deadline; a complete
-WASM/MCP job allows 1,800 seconds for refined dynamics, local work and both remote phases.
-Configure the host MCP execution timeout to at least 2,100,000 ms. A timeout is not
+Ordinary HTTP requests default to 300 seconds; complete construction GETs
+(`workspace`, `view`, `download`, `export`) default to 3,600 seconds. Explicit
+`ERGO_MCP_HTTP_TIMEOUT_SECONDS` accepts 1–3,600 and overrides both. A queued
+WASM/MCP job allows 3,600 seconds for local work and remote phases together.
+Configure the host MCP execution timeout to at least 3,900,000 ms. A timeout is not
 proof of rejection: reconcile the authoritative assembly/receipt before any new
 attempt. No publication request is automatically retried.
 

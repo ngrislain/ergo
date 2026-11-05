@@ -28,7 +28,7 @@ class Mcp:
         request = {'jsonrpc': '2.0', 'id': self.sequence, 'method': method, 'params': params}
         self.process.stdin.write(json.dumps(request) + '\n')
         self.process.stdin.flush()
-        if not select.select([self.process.stdout], [], [], 2100)[0]:
+        if not select.select([self.process.stdout], [], [], 3900)[0]:
             raise RuntimeError('MCP timed out; no request has been automatically retried')
         line = self.process.stdout.readline()
         if not line:
