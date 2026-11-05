@@ -21,6 +21,27 @@ extern "C" {
     fn persist_storage() -> js_sys::Promise;
     #[wasm_bindgen(js_name = warmBasicLibrary)]
     fn warm_basic_library(revision: &str) -> js_sys::Promise;
+    #[wasm_bindgen(js_name = pendingReadGet)]
+    fn pending_read_get(url: &str) -> js_sys::Promise;
+    #[wasm_bindgen(js_name = pendingReadBegin)]
+    fn pending_read_begin(url: &str, revision: &str) -> js_sys::Promise;
+    #[wasm_bindgen(js_name = pendingReadFinish)]
+    fn pending_read_finish(url: &str, token: &str) -> js_sys::Promise;
+}
+pub(super) async fn pending_revision(url: &str) -> Option<String> {
+    let value = JsFuture::from(pending_read_get(url)).await.ok()?;
+    js_sys::Reflect::get(&value, &"revision".into())
+        .ok()?
+        .as_string()
+}
+pub(super) async fn begin_read(url: &str, revision: &str) -> Option<String> {
+    JsFuture::from(pending_read_begin(url, revision))
+        .await
+        .ok()?
+        .as_string()
+}
+pub(super) async fn finish_read(url: &str, token: &str) {
+    let _ = JsFuture::from(pending_read_finish(url, token)).await;
 }
 pub(super) fn warm_library(revision: &str) {
     let promise = warm_basic_library(revision);
@@ -65,11 +86,14 @@ pub(super) fn forget(url: &str) {
     });
 }
 pub(super) fn put_background(url: String, etag: String, bytes: Vec<u8>) {
-    let data = js_sys::Uint8Array::from(bytes.as_slice());
-    let promise = put_entry(&url, &etag, &data);
+    let promise = put(url, etag, bytes);
     wasm_bindgen_futures::spawn_local(async move {
         let _ = JsFuture::from(promise).await;
     });
+}
+pub(super) fn put(url: String, etag: String, bytes: Vec<u8>) -> js_sys::Promise {
+    let data = js_sys::Uint8Array::from(bytes.as_slice());
+    put_entry(&url, &etag, &data)
 }
 pub(super) fn request_persistence() {
     wasm_bindgen_futures::spawn_local(async {

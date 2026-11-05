@@ -519,15 +519,27 @@ fn main() -> Result<()> {
                         "This cache is bound to another assembly; use a new path or open_shared_construction explicitly"
                     );
                 }
-                scene = runtime.block_on(publisher.load_shared(&mut binding, &assembly))?;
-                persist(&path, &scene)?;
+                scene = runtime.block_on(publisher.load_shared_file(
+                    &mut binding,
+                    &assembly,
+                    Some(&path),
+                ))?;
+                if !binding.cache_reused {
+                    persist(&path, &scene)?;
+                }
             } else if let Ok(assembly) = std::env::var("ERGO_SHARED_ASSEMBLY_ID") {
                 ensure!(
                     !path.exists(),
                     "Use a new cache path for this shared assembly"
                 );
-                scene = runtime.block_on(publisher.load_shared(&mut binding, &assembly))?;
-                persist(&path, &scene)?;
+                scene = runtime.block_on(publisher.load_shared_file(
+                    &mut binding,
+                    &assembly,
+                    Some(&path),
+                ))?;
+                if !binding.cache_reused {
+                    persist(&path, &scene)?;
+                }
             } else if let Ok(position) = std::env::var("ERGO_POSITION_WORLD") {
                 ensure!(
                     !path.exists(),
@@ -536,11 +548,17 @@ fn main() -> Result<()> {
                 let position: [f64; 3] = serde_json::from_str(&position)?;
                 let located = runtime.block_on(publisher.locate_shared(position))?;
                 if let Some(assembly) = located["assembly_id"].as_str() {
-                    scene = runtime.block_on(publisher.load_shared(&mut binding, assembly))?;
+                    scene = runtime.block_on(publisher.load_shared_file(
+                        &mut binding,
+                        assembly,
+                        Some(&path),
+                    ))?;
                 } else {
                     scene.geo = serde_json::from_value(located["geo"].clone())?;
                 }
-                persist(&path, &scene)?;
+                if !binding.cache_reused {
+                    persist(&path, &scene)?;
+                }
             }
             atomic_write(&sidecar, &binding)?;
             Some(Arc::new(tokio::sync::Mutex::new(binding)))
@@ -707,9 +725,10 @@ fn main() -> Result<()> {
                                     let position: [f64;3] = serde_json::from_value(arguments["position_world"].clone()).context("Supply assembly_id or position_world")?;
                                     publisher.locate_shared(position).await?["assembly_id"].as_str().context("No shared construction in this bounded search area")?.to_owned()
                                 };
-                                let scene = publisher.load_shared(&mut binding,&assembly).await?;
+                                let path=bridge.hub.lock().unwrap().workspace.path.clone();
+                                let scene = publisher.load_shared_file(&mut binding,&assembly,Some(&path)).await?;
                                 let mut h = bridge.hub.lock().unwrap();
-                                persist(&h.workspace.path,&scene)?;
+                                if !binding.cache_reused {persist(&h.workspace.path,&scene)?;}
                                 atomic_write(&shared::state_path(&h.workspace.path),&*binding)?;
                                 h.workspace.scene=scene; h.workspace.revision+=1;
                                 let value=json!({"world_id":binding.world_id,"assembly_id":assembly,"base_revision":binding.base_revision,

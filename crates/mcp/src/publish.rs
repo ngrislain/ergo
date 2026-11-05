@@ -16,6 +16,12 @@ pub struct Publisher {
     client: Client,
     construction_timeout: Duration,
 }
+pub(crate) struct ConditionalRead {
+    pub status: u16,
+    pub body: Value,
+    pub etag: Option<String>,
+    pub revision: Option<String>,
+}
 
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -184,10 +190,30 @@ impl Publisher {
         path: &str,
         body: Option<Value>,
     ) -> Result<Value> {
+        let response = self.request_conditional(method, path, body, None).await?;
+        ensure!(
+            response.status != 304,
+            "Unexpected unconditional not-modified response"
+        );
+        Ok(response.body)
+    }
+    pub(crate) async fn request_conditional(
+        &self,
+        method: Method,
+        path: &str,
+        body: Option<Value>,
+        etag: Option<&str>,
+    ) -> Result<ConditionalRead> {
         let mut request = self
             .client
             .request(method.clone(), self.url(path)?)
             .header("X-Ergo-Request", "1");
+        if let Some(etag) = etag {
+            request = request.header("If-None-Match", etag);
+        }
+        if method == Method::HEAD {
+            request = request.timeout(Duration::from_secs(30));
+        }
         let endpoint = path.split('?').next().unwrap_or(path);
         if method == Method::GET
             && ["/workspace", "/view", "/download", "/export"]
@@ -220,6 +246,26 @@ impl Publisher {
             ))
         })?;
         let status = response.status();
+        let etag = response
+            .headers()
+            .get("etag")
+            .and_then(|v| v.to_str().ok())
+            .map(str::to_owned);
+        let revision = response
+            .headers()
+            .get("x-ergo-revision")
+            .and_then(|v| v.to_str().ok())
+            .map(str::to_owned);
+        if status == reqwest::StatusCode::NOT_MODIFIED
+            || method == Method::HEAD && status.is_success()
+        {
+            return Ok(ConditionalRead {
+                status: status.as_u16(),
+                body: Value::Null,
+                etag,
+                revision,
+            });
+        }
         ensure!(
             response
                 .content_length()
@@ -243,7 +289,12 @@ impl Publisher {
             }
             .into());
         }
-        Ok(body)
+        Ok(ConditionalRead {
+            status: status.as_u16(),
+            body,
+            etag,
+            revision,
+        })
     }
 
     pub async fn publish(&self, scene: WorldExport, revision: u32, arguments: Value) -> Value {
@@ -577,6 +628,43 @@ mod tests {
             groups: Vec::new(),
             model: None,
         }
+    }
+    #[test]
+    fn a_verified_workspace_uses_a_fresh_merkle_head_without_redownloading_geometry() {
+        tokio::runtime::Runtime::new().unwrap().block_on(async {
+            use std::sync::atomic::{AtomicBool,AtomicUsize,Ordering};
+            #[derive(Clone)]
+            struct CacheMock {gets:Arc<AtomicUsize>,heads:Arc<AtomicUsize>,denied:Arc<AtomicBool>}
+            async fn endpoint(State(state):State<CacheMock>,request:Request)->Response {
+                assert_eq!(request.headers()["authorization"],"Bearer test-token");
+                if state.denied.load(Ordering::SeqCst){return StatusCode::FORBIDDEN.into_response();}
+                let mut response=if request.method()==Method::HEAD {
+                    state.heads.fetch_add(1,Ordering::SeqCst);
+                    assert_eq!(request.headers()["if-none-match"],"W/\"test-merkle\"");
+                    StatusCode::NOT_MODIFIED.into_response()
+                }else{
+                    state.gets.fetch_add(1,Ordering::SeqCst);
+                    Json(json!({"world_id":WORLD,"assembly_id":"2".repeat(64),"base_revision":"1".repeat(64),"scene":scene(),"external_dependencies":false})).into_response()
+                };
+                response.headers_mut().insert("etag","W/\"test-merkle\"".parse().unwrap());
+                response.headers_mut().insert("x-ergo-revision","1".repeat(64).parse().unwrap());response
+            }
+            let state=CacheMock{gets:Arc::new(AtomicUsize::new(0)),heads:Arc::new(AtomicUsize::new(0)),denied:Arc::new(AtomicBool::new(false))};
+            let listener=tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();let address=listener.local_addr().unwrap();
+            let app=Router::new().fallback(endpoint).with_state(state.clone());let server=tokio::spawn(async move{axum::serve(listener,app).await.unwrap();});
+            let publisher=Publisher::new(&format!("http://{address}"),Some("test-token".into())).unwrap();
+            let mut binding=crate::shared::Binding{origin:format!("http://{address}/"),world_id:WORLD.into(),assembly_id:None,base_revision:"0".repeat(64),pending:false,external_dependencies:false,receipt:None,cache:None,cache_reused:false};
+            let directory=tempfile::tempdir().unwrap();let path=directory.path().join("model.json");let assembly="2".repeat(64);
+            let first=publisher.load_shared_file(&mut binding,&assembly,Some(&path)).await.unwrap();crate::persist(&path,&first).unwrap();
+            let cached=publisher.load_shared_file(&mut binding,&assembly,Some(&path)).await.unwrap();
+            assert_eq!(cached.bricks.len(),first.bricks.len());assert_eq!(state.gets.load(Ordering::SeqCst),1);assert_eq!(state.heads.load(Ordering::SeqCst),1);
+            std::fs::write(&path,b"corrupted local cache").unwrap();
+            let repaired=publisher.load_shared_file(&mut binding,&assembly,Some(&path)).await.unwrap();crate::persist(&path,&repaired).unwrap();
+            assert_eq!(state.gets.load(Ordering::SeqCst),2);
+            state.denied.store(true,Ordering::SeqCst);
+            assert!(publisher.load_shared_file(&mut binding,&assembly,Some(&path)).await.is_err(),"Revocation cannot fall back to local bytes");
+            assert_eq!(state.gets.load(Ordering::SeqCst),2);server.abort();
+        });
     }
     async fn exercise(mode: &'static str, args: Value) -> (Value, Vec<(String, Value)>) {
         let mock = Mock {

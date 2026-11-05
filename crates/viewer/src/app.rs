@@ -894,6 +894,7 @@ fn request_shared_region(handle: Handle, id: String, coord: [i64; 3], fit_view: 
             "/api/shared-worlds/{id}/view?x={}&y={}&z={}&format=cbor&radius={radius}",
             coord[0], coord[1], coord[2]
         );
+        let pending_url = url.clone();
         if let Some(previous) = previous.filter(|previous| *previous != coord) {
             url.push_str(&format!(
                 "&from_x={}&from_y={}&from_z={}",
@@ -907,13 +908,28 @@ fn request_shared_region(handle: Handle, id: String, coord: [i64; 3], fit_view: 
         struct HeadRevision {
             revision: String,
         }
-        if let Ok(head) = json::<HeadRevision>(&format!("/api/shared-worlds/{id}")).await {
-            url.push_str(&format!("&revision={}", head.revision));
+        let saved_revision = crate::read_cache::pending_revision(&pending_url).await;
+        let latest_revision = json::<HeadRevision>(&format!("/api/shared-worlds/{id}"))
+            .await
+            .ok()
+            .map(|head| head.revision);
+        let progress_revision = Rc::new(RefCell::new(String::new()));
+        let mut pending_token = None;
+        let mut resumed_revision = saved_revision.clone();
+        if !with_client(handle, |c| {
+            c.generation == generation && c.region_request == request_id
+        }) {
+            return;
+        }
+        if let Some(revision) = saved_revision.or_else(|| latest_revision.clone()) {
+            pending_token = crate::read_cache::begin_read(&pending_url, &revision).await;
+            url.push_str(&format!("&revision={revision}"));
+            *progress_revision.borrow_mut() = revision;
             *progress_url.borrow_mut() = url.clone();
             poll_region_progress(
                 handle,
                 progress_url.clone(),
-                head.revision,
+                progress_revision.clone(),
                 generation,
                 request_id,
                 fit_view,
@@ -924,6 +940,8 @@ fn request_shared_region(handle: Handle, id: String, coord: [i64; 3], fit_view: 
         }) {
             return;
         }
+        let mut cache_write = None;
+        let mut reused_local = false;
         let result: anyhow::Result<SharedRegion> = async {
           loop {
             let cached = crate::read_cache::get(&url).await;
@@ -932,6 +950,16 @@ fn request_shared_region(handle: Handle, id: String, coord: [i64; 3], fit_view: 
                 request = request.header("If-None-Match", &cached.etag);
             }
             let response = request.send().await.context("Construction read interrupted or timed out; choose it again or select another construction")?;
+            if response.status()==410 && let Some(previous)=resumed_revision.take()
+                && let Some(latest)=latest_revision.as_ref().filter(|latest|**latest!=previous) {
+                // Only a GET snapshot that is no longer retained restarts at the
+                // current revision. No old/new preview geometry is mixed.
+                with_client(handle,|c|{if c.generation==generation&&c.region_request==request_id{c.restore_region_preview();}});
+                url=url.replace(&format!("&revision={previous}"),&format!("&revision={latest}"));
+                *progress_revision.borrow_mut()=latest.clone();*progress_url.borrow_mut()=url.clone();
+                pending_token=crate::read_cache::begin_read(&pending_url,latest).await;
+                continue;
+            }
             if response.status()==413 && radius>crate::residency::MIN_RADIUS {
                 let previous_radius=radius;
                 radius=(radius/2).max(crate::residency::MIN_RADIUS);
@@ -951,6 +979,7 @@ fn request_shared_region(handle: Handle, id: String, coord: [i64; 3], fit_view: 
                 continue;
             }
             if response.status() == 304 {
+                reused_local=true;
                 let cached =
                     cached.context("Server revalidated an unavailable local construction")?;
                 region_loading_stage(
@@ -966,6 +995,7 @@ fn request_shared_region(handle: Handle, id: String, coord: [i64; 3], fit_view: 
             if !response.ok() {
                 if [401, 403].contains(&response.status()) {
                     crate::read_cache::forget(&url);
+                    if let Some(token)=&pending_token{crate::read_cache::finish_read(&pending_url,token).await;}
                 }
                 anyhow::bail!(response.text().await?);
             }
@@ -997,7 +1027,7 @@ fn request_shared_region(handle: Handle, id: String, coord: [i64; 3], fit_view: 
                             && c.region_request == request_id
                             && !c.ui.signing_out.get_untracked()
                     }) {
-                        crate::read_cache::put_background(url.clone(), etag, bytes);
+                        cache_write=Some(crate::read_cache::put(url.clone(),etag,bytes));
                     }
                 }
                 return Ok(region);
@@ -1030,12 +1060,12 @@ fn request_shared_region(handle: Handle, id: String, coord: [i64; 3], fit_view: 
             );
             gloo_timers::future::TimeoutFuture::new(16).await;
         }
-        with_client(handle, |c| {
+        let installed = with_client(handle, |c| {
             if c.generation != generation
                 || c.region_request != request_id
                 || c.shared.as_ref().is_none_or(|s| s.id != id)
             {
-                return;
+                return false;
             }
             c.ui.loading.set(None);
             c.ui.navigating.set(false);
@@ -1052,7 +1082,7 @@ fn request_shared_region(handle: Handle, id: String, coord: [i64; 3], fit_view: 
                         Err(error) => {
                             c.restore_region_preview();
                             c.ui.fail(error);
-                            return;
+                            return false;
                         }
                     };
                     c.region_preview = None;
@@ -1133,16 +1163,34 @@ fn request_shared_region(handle: Handle, id: String, coord: [i64; 3], fit_view: 
                         "Shared-world region loaded · revision {} · edit using MCP / API",
                         &region.revision[..region.revision.len().min(12)]
                     ));
+                    true
                 }
                 Err(error) => {
                     c.restore_region_preview();
                     if let Some(shared) = &mut c.shared {
                         shared.failed_coord = Some((coord, radius));
                     }
-                    c.ui.fail(error)
+                    c.ui.fail(error);
+                    false
                 }
             }
         });
+        if installed && let Some(token) = pending_token {
+            // Display is already ready. Do not clear the durable resume pointer
+            // until the complete packet's optional disk write is acknowledged.
+            let stored = if let Some(write) = cache_write {
+                wasm_bindgen_futures::JsFuture::from(write)
+                    .await
+                    .ok()
+                    .and_then(|v| v.as_bool())
+                    .unwrap_or(false)
+            } else {
+                reused_local
+            };
+            if stored {
+                crate::read_cache::finish_read(&pending_url, &token).await;
+            }
+        }
     });
 }
 
@@ -1167,7 +1215,7 @@ fn region_loading_stage(
 fn poll_region_progress(
     handle: Handle,
     url: Rc<RefCell<String>>,
-    revision: String,
+    revision: Rc<RefCell<String>>,
     generation: u64,
     request_id: u64,
     fit_view: bool,
@@ -1201,7 +1249,7 @@ fn poll_region_progress(
                 with_client(handle, |c| {
                     if c.generation == generation
                         && c.region_request == request_id
-                        && status.revision == revision
+                        && status.revision == *revision.borrow()
                         && !c.ui.signing_out.get_untracked()
                         && *url.borrow() == requested_url
                         && c.ui
@@ -1322,6 +1370,9 @@ fn loading_indicator(ui: Ui) -> impl IntoView {
                     <div class="loading-detail">{move ||ui.loading.get().map(|loading|loading.detail).unwrap_or_default()}</div>
                     <Show when=move ||ui.loading.get().is_some_and(|loading|loading.preview_pieces>0)>
                         <div class="loading-preview">{move ||ui.loading.get().map(|loading|format!("Partial preview · {} bricks · read-only",number(loading.preview_pieces))).unwrap_or_default()}</div>
+                    </Show>
+                    <Show when=move ||ui.loading.get().is_some_and(|loading|loading.checkpoint.is_some())>
+                        <div class="loading-checkpoint" style="font-size:11px;line-height:1.4">{move ||ui.loading.get().and_then(|loading|loading.checkpoint).unwrap_or_default()}</div>
                     </Show>
                 </div>
                 <progress max="100" value=move ||ui.loading.get().and_then(|loading|loading.percent)

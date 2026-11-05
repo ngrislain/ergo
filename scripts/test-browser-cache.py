@@ -51,8 +51,23 @@ with sync_playwright() as playwright:
           if(await cache.cacheGet('/api/cache-test/a')!==null)throw Error('Corrupted bytes were reused');
           await cache.cachePut('/api/cache-test/a','repaired',bytes);
           if((await cache.cacheGet('/api/cache-test/a')).etag!=='repaired')throw Error('Corruption did not heal');
-          await cache.cacheForget('/api/cache-test/a');
-          if(await cache.cacheGet('/api/cache-test/a')!==null)throw Error('Read-denied entry survived eviction');
+           await cache.cacheForget('/api/cache-test/a');
+           if(await cache.cacheGet('/api/cache-test/a')!==null)throw Error('Read-denied entry survived eviction');
+           const readUrl='/api/shared-worlds/00000000-0000-4000-8000-000000000000/view?x=0&y=0&z=0&radius=5&format=cbor';
+           const first=await cache.pendingReadBegin(readUrl,'1'.repeat(64));
+           if((await fresh.pendingReadGet(readUrl))?.revision!=='1'.repeat(64))throw Error('Pending snapshot was lost across module reload');
+           // A cold/contended descriptor read must have the same four-second
+           // grace as its region, rather than becoming a miss after 300 ms.
+           const originalArrayBuffer=Blob.prototype.arrayBuffer;
+           Blob.prototype.arrayBuffer=async function(){await new Promise(resolve=>setTimeout(resolve,500));return originalArrayBuffer.call(this);};
+           try {
+             if((await fresh.pendingReadGet(readUrl))?.revision!=='1'.repeat(64))throw Error('Slow storage discarded an interrupted snapshot');
+           } finally {Blob.prototype.arrayBuffer=originalArrayBuffer;}
+           const second=await fresh.pendingReadBegin(readUrl,'2'.repeat(64));
+           await cache.pendingReadFinish(readUrl,first);
+           if((await fresh.pendingReadGet(readUrl))?.revision!=='2'.repeat(64))throw Error('Late completion erased a newer resume descriptor');
+           await fresh.pendingReadFinish(readUrl,second);
+           if(await cache.pendingReadGet(readUrl))throw Error('Completed read remained pending');
           const originalEstimate=navigator.storage.estimate.bind(navigator.storage);
           navigator.storage.estimate=async()=>({quota:640*1024*1024,usage:0});
            const big=new Uint8Array(48*1024*1024);
@@ -87,7 +102,7 @@ with sync_playwright() as playwright:
           if(await pending)throw Error('A suspended/logged-out write committed');
           cache.cacheResume();
           if(await cache.cacheGet('/api/cache-test/late')!==null)throw Error('Logged-out bytes reappeared');
-           state=await inspect();return {deduplicated:true,incompatible_caches_deleted:true,corruption_healed:true,lru_and_active_pin:true,large_region_retained:true,usage_and_skipped_writes_visible:true,logout_fenced:true,entries:state.entries.length,blobs:state.blobs.length};
+           state=await inspect();return {deduplicated:true,incompatible_caches_deleted:true,corruption_healed:true,lru_and_active_pin:true,large_region_retained:true,usage_and_skipped_writes_visible:true,pending_read_survives_reload:true,late_completion_fenced:true,logout_fenced:true,entries:state.entries.length,blobs:state.blobs.length};
         }''',args.url+'/pkg/'+module.removeprefix('./'))
         assert not errors,errors
         print('Browser cache checks passed:',report)

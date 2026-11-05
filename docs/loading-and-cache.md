@@ -278,18 +278,77 @@ A model has several independent caches; none make its first cold load free:
   server-side S3 traversal even if the browser already has the basic meshes.
 - Floor colours are public, source/style-versioned and retained locally for seven
   days. They share the logical disk budget above, not the model's permission grant.
-- Native MCP workspace files remain on disk, but reopening a shared workspace
-  currently loads server authority again; the file is not an offline permission
-  grant or an incremental authoring-read checkpoint.
+- Native MCP workspace files remain on disk. A checksum-verified file with a saved
+  server ETag can be reopened after an authorized lightweight `HEAD`/304 check,
+  without another geometry download. An absent/mismatched checksum, pending write,
+  changed token or old server falls back to the ordinary complete read. The file
+  is not an offline permission grant or an incremental initial-workspace checkpoint.
 
 On timeout/cancellation, accepted geometry remains in S3, earlier completed local
 entries are retained, and an earlier completed viewer scene is restored. A partial
-preview is deliberately discarded and is never saved as a complete model. The
-incomplete response/cursor is **not durably checkpointed**, so a retry may repeat
-discovery/materialization. Verified immutable server objects can remain warm in
+preview is deliberately discarded and is never saved as a complete model. Browser
+region preparation now has the durable checkpoints described below; an in-flight
+batch can repeat, and HTTP body transfer starts again if interrupted. Initial
+native authoring-workspace downloads/exports are not yet chunk-checkpointed.
+Verified immutable server objects can remain warm in
 the 256 MiB process cache, but that is bounded and disappears on process restart.
 Successful complete server packets are separately persisted in S3. Parsing,
 spatial-index reconstruction and GPU upload still cost time after a cache hit.
+
+### Durable browser loading checkpoints
+
+The region builder saves its sparse allocated-directory cursor, spatial-page/cell
+cursor, discovered IDs and packed records, remaining logical byte budget,
+materialized occurrences/shared meshes and membership cursor. Save attempts occur
+at completed page/batch boundaries roughly every 30 seconds and at important stage
+boundaries. A current cell/page, network read, encoding or GPU preparation may need
+to repeat; this is not HTTP byte-range transfer resume or a zero-redo guarantee.
+
+Each private `cache/read-loads/cell128-v1/<world-hash>/<slot>.cbor` envelope binds the
+full world/revision/centre/radius/piece/read-byte key. It records format, update time,
+monotone progress, decoded length, gzip bytes and SHA-256. Reads bound decompression
+to 128 MiB; stored records are at most 32 MiB. Four candidate slots are probed among
+64 per world, bounding retained checkpoint objects to 2 GiB/world. Fresh foreign
+keys are not overwritten; expired records are reusable after seven days. Completed
+empty loads retire their checkpoint. Collisions/capacity, oversize data, unavailable
+storage or failed writes can prevent a new checkpoint: status reports availability
+and the last saved counts rather than claiming in-memory work is durable.
+
+Conditional writes prevent a delayed writer from rolling progress backwards.
+Lost write acknowledgements are checked against persisted data. Corrupt or
+inconsistent checkpoints are misses. Every retry checks current world permission
+and accepted-history membership before restoring data; no checkpoint grants access,
+holds a durable GC pin while idle, supplies a mutation dependency or advances a head.
+An interrupted server can therefore resume from a valid checkpoint even after its
+process caches disappear. Retention/pruning can make an old revision unavailable.
+
+The browser stores a small pending-read descriptor in the existing IndexedDB data
+cache, separately from completed geometry. It retains the exact accepted revision
+for up to seven days, subject to normal quota/eviction/logout. Descriptor reads use
+the same four-second local-cache grace as region reads, so a cold/contended disk
+does not discard the snapshot after the ordinary 300 ms metadata-cache deadline.
+Reloading the same view reauthorizes that snapshot; HTTP 410 can restart once at
+the current revision, discarding the old preview. Different revisions are never spliced together. Late
+completion of an older request cannot erase a newer pending descriptor. Successful
+completion leaves a tiny completion marker. The loading panel reports saved/resumed
+counts, and `X-Ergo-Load-Resumed` identifies a resumed materialization response.
+
+### Fast Merkle-backed freshness checks
+
+`HEAD /api/shared-worlds/{id}/view?...` and the assembly `/workspace` endpoint compare
+small ETags before any geometry build. The accepted revision commits the immutable
+Merkle root; view tokens include that root, coverage, format and budgets. Workspace
+tokens also bind the assembly header CID, actor, effective authoring limits and
+reader version. `X-Ergo-Merkle-Root` and `X-Ergo-Revision` identify the checked basis.
+Matching `If-None-Match` returns 304; an unmatched HEAD returns headers only and
+never starts/checkpoints a load. Native HEAD checks have a 30-second client deadline.
+
+Current permission and historical acceptance are rechecked first. A changed root,
+actor, reader version or applicable budget conservatively invalidates the token;
+this is not yet fine-grained reuse across unrelated world edits. Native sidecars
+bind the ETag to the exact saved pretty-native-file SHA-256. Missing, changed,
+oversized or corrupt files take the normal read path; no cached data authorizes a
+write, avoids server normalization or bypasses complete-domain validation.
 
 ### Construction-list metadata
 
@@ -383,7 +442,8 @@ subject to the builder's normal piece/read-byte limits.
 Every poll rechecks current read permission and accepted-history membership for
 the exact world/revision/region/radius/budgets. These ephemeral, `no-store` batches
 do not start builds, write caches, advance cursors server-side, establish complete
-membership or claim mechanical certification. They disappear with the builder.
+membership or claim mechanical certification. Their process buffer disappears
+with the builder; a durable preparation checkpoint can reconstruct it on retry.
 Late or noncontiguous batches are ignored by the client. If the full response is
 already available, no partial batch is needed.
 
@@ -435,7 +495,11 @@ an ephemeral `phase` and optional structured `progress` containing `stage`,
 `private, no-store` and does not start a build. Without `preview_after`, `preview`
 is null and no geometry is exposed. With an opt-in cursor, `preview` is null or
 `{after,next,bricks,meshes}` as described above. Progress and partial geometry are
-removed when the request completes, fails or is cancelled.
+removed from process memory when the request completes, fails or is cancelled.
+Separate durable preparation checkpoints can reconstruct that progress on retry.
+The optional `checkpoint` status contains `resumed`, `attempted`, `available` and
+`saved` stage/step/cell/piece/row counts. Only persisted writes advance saved counts;
+in-memory preview counts are separate and do not claim durability.
 
 `X-Ergo-Read-Cache` reports `miss`, `memory`, `persistent`, `neighbor` or `revalidated`;
 `Server-Timing: view;dur=...` reports server-side request duration. Use:

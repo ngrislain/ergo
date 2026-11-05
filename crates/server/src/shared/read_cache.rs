@@ -232,6 +232,7 @@ struct ProgressState {
     phase: String,
     work: Option<ReadWork>,
     preview: Preview,
+    checkpoint: Option<super::load_checkpoint::Status>,
 }
 #[derive(Clone, Default)]
 struct Preview {
@@ -256,6 +257,15 @@ struct StageTimer {
     totals: BTreeMap<&'static str, f64>,
 }
 impl ReadProgress<'_> {
+    pub fn resumed(&self) -> bool {
+        self.cache
+            .progress
+            .lock()
+            .unwrap()
+            .get(&self.key)
+            .and_then(|state| state.checkpoint.as_ref())
+            .is_some_and(|status| status.resumed)
+    }
     pub fn report(&self, phase: impl Into<String>) {
         self.set(phase.into(), None);
     }
@@ -289,6 +299,7 @@ impl ReadProgress<'_> {
                 phase: String::new(),
                 work: None,
                 preview: Preview::default(),
+                checkpoint: None,
             });
         state.phase = phase;
         state.work = work;
@@ -309,6 +320,11 @@ impl ReadProgress<'_> {
                 .entry(brick.part.clone())
                 .or_insert_with(|| (preview.bricks.len(), Arc::new(meshes[&brick.part].clone())));
             preview.bricks.push(brick.clone());
+        }
+    }
+    pub fn checkpoint(&self, status: &super::load_checkpoint::Status) {
+        if let Some(state) = self.cache.progress.lock().unwrap().get_mut(&self.key) {
+            state.checkpoint = Some(status.clone());
         }
     }
     #[cfg(test)]
@@ -370,6 +386,9 @@ impl Drop for ReadProgress<'_> {
     }
 }
 impl ReadCache {
+    pub fn checkpoint_status(&self, key: &str) -> Option<super::load_checkpoint::Status> {
+        self.progress.lock().unwrap().get(key)?.checkpoint.clone()
+    }
     pub fn progress(&self, key: &str) -> Option<String> {
         self.progress
             .lock()

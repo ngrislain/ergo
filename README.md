@@ -35,7 +35,8 @@ keeps checksum-verified construction/index and discovery data in an IndexedDB LR
 deduplicates identical content, protects active data and revalidates access/version
 before reuse. Cache writes do not delay display; stale or stalled navigation can
 be replaced by another construction selection.
-Large region reads have a one-hour client deadline and display revision-pinned,
+Large region reads have a one-hour client deadline, durable preparation checkpoints,
+and display revision-pinned,
 read-only partial previews while materializing. The complete current basic library
 (138 sourced parts and five common constructs) is proactively cached locally;
 obsolete pre-migration construct versions are rejected. Native saves/exports share
@@ -64,11 +65,11 @@ The prebuilt bundle includes native binaries and WASM assets; consumers need
 Node.js 20+ and Chrome/Chromium, not Rust.
 
 ```sh
-npm install --global --ignore-scripts @ngrislain/ergo-mcp@0.5.23
+npm install --global --ignore-scripts @ngrislain/ergo-mcp@0.5.24
 ergo-mcp --login --publish-url https://ergosandbox.com
 ```
 
-The [GitHub Release](https://github.com/ngrislain/ergo/releases/tag/v0.5.23)
+The [GitHub Release](https://github.com/ngrislain/ergo/releases/tag/v0.5.24)
 also provides the verified complete tarball and checksum.
 
 Generate/download a token in the signed-in browser, keep it in a private file,

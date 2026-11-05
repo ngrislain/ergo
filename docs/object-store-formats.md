@@ -181,6 +181,29 @@ gzip bytes. Authorization/revision checks and bounded decompression precede use;
 see [loading caches](loading-and-cache.md). Removing this cache does not remove
 accepted history or geometry.
 
+## `cache/read-loads/cell128-v1/<world-hash>/<slot>.cbor`: loading checkpoint
+
+CBOR `{format:1,key,updated,mark,decoded,checksum,gzip}`. The full view key binds
+world, accepted revision, centre, radius and piece/read-byte limits. `updated` is
+Unix seconds; `mark` contains monotone `steps`, stage, saved cell/piece counts and
+directory/membership row progress. `checksum` is SHA-256 of the gzip bytes.
+Decompression is bounded to 128 MiB; the stored envelope is at most 32 MiB.
+
+The gzip payload is a private builder state: stage, directory/spatial page cursors,
+discovered IDs/packed pieces, remaining logical byte budget, materialized bricks,
+shared meshes and aliases, assembly mappings and membership cursor/header/counts.
+It is not a `ViewPacket`, complete construction, mechanical certificate, permission
+grant, canonical source object or commit. Matching the key and schema/count/cursor
+validation precedes restore; current read permission and accepted-history membership
+are checked independently. Corrupt/inconsistent data falls back to canonical reads.
+
+Four candidate slots are selected from 64 per world. Fresh foreign keys are
+preserved, seven-day-old slots can be reused, and empty completed loads retire
+their slot through a conditional tombstone. Maximum retained checkpoint envelopes
+are 2 GiB/world. Conditional updates cannot roll back a newer saved step; a lost
+write acknowledgement is checked with a persisted read rather than memory proof.
+Failed/oversized/capacity-limited writes do not claim that unsaved work is durable.
+
 ## `read-cache/metadata-cell128-v1/<world>/<00..15>.json`: catalogue cache
 
 Uncompressed UTF-8 JSON `{format:2,etag,revision,checksum,text}`. `text` is an encoded

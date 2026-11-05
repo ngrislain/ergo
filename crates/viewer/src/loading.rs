@@ -11,6 +11,21 @@ pub(crate) struct ReadStatus {
     pub progress: Option<ReadWork>,
     #[serde(default)]
     pub preview: Option<PreviewBatch>,
+    #[serde(default)]
+    pub checkpoint: Option<Checkpoint>,
+}
+#[derive(Deserialize)]
+pub(crate) struct Checkpoint {
+    resumed: bool,
+    #[serde(default)]
+    attempted: bool,
+    available: bool,
+    saved: CheckpointMark,
+}
+#[derive(Deserialize)]
+struct CheckpointMark {
+    cells: usize,
+    pieces: usize,
 }
 
 #[derive(Deserialize)]
@@ -53,6 +68,7 @@ pub(crate) struct Loading {
     pub elapsed_s: u64,
     pub waiting_for_server: bool,
     pub preview_pieces: usize,
+    pub checkpoint: Option<String>,
     started_ms: f64,
 }
 
@@ -65,6 +81,7 @@ impl Loading {
             elapsed_s: 0,
             waiting_for_server: true,
             preview_pieces: 0,
+            checkpoint: None,
             started_ms: now_ms,
         }
     }
@@ -91,6 +108,27 @@ impl Loading {
     pub fn server_status(&mut self, status: ReadStatus) {
         if !self.waiting_for_server {
             return;
+        }
+        if let Some(checkpoint) = &status.checkpoint {
+            let saved = &checkpoint.saved;
+            self.checkpoint = Some(format!(
+                "{} · {} bricks / {} cells checkpointed{}",
+                if checkpoint.resumed {
+                    "Resumed saved load"
+                } else {
+                    "Saved loading progress"
+                },
+                number(saved.pieces),
+                number(saved.cells),
+                if checkpoint.available {
+                    ""
+                } else {
+                    " · checkpoint storage unavailable"
+                }
+            ));
+            if !checkpoint.attempted && !checkpoint.resumed {
+                self.checkpoint = None;
+            }
         }
         if let Some(work) = status.progress {
             let completed = work.completed.min(work.total);
