@@ -532,10 +532,11 @@ impl SharedWorlds {
 
 pub(super) async fn workspace(
     State(s): State<AppState>,
+    method: axum::http::Method,
     h: HeaderMap,
     Path((id, assembly)): Path<(String, ContentId)>,
     Query(q): Query<RevisionQuery>,
-) -> SharedResult<Json<serde_json::Value>> {
+) -> SharedResult<Response> {
     let actor = reader(&s, &h)?.required()?;
     let head = s
         .shared
@@ -547,11 +548,76 @@ pub(super) async fn workspace(
             q.revision.as_ref(),
         )
         .await?;
-    Ok(Json(
-        s.shared
-            .authoring_scene(&id, &actor, &assembly, &head.revision)
-            .await?,
-    ))
+    // The accepted revision commits the immutable Merkle root. Current read
+    // permission and actor-owned limits are checked before any conditional hit;
+    // no membership, piece or mesh materialization is needed to compare tokens.
+    let unlimited = s.shared.pacing.unlimited(&actor).await?;
+    let snapshot = s
+        .shared
+        .repo(&id)?
+        .accepted_snapshot("main", &head.revision)
+        .await?;
+    let header = snapshot
+        .value_id(&paged::rule_path(&assembly, 0))
+        .await?
+        .ok_or_else(SharedError::missing)?;
+    let merkle_root = snapshot.commit().root.clone();
+    snapshot.close().await?;
+    let limits = (
+        if unlimited {
+            usize::MAX
+        } else {
+            s.shared.limits.pieces
+        },
+        s.shared.limits.bytes,
+    );
+    let etag = format!(
+        "W/\"{}\"",
+        ContentId::of(&canonical_cbor(&(
+            "workspace-merkle-v1",
+            &id,
+            &assembly,
+            &head.revision,
+            &merkle_root,
+            &header,
+            &actor,
+            limits,
+            env!("CARGO_PKG_VERSION")
+        ))?)
+    );
+    let unchanged = h
+        .get("if-none-match")
+        .and_then(|v| v.to_str().ok())
+        .is_some_and(|v| v.split(',').any(|value| value.trim() == etag));
+    let mut response = if unchanged {
+        StatusCode::NOT_MODIFIED.into_response()
+    } else if method == axum::http::Method::HEAD {
+        StatusCode::OK.into_response()
+    } else {
+        Json(
+            s.shared
+                .authoring_scene(&id, &actor, &assembly, &head.revision)
+                .await?,
+        )
+        .into_response()
+    };
+    response.headers_mut().insert("etag", etag.parse().unwrap());
+    response
+        .headers_mut()
+        .insert("cache-control", "private, no-cache".parse().unwrap());
+    response.headers_mut().insert(
+        "x-ergo-revision",
+        head.revision.to_string().parse().unwrap(),
+    );
+    response
+        .headers_mut()
+        .insert("x-ergo-cache-proof", "merkle-revision-v1".parse().unwrap());
+    if let Some(root) = merkle_root {
+        response
+            .headers_mut()
+            .insert("x-ergo-merkle-root", root.to_string().parse().unwrap());
+    }
+    Ok(response)
 }
 pub(super) async fn replace(
     State(s): State<AppState>,

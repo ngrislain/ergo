@@ -4,6 +4,8 @@ use std::sync::Arc;
 
 #[path = "tests_attachments.rs"]
 mod attachments;
+#[path = "tests_loading.rs"]
+mod loading;
 #[path = "tests_bulk.rs"]
 mod packed;
 #[path = "tests_resize.rs"]

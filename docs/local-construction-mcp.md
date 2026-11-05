@@ -7,7 +7,7 @@ shared Sandbox. The bridge never grants itself acceptance or direct agent S3 acc
 ## Install and configure
 
 ```sh
-npm install --global --ignore-scripts @ngrislain/ergo-mcp@0.5.23
+npm install --global --ignore-scripts @ngrislain/ergo-mcp@0.5.24
 ergo-mcp --login --publish-url https://ergosandbox.com
 ```
 
@@ -240,8 +240,14 @@ it cannot create another hosted world.
 Rejected edits restore the preceding accepted cache. Concurrent same-assembly
 changes require reopening/reapplying. Unknown outcomes are fenced and never
 automatically repeated. The `.shared.json` journal stores origin, world, assembly,
-base revision and pending state, not a credential. Bound caches reload server
-authority instead of interpreting stale local file formats.
+base revision and pending state, not a credential. It can additionally retain a
+workspace ETag, its accepted revision and the exact pretty-native-file SHA-256.
+An unchanged authorized Merkle-revision HEAD allows that verified file to reopen
+without a geometry download. Pending outcomes, stale role/budget/version tokens,
+changed/oversized/corrupt files or missing metadata take the complete read path.
+HEAD checks allow 30 seconds; they never grant offline access or authorize a commit.
+Initial workspace downloads are not yet chunk-checkpointed. Browser regions use
+the separate [durable preparation checkpoints](loading-and-cache.md#durable-browser-loading-checkpoints).
 
 Ordinary HTTP requests default to 300 seconds; complete construction GETs
 (`workspace`, `view`, `download`, `export`) default to 3,600 seconds. Explicit

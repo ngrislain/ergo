@@ -114,12 +114,13 @@ def main():
                         progress={'stage':'discovering','completed':12,'total':27,'found_pieces':1234}
                         hold_first=[True]
                         status_revision=[head['revision']]
+                        checkpoint: list[dict | None]=[None]
                         fail_status=[False]
                         deny_read=[False]
                         def loading_route(route):
                             if 'status=true' in route.request.url:
                                 if fail_status[0]:route.abort()
-                                else:route.fulfill(json={'revision':status_revision[0],'phase':'working','progress':dict(progress)})
+                                else:route.fulfill(json={'revision':status_revision[0],'phase':'working','progress':dict(progress),'checkpoint':checkpoint[0]})
                             elif deny_read[0]:
                                 route.fulfill(status=403,json={'error':'Read access revoked by test'})
                             elif hold_first[0]:
@@ -145,6 +146,20 @@ def main():
                         progress.update(completed=5000)
                         expect(page.locator('.loading-percent')).to_have_text('83%',timeout=15000)
                         assert len(held)==1
+                        # Reload an interrupted read while the current head
+                        # appears newer. The pending descriptor must retain the
+                        # original accepted snapshot instead of mixing roots.
+                        fake_head=base+f'/api/shared-worlds/{head["id"]}'
+                        page.route(fake_head,lambda route:route.fulfill(json={**head,'revision':'f'*64}))
+                        checkpoint[0]={'resumed':True,'available':True,'saved':{'steps':12,'cells':12,'pieces':2048}}
+                        page.reload(wait_until='domcontentloaded')
+                        expect(page.locator('.loading-percent')).to_have_text('83%',timeout=30000)
+                        expect(page.locator('.loading-checkpoint')).to_contain_text('Resumed saved load')
+                        assert len(held)==2 and 'revision='+head['revision'] in held[-1].request.url
+                        try:held[0].abort()
+                        except Exception:pass
+                        held[:]=held[-1:]
+                        page.unroute(fake_head)
                         assert 3600000 in page.evaluate('window.__readDeadlines')
                         assert 1800000 not in page.evaluate('window.__readDeadlines')
                         assert 180000 not in page.evaluate('window.__readDeadlines')

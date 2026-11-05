@@ -1,5 +1,20 @@
 # Changelog
 
+## v0.5.24
+
+- Checkpoint browser read preparation in bounded, private S3 cache slots, including
+  sparse-directory and spatial cursors, materialized bricks/meshes and membership
+  paging. Retry/restart reauthorizes the exact accepted snapshot and resumes the
+  last durable boundary, without staging a world edit or treating a preview as complete.
+- Retain tiny pending-read descriptors locally across reloads, fence stale
+  completions and visibly report resumed/checkpointed progress. Expired historical
+  snapshots restart at the current revision without mixing geometry.
+- Add lightweight Merkle-revision `HEAD`/ETag freshness checks for views and
+  authoring workspaces. Check current permissions and budgets before a 304.
+- Reopen a checksum-verified native workspace from its local file after an
+  authorized unchanged-token check, avoiding another complete model download.
+  Initial authoring-workspace downloads remain atomic, not chunk-checkpointed.
+
 ## v0.5.23
 
 - Allow one-hour browser and MCP complete-construction reads, basic-library warming

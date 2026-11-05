@@ -21,6 +21,7 @@ const writes = {stored: 0, skipped: 0, lastSkipReason: null};
 const skipped = reason => { writes.skipped++; writes.lastSkipReason = reason; return false; };
 let database, opening, maintenance = Promise.resolve(), enabled = true, epoch = 0, pinTimer;
 const versions = new Map(), pinned = new Set(), libraryPinned = new Set();
+const activeReads = new Map();
 let basicLibrary;
 const isPinned = url => pinned.has(url) || libraryPinned.has(url);
 const request = value => new Promise((resolve, reject) => {
@@ -107,7 +108,7 @@ export async function cacheGet(url) {
   try { if (!enabled) return null; url = key(url); return await bounded(stored(url).catch(() => null), url.includes('/view?') || url.includes('/api/library/') ? 4000 : 300); }
   catch { return null; }
 }
-export async function cachePut(url, etag, bytes) {
+export async function cachePut(url, etag, bytes, newerOnly = false) {
   try {
     if (!enabled) return skipped('suspended');
     if (bytes.byteLength > MAX_ENTRY) return skipped('entry-too-large');
@@ -123,6 +124,9 @@ export async function cachePut(url, etag, bytes) {
       try {
       const entries = tx.objectStore('entries'), blobs = tx.objectStore('blobs');
       const previous = await request(entries.get(url));
+      if (newerOnly && previous && Number(previous.etag.split(':')[0]) > Number(etag.split(':')[0])) {
+        tx.abort(); await done.catch(()=>{}); return skipped('superseded-read-descriptor');
+      }
       const all = (await request(entries.getAll())).filter(entry => entry.url !== url);
       all.push({url, etag, hash: digest, bytes: data.size, lastUsed: Date.now(), pinnedUntil:Math.max(previous?.pinnedUntil||0,isPinned(url)?Date.now()+75000:0)});
       const refs = new Map();
@@ -179,6 +183,50 @@ export async function cacheInfo() {
   } catch { return {...base, available: false}; }
 }
 globalThis.ergoCacheInfo = cacheInfo;
+
+// Tiny pending-read descriptors retain the exact accepted snapshot across reloads.
+// They are never construction packets and never grant offline permission.
+function pendingKey(url) {
+  const parsed = new URL(key(url)); parsed.searchParams.delete('revision'); parsed.searchParams.sort();
+  return key('/__ergo_pending_view?view='+encodeURIComponent(parsed.href));
+}
+export async function pendingReadGet(url) {
+  try {
+    const saved = await cacheGet(pendingKey(url)); if (!saved) return null;
+    const value = JSON.parse(new TextDecoder().decode(saved.bytes));
+    return value.pending && /^[0-9a-f]{64}$/.test(value.revision)
+      && value.started <= Date.now()+300000 && Date.now()-value.started < 7*86400000
+      ? {revision:value.revision} : null;
+  } catch { return null; }
+}
+export async function pendingReadBegin(url, revision) {
+  if (!/^[0-9a-f]{64}$/.test(revision)) return null;
+  const target=pendingKey(url), started=Date.now(), token=started+':'+crypto.randomUUID();
+  activeReads.set(target,token);versions.set(target,(versions.get(target)||0)+1);
+  const bytes=new TextEncoder().encode(JSON.stringify({pending:true,revision,started}));
+  return await cachePut(target,token,bytes,true) ? token : null;
+}
+export async function pendingReadFinish(url, token) {
+  if (!token) return false;
+  try {
+    const target=pendingKey(url), started=epoch;
+    const bytes=new TextEncoder().encode(JSON.stringify({pending:false}));
+    const digest=await hash(bytes), data=new Blob([bytes]);
+    return await enqueue(async()=>{
+      if(!enabled||started!==epoch||(activeReads.has(target)&&activeReads.get(target)!==token))return false;
+      const storage=await bounded(db()),tx=storage.transaction(['entries','blobs'],'readwrite'),done=completed(tx);
+      const entries=tx.objectStore('entries'),blobs=tx.objectStore('blobs'),entry=await request(entries.get(target));
+      if(entry?.etag!==token){await done;return false;}
+      // A completion tombstone prevents a late older tab from restoring a stale
+      // pending descriptor after a newer request has completed.
+      if(!await request(blobs.get(digest)))blobs.put({hash:digest,data});
+      entries.put({...entry,etag:Date.now()+':complete',hash:digest,bytes:data.size,lastUsed:Date.now()});
+      const live=new Set((await request(entries.getAll())).map(value=>value.hash));
+      for(const old of await request(blobs.getAllKeys()))if(!live.has(old))blobs.delete(old);
+      await done;activeReads.delete(target);return true;
+    });
+  } catch {return false;}
+}
 export async function cacheForget(url) {
   try {
     url = key(url); versions.set(url, (versions.get(url) || 0) + 1);

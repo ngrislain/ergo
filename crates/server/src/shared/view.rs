@@ -88,6 +88,7 @@ pub(super) struct ViewQuery {
 
 pub(super) async fn view(
     State(s): State<AppState>,
+    method: axum::http::Method,
     headers: HeaderMap,
     Path(id): Path<String>,
     Query(query): Query<ViewQuery>,
@@ -134,7 +135,8 @@ pub(super) async fn view(
         let preview = query
             .preview_after
             .and_then(|after| s.shared.read_cache.preview(&memory_key, after));
-        let mut response = Json(serde_json::json!({"revision":key.revision,"phase":phase,"progress":progress,"preview":preview})).into_response();
+        let checkpoint = s.shared.read_cache.checkpoint_status(&memory_key);
+        let mut response = Json(serde_json::json!({"revision":key.revision,"phase":phase,"progress":progress,"preview":preview,"checkpoint":checkpoint})).into_response();
         response
             .headers_mut()
             .insert("cache-control", "private, no-store".parse().unwrap());
@@ -142,7 +144,11 @@ pub(super) async fn view(
     }
     let etag = format!(
         "W/\"{}\"",
-        ContentId::of(&canonical_cbor(&(&memory_key, query.format))?)
+        ContentId::of(&canonical_cbor(&(
+            &memory_key,
+            query.format,
+            &snapshot.commit().root
+        ))?)
     );
     // Current read permissions were checked above, even for 304/cache hits.
     let unchanged = headers
@@ -154,9 +160,31 @@ pub(super) async fn view(
                     || v.trim().trim_start_matches("W/") == etag.trim_start_matches("W/")
             })
         });
-    if unchanged {
-        let mut response = StatusCode::NOT_MODIFIED.into_response();
-        set_headers(&mut response, &etag, "revalidated", started);
+    if unchanged || method == axum::http::Method::HEAD {
+        let mut response = if unchanged {
+            StatusCode::NOT_MODIFIED
+        } else {
+            StatusCode::OK
+        }
+        .into_response();
+        set_headers(
+            &mut response,
+            &etag,
+            if unchanged {
+                "revalidated"
+            } else {
+                "merkle-check"
+            },
+            started,
+        );
+        response
+            .headers_mut()
+            .insert("x-ergo-revision", key.revision.to_string().parse().unwrap());
+        if let Some(root) = &snapshot.commit().root {
+            response
+                .headers_mut()
+                .insert("x-ergo-merkle-root", root.to_string().parse().unwrap());
+        }
         return Ok(response);
     }
     let cache = &s.shared.read_cache;
@@ -201,7 +229,8 @@ pub(super) async fn view(
     let value = if let Some(value) = reused {
         value
     } else {
-        let (packet, read_bytes) = build(&snapshot, &query, &key, &progress).await?;
+        let (packet, read_bytes) =
+            build(&snapshot, &query, &key, &progress, &s.shared.store).await?;
         progress.report("encoding CBOR and gzip representations");
         let encoding_key = key.clone();
         Arc::new(
@@ -226,6 +255,12 @@ fn with_work_timing(
     mut response: Response,
     progress: &super::read_cache::ReadProgress<'_>,
 ) -> Response {
+    response.headers_mut().insert(
+        "x-ergo-load-resumed",
+        if progress.resumed() { "true" } else { "false" }
+            .parse()
+            .unwrap(),
+    );
     let total = response
         .headers()
         .get("server-timing")
@@ -408,7 +443,7 @@ impl SharedWorlds {
                 z: coord[2],
                 ..Default::default()
             };
-            let work = build(&snapshot, &query, &key, &progress);
+            let work = build(&snapshot, &query, &key, &progress, &self.store);
             tokio::pin!(work);
             let mut interval = tokio::time::interval(std::time::Duration::from_secs(10));
             let (packet, read_bytes) = loop {
@@ -633,7 +668,502 @@ async fn view_cells(
     Ok(cells.into_iter().collect())
 }
 
+#[derive(Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+enum BuildPhase {
+    #[default]
+    Directory,
+    Discovery,
+    Pieces,
+    Membership,
+    Complete,
+}
+#[derive(Clone, Default, Serialize, Deserialize)]
+struct BuildState {
+    phase: BuildPhase,
+    steps: u64,
+    coordinates: Vec<BlockCoord>,
+    directory_index: usize,
+    directory_after: Option<OctreePath>,
+    directory_visited: usize,
+    checked_cells: usize,
+    after: Option<OctreePath>,
+    unpacked: bool,
+    ids: BTreeSet<ContentId>,
+    preloaded: BTreeMap<ContentId, Piece>,
+    remaining: usize,
+    blocks: Vec<BlockCoord>,
+    bricks: Vec<ergo_world::Brick>,
+    meshes: BTreeMap<String, Mesh>,
+    mesh_ids: BTreeMap<ContentId, String>,
+    assemblies: BTreeMap<u32, ContentId>,
+    fully_resident: BTreeSet<ContentId>,
+    checked_assemblies: usize,
+    membership_header: Option<paged::RulesHeader>,
+    membership_after: Option<OctreePath>,
+    membership_count: usize,
+}
+impl BuildState {
+    fn valid(&self, key: &ViewKey, metadata_bytes: usize) -> bool {
+        let coordinates = self.coordinates.iter().copied().collect::<BTreeSet<_>>();
+        let visible = self.assemblies.values().collect::<BTreeSet<_>>();
+        self.remaining <= key.read_bytes.saturating_sub(metadata_bytes)
+            && self.coordinates.len() <= 4096
+            && self.checked_cells <= self.coordinates.len()
+            && self.after.as_ref().is_none_or(|after| {
+                self.unpacked
+                    && self.checked_cells < self.coordinates.len()
+                    && block_path(self.coordinates[self.checked_cells]).is_prefix_of(after)
+            })
+            && (self.checked_cells < self.coordinates.len()
+                || self.after.is_none() && !self.unpacked)
+            && self
+                .coordinates
+                .iter()
+                .all(|c| in_radius((*c).into(), key.coord, key.radius))
+            && coordinates.len() == self.coordinates.len()
+            && self.blocks.iter().all(|c| coordinates.contains(c))
+            && self.ids.len() <= key.pieces
+            && self.bricks.len() <= self.ids.len()
+            && self
+                .preloaded
+                .iter()
+                .all(|(id, piece)| self.ids.contains(id) && *id == piece.id)
+            && self.assemblies.len() == self.bricks.len()
+            && self.bricks.iter().enumerate().all(|(index, brick)| {
+                brick.id as usize == index + 1
+                    && self.meshes.contains_key(&brick.part)
+                    && self.assemblies.contains_key(&brick.id)
+            })
+            && self
+                .meshes
+                .iter()
+                .all(|(part, mesh)| part == &mesh.part && mesh.schema == ergo_world::SCHEMA_VERSION)
+            && self
+                .mesh_ids
+                .values()
+                .all(|part| self.meshes.contains_key(part))
+            && (matches!(self.phase, BuildPhase::Directory | BuildPhase::Discovery)
+                || self.checked_cells == self.coordinates.len() && self.after.is_none())
+            && (!matches!(self.phase, BuildPhase::Directory | BuildPhase::Discovery)
+                || self.bricks.is_empty())
+            && (matches!(
+                self.phase,
+                BuildPhase::Directory | BuildPhase::Discovery | BuildPhase::Pieces
+            ) || self.bricks.len() == self.ids.len())
+            && self.checked_assemblies <= visible.len()
+            && (self.phase != BuildPhase::Complete || self.checked_assemblies == visible.len())
+            && self.fully_resident.iter().all(|id| visible.contains(id))
+            && self.membership_header.as_ref().is_none_or(|header| {
+                self.phase == BuildPhase::Membership
+                    && visible
+                        .iter()
+                        .nth(self.checked_assemblies)
+                        .is_some_and(|id| **id == header.id)
+            })
+            && self.directory_visited <= 16384
+            && self.membership_count <= key.pieces + 128
+    }
+    fn mark(&self) -> super::load_checkpoint::Mark {
+        super::load_checkpoint::Mark {
+            steps: self.steps,
+            cells: if self.phase == BuildPhase::Directory {
+                self.coordinates.len()
+            } else {
+                self.checked_cells
+            },
+            pieces: self.bricks.len(),
+            stage: match self.phase {
+                BuildPhase::Directory => "directory",
+                BuildPhase::Discovery => "discovery",
+                BuildPhase::Pieces => "pieces",
+                BuildPhase::Membership => "membership",
+                BuildPhase::Complete => "complete",
+            }
+            .into(),
+            rows: if self.phase == BuildPhase::Directory {
+                self.directory_visited
+            } else {
+                self.membership_count
+            },
+        }
+    }
+}
+async fn save_load(
+    state: &BuildState,
+    journal: &mut super::load_checkpoint::Journal,
+    progress: &super::read_cache::ReadProgress<'_>,
+    force: bool,
+) {
+    if state.ids.is_empty()
+        && !(state.phase == BuildPhase::Directory && state.directory_visited > 0)
+    {
+        return;
+    }
+    if force || journal.due() {
+        journal.save(state.clone(), state.mark()).await;
+        progress.checkpoint(&journal.status);
+    }
+}
+
 async fn build(
+    snapshot: &Snapshot,
+    _query: &ViewQuery,
+    key: &ViewKey,
+    progress: &super::read_cache::ReadProgress<'_>,
+    store: &Store,
+) -> SharedResult<(ViewPacket, usize)> {
+    let metadata: Metadata = snapshot
+        .get_limited(&root(2), key.read_bytes)
+        .await?
+        .context("Missing world metadata")?;
+    metadata.require_current_cells()?;
+    let metadata_bytes = canonical_cbor(&metadata)?.len();
+    let (mut journal, restored) =
+        super::load_checkpoint::Journal::open::<BuildState>(store.clone(), key.clone()).await;
+    let mut state = if let Some(state) = restored.filter(|state| {
+        state.valid(key, metadata_bytes) && state.steps == journal.status.saved.steps
+    }) {
+        progress.report("restoring saved loading progress");
+        state
+    } else {
+        journal.reject_loaded();
+        let remaining = key
+            .read_bytes
+            .checked_sub(metadata_bytes)
+            .ok_or_else(|| SharedError::working_limit("browser view bytes"))?;
+        BuildState {
+            steps: 1,
+            remaining,
+            ..Default::default()
+        }
+    };
+    progress.checkpoint(&journal.status);
+    if !state.bricks.is_empty() {
+        progress.preview(&state.bricks, &state.meshes);
+    }
+    let fresh = !journal.status.resumed;
+    save_load(&state, &mut journal, progress, fresh).await;
+    if state.phase == BuildPhase::Directory {
+        if key.radius == 1 {
+            state.coordinates = (-1..=1)
+                .flat_map(|x| {
+                    (-1..=1).flat_map(move |y| {
+                        (-1..=1).map(move |z| {
+                            [key.coord[0] + x, key.coord[1] + y, key.coord[2] + z].into()
+                        })
+                    })
+                })
+                .collect();
+        } else {
+            let r = i64::from(key.radius);
+            let low =
+                glam::DVec3::from_array(key.coord.map(|v| (v - r) as f64 * ergo_world::BLOCK_SIZE));
+            let high = glam::DVec3::from_array(
+                key.coord
+                    .map(|v| (v + r + 1) as f64 * ergo_world::BLOCK_SIZE - 1e-5),
+            );
+            let a = ergo_world::coordinates::internal(low);
+            let b = ergo_world::coordinates::internal(high);
+            let prefixes = address::cover(ergo_world::Aabb::new(a.min(b), a.max(b)))?
+                .into_iter()
+                .map(|path| {
+                    let mut p = path.octants().to_vec();
+                    p[0] = 5;
+                    OctreePath::new(p)
+                })
+                .collect::<ergo_transactions::Result<Vec<_>>>()?;
+            ensure!(
+                state.directory_index <= prefixes.len(),
+                "Invalid saved directory cursor"
+            );
+            while state.directory_index < prefixes.len() {
+                let prefix = &prefixes[state.directory_index];
+                ensure!(
+                    state
+                        .directory_after
+                        .as_ref()
+                        .is_none_or(|after| prefix.is_prefix_of(after)),
+                    "Invalid saved directory page"
+                );
+                progress.report("finding allocated cells");
+                let page = snapshot
+                    .scan_page(prefix, state.directory_after.as_ref(), INDEX_PAGE_SIZE)
+                    .await?;
+                let mut cells = state.coordinates.iter().copied().collect::<BTreeSet<_>>();
+                for (path, cid) in page.leaves {
+                    state.directory_visited += 1;
+                    if state.directory_visited > 16384 {
+                        return Err(SharedError::working_limit("browser view directory"));
+                    }
+                    state.remaining = state
+                        .remaining
+                        .checked_sub(canonical_cbor(&(&path, &cid))?.len())
+                        .ok_or_else(|| SharedError::working_limit("browser view bytes"))?;
+                    let cell = spatial::coordinate(&path)?;
+                    if in_radius(cell.into(), key.coord, key.radius) {
+                        cells.insert(cell);
+                        if cells.len() > 4096 {
+                            return Err(SharedError::working_limit("browser view allocated cells"));
+                        }
+                    }
+                }
+                state.coordinates = cells.into_iter().collect();
+                state.directory_after = page.next;
+                state.steps += 1;
+                if state.directory_after.is_none() {
+                    state.directory_index += 1;
+                }
+                save_load(&state, &mut journal, progress, state.steps == 2).await;
+            }
+        }
+        state.phase = BuildPhase::Discovery;
+        state.steps += 1;
+        save_load(&state, &mut journal, progress, true).await;
+    }
+    while state.phase == BuildPhase::Discovery && state.checked_cells < state.coordinates.len() {
+        let coord = state.coordinates[state.checked_cells];
+        progress.scanning_total(
+            state.checked_cells,
+            state.coordinates.len(),
+            state.ids.len(),
+            Some(coord.into()),
+        );
+        if !state.unpacked {
+            let mut count = 0;
+            let packed = bulk::read_block(snapshot, coord, |page| {
+                count += page.pieces.len();
+                for (id, piece) in page.pieces {
+                    if let Some(old) = state.preloaded.get(&id) {
+                        ensure!(
+                            canonical_cbor(old)? == canonical_cbor(&piece)?,
+                            "Inconsistent packed block replicas"
+                        );
+                    } else {
+                        state.ids.insert(id.clone());
+                        state.preloaded.insert(id, piece);
+                    }
+                    if state.ids.len() > key.pieces {
+                        return Err(SharedError::working_limit("browser view pieces"));
+                    }
+                }
+                progress.scanning_total(
+                    state.checked_cells,
+                    state.coordinates.len(),
+                    state.ids.len(),
+                    Some(coord.into()),
+                );
+                Ok(())
+            })
+            .await?;
+            if packed {
+                if count > 0 {
+                    state.blocks.push(coord);
+                }
+                state.checked_cells += 1;
+                state.steps += 1;
+                save_load(&state, &mut journal, progress, state.checked_cells == 1).await;
+                continue;
+            }
+            state.unpacked = true;
+        }
+        let page = snapshot
+            .scan_page_prefetched(&block_path(coord), state.after.as_ref(), INDEX_PAGE_SIZE)
+            .await?;
+        if !page.leaves.is_empty() && !state.blocks.contains(&coord) {
+            state.blocks.push(coord);
+        }
+        for (path, _) in page.leaves {
+            state.ids.insert(spatial::reference_piece(&path, coord)?);
+            if state.ids.len() > key.pieces {
+                return Err(SharedError::working_limit("browser view pieces"));
+            }
+        }
+        state.after = page.next;
+        state.steps += 1;
+        if state.after.is_none() {
+            state.checked_cells += 1;
+            state.unpacked = false;
+        }
+        save_load(&state, &mut journal, progress, state.steps == 2).await;
+    }
+    if state.phase == BuildPhase::Discovery {
+        state.phase = BuildPhase::Pieces;
+        state.steps += 1;
+        save_load(&state, &mut journal, progress, true).await;
+    }
+    if state.phase == BuildPhase::Pieces {
+        let ids = state.ids.iter().cloned().collect::<Vec<_>>();
+        progress.pieces(state.bricks.len(), ids.len(), state.meshes.len());
+        while state.bricks.len() < ids.len() {
+            let start = state.bricks.len();
+            let end = (start + READ_CONCURRENCY).min(ids.len());
+            let limit = state.remaining;
+            let batch = ids[start..end]
+                .iter()
+                .map(|id| (id.clone(), state.preloaded.remove(id)))
+                .collect::<Vec<_>>();
+            let mut pieces = futures::stream::iter(batch)
+                .map(|(id, packed)| async move {
+                    if let Some(piece) = packed {
+                        return Ok(piece);
+                    }
+                    snapshot
+                        .get_limited::<Piece>(&entity_path(3, &id), limit)
+                        .await?
+                        .context("Missing viewed piece")
+                        .map_err(SharedError::from)
+                })
+                .buffered(READ_CONCURRENCY);
+            while let Some(piece) = pieces.try_next().await? {
+                state.remaining = state
+                    .remaining
+                    .checked_sub(canonical_cbor(&piece)?.len())
+                    .ok_or_else(|| SharedError::working_limit("browser view bytes"))?;
+                let part = if let Some(part) = state.mesh_ids.get(&piece.mesh) {
+                    part.clone()
+                } else {
+                    let mut mesh: Mesh =
+                        snapshot.blob_limited(&piece.mesh, state.remaining).await?;
+                    state.remaining = state
+                        .remaining
+                        .checked_sub(canonical_cbor(&mesh)?.len())
+                        .ok_or_else(|| SharedError::working_limit("browser view bytes"))?;
+                    let part = if state.meshes.contains_key(&piece.geometry.part) {
+                        format!("view/{}/{}", piece.mesh, piece.geometry.part)
+                    } else {
+                        piece.geometry.part.clone()
+                    };
+                    mesh.part = part.clone();
+                    state.mesh_ids.insert(piece.mesh.clone(), part.clone());
+                    state.meshes.insert(part.clone(), mesh);
+                    part
+                };
+                let local = state.bricks.len() as u32 + 1;
+                let mut geometry = piece.geometry.clone();
+                geometry.part = part.clone();
+                state
+                    .bricks
+                    .push(geometry.brick(local, &state.meshes[&part])?);
+                state.assemblies.insert(local, piece.assembly);
+                if state.bricks.len() == 1 {
+                    progress.preview(&state.bricks, &state.meshes);
+                    progress.pieces(1, ids.len(), state.meshes.len());
+                }
+            }
+            drop(pieces);
+            state.steps += 1;
+            progress.preview(&state.bricks, &state.meshes);
+            progress.pieces(state.bricks.len(), ids.len(), state.meshes.len());
+            save_load(&state, &mut journal, progress, start == 0).await;
+        }
+        state.phase = BuildPhase::Membership;
+        state.steps += 1;
+        save_load(&state, &mut journal, progress, true).await;
+    }
+    if state.phase == BuildPhase::Membership {
+        let mut visible = BTreeMap::<ContentId, usize>::new();
+        for assembly in state.assemblies.values() {
+            *visible.entry(assembly.clone()).or_default() += 1;
+        }
+        let total = visible.len();
+        progress.membership(state.checked_assemblies, total);
+        for (assembly, count) in visible.into_iter().skip(state.checked_assemblies) {
+            if state.membership_header.is_none() {
+                let header: paged::RulesHeader = snapshot
+                    .get_limited(&paged::rule_path(&assembly, 0), state.remaining)
+                    .await?
+                    .context("Missing viewed assembly header")?;
+                state.remaining = state
+                    .remaining
+                    .checked_sub(canonical_cbor(&header)?.len())
+                    .ok_or_else(|| SharedError::working_limit("browser view bytes"))?;
+                state.membership_header = Some(header);
+            }
+            let header = state.membership_header.as_ref().unwrap();
+            ensure!(header.id == assembly, "Saved membership header mismatch");
+            let complete = if let Some(total) = header.piece_count {
+                total == count
+            } else {
+                loop {
+                    let page = snapshot
+                        .scan_page(
+                            &paged::rule_path(&assembly, 1),
+                            state.membership_after.as_ref(),
+                            128,
+                        )
+                        .await?;
+                    state.membership_count += page.leaves.len();
+                    state.steps += 1;
+                    state.membership_after = page.next;
+                    if state.membership_count > count {
+                        break false;
+                    }
+                    if state.membership_after.is_none() {
+                        break state.membership_count == count;
+                    }
+                    save_load(
+                        &state,
+                        &mut journal,
+                        progress,
+                        state.membership_count == 128,
+                    )
+                    .await;
+                }
+            };
+            if complete {
+                state.fully_resident.insert(assembly);
+            }
+            state.checked_assemblies += 1;
+            state.membership_header = None;
+            state.membership_after = None;
+            state.membership_count = 0;
+            state.steps += 1;
+            progress.membership(state.checked_assemblies, total);
+            save_load(&state, &mut journal, progress, false).await;
+        }
+        state.phase = BuildPhase::Complete;
+        state.steps += 1;
+        save_load(&state, &mut journal, progress, true).await;
+    }
+    if state.ids.is_empty() {
+        journal.retire_empty().await;
+    }
+    Ok((
+        ViewPacket {
+            scene: WorldExport {
+                schema: ergo_world::SCHEMA_VERSION,
+                name: metadata.name,
+                geo: metadata.geo,
+                bricks: state.bricks,
+                meshes: state.meshes,
+                joints: Vec::new(),
+                fixed_bricks: Vec::new(),
+                groups: Vec::new(),
+                model: None,
+                ground: Vec::new(),
+            },
+            revision: snapshot.id().clone(),
+            blocks: state.blocks,
+            radius: key.radius,
+            assemblies: state.assemblies,
+            fully_resident_assemblies: state.fully_resident,
+            view_kind: "bounded_read_only_region".into(),
+        },
+        key.read_bytes - state.remaining,
+    ))
+}
+
+#[cfg(test)]
+pub(super) async fn reference_packet(
+    snapshot: &Snapshot,
+    key: &ViewKey,
+) -> SharedResult<(ViewPacket, usize)> {
+    let cache = ReadCache::default();
+    let progress = cache.start_progress("reference");
+    build_uncheckpointed(snapshot, &ViewQuery::default(), key, &progress).await
+}
+#[cfg(test)]
+async fn build_uncheckpointed(
     snapshot: &Snapshot,
     _query: &ViewQuery,
     key: &ViewKey,

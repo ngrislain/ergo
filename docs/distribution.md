@@ -5,12 +5,12 @@
 The current prebuilt client is published on npm with GitHub Actions provenance:
 
 ```sh
-npm install --global --ignore-scripts @ngrislain/ergo-mcp@0.5.23
+npm install --global --ignore-scripts @ngrislain/ergo-mcp@0.5.24
 ergo-mcp --version
 ```
 
 The identical complete tarball and `SHA256SUMS` are also available on the
-[v0.5.23 GitHub Release](https://github.com/ngrislain/ergo/releases/tag/v0.5.23).
+[v0.5.24 GitHub Release](https://github.com/ngrislain/ergo/releases/tag/v0.5.24).
 Verify its `SHA256SUMS`, registry integrity/provenance and an installed MCP client
 using the release verification workflow below.
 
@@ -86,7 +86,7 @@ coordinated storage migration and matching client upgrade accompany a breaking
 format change. Bound caches reload authoritative state; they are not data roots.
 
 `ERGO_MCP_PACKAGE` is the public website's installation-source setting. Production
-is promoted to `@ngrislain/ergo-mcp@0.5.23` only after registry/consumer verification;
+is promoted to `@ngrislain/ergo-mcp@0.5.24` only after registry/consumer verification;
 npm trusted publication is enabled. Never embed a token,
 S3 credentials or a credential-bearing URL in the package configuration.
 

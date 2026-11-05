@@ -5,6 +5,7 @@ use ergo_world::WorldExport;
 use reqwest::Method;
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
+use sha2::{Digest, Sha256};
 use std::path::{Path, PathBuf};
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -19,6 +20,19 @@ pub struct Binding {
     pub external_dependencies: bool,
     #[serde(default)]
     pub receipt: Option<Value>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub cache: Option<WorkspaceCache>,
+    #[serde(skip)]
+    pub cache_reused: bool,
+}
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct WorkspaceCache {
+    etag: String,
+    revision: String,
+    file_hash: String,
+}
+fn file_hash(bytes: &[u8]) -> String {
+    format!("{:x}", Sha256::digest(bytes))
 }
 pub fn state_path(path: &Path) -> PathBuf {
     path.with_extension("shared.json")
@@ -50,23 +64,50 @@ impl Publisher {
             pending: false,
             external_dependencies: false,
             receipt: None,
+            cache: None,
+            cache_reused: false,
         })
     }
-    pub async fn load_shared(&self, binding: &mut Binding, assembly: &str) -> Result<WorldExport> {
+    pub async fn load_shared_file(
+        &self,
+        binding: &mut Binding,
+        assembly: &str,
+        path: Option<&Path>,
+    ) -> Result<WorldExport> {
+        binding.cache_reused = false;
         ensure!(
             assembly.len() == 64 && assembly.bytes().all(|b| b.is_ascii_hexdigit()),
             "Invalid shared assembly ID"
         );
-        let workspace = self
-            .request(
-                Method::GET,
-                &format!(
-                    "/api/shared-worlds/{}/assemblies/{assembly}/workspace",
-                    binding.world_id
-                ),
-                None,
-            )
+        let endpoint = format!(
+            "/api/shared-worlds/{}/assemblies/{assembly}/workspace",
+            binding.world_id
+        );
+        if !binding.pending
+            && binding.assembly_id.as_deref() == Some(assembly)
+            && let Some(cache) = &binding.cache
+            && cache.revision == binding.base_revision
+            && let Some(path) = path
+            && std::fs::metadata(path).is_ok_and(|metadata| metadata.len() <= 128 * 1024 * 1024)
+            && let Ok(bytes) = std::fs::read(path)
+            && file_hash(&bytes) == cache.file_hash
+        {
+            let checked = self
+                .request_conditional(Method::HEAD, &endpoint, None, Some(&cache.etag))
+                .await?;
+            if checked.status == 304
+                && checked.etag.as_deref() == Some(cache.etag.as_str())
+                && checked.revision.as_deref() == Some(binding.base_revision.as_str())
+                && let Ok(scene) = ergo_world::storage::decode(&bytes)
+            {
+                binding.cache_reused = true;
+                return Ok(scene);
+            }
+        }
+        let response = self
+            .request_conditional(Method::GET, &endpoint, None, None)
             .await?;
+        let workspace = response.body;
         ensure!(
             workspace["world_id"] == binding.world_id && workspace["assembly_id"] == assembly,
             "Wrong shared workspace"
@@ -81,6 +122,17 @@ impl Publisher {
             workspace["external_dependencies"].as_bool().unwrap_or(true);
         binding.pending = false;
         binding.receipt = None;
+        binding.cache = if let Some(etag) = response.etag {
+            let bytes =
+                serde_json::to_vec_pretty(&ergo_world::storage::Construction::from(&scene))?;
+            Some(WorkspaceCache {
+                etag,
+                revision: binding.base_revision.clone(),
+                file_hash: file_hash(&bytes),
+            })
+        } else {
+            None
+        };
         Ok(scene)
     }
     pub async fn locate_shared(&self, position: [f64; 3]) -> Result<Value> {

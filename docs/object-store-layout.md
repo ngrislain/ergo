@@ -19,6 +19,7 @@ s3://ergo/
     ground/vectors/<provider-hash>/<z>/<x>/<y>.cbor
     ground/blocks/<signature>/<east>_<north>.cbor
     cache/read-views/cell128-v1/<region-and-limits-hash>.cbor
+    cache/read-loads/cell128-v1/<world-hash>/<0..63>.cbor
     read-cache/metadata-cell128-v1/<world-id>/<00..15>.json
     users/<user-id>.json
     user-positions/<actor-hash>.json
@@ -64,6 +65,14 @@ regions. Exact revision/limits and current permission checks precede every hit.
 One region/configuration slot is reused across edits; old packets are never world
 GC roots or authoring input. World GC does not manage this separate namespace.
 See [loading and caching](loading-and-cache.md).
+
+`cache/read-loads/cell128-v1` holds bounded, private, read-only preparation
+checkpoints, separate from completed view packets. A checkpoint binds an exact
+accepted snapshot and operation limits, can survive an interrupted request or
+process restart, and is never a world-GC root or mutation input. There are 64 slots
+per world, at most 32 MiB each, with seven-day freshness and conditional writes;
+capacity/collisions or storage failures can prevent saving new progress. Current
+permissions/history are rechecked before restore. See the [checkpoint contract](loading-and-cache.md#durable-browser-loading-checkpoints).
 
 `read-cache/metadata-cell128-v1` contains sixteen bounded UTF-8 JSON catalogue-cache slots
 per world. Each wraps revision/ETag/checksum and an encoded JSON response string.
