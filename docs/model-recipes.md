@@ -184,6 +184,47 @@ The wider packet contains 38,672 pieces including the unchanged 10,839-piece
 park. A separate old/new revision comparison verifies the unrelated district's
 **73,660 pieces in 15 assemblies** are exactly unchanged.
 
+## Local flush parking and lance-standard proposals
+
+`scripts/build/street_refinements.py` consumes a complete current accepted-street
+workspace and writes a fresh **local** proposal. It checks the eight known bays,
+removes their 64 raised paving tiles and lowers the 168 car occurrences by one
+plate while retaining local IDs. The chassis plate above the wheels remains part
+of each car. To avoid putting tyres through road studs, 28 supporting road bricks
+are rebuilt as 160 sourced parts, with smooth inlays flush with the road at height
+1. The checked proposal has 5,032 pieces and passes native/actual-WASM static
+compression. This does not establish calibrated axle retention or shake survival.
+The current new-build street recipe uses the same flush inlays. A publication
+attempt remains separate from local validation and must be reconciled before retry.
+
+```sh
+python3 scripts/build/street_refinements.py --input /private/current-street-workspace.json \
+  --output target/street-inlay-draft
+```
+
+`scripts/build/lance_flags.py` generates a separate **unpublished 20-part standard**:
+a genuine `3849` long jousting lance with two opposed `4495a` pennants in blue and
+yellow. Visible round stone bearing pinnacles support the asymmetric pennants;
+no grip moment or hidden weld is assumed. The isolated prototype passes native
+and actual-WASM static validation. The finite shaft/bore clearance does not clear
+the lance guard, grip or rounded tip and supplies no connector-strength data.
+The optional `--castle-workspace` input replaces exactly the sixteen matched
+current standards in a complete castle snapshot. The checked full proposal has
+**27,977 pieces**: 176 old standard parts removed, 320 additions and **27,657
+unrelated IDs/poses/source records retained**. It passes native and actual-WASM
+static compression plus the 50-waypoint bridge route. Modified inventories and
+standards with authored attachments, anchors or group metadata are rejected for
+explicit review. These local proposals have not replaced the accepted castle's
+standards or the common construct.
+
+```sh
+python3 scripts/build/lance_flags.py --output target/lance-standard-draft \
+  --assets-from /absolute/path/to/current-source-construction.native.json
+python3 scripts/build/lance_flags.py --output target/castle-lance-draft \
+  --assets-from target/lance-standard-draft/construction.native.json \
+  --castle-workspace /private/current-castle-workspace.json
+```
+
 ## District recipes and accepted construction
 
 The final accepted district has **73,660 pieces in the same 15 assemblies**

@@ -156,6 +156,38 @@ ordered batches of at most 64 reads within their existing 128-row pages. Every
 record is still charged once to the working budget, and spatial predicates and
 complete publication dependency discovery remain unchanged.
 
+Assembly replacements also warm the selected accepted piece records through a
+pinned read snapshot before the ordinary identity-preserving edit. The complete
+dependency walk deduplicates its pending frontier and processes waves of at most
+64 IDs. Each wave, and each full spatial-neighbour page, can warm the requested
+immutable piece records before required reads. First-witness guards retain their
+early return rather than warming every candidate. Speculative nodes and records
+are individually limited to 64 KiB; record completions stop at the supplied
+remaining-byte threshold, with at most 64 concurrent traversals. This threshold
+is not a strict aggregate transfer or heap bound for in-flight node/value reads.
+Speculation does not register dependencies, authorize an edit or replace pending
+values. Required reads still enforce all byte charges, absent/present predicates,
+permissions, external-joint closure and spatial-conflict protection. Failures of
+optional warming are cache misses, not permission to skip required records.
+Selected replacement members additionally warm their exact current spatial-key
+paths and reference records in 64-member groups. Discovery waves with at least
+16 planned IDs can look
+ahead at up to 2,048 spatial paths through six cell-subdivision levels, skipping
+individual bounds spanning more than eight cells. First-page lookahead examines
+at most 256 independent prefixes / 4,096 rows with 64 concurrent reads and a
+five-second index deadline, then optionally warms bounded referenced values.
+Returned rows are hints only: their birth IDs can warm canonical piece lookups,
+but they never become observed membership or a validation domain. The ordinary
+queries still record their precise predicates, inspect pending edits, verify
+spatial references and charge every required value. No whole-block predicate is
+substituted, and large/custom bounds fall back to the unchanged required query.
+Replacement logs identify preparation, old dependency discovery, staging,
+checking, publication and acceptance; periodic closure counts are diagnostics,
+not a receipt. A timeout must be reconciled before another mutation.
+The read-only `shared-profile-dependencies` operator command additionally reports
+phase timings on a pinned snapshot, with a bounded deadline and no staged edit;
+see [the operations workflow](operations.md).
+
 The encoded read budget is enforced on the final operation, including the
 additional membership headers. It is not a complete allocator-RSS bound; bounded
 parallel readers, decoding and response encodings also consume memory.

@@ -52,6 +52,26 @@ async fn reader_clones_and_active_writers_exclude_collection() {
 }
 
 #[tokio::test]
+async fn closing_an_uncommitted_transaction_discards_edits_and_awaits_unpinning() {
+    let repo = repo().await;
+    let before = repo.checkout("main").await.unwrap();
+    let revision = before.id().clone();
+    before.close().await.unwrap();
+    let mut tx = repo.begin("main").await.unwrap();
+    tx.put(&"2/1".parse().unwrap(), &42u32).await.unwrap();
+    assert!(!repo.active_pins().await.unwrap().is_empty());
+    tx.close().await.unwrap();
+    assert!(repo.active_pins().await.unwrap().is_empty());
+    let after = repo.checkout("main").await.unwrap();
+    assert_eq!(after.id(), &revision);
+    assert_eq!(
+        after.get::<u32>(&"2/1".parse().unwrap()).await.unwrap(),
+        None
+    );
+    after.close().await.unwrap();
+}
+
+#[tokio::test]
 async fn collector_keeps_history_audit_and_attachments_but_deletes_orphans() {
     let repo = repo().await;
     let orphan = repo.put_blob(&"unused mesh").await.unwrap();

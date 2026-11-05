@@ -61,7 +61,11 @@ def roads():
     model=Masonry();model.compact_short_rows=True
     plots=plot_bounds();holes=[(x-1,hi+1,n-1,hn+1) for x,hi,n,hn in plots]
     areas=road_areas()
-    for area in rectangles(areas,holes):model.bulk(area,0,72)
+    bays=[(x,x+8,n,n+4) for x,n in PARKING]
+    for area in rectangles(areas,[*holes,*bays]):model.bulk(area,0,72)
+    for x,n in PARKING:
+        for height in [0,1/3]:model.plate_rectangle(8,4,72,x,n,height)
+        model.floor(8,4,72,x,n,2/3)
     sidewalks=[(x-11,x-8,-152,152) for x in VERTICAL]+[(x+8,x+11,-152,152) for x in VERTICAL]
     sidewalks += [(-248,152,n-11,n-8) for n in HORIZONTAL]+[(-248,152,n+8,n+11) for n in HORIZONTAL]
     # Four-stud entry paths end at one-stud modular expansion joints.
@@ -72,9 +76,8 @@ def roads():
     for area in rectangles(sidewalks,[*areas,*holes]):
         model.brickwork([area],0,71)
         x,hi,n,hn=area;model.plate_rectangle(hi-x,hn-n,71,x,n,1)
-    bays=[(x,x+8,n,n+4) for x,n in PARKING]
-    for x,n in PARKING:model.floor(8,4,72,x,n,1)
-    # Smooth tiles are deliberate lane markings/parking surfaces.
+    # Cars stand on smooth inlays flush with the road, without raised display pads.
+    # Smooth tiles elsewhere are deliberate lane markings.
     for n in HORIZONTAL:
         for x in range(-244,148,8):
             marker=(x,x+4,n,n+1)
@@ -134,7 +137,7 @@ def mount(model,name,prototype,x,n,height):
 
 def furniture():
     model=Model();colors=[4,1,14,288,15,320,25,321]
-    for index,(x,n) in enumerate(PARKING):mount(model,'lego6505-robert-paciorek-bercik-bsd-mit-car-'+str(index),details.car(colors[index]),x,n,4/3)
+    for index,(x,n) in enumerate(PARKING):mount(model,'lego6505-robert-paciorek-bercik-bsd-mit-car-'+str(index),details.car(colors[index]),x,n,1)
     for index,(column,row) in enumerate((c,r) for c in [-2,-1,0,1] for r in [-1,0,1]):
         x,n=column*96,row*96-40
         mount(model,'person-'+str(index),details.person(colors[index%8],0,0),x-6,n,4/3)

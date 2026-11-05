@@ -268,6 +268,66 @@ async fn accepted_changes_use_server_profile_name_and_retain_the_source_model() 
 }
 
 #[tokio::test]
+async fn unusable_source_hierarchy_does_not_hide_canonical_assembly_geometry() {
+    let service = service();
+    let (head, imported) = seeded(&service, scene(10.)).await;
+    let repo = service.repo(&head.id).unwrap();
+    let mut tx = repo.begin("main").await.unwrap();
+    let path = paged::rule_path(&imported.assembly, 0);
+    let mut header: paged::RulesHeader = tx.get(&path).await.unwrap().unwrap();
+    let unsupported = serde_json::json!({
+        "format":"ergo-model-1", "schema":ergo_world::SCHEMA_VERSION,
+        "root":"unusable-hint", "definitions":{"unusable-hint":[{
+            "target":{"kind":"construct","id":"classic-car-v1"},
+            "color":4,"transform":[[1,0,0,0],[0,1,0,0],[0,0,1,0],[0,0,0,1]]
+        }]}
+    });
+    assert!(serde_json::from_value::<ergo_world::assembly::Model>(unsupported.clone()).is_err());
+    header.source_model = Some(tx.stage_blob(&unsupported).unwrap());
+    tx.put(&path, &header).await.unwrap();
+    let accepted = tx
+        .commit(
+            "test",
+            "Unsupported optional hierarchy fixture",
+            Default::default(),
+        )
+        .await
+        .unwrap();
+    let read = service
+        .authoring_scene(
+            &head.id,
+            "alice",
+            &imported.assembly,
+            accepted.snapshot.id(),
+        )
+        .await
+        .unwrap();
+    assert!(read["scene"]["model"].is_null());
+    let canonical: ergo_world::WorldExport = serde_json::from_value(read["scene"].clone()).unwrap();
+    assert_eq!(canonical.bricks.len(), 2);
+    assert_eq!(canonical.bricks[0].position, scene(10.).bricks[0].position);
+    let native = ergo_world::storage::Construction::from(&canonical);
+    let decoded = ergo_world::storage::decode(&serde_json::to_vec(&native).unwrap()).unwrap();
+    assert_eq!(decoded.bricks.len(), canonical.bricks.len());
+    assert_eq!(
+        repo.checkout("main").await.unwrap().id(),
+        accepted.snapshot.id(),
+        "A read must not rewrite accepted state"
+    );
+    assert!(ergo_world::constructs::get("classic-car-v1").is_none());
+    let mut working = service
+        .working(&head.id, "alice", accepted.snapshot.id())
+        .await
+        .unwrap();
+    let rules = working.rules(&imported.assembly).await.unwrap();
+    let affected = rules.pieces.values().cloned().collect();
+    assert!(
+        working.validate(&affected).await.unwrap().is_some(),
+        "An unusable stored hint cannot veto validation of canonical pieces"
+    );
+}
+
+#[tokio::test]
 async fn construction_metadata_survives_replacement_and_downloads_export_the_whole_assembly() {
     use axum::{
         body::{Body, to_bytes},
@@ -906,6 +966,91 @@ async fn dense_neighbor_queries_charge_immutable_spatial_rows_once() {
         .unwrap();
     for _ in 0..128 {
         assert_eq!(ws.neighbors(bounds).await.unwrap().len(), 64);
+    }
+}
+
+#[tokio::test]
+async fn spatial_lookahead_keeps_precise_empty_predicates_and_same_cell_independence() {
+    for (new_x, conflict) in [(50., false), (22., true)] {
+        let service = service();
+        let (head, _) = seeded(&service, scene(10.)).await;
+        let mut ws = service
+            .working(&head.id, "alice", &head.revision)
+            .await
+            .unwrap();
+        let bounds = ergo_world::Aabb::new(
+            glam::DVec3::new(20., -0.2, 98.),
+            glam::DVec3::new(26., 2., 106.),
+        );
+        let paths = spatial::neighbor_read_paths(&[bounds]).unwrap();
+        ws.tx.prefetch_read_paths(paths.clone()).await;
+        ws.tx.prefetch_read_pages(paths, 4096).await;
+        assert!(ws.neighbors(bounds).await.unwrap().is_empty());
+        let mut addition = scene(new_x);
+        addition.bricks.truncate(1);
+        service
+            .import(
+                &head.id,
+                "alice",
+                ImportRequest {
+                    base: head.revision,
+                    scene: addition,
+                },
+            )
+            .await
+            .unwrap();
+        ws.metadata.name = "Predicate regression".into();
+        ws.tx.put(&root(2), &ws.metadata).await.unwrap();
+        let outcome = ws
+            .tx
+            .commit(
+                "alice",
+                "Check exact spatial read predicates",
+                CommitOptions::default(),
+            )
+            .await;
+        if conflict {
+            assert!(matches!(
+                outcome,
+                Err(ergo_transactions::Error::Conflict { .. })
+            ));
+        } else {
+            outcome.unwrap().snapshot.close().await.unwrap();
+        }
+    }
+}
+
+#[tokio::test]
+async fn dependency_profile_reports_a_read_only_closure_without_publishing() {
+    let service = service();
+    let (head, imported) = seeded(&service, scene(10.)).await;
+    let report = service
+        .profile_dependencies(&head.id, &imported.assembly, 5)
+        .await
+        .unwrap();
+    assert_eq!(report["read_only"], true);
+    assert_eq!(report["published"], false);
+    assert_eq!(report["authoritative_validation"], false);
+    assert_eq!(report["complete"], true);
+    assert_eq!(report["affected_pieces"], 2);
+    assert_eq!(report["revision"], imported.accepted.revision.to_string());
+    assert_eq!(report["discovery"]["visited"], 2);
+    assert_eq!(report["discovery"]["active_phase"], "complete");
+    let snapshot = service
+        .repo(&head.id)
+        .unwrap()
+        .checkout("main")
+        .await
+        .unwrap();
+    assert_eq!(snapshot.id(), &imported.accepted.revision);
+    snapshot.close().await.unwrap();
+    for seconds in [0, 1801] {
+        assert!(
+            service
+                .profile_dependencies(&head.id, &imported.assembly, seconds)
+                .await
+                .is_err()
+        );
     }
 }
 

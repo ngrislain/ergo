@@ -51,6 +51,12 @@ be any Serde-serializable type, including `ergo_world::Block`, meshes, or
 application-specific geometry chunks. The crate itself has no dependency on the
 viewer, physics, or world schema.
 
+`Transaction::close().await` discards uncommitted edits and explicitly closes its
+base, read and tip snapshot handles without publishing. In coordinated-GC mode
+this awaits unpinning when those are the final handles. Unsettled publication pins
+remain protected. Ordinary drop retains its best-effort asynchronous cleanup;
+explicit close is useful for bounded read-only operator diagnostics before exit.
+
 ### S3 / Scaleway
 
 [`examples/s3_edits.rs`](../crates/transactions/examples/s3_edits.rs) constructs an

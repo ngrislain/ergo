@@ -521,6 +521,7 @@ async fn main() -> Result<()> {
         )
         .init();
     let store = Store::from_env()?;
+    let mut warmed_shared = None;
     let mut args = env::args().skip(1);
     if let Some(command) = args.next() {
         let id = args.next().context("Expected a shared-world UUID")?;
@@ -546,6 +547,38 @@ async fn main() -> Result<()> {
         let shared = shared::SharedWorlds::from_env(store.clone())?;
         let repo = shared.repo(&id)?;
         match command.as_str() {
+            "shared-profile-dependencies" => {
+                let assembly = args.next().context("Expected an assembly ID")?.parse()?;
+                let mut rest = args.collect::<Vec<_>>();
+                let serve = rest.last().is_some_and(|s| s == "--serve");
+                if serve {
+                    rest.pop();
+                }
+                anyhow::ensure!(
+                    rest.len() <= 1,
+                    "Usage: ergo-server shared-profile-dependencies WORLD_ID ASSEMBLY_ID [SECONDS] [--serve]"
+                );
+                let seconds = rest.first().map(|s| s.parse()).transpose()?.unwrap_or(120);
+                if serve {
+                    let bind = env::var("ERGO_BIND")
+                        .context("--serve requires an explicit loopback ERGO_BIND")?
+                        .parse::<std::net::SocketAddr>()?;
+                    anyhow::ensure!(
+                        bind.ip().is_loopback()
+                            && shared.common_world.as_deref() == Some(id.as_str()),
+                        "Profile --serve requires loopback and the configured common world"
+                    );
+                }
+                println!(
+                    "{}",
+                    serde_json::to_string_pretty(
+                        &shared.profile_dependencies(&id, &assembly, seconds).await?
+                    )?
+                );
+                if serve {
+                    warmed_shared = Some(shared);
+                }
+            }
             "shared-pack-block" => {
                 let mut coord = [0i64; 3];
                 for value in &mut coord {
@@ -683,7 +716,9 @@ async fn main() -> Result<()> {
             }
             _ => anyhow::bail!("Unknown server command: {command}"),
         }
-        return Ok(());
+        if warmed_shared.is_none() {
+            return Ok(());
+        }
     }
     let auth = auth::Auth::from_env()?;
     if !auth.google {
@@ -713,7 +748,10 @@ async fn main() -> Result<()> {
         !isolated || store.kind == "Local object store",
         "Isolated fixtures are only supported in disposable local test stores"
     );
-    let mut shared = shared::SharedWorlds::from_env(store.clone())?;
+    let mut shared = match warmed_shared {
+        Some(shared) => shared,
+        None => shared::SharedWorlds::from_env(store.clone())?,
+    };
     if shared.common_world.is_none() && !isolated {
         anyhow::ensure!(
             !auth.google && store.kind == "Local object store",

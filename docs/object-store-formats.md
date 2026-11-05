@@ -224,6 +224,18 @@ PNG/JPEG as a CBOR byte string, not base64 or decoded pixels. Times are Unix sec
 ETag/Last-Modified support conditional refresh. The normal freshness interval is
 seven days.
 
+## `ground/vectors/<provider-hash>/<z>/<x>/<y>.cbor`: OSM vector source
+
+CBOR `{format:"ergo-vector-1",fetched_at,etag,modified,media_type,image}` uses the
+same source-cache envelope, with media type `application/vnd.mapbox-vector-tile`.
+Here `image` contains the original protobuf tile bytes (possibly gzip encoded),
+not a PNG or a native construction. The provider hash covers the vector XYZ URL
+template. Source downloads are limited to 4 MiB; decompressed vector data is
+limited to 8 MiB and selected geometry is validated before persistence. Freshness
+is seven days with conditional refresh. The default source stops at zoom 14;
+the basic style renders its display windows through zoom 18. Styled 256-pixel
+tiles are retained only in a 16-entry, 60-second process-local cache.
+
 ## `ground/blocks/<signature>/<east>_<north>.cbor`: GroundBlock
 
 CBOR `{schema:2,cell_size:128,coord,bricks,color,surface?,sample_rgb,source,attribution,attribution_url,
@@ -237,6 +249,9 @@ the optional average source RGB. Source/attribution explain the derived field.
 
 The configuration signature covers geographic origin/resolution, provider/template,
 attribution, enabled state, palette, grid size and the sampling algorithm. It is not a hash
+of a source tile; the clean-vector mode and style version are also included. The
+basic style version is appended to its provider identity to invalidate retained
+snapshot fields as well as HTTP/local field caches. It is not a hash
 of the payload. Successful cells have a seven-day TTL; fallback cells retry after
 60 seconds. Cell size and categorical algorithm are part of the signature.
 Incompatible old-size records are deleted. Current fallback records may omit

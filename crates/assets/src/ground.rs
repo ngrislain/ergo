@@ -1,5 +1,5 @@
-//! On-demand raster sampling for ground blocks. No bulk prefetch, rendering, or
-//! simulation. Satellite/aerial defaults include attribution, stable identification, >=7-day
+//! On-demand OSM vector styling or raster sampling for ground blocks. No bulk
+//! prefetch or simulation. Source defaults include attribution, stable identification, >=7-day
 //! source caching, conditional refresh, and serialized/coalesced source fetches.
 use anyhow::{Context, Result, ensure};
 use ergo_world::{
@@ -14,7 +14,7 @@ use object_store::{ObjectStore, path::Path};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use std::{
-    collections::{BTreeMap, HashMap},
+    collections::{BTreeMap, HashMap, VecDeque},
     io::Cursor,
     sync::Arc,
     time::{Duration, Instant, SystemTime, UNIX_EPOCH},
@@ -49,6 +49,8 @@ pub struct GroundCache {
     attribution_url: String,
     enabled: bool,
     map_colours: bool,
+    clean_map: bool,
+    rendered: Arc<std::sync::Mutex<VecDeque<((u32, u32, u32), Instant, Vec<u8>)>>>,
     gate: Arc<tokio::sync::Mutex<()>>,
     failures: Arc<std::sync::Mutex<HashMap<String, (Instant, String)>>>,
 }
@@ -58,6 +60,15 @@ impl GroundCache {
     }
     pub fn is_enabled(&self) -> bool {
         self.enabled
+    }
+    /// Explicit developer preview of one source/display tile, not bulk warming.
+    pub async fn preview_tile(&self, zoom: u32, x: u32, y: u32) -> Result<Vec<u8>> {
+        ensure!(
+            zoom <= 18 && x < (1 << zoom) && y < (1 << zoom),
+            "Invalid map preview coordinate"
+        );
+        let _guard = self.gate.lock().await;
+        self.tile(zoom, x, y).await
     }
     /// Public discardable-pattern identity; contains no source credentials.
     pub fn cache_revision(&self, geo: GeoReference) -> Result<String> {
@@ -72,8 +83,22 @@ impl GroundCache {
             "ERGO_GROUND_SOURCE must be satellite, osm, or disabled"
         );
         let satellite = source != "osm";
-        let template = std::env::var("ERGO_MAP_TILE_URL")
-            .unwrap_or_else(|_| if satellite {"https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}".into()}else{"https://tile.openstreetmap.org/{z}/{x}/{y}.png".into()});
+        let raster = std::env::var("ERGO_MAP_TILE_URL").ok();
+        let vector = std::env::var("ERGO_MAP_VECTOR_TILE_URL").ok();
+        ensure!(
+            raster.is_none() || vector.is_none(),
+            "Configure a raster or vector map source, not both"
+        );
+        ensure!(
+            source == "osm" || vector.is_none(),
+            "Vector map tiles require ERGO_GROUND_SOURCE=osm"
+        );
+        let clean_map = source == "osm" && raster.is_none();
+        let template = if clean_map {
+            vector.unwrap_or_else(|| crate::simple_map::URL.into())
+        } else {
+            raster.unwrap_or_else(|| if satellite {"https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}".into()}else{"https://tile.openstreetmap.org/{z}/{x}/{y}.png".into()})
+        };
         ensure!(
             ["{z}", "{x}", "{y}"].iter().all(|p| template.contains(p)),
             "Map tile URL must have z/x/y placeholders"
@@ -89,14 +114,21 @@ impl GroundCache {
             prefix,
             http,
             template,
-            provider: std::env::var("ERGO_MAP_PROVIDER")
-                .unwrap_or_else(|_| if satellite {"Esri World Imagery (satellite/aerial)".into()}else{"OpenStreetMap Carto".into()}),
+            provider: {
+                let name=std::env::var("ERGO_MAP_PROVIDER")
+                    .unwrap_or_else(|_| if clean_map {"OpenStreetMap basic (OpenFreeMap)".into()} else if satellite {"Esri World Imagery (satellite/aerial)".into()}else{"Custom OpenStreetMap raster".into()});
+                // Retained snapshots are screened by provider as well as the
+                // HTTP cache revision. A style change must invalidate both.
+                if clean_map {format!("{name} · {}",crate::simple_map::STYLE)} else {name}
+            },
             attribution: std::env::var("ERGO_MAP_ATTRIBUTION")
-                .unwrap_or_else(|_| if satellite {"Tiles © Esri — Source: Esri, Maxar, Earthstar Geographics, and the GIS User Community".into()}else{"© OpenStreetMap contributors".into()}),
+                .unwrap_or_else(|_| if clean_map {"© OpenStreetMap contributors · © OpenMapTiles · OpenFreeMap".into()} else if satellite {"Tiles © Esri — Source: Esri, Maxar, Earthstar Geographics, and the GIS User Community".into()}else{"© OpenStreetMap contributors".into()}),
             attribution_url: std::env::var("ERGO_MAP_ATTRIBUTION_URL")
-                .unwrap_or_else(|_| if satellite {"https://www.arcgis.com/home/item.html?id=10df2279f9684e4a9f6a7f08febac2a9".into()}else{"https://www.openstreetmap.org/copyright".into()}),
+                .unwrap_or_else(|_| if clean_map {"https://openfreemap.org/".into()} else if satellite {"https://www.arcgis.com/home/item.html?id=10df2279f9684e4a9f6a7f08febac2a9".into()}else{"https://www.openstreetmap.org/copyright".into()}),
             enabled: source!="disabled",
             map_colours:source=="osm",
+            clean_map,
+            rendered:Default::default(),
             gate: Arc::new(tokio::sync::Mutex::new(())),
             failures: Arc::new(std::sync::Mutex::new(HashMap::new())),
         })
@@ -167,7 +199,7 @@ impl GroundCache {
             .map(|code| (*code, ergo_world::color_rgb(*code)))
             .collect();
         let signature = hex::encode(Sha256::digest(format!(
-            "{:.12}:{:.12}:{:.12}:{}:{}:{}:{}:{}:{}:ground-standard-categorical-v3:{BLOCK_SIZE}:{SAMPLE_GRID_SIZE}:{palette:?}",
+            "{:.12}:{:.12}:{:.12}:{}:{}:{}:{}:{}:{}:{}:{}:ground-standard-categorical-v3:{BLOCK_SIZE}:{SAMPLE_GRID_SIZE}:{palette:?}",
             geo.latitude,
             geo.longitude,
             geo.arcseconds_per_block,
@@ -176,9 +208,30 @@ impl GroundCache {
             self.attribution,
             self.attribution_url,
             self.enabled,
-            self.map_colours
+            self.map_colours,
+            self.clean_map,
+            if self.clean_map {
+                crate::simple_map::STYLE
+            } else {
+                "raster-v1"
+            }
         )));
         Ok(format!("ground/blocks/{signature}/{x}_{y}.cbor"))
+    }
+    fn sample_colour(&self, rgb: u32) -> u32 {
+        if self.clean_map {
+            // The native style already paints exact LEGO swatches. A heuristic
+            // designed for third-party cartography would change tan/yellow.
+            ergo_world::terrain::TERRAIN_COLORS
+                .iter()
+                .copied()
+                .find(|code| ergo_world::color_rgb(*code) == rgb)
+                .unwrap_or_else(|| nearest_terrain_color(rgb))
+        } else if self.map_colours {
+            map_terrain_color(rgb)
+        } else {
+            nearest_terrain_color(rgb)
+        }
     }
     async fn generate(&self, geo: GeoReference, x: i64, y: i64) -> Result<GroundBlock> {
         let _guard = self.gate.lock().await;
@@ -228,7 +281,18 @@ impl GroundCache {
         for &(tx, ty) in needed.keys() {
             let bytes = self.tile(zoom, tx, ty).await?;
             decoded.insert((tx, ty), decode(&bytes)?);
-            sources.push(format!("{}: z{zoom}/{tx}/{ty}", self.provider));
+            sources.push(if self.clean_map {
+                let delta = zoom.saturating_sub(crate::simple_map::MAX_ZOOM);
+                format!(
+                    "{}: vector z{}/{}/{}; display z{zoom}/{tx}/{ty}",
+                    self.provider,
+                    zoom - delta,
+                    tx >> delta,
+                    ty >> delta
+                )
+            } else {
+                format!("{}: z{zoom}/{tx}/{ty}", self.provider)
+            });
         }
         let samples: Vec<_> = locations
             .into_iter()
@@ -242,13 +306,7 @@ impl GroundCache {
                 });
                 // Choose a single classified source pixel. Adjacent materials
                 // keep standard palette colours without a blended gradient.
-                let palette = raw.map(|rgb| {
-                    ergo_world::color_rgb(if self.map_colours {
-                        map_terrain_color(rgb)
-                    } else {
-                        nearest_terrain_color(rgb)
-                    })
-                });
+                let palette = raw.map(|rgb| ergo_world::color_rgb(self.sample_colour(rgb)));
                 (
                     blend_rgb(raw, sample.x, sample.y),
                     palette[usize::from(sample.x >= 0.5) + 2 * usize::from(sample.y >= 0.5)],
@@ -259,7 +317,7 @@ impl GroundCache {
         let color = if self.map_colours {
             let mut counts = BTreeMap::<u32, usize>::new();
             for &(sample, _) in &samples {
-                *counts.entry(map_terrain_color(sample)).or_default() += 1;
+                *counts.entry(self.sample_colour(sample)).or_default() += 1;
             }
             counts
                 .into_iter()
@@ -291,8 +349,42 @@ impl GroundCache {
         Ok(block)
     }
     async fn tile(&self, zoom: u32, x: u32, y: u32) -> Result<Vec<u8>> {
+        if !self.clean_map {
+            return self.source_tile(zoom, x, y, false).await;
+        }
+        let coord = (zoom, x, y);
+        {
+            let mut cache = self.rendered.lock().unwrap();
+            if let Some(index) = cache.iter().position(|(key, when, _)| {
+                *key == coord && when.elapsed() < Duration::from_secs(60)
+            }) {
+                let hit = cache.remove(index).unwrap();
+                let bytes = hit.2.clone();
+                cache.push_back(hit);
+                return Ok(bytes);
+            }
+        }
+        let delta = zoom.saturating_sub(crate::simple_map::MAX_ZOOM);
+        let vector = self
+            .source_tile(zoom - delta, x >> delta, y >> delta, true)
+            .await?;
+        let bytes = crate::simple_map::render(&vector, zoom, x, y)?;
+        let mut cache = self.rendered.lock().unwrap();
+        while cache.len() >= 16 {
+            cache.pop_front();
+        }
+        cache.push_back((coord, Instant::now(), bytes.clone()));
+        Ok(bytes)
+    }
+    async fn source_tile(&self, zoom: u32, x: u32, y: u32, vector: bool) -> Result<Vec<u8>> {
         let provider = hex::encode(Sha256::digest(&self.template));
-        let key = format!("ground/rasters/{provider}/{zoom}/{x}/{y}.cbor");
+        let kind = if vector { "vectors" } else { "rasters" };
+        let format = if vector {
+            "ergo-vector-1"
+        } else {
+            "ergo-raster-1"
+        };
+        let key = format!("ground/{kind}/{provider}/{zoom}/{x}/{y}.cbor");
         if let Some((_, reason)) = self
             .failures
             .lock()
@@ -310,9 +402,13 @@ impl GroundCache {
             .transpose()?;
         if let Some(tile) = &old {
             ensure!(
-                tile.format == "ergo-raster-1"
-                    && ["image/png", "image/jpeg"].contains(&tile.media_type.as_str()),
-                "Unsupported Ergo raster description"
+                tile.format == format
+                    && if vector {
+                        tile.media_type == "application/vnd.mapbox-vector-tile"
+                    } else {
+                        ["image/png", "image/jpeg"].contains(&tile.media_type.as_str())
+                    },
+                "Unsupported map source description"
             );
         }
         if let Some(tile) = &old
@@ -365,18 +461,26 @@ impl GroundCache {
             while let Some(chunk) = stream.next().await {
                 let chunk = chunk.map_err(reqwest::Error::without_url)?;
                 ensure!(
-                    png.len() + chunk.len() <= 1024 * 1024,
-                    "Raster tile exceeds 1 MiB"
+                    png.len() + chunk.len() <= if vector { 4 * 1024 * 1024 } else { 1024 * 1024 },
+                    "Map tile exceeds its input byte budget"
                 );
                 png.extend_from_slice(&chunk);
             }
-            decode(&png)?;
+            if vector {
+                // Validate selected geometry before persisting source bytes, so
+                // a malformed upstream tile cannot poison seven days of reads.
+                crate::simple_map::render(&png, zoom, x, y)?;
+            } else {
+                decode(&png)?;
+            }
             Ok(Tile {
-                format: "ergo-raster-1".into(),
+                format: format.into(),
                 fetched_at: now(),
                 etag,
                 modified,
-                media_type: if png.starts_with(b"\x89PNG") {
+                media_type: if vector {
+                    "application/vnd.mapbox-vector-tile"
+                } else if png.starts_with(b"\x89PNG") {
                     "image/png"
                 } else {
                     "image/jpeg"
@@ -534,8 +638,23 @@ mod tests {
             attribution_url: "https://example.invalid/credits".into(),
             enabled: true,
             map_colours: false,
+            clean_map: false,
+            rendered: Default::default(),
             gate: Arc::new(tokio::sync::Mutex::new(())),
             failures: Arc::new(std::sync::Mutex::new(HashMap::new())),
+        }
+    }
+    #[test]
+    fn native_style_preserves_every_palette_material_and_invalidates_raster_fields() {
+        let store: Arc<dyn ObjectStore> = Arc::new(object_store::memory::InMemory::new());
+        let mut cache = cache(store);
+        let geo = GeoReference::default();
+        let raster = cache.cache_revision(geo).unwrap();
+        cache.clean_map = true;
+        cache.map_colours = true;
+        assert_ne!(raster, cache.cache_revision(geo).unwrap());
+        for &code in ergo_world::terrain::TERRAIN_COLORS {
+            assert_eq!(cache.sample_colour(ergo_world::color_rgb(code)), code);
         }
     }
     fn png() -> Vec<u8> {
@@ -666,6 +785,86 @@ mod tests {
             assert_eq!(a.rgb_at(offset, 1024.), north.rgb_at(offset, 0.));
         }
         assert_ne!(a.rgb_at(100.5, 100.5), a.rgb_at(300.5, 100.5));
+    }
+    #[tokio::test]
+    async fn vector_ground_overzooms_reuses_source_cache_and_keeps_cell_edges_identical() {
+        let store: Arc<dyn ObjectStore> = Arc::new(object_store::memory::InMemory::new());
+        let mut service = cache(store.clone());
+        service.clean_map = true;
+        service.map_colours = true;
+        let geo = GeoReference {
+            latitude: 0.,
+            longitude: 0.,
+            arcseconds_per_block: 1.,
+        };
+        let provider = hex::encode(Sha256::digest(&service.template));
+        let mut parents = std::collections::BTreeSet::new();
+        for (east, north) in [(0., 0.), (1., 0.), (0., 1.)] {
+            for row in 0..SAMPLE_GRID_SIZE {
+                for col in 0..SAMPLE_GRID_SIZE {
+                    let [lat, lon] = geo.to_gps(glam_point(
+                        (east + col as f64 / (SAMPLE_GRID_SIZE - 1) as f64) * BLOCK_SIZE,
+                        (north + row as f64 / (SAMPLE_GRID_SIZE - 1) as f64) * BLOCK_SIZE,
+                    ));
+                    for (x, y, _, _) in source_sample(lat, lon, 18).unwrap().pixels {
+                        parents.insert((x >> 4, y >> 4));
+                    }
+                }
+            }
+        }
+        for (x, y) in &parents {
+            service
+                .put(
+                    &format!("ground/vectors/{provider}/14/{x}/{y}.cbor"),
+                    &Tile {
+                        format: "ergo-vector-1".into(),
+                        fetched_at: now(),
+                        etag: None,
+                        modified: None,
+                        media_type: "application/vnd.mapbox-vector-tile".into(),
+                        image: crate::simple_map::tests::natural_fixture(),
+                    },
+                )
+                .await
+                .unwrap();
+        }
+        let mut fields = Vec::new();
+        for (x, y) in [(0, 0), (1, 0), (0, 1)] {
+            let block = service.block(geo, x, y).await;
+            assert!(
+                block.fallback_reason.is_none(),
+                "{:?}",
+                block.fallback_reason
+            );
+            fields.push(block.surface.unwrap());
+        }
+        for offset in [0., 0.5, 11.5, 97.5, 512., 1023.5, 1024.] {
+            assert_eq!(
+                fields[0].rgb_at(1024., offset),
+                fields[1].rgb_at(0., offset)
+            );
+            assert_eq!(
+                fields[0].rgb_at(offset, 1024.),
+                fields[2].rgb_at(offset, 0.)
+            );
+        }
+        assert!(fields[0].rgb.contains(&ergo_world::color_rgb(1)));
+        assert!(service.rendered.lock().unwrap().len() <= 16);
+        // A new process can reuse the derived field after all source data has
+        // gone; no network/raster override is involved in either build.
+        for (x, y) in parents {
+            store
+                .delete(&service.path(&format!("ground/vectors/{provider}/14/{x}/{y}.cbor")))
+                .await
+                .unwrap();
+        }
+        let mut fresh = cache(store);
+        fresh.clean_map = true;
+        fresh.map_colours = true;
+        assert_eq!(
+            fresh.block(geo, 0, 0).await.surface.as_ref(),
+            Some(&fields[0])
+        );
     }
     #[tokio::test]
     async fn visible_ground_is_generated_quantized_persisted_and_reused() {

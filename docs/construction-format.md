@@ -90,7 +90,14 @@ The JSON envelope has:
 World/global birth IDs are distinct from these bounded local numeric IDs.
 Current accepted Piece records remain the authority for live poses. If independent
 edits no longer match a reusable source hierarchy, export rebuilds a safe flat
-definition rather than restoring old template poses.
+definition rather than restoring old template poses. An optional stored hierarchy
+that cannot be parsed as a current model is also discarded on assembly read/export;
+the authoritative canonical pieces supply the replacement hierarchy. This does not
+resolve retired constructs or reinterpret their geometry. Content-hash, storage and
+byte-limit failures still reject the read; reading does not rewrite accepted state.
+Affected-domain validation follows the same rule for already-stored hints, while
+valid current hints retain their nested-isometry checks. Incoming model instances
+are always validated before staging; an unsupported submitted construct still fails.
 
 Runtime/REST messages use materialized `WorldExport` records with `bricks` for
 streaming and job execution. That transport is not an alternate construction-file

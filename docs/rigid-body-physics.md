@@ -14,7 +14,10 @@ Dynamic colliders use nominal local body dimensions, transformed centres and the
 actual metric-space orientation. They rotate with their bodies; a tilted plate
 is not replaced by its larger world-axis bounding box. The box still approximates
 hollow or bevelled geometry and is not exact mesh collision. Shields and spears
-use reviewed compound face/handle and blade/shaft boxes. Static compression
+use reviewed compound face/handle and blade/shaft boxes. Reviewed circular
+`4624c01`/`4624`/`3641` wheel/tyre datums use cylindrical dynamic colliders and
+inertia when their nominal bounds match the sourced circular SI profile; tread,
+interior cavities and rolling resistance are not resolved. Static compression
 contacts require axis-aligned bearing faces; tilted pieces may instead transmit
 their loads through joints, without treating an envelope face as bearing material.
 
@@ -77,7 +80,8 @@ I_{body}=\frac{m}{12}\operatorname{diag}(b^2+c^2,a^2+c^2,a^2+b^2),
 $$
 
 The solver uses SI dimensions, sourced per-part catalog masses, and gravity
-9.80665 m/s². Inertia remains a box approximation. Friction is currently assumed;
+9.80665 m/s². Inertia follows the nominal box/compound/cylinder approximation.
+Friction is currently assumed;
 connector capacities require operator-supplied measurements. These values are
 not inferred from the visual mesh; see [physical calibration](physical-calibration.md).
 The iterative solver can introduce significant error in tall unbonded stacks.
@@ -229,12 +233,13 @@ or calibrated joint model would fail.
 These are sufficient constructive certificates; an uncertified arrangement is
 rejected. Mere graph reachability to the floor is not sufficient.
 
-Static admission currently requires axis-aligned body faces (including rigid
-quarter-turns). A tilted body's world AABB cannot establish a real contact patch,
-so tilted poses are rejected by this certificate until an oriented-contact proof
-is implemented. Viewing and dynamic probing retain rigid tilted poses. Dynamic
-cuboids use nominal local dimensions and actual metric orientation, never the
-world AABB as a replacement shape.
+Contact-only static admission requires axis-aligned body faces (including rigid
+quarter-turns). A tilted body's world AABB cannot establish a real bearing patch.
+Tilted bodies must instead be above ground and have a registered joint-supported
+load path that passes the constraint-wrench certificate and applicable capacity
+checks. Viewing and dynamic probing retain rigid tilted poses. Dynamic shapes use
+nominal local dimensions and actual metric orientation, never the world AABB as
+a replacement shape.
 
 Catalogue stud volumes are also checked against neighbouring solid bodies.
 Penetration is permitted only at a registered underside cavity with a compatible

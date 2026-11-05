@@ -4,8 +4,10 @@ import importlib.util
 import json
 import pathlib
 import unittest
+from typing import Any
 import common_parts
 import native_model
+from build.landmark_revision import preserve_unchanged
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 spec = importlib.util.spec_from_file_location('coverage', ROOT/'scripts/check-common-parts.py')
@@ -48,6 +50,33 @@ class CommonParts(unittest.TestCase):
                 nominal = entry['catalogue']['nominal']
                 self.assertTrue(entry['catalogue'].get('connectors') or nominal.get('cavity')
                                 or nominal['studs_ldu'], id)
+
+
+class LandmarkRevision(unittest.TestCase):
+    def test_duplicate_occurrences_retain_distinct_ids_and_frozen_records(self):
+        import copy
+        # Metadata-only fixture, not a claim of source geometry or calibration.
+        def brick(id, x, step=0):
+            return dict(id=id,part='3005.dat',color=71,rgb=0xa0a5a9,step=step,
+                        position=[x,0,1],transform=[1,0,0,0,1,0,0,0,1])
+        before: dict[str,Any]=dict(name='Accepted',geo=dict(latitude=0,longitude=0,arcseconds_per_block=1),
+                    bricks=[brick(3,.500000001,4),brick(7,.500000001,8),brick(11,1.5)],
+                    meshes={'3005.dat':dict(quality='source',fixture='accepted physical record')},
+                    joints=[],fixed_bricks=[],groups=[],ground=[])
+        desired=copy.deepcopy(before)
+        desired['bricks']=[brick(1,.5),brick(2,.5),brick(3,2.5)]
+        desired['meshes']['3005.dat']['fixture']='different recipe cache'
+        source=dict(scene=before,assembly_id='fixture',base_revision='fixture-revision')
+        document,report=preserve_unchanged(source,desired)
+        self.assertEqual([piece['id'] for piece in document['pieces']],[3,7,12])
+        self.assertEqual([piece['step'] for piece in document['pieces']],[4,8,0])
+        self.assertEqual(document['meshes'],before['meshes'])
+        self.assertEqual(document['model']['definitions']['landscape'][0]['transform'][0][3],.500000001)
+        self.assertEqual((report['retained_unmodified_ids'],report['removed_occurrences'],report['added_occurrences']),(2,1,1))
+        self.assertFalse(report['published'])
+        desired['fixed_bricks']=[1]
+        with self.assertRaisesRegex(ValueError,'metadata-preserving'):
+            preserve_unchanged(source,desired)
 
 
 if __name__ == '__main__': unittest.main()

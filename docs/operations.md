@@ -47,6 +47,35 @@ This reports wire/decoded sizes, server cache headers and TTFB, not WebGL frame
 time. Compare cold, persistent and warm requests explicitly; network warmth is
 not a performance guarantee. See [loading and caching](loading-and-cache.md).
 
+For a bounded **read-only** profile of the authoring dependency walk, use the
+operator CLI with the configured storage namespace:
+
+```sh
+cargo build --release --locked -p ergo-server
+target/release/ergo-server shared-profile-dependencies WORLD_ID ASSEMBLY_ID 120
+```
+
+The optional deadline defaults to 120 seconds and accepts 1–1,800. The command pins
+the accepted starting revision, loads the selected assembly's rule records and
+warms its piece/spatial-reference records, then runs ordinary complete dependency
+discovery with an independent 100,000-piece diagnostic cap and the configured
+working-byte budget. It reports completion/timeout/errors, loaded
+counts, cache statistics and phase times for piece/rule/mesh reads, external joints
+and spatial neighbours. Timeout output contains partial **diagnostic counts**,
+never an authoring scene or a passing validation certificate. It stages no edits,
+does not publish a candidate/head and explicitly closes its snapshot/transaction
+handles. It may create and release normal GC activity pins; it never clears other
+requests' pins. Run a fresh process for a cold process-cache comparison. Concurrent
+accepted edits do not change the pinned diagnostic revision.
+
+An explicit trailing `--serve` retains that process's verified immutable cache
+and starts the ordinary API after the bounded profile. It requires an explicit
+loopback `ERGO_BIND` and the configured common-world ID. Authentication, pacing,
+frozen physics and authoring budgets remain the normal server settings; a
+completed profile is not permission to publish. A timeout/error still reports
+incomplete diagnostics. This operator workflow avoids discarding warmed reads
+before a separately journalled ordinary edit; it adds no profiling HTTP endpoint.
+
 ## GitHub releases
 
 Workspace/native/package versions match; the site has its own version. Inspect
@@ -58,14 +87,16 @@ prove an asset or image was published.
 
 ```sh
 gh run list --repo ngrislain/ergo --workflow release.yml --limit 5
-gh release view v0.5.21 --repo ngrislain/ergo
+gh release view v0.5.22 --repo ngrislain/ergo
 ```
 
 Verify the public tarball version/checksum, consumer install and actual MCP smoke
-before changing the displayed installation source. The verified npm release is
-`@ngrislain/ergo-mcp@0.5.21`; GitHub also hosts its identical complete tarball and
-checksum. The public package includes all 138 source parts and the reviewed wall
-bearing profile, verified by an outside-checkout npm installation and WASM smoke.
+before changing the displayed installation source. Promote
+`@ngrislain/ergo-mcp@0.5.22` only after registry and consumer checks; retain the
+last verified public setting while building the candidate. GitHub also hosts the
+identical complete tarball and checksum. The package includes all 138 source parts
+and the reviewed wall bearing profile; check an outside-checkout npm installation
+and WASM smoke rather than treating a successful source push as publication.
 
 Registry CI uses the approved npm trusted publisher for `ngrislain/ergo` /
 `release.yml`, with `ERGO_NPM_PUBLISH=true`. Run
@@ -85,7 +116,7 @@ After publication, set the public Pages variable and rebuild:
 
 ```sh
 gh variable set ERGO_MCP_PACKAGE --repo ngrislain/ergo \
-  --body '@ngrislain/ergo-mcp@0.5.21'
+  --body '@ngrislain/ergo-mcp@0.5.22'
 gh workflow run pages.yml --repo ngrislain/ergo --ref main
 ```
 
