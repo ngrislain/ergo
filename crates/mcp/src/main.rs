@@ -798,7 +798,7 @@ fn main() -> Result<()> {
                         // A shared mutation includes publication and authoritative
                         // read-back (up to 300s each), plus local WASM work. The
                         // outer deadline must not cut off an accepted operation.
-                        let value = rx.recv_timeout(Duration::from_secs(1800));
+                        let value = rx.recv_timeout(Duration::from_secs(3600));
                         if value.is_err() {
                             let mut h = bridge.hub.lock().unwrap();
                             h.pending.remove(&job_id);

@@ -208,8 +208,10 @@ region remain in geometry keys.
 
 Entries have no age-based expiry: reads update last-use metadata, and pressure
 evicts least-recently-used URLs and only then unreferenced blobs. The data budget
-is 10% of the reported origin quota, clamped to **64–512 MiB**, at most **64 MiB per
-entry / 1,024 URLs**. Active region leases are refreshed every 30 seconds and last
+is 20% of the reported origin quota, clamped to **128 MiB–2 GiB**, at most **64 MiB per
+entry / 4,096 URLs**. This is a disk-data budget, not a preallocated WASM/GPU buffer.
+The lower bound provides room for a maximum-sized valid region plus the basic
+library. Active region leases are refreshed every 30 seconds and last
 75 seconds, protecting data in active tabs. If protected data leaves insufficient
 space, an optional write is skipped rather than evicting active data. These are
 logical cache limits; browser storage eviction and actual quota remain browser-owned.
@@ -254,6 +256,40 @@ construct definitions for offline use.
 Public floor colour fields have their own versioned, seven-day local cache;
 see [floor-pattern reuse](ground-and-coordinates.md#lazy-generation). They and the
 public basic library are distinct from permission-checked construction packets.
+
+### Actual capacity and timeout retention
+
+In the viewer's browser console, `await ergoCacheInfo()` reports the effective
+logical capacity, stored/protected bytes, unique blobs, region/floor/library entry
+counts, browser origin usage/quota, persistent-storage status and successful/skipped
+write counts with the last skip reason. The report contains no URLs or geometry.
+It is an on-demand diagnostic, not polling on the rendering path. A skipped quota,
+protected-capacity or suspended write is not a saved model. Browser quota and
+eviction can still prevent persistence even below the configured logical ceiling.
+
+A model has several independent caches; none make its first cold load free:
+
+- The basic source meshes/constructs are proactively stored in IndexedDB; native
+  MCP packages embed the pack and keep resolved assets in `.ergo-assets` beside
+  the workspace (or `ERGO_MCP_ASSET_DIR`).
+- Completed browser region/index packets are content-addressed on local disk.
+  Authorization and accepted-revision checks still run before reuse. Different
+  revisions/coverage/budgets can require a new packet; a cold packet still requires
+  server-side S3 traversal even if the browser already has the basic meshes.
+- Floor colours are public, source/style-versioned and retained locally for seven
+  days. They share the logical disk budget above, not the model's permission grant.
+- Native MCP workspace files remain on disk, but reopening a shared workspace
+  currently loads server authority again; the file is not an offline permission
+  grant or an incremental authoring-read checkpoint.
+
+On timeout/cancellation, accepted geometry remains in S3, earlier completed local
+entries are retained, and an earlier completed viewer scene is restored. A partial
+preview is deliberately discarded and is never saved as a complete model. The
+incomplete response/cursor is **not durably checkpointed**, so a retry may repeat
+discovery/materialization. Verified immutable server objects can remain warm in
+the 256 MiB process cache, but that is bounded and disappears on process restart.
+Successful complete server packets are separately persisted in S3. Parsing,
+spatial-index reconstruction and GPU upload still cost time after a cache hit.
 
 ### Construction-list metadata
 
@@ -325,7 +361,7 @@ and generation/request guards reject late head/location/body callbacks. Authorin
 mutations remain exclusive. Each discovery GET attempt has a 15-second deadline;
 transport interruptions, HTTP 408 and 5xx responses get one idempotent retry after
 250 ms. Permission and protocol failures do not retry. Region reads retain a
-**30-minute (1,800,000 ms) deadline**; a failed region is not immediately retried in a loop.
+**one-hour (3,600,000 ms) deadline**; a failed region is not immediately retried in a loop.
 Select it again or choose another construction to recover without reloading the app.
 Transient catalogue-refresh failures keep already loaded rows and show a scoped
 retry status. Automatic list retries back off from 5 to 60 seconds; a manual
@@ -360,11 +396,15 @@ or radius fallback, including selection of a resident construction. Only a
 successfully decoded and partitioned full response replaces it.
 
 The MCP HTTP client also gives complete construction GETs (`workspace`, `view`,
-`download`) 30 minutes by default. Other requests retain their five-minute default;
+`download`, `export`) one hour by default. Other requests retain their five-minute default;
 an explicit `ERGO_MCP_HTTP_TIMEOUT_SECONDS` still overrides both. The existing
-outer tool deadline remains 30 minutes. Hosting-proxy request limits are separate:
+outer tool deadline is one hour; the host should allow 3,900,000 ms (65 minutes).
+Basic-library background warming also has a one-hour deadline. Hosting-proxy request limits are separate:
 the client deadline does not alter them; exceptionally cold deployments can still
 need the operator warm-up below.
+The Scaleway container processing deadline supports 3,600 seconds and must be
+configured alongside the clients. A longer deadline does not make cold traversal
+faster or turn a partial preview into resumable/durable progress.
 
 ### Operator warm-up
 

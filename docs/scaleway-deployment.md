@@ -22,9 +22,9 @@ state, saved plans and `.env` are ignored and never belong in a source commit.
 - Application S3 access/secret, region, endpoint and prefix.
 - Google Web client ID/secret, stable session-signing key and public origin.
 - Common world ID/prefix, brick-change pacing and map-provider configuration.
-- `request_timeout_seconds`: container processing deadline, default 1800 seconds,
-  configurable from 1 to 1800. Long validated loads and edits can use the full
-  30-minute deadline; native MCP/client deadlines are separate. Longer deadlines do not retry
+- `request_timeout_seconds`: container processing deadline, default 3600 seconds,
+  configurable from 10 to 3600, matching the provider's supported range. Long loads
+  can use the full one-hour deadline; native MCP/client deadlines are separate. Longer deadlines do not retry
   mutations or relax validation, permissions, or working-set budgets.
 
 Provisioning credentials are separate from application S3 credentials. Private
@@ -47,7 +47,7 @@ tofu -chdir=infra/scaleway apply -input=false -var="image=$IMAGE" deployment.tfp
 
 OpenTofu versions that check current inputs against a saved plan require the same
 variable files and explicit overrides at apply time. For example, pass the same
-`-var=request_timeout_seconds=1800` at both steps when overriding private tfvars.
+`-var=request_timeout_seconds=3600` at both steps when overriding private tfvars.
 These values must match the inspected saved plan; they do not change its actions.
 An input-mismatch rejection occurs before any provider action. Reconcile the
 saved plan and actual provider state before correcting such an invocation.

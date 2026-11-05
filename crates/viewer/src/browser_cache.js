@@ -13,8 +13,12 @@ const compatible = (async () => {
   await Promise.all((await caches.keys()).filter(name => name.startsWith('ergo-read-packets-')).map(name => caches.delete(name)));
 })().catch(() => {});
 const MAX_ENTRY = 64 * 1024 * 1024;
-const BUDGET = 512 * 1024 * 1024;
-const MAX_ENTRIES = 1024;
+const MIN_BUDGET = 128 * 1024 * 1024;
+const BUDGET = 2 * 1024 * 1024 * 1024;
+const MAX_ENTRIES = 4096;
+const budgetFor = quota => Math.min(BUDGET, Math.max(MIN_BUDGET, Math.floor((quota || BUDGET * 5) / 5)));
+const writes = {stored: 0, skipped: 0, lastSkipReason: null};
+const skipped = reason => { writes.skipped++; writes.lastSkipReason = reason; return false; };
 let database, opening, maintenance = Promise.resolve(), enabled = true, epoch = 0, pinTimer;
 const versions = new Map(), pinned = new Set(), libraryPinned = new Set();
 let basicLibrary;
@@ -105,14 +109,15 @@ export async function cacheGet(url) {
 }
 export async function cachePut(url, etag, bytes) {
   try {
-    if (!enabled || bytes.byteLength > MAX_ENTRY) return false;
+    if (!enabled) return skipped('suspended');
+    if (bytes.byteLength > MAX_ENTRY) return skipped('entry-too-large');
     url = key(url);
     const started = epoch, version = versions.get(url) || 0;
     const digest = await hash(bytes), data = new Blob([bytes]);
     const quota = await navigator.storage?.estimate?.().then(value => value.quota).catch(() => null);
-    const budget = Math.min(BUDGET, Math.max(MAX_ENTRY, Math.floor((quota || BUDGET * 10) / 10)));
+    const budget = budgetFor(quota);
     return await enqueue(async () => {
-      if (!enabled || started !== epoch || version !== (versions.get(url) || 0)) return false;
+      if (!enabled || started !== epoch || version !== (versions.get(url) || 0)) return skipped('superseded-or-suspended');
       const storage = await bounded(db());
       const tx = storage.transaction(['entries', 'blobs'], 'readwrite'), done = completed(tx);
       try {
@@ -134,13 +139,14 @@ export async function cachePut(url, etag, bytes) {
         const record = refs.get(entry.hash);
         if (--record.count === 0) total -= record.bytes;
       }
-      if (total>budget || count>MAX_ENTRIES) {tx.abort();await done.catch(()=>{});return false;}
+      if (total>budget || count>MAX_ENTRIES) {tx.abort();await done.catch(()=>{});return skipped('capacity-protected-by-active-data');}
       // Reclaim only unreferenced blobs in the same atomic transaction.
       const live = new Set(all.filter(entry => !removed.has(entry.url)).map(entry => entry.hash));
       for (const old of await request(blobs.getAllKeys())) if (!live.has(old)) blobs.delete(old);
       if (!await request(blobs.get(digest))) blobs.put({hash: digest, data});
       entries.put(all[all.length - 1]);
       await done;
+      writes.stored++;
       return true;
       } catch (error) {
         try { tx.abort(); } catch {}
@@ -148,8 +154,31 @@ export async function cachePut(url, etag, bytes) {
         throw error;
       }
     });
-  } catch { return false; } // Quota/private-mode failures must not block display.
+  } catch (error) { return skipped(error?.name || 'storage-error'); } // Never block display.
 }
+
+// On-demand diagnostics expose counts/capacity, never request URLs or geometry.
+// Raising this disk budget does not allocate a buffer of that size in WASM.
+export async function cacheInfo() {
+  const estimate = await navigator.storage?.estimate?.().catch(() => null);
+  const base = {capacityBytes: budgetFor(estimate?.quota), maxEntryBytes: MAX_ENTRY, maxEntries: MAX_ENTRIES,
+    browserQuotaBytes: estimate?.quota ?? null, browserUsageBytes: estimate?.usage ?? null,
+    persistent: await navigator.storage?.persisted?.().catch(() => false) || false,
+    writes: {...writes}};
+  try {
+    const storage = await bounded(db()), tx = storage.transaction('entries', 'readonly'), done = completed(tx);
+    const entries = await request(tx.objectStore('entries').getAll()); await done;
+    const blobs = new Map(entries.map(entry => [entry.hash, entry.bytes]));
+    const protectedBlobs = new Set(entries.filter(entry => isPinned(entry.url) || entry.pinnedUntil > Date.now()).map(entry => entry.hash));
+    return {...base, available: true, entries: entries.length, uniqueBlobs: blobs.size,
+      storedBytes: [...blobs.values()].reduce((sum, bytes) => sum + bytes, 0),
+      protectedBytes: [...protectedBlobs].reduce((sum, hash) => sum + blobs.get(hash), 0),
+      regionEntries: entries.filter(entry => new URL(entry.url).pathname.endsWith('/view')).length,
+      groundEntries: entries.filter(entry => new URL(entry.url).pathname.startsWith('/api/ground/')).length,
+      libraryEntries: entries.filter(entry => new URL(entry.url).pathname.startsWith('/api/library/')).length};
+  } catch { return {...base, available: false}; }
+}
+globalThis.ergoCacheInfo = cacheInfo;
 export async function cacheForget(url) {
   try {
     url = key(url); versions.set(url, (versions.get(url) || 0) + 1);
@@ -188,7 +217,7 @@ export async function requestPersistence() { try { return await navigator.storag
 export async function warmBasicLibrary(revision) {
   if (!/^[0-9a-f]{64}$/.test(revision) || !enabled) return false;
   const started=epoch, root=`/api/library/${revision}/`;
-  const controller=new AbortController(), timer=setTimeout(()=>controller.abort(),1800000);
+  const controller=new AbortController(), timer=setTimeout(()=>controller.abort(),3600000);
   try {
     const load=async file=>{
       const url=root+file, cached=await cacheGet(url);

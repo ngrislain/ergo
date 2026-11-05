@@ -165,11 +165,7 @@ impl Publisher {
         Ok(Self {
             base,
             token,
-            construction_timeout: if configured_timeout.is_some() {
-                http_timeout(configured_timeout.as_deref())?
-            } else {
-                Duration::from_secs(30 * 60)
-            },
+            construction_timeout: construction_timeout(configured_timeout.as_deref())?,
             client: Client::builder()
                 .timeout(http_timeout(configured_timeout.as_deref())?)
                 .retry(reqwest::retry::never())
@@ -194,7 +190,7 @@ impl Publisher {
             .header("X-Ergo-Request", "1");
         let endpoint = path.split('?').next().unwrap_or(path);
         if method == Method::GET
-            && ["/workspace", "/view", "/download"]
+            && ["/workspace", "/view", "/download", "/export"]
                 .iter()
                 .any(|suffix| endpoint.ends_with(suffix))
         {
@@ -434,10 +430,15 @@ impl Publisher {
 fn http_timeout(value: Option<&str>) -> Result<Duration> {
     let seconds = value.map(str::parse::<u64>).transpose()?.unwrap_or(300);
     ensure!(
-        (1..=1800).contains(&seconds),
-        "ERGO_MCP_HTTP_TIMEOUT_SECONDS must be 1..1800"
+        (1..=3600).contains(&seconds),
+        "ERGO_MCP_HTTP_TIMEOUT_SECONDS must be 1..3600"
     );
     Ok(Duration::from_secs(seconds))
+}
+fn construction_timeout(value: Option<&str>) -> Result<Duration> {
+    value.map_or(Ok(Duration::from_secs(3600)), |value| {
+        http_timeout(Some(value))
+    })
 }
 
 #[cfg(test)]
@@ -446,7 +447,13 @@ mod tests {
     fn http_deadlines_are_explicit_and_bounded() {
         assert_eq!(super::http_timeout(None).unwrap().as_secs(), 300);
         assert_eq!(super::http_timeout(Some("600")).unwrap().as_secs(), 600);
-        for value in ["0", "1801", "invalid"] {
+        assert_eq!(super::http_timeout(Some("3600")).unwrap().as_secs(), 3600);
+        assert_eq!(super::construction_timeout(None).unwrap().as_secs(), 3600);
+        assert_eq!(
+            super::construction_timeout(Some("600")).unwrap().as_secs(),
+            600
+        );
+        for value in ["0", "3601", "invalid"] {
             assert!(super::http_timeout(Some(value)).is_err());
         }
     }

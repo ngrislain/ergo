@@ -1,7 +1,7 @@
 //! Stage progress reports completed work, never an estimated overall duration.
 use serde::Deserialize;
 
-pub(crate) const CONSTRUCTION_TIMEOUT_MS: u32 = 30 * 60 * 1000;
+pub(crate) const CONSTRUCTION_TIMEOUT_MS: u32 = 60 * 60 * 1000;
 
 #[derive(Deserialize)]
 pub(crate) struct ReadStatus {
@@ -188,7 +188,7 @@ mod tests {
         assert!(status.preview.is_none());
         let loading = Loading::new(0.);
         assert_eq!(loading.preview_pieces, 0);
-        assert!(CONSTRUCTION_TIMEOUT_MS > 180_000 && CONSTRUCTION_TIMEOUT_MS <= i32::MAX as u32);
+        assert_eq!(CONSTRUCTION_TIMEOUT_MS, 3_600_000);
     }
     fn status(stage: &str, completed: usize, total: usize) -> ReadStatus {
         serde_json::from_value(serde_json::json!({"revision":"accepted","phase":"working","progress":{"stage":stage,"completed":completed,"total":total,"found_pieces":91265}})).unwrap()
