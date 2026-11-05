@@ -106,7 +106,9 @@ def main():
                     browser = playwright.chromium.launch(channel='chrome', headless=True,
                                                           args=['--enable-unsafe-swiftshader'])
                     try:
-                        page = browser.new_page(viewport={'width': 1440, 'height': 950})
+                        # Network fixtures must intercept every request, including
+                        # reloads; service-worker behavior has its own regression.
+                        page = browser.new_page(viewport={'width': 1440, 'height': 950}, service_workers='block')
                         page.add_init_script('''const timeout=window.setTimeout.bind(window);window.__readDeadlines=[];window.setTimeout=(callback,delay,...args)=>{if(delay>=180000)window.__readDeadlines.push(delay);if(delay===3600000)window.__expireConstruction=()=>callback(...args);return timeout(callback,delay,...args);};''')
                         errors = []
                         page.on('pageerror', lambda error: errors.append(str(error)))

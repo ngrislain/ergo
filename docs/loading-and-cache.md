@@ -324,9 +324,11 @@ process caches disappear. Retention/pruning can make an old revision unavailable
 
 The browser stores a small pending-read descriptor in the existing IndexedDB data
 cache, separately from completed geometry. It retains the exact accepted revision
-for up to seven days, subject to normal quota/eviction/logout. Reloading the same
-view reauthorizes that snapshot; HTTP 410 can restart once at the current revision,
-discarding the old preview. Different revisions are never spliced together. Late
+for up to seven days, subject to normal quota/eviction/logout. Descriptor reads use
+the same four-second local-cache grace as region reads, so a cold/contended disk
+does not discard the snapshot after the ordinary 300 ms metadata-cache deadline.
+Reloading the same view reauthorizes that snapshot; HTTP 410 can restart once at
+the current revision, discarding the old preview. Different revisions are never spliced together. Late
 completion of an older request cannot erase a newer pending descriptor. Successful
 completion leaves a tiny completion marker. The loading panel reports saved/resumed
 counts, and `X-Ergo-Load-Resumed` identifies a resumed materialization response.

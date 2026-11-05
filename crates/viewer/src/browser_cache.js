@@ -105,7 +105,7 @@ async function stored(url) {
   return {etag: entry.etag, bytes};
 }
 export async function cacheGet(url) {
-  try { if (!enabled) return null; url = key(url); return await bounded(stored(url).catch(() => null), url.includes('/view?') || url.includes('/api/library/') ? 4000 : 300); }
+  try { if (!enabled) return null; url = key(url); return await bounded(stored(url).catch(() => null), url.includes('/view?') || url.includes('/__ergo_pending_view?') || url.includes('/api/library/') ? 4000 : 300); }
   catch { return null; }
 }
 export async function cachePut(url, etag, bytes, newerOnly = false) {

@@ -56,6 +56,13 @@ with sync_playwright() as playwright:
            const readUrl='/api/shared-worlds/00000000-0000-4000-8000-000000000000/view?x=0&y=0&z=0&radius=5&format=cbor';
            const first=await cache.pendingReadBegin(readUrl,'1'.repeat(64));
            if((await fresh.pendingReadGet(readUrl))?.revision!=='1'.repeat(64))throw Error('Pending snapshot was lost across module reload');
+           // A cold/contended descriptor read must have the same four-second
+           // grace as its region, rather than becoming a miss after 300 ms.
+           const originalArrayBuffer=Blob.prototype.arrayBuffer;
+           Blob.prototype.arrayBuffer=async function(){await new Promise(resolve=>setTimeout(resolve,500));return originalArrayBuffer.call(this);};
+           try {
+             if((await fresh.pendingReadGet(readUrl))?.revision!=='1'.repeat(64))throw Error('Slow storage discarded an interrupted snapshot');
+           } finally {Blob.prototype.arrayBuffer=originalArrayBuffer;}
            const second=await fresh.pendingReadBegin(readUrl,'2'.repeat(64));
            await cache.pendingReadFinish(readUrl,first);
            if((await fresh.pendingReadGet(readUrl))?.revision!=='2'.repeat(64))throw Error('Late completion erased a newer resume descriptor');
