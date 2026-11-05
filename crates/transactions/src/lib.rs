@@ -897,6 +897,20 @@ impl Transaction {
         &self.base.id
     }
 
+    /// Discard uncommitted edits and await closing this transaction's snapshot
+    /// handles. This never publishes; unsettled publication pins remain protected.
+    pub async fn close(self) -> Result<()> {
+        let Self {
+            base,
+            read_snapshot,
+            tip,
+            ..
+        } = self;
+        base.close().await?;
+        read_snapshot.close().await?;
+        tip.close().await
+    }
+
     /// Optional immutable-index warm-up for the requested paths only. At most
     /// 64 traversals run concurrently, with a 64 KiB speculative node limit.
     /// No payloads, mutable heads or transaction predicates are read/registered.
@@ -914,6 +928,98 @@ impl Transaction {
             .buffer_unordered(64)
             .for_each(|_| async {})
             .await;
+    }
+
+    /// Bounded optional immutable record warming. Like path lookahead this does
+    /// not observe dependencies or replace pending reads. Individual speculative
+    /// nodes/values are capped at 64 KiB; failures remain ordinary cache misses.
+    pub async fn prefetch_read_records(&self, paths: Vec<OctreePath>, max_bytes: usize) {
+        if paths.is_empty() || max_bytes == 0 {
+            return;
+        }
+        use futures::StreamExt;
+        let snapshot = &self.read_snapshot;
+        let mut work = futures::stream::iter(paths)
+            .map(|path| async move {
+                let mut tree = Tree::bounded_read(snapshot.repo.clone());
+                match tree.get(snapshot.commit.root.as_ref(), &path).await {
+                    Ok(Some(id)) => snapshot
+                        .repo
+                        .object_limited(&id, 64 * 1024)
+                        .await
+                        .map_or(0, |bytes| bytes.len()),
+                    _ => 0,
+                }
+            })
+            .buffer_unordered(64);
+        let mut bytes = 0usize;
+        while let Some(size) = work.next().await {
+            bytes = bytes.saturating_add(size);
+            if bytes >= max_bytes {
+                break;
+            }
+        }
+    }
+
+    /// Optional first-page lookahead across independent immutable regions.
+    /// Scans register no predicates; required transaction scans remain mandatory.
+    /// At most 256 prefixes / 4096 value IDs, 64 concurrent reads and five seconds
+    /// of index lookahead. Nodes/values are individually limited to 64 KiB.
+    /// Returned rows are partial hints, never authoritative observed membership.
+    pub async fn prefetch_read_pages(
+        &self,
+        prefixes: Vec<OctreePath>,
+        max_bytes: usize,
+    ) -> Vec<(OctreePath, ContentId)> {
+        if prefixes.is_empty() || max_bytes == 0 {
+            return Vec::new();
+        }
+        use futures::StreamExt;
+        let snapshot = &self.read_snapshot;
+        let mut rows = BTreeMap::new();
+        let _ = tokio::time::timeout(std::time::Duration::from_secs(5), async {
+            let mut pages = futures::stream::iter(prefixes.into_iter().take(256))
+                .map(|prefix| {
+                    let repo = snapshot.repo.clone();
+                    let root = snapshot.commit.root.clone();
+                    async move {
+                        Tree::bounded_read(repo)
+                            .scan_page(root.as_ref(), &prefix, None, 64)
+                            .await
+                            .ok()
+                    }
+                })
+                .buffer_unordered(64);
+            while let Some(page) = pages.next().await {
+                if let Some(page) = page {
+                    for (path, id) in page.leaves {
+                        rows.insert(path, id);
+                        if rows.len() >= 4096 {
+                            return;
+                        }
+                    }
+                }
+            }
+        })
+        .await;
+        let ids = rows.values().cloned().collect::<BTreeSet<_>>();
+        let mut values = futures::stream::iter(ids)
+            .map(|id| async move {
+                snapshot
+                    .repo
+                    .object_limited(&id, 64 * 1024)
+                    .await
+                    .map_or(0, |v| v.len())
+            })
+            .buffer_unordered(64);
+        let mut bytes = 0usize;
+        while let Some(size) = values.next().await {
+            bytes = bytes.saturating_add(size);
+            if bytes >= max_bytes {
+                break;
+            }
+        }
+        rows.into_iter().collect()
     }
 
     pub fn pin_id(&self) -> Option<&str> {

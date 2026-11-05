@@ -27,8 +27,40 @@ pub struct Working {
     pub new_blocks: BTreeSet<BlockCoord>,
     pub loaded_bytes: usize,
     limits: Limits,
+    discovery: Option<DiscoveryProgress>,
+}
+
+struct DiscoveryProgress {
+    visited: usize,
+    pending: usize,
+    phase: &'static str,
+    since: std::time::Instant,
+    milliseconds: BTreeMap<&'static str, u64>,
+}
+impl DiscoveryProgress {
+    fn phase(&mut self, next: &'static str) {
+        *self.milliseconds.entry(self.phase).or_default() +=
+            self.since.elapsed().as_millis() as u64;
+        self.phase = next;
+        self.since = std::time::Instant::now();
+    }
+    fn report(&self) -> serde_json::Value {
+        let mut milliseconds = self.milliseconds.clone();
+        *milliseconds.entry(self.phase).or_default() += self.since.elapsed().as_millis() as u64;
+        serde_json::json!({"visited":self.visited,"pending":self.pending,"active_phase":self.phase,"phase_milliseconds":milliseconds})
+    }
 }
 impl Working {
+    pub(super) fn discovery_report(&self) -> serde_json::Value {
+        self.discovery
+            .as_ref()
+            .map_or(serde_json::Value::Null, DiscoveryProgress::report)
+    }
+    pub(super) fn discovery_phase(&mut self, phase: &'static str) {
+        if let Some(progress) = self.discovery.as_mut() {
+            progress.phase(phase);
+        }
+    }
     pub(super) fn add_joint(&mut self, id: ContentId, joint: super::paged::BoundJoint) {
         self.joints.insert(id, joint);
     }
@@ -76,6 +108,7 @@ impl Working {
             new_blocks: BTreeSet::new(),
             loaded_bytes: 0,
             limits,
+            discovery: None,
         };
         result.charge(&result.policy.clone())?;
         result.charge(&result.metadata.clone())?;
@@ -153,6 +186,34 @@ impl Working {
         }
         self.pieces.insert(id.clone(), piece.clone());
         Ok(piece)
+    }
+    pub(super) async fn prefetch_pieces(&self, ids: Vec<ContentId>) {
+        let paths = ids
+            .into_iter()
+            .filter(|id| !self.pieces.contains_key(id))
+            .map(|id| entity_path(3, &id))
+            .collect();
+        self.tx.prefetch_read_records(paths, self.remaining()).await;
+    }
+    pub(super) async fn warm_member_spatial(
+        &mut self,
+        ids: &BTreeSet<ContentId>,
+    ) -> SharedResult<()> {
+        let ids: Vec<_> = ids.iter().collect();
+        for wave in ids.chunks(READ_CONCURRENCY) {
+            let mut paths = BTreeSet::new();
+            for id in wave {
+                let piece = self.piece(id).await?.ok_or_else(SharedError::missing)?;
+                let bounds = self.brick(&piece, 1).await?.render_bounds;
+                for &coord in &piece.replicas {
+                    paths.insert(super::spatial::record(&piece, coord, bounds).0);
+                }
+            }
+            self.tx
+                .prefetch_read_records(paths.into_iter().collect(), self.remaining())
+                .await;
+        }
+        Ok(())
     }
     pub async fn rules(&mut self, id: &ContentId) -> SharedResult<Arc<Rules>> {
         if let Some(rules) = self.rules.get(id) {
@@ -352,25 +413,121 @@ impl Working {
         seeds: &BTreeSet<ContentId>,
     ) -> SharedResult<BTreeSet<ContentId>> {
         let mut visited = BTreeSet::new();
-        let mut stack: Vec<_> = seeds.iter().cloned().collect();
+        let mut stack = seeds.clone();
+        let started = std::time::Instant::now();
+        self.discovery = Some(DiscoveryProgress {
+            visited: 0,
+            pending: stack.len(),
+            phase: "warming",
+            since: started,
+            milliseconds: BTreeMap::new(),
+        });
+        let mut next_progress = 1024;
         let halo = self
             .model
             .tolerances
             .position_brick_units
             .max(INFERRED_JOINT_HALO);
-        while let Some(id) = stack.pop() {
-            if !visited.insert(id.clone()) {
-                continue;
+        while !stack.is_empty() {
+            let wave = (0..READ_CONCURRENCY)
+                .filter_map(|_| stack.pop_last())
+                .collect::<Vec<_>>();
+            let warm = wave
+                .iter()
+                .filter(|id| !visited.contains(*id) && !self.pieces.contains_key(*id))
+                .map(|id| entity_path(3, id))
+                .collect::<BTreeSet<_>>()
+                .into_iter()
+                .collect();
+            self.discovery_phase("warming");
+            self.tx.prefetch_read_records(warm, self.remaining()).await;
+            // Broad optional lookahead pays off on large closures; small edits
+            // keep their narrow required reads without an extra page warm-up.
+            if wave.len() >= 16 {
+                self.discovery_phase("spatial_warming");
+                let mut neighbor_bounds = Vec::new();
+                for id in &wave {
+                    if !visited.contains(id)
+                        && let Some(piece) = self.piece(id).await?
+                    {
+                        neighbor_bounds.push(
+                            ergo_world::attachments::bounds(&self.brick(&piece, 1).await?)
+                                .expanded(halo + ergo_world::attachments::PORT_OVERHANG),
+                        );
+                    }
+                }
+                let paths = super::spatial::neighbor_read_paths(&neighbor_bounds)?;
+                self.tx.prefetch_read_paths(paths.clone()).await;
+                self.discovery_phase("spatial_pages_warming");
+                let hints = self
+                    .tx
+                    .prefetch_read_pages(
+                        paths
+                            .into_iter()
+                            .filter(|p| p.octants().first() == Some(&1))
+                            .collect(),
+                        self.remaining(),
+                    )
+                    .await;
+                self.discovery_phase("spatial_hint_pieces");
+                let pieces = hints
+                    .into_iter()
+                    .filter_map(|(path, _)| {
+                        let coord = super::spatial::coordinate(
+                            &OctreePath::new(path.octants().get(..65)?.to_vec()).ok()?,
+                        )
+                        .ok()?;
+                        super::spatial::reference_piece(&path, coord).ok()
+                    })
+                    .collect::<BTreeSet<_>>();
+                self.prefetch_pieces(pieces.into_iter().collect()).await;
             }
-            let Some(piece) = self.piece(&id).await? else {
-                continue;
-            };
-            stack.extend(self.piece_rules(&piece).await?);
-            stack.extend(self.external(&piece.id).await?);
-            let bounds = ergo_world::attachments::bounds(&self.brick(&piece, 1).await?)
-                .expanded(halo + ergo_world::attachments::PORT_OVERHANG);
-            stack.extend(self.neighbors(bounds).await?);
+            for id in wave {
+                if !visited.insert(id.clone()) {
+                    continue;
+                }
+                self.discovery.as_mut().unwrap().visited = visited.len();
+                self.discovery_phase("pieces");
+                let Some(piece) = self.piece(&id).await? else {
+                    continue;
+                };
+                self.discovery_phase("rules");
+                stack.extend(
+                    self.piece_rules(&piece)
+                        .await?
+                        .into_iter()
+                        .filter(|id| !visited.contains(id)),
+                );
+                self.discovery_phase("external_joints");
+                stack.extend(
+                    self.external(&piece.id)
+                        .await?
+                        .into_iter()
+                        .filter(|id| !visited.contains(id)),
+                );
+                self.discovery_phase("meshes");
+                let bounds = ergo_world::attachments::bounds(&self.brick(&piece, 1).await?)
+                    .expanded(halo + ergo_world::attachments::PORT_OVERHANG);
+                self.discovery_phase("spatial_neighbors");
+                stack.extend(
+                    self.neighbors(bounds)
+                        .await?
+                        .into_iter()
+                        .filter(|id| !visited.contains(id)),
+                );
+                self.discovery.as_mut().unwrap().pending = stack.len();
+            }
+            if visited.len() >= next_progress {
+                tracing::info!(
+                    visited = visited.len(),
+                    pending = stack.len(),
+                    elapsed_s = started.elapsed().as_secs(),
+                    "Discovering bounded dependency closure"
+                );
+                next_progress = visited.len() + 1024;
+            }
         }
+        self.discovery_phase("complete");
         Ok(visited)
     }
     /// Conservative read-only dependency guard. Complete assembly reads already
@@ -454,10 +611,15 @@ impl Working {
             .filter_map(|r| r.source_model.clone())
             .collect::<BTreeSet<_>>();
         for source in sources {
-            let model: ergo_world::assembly::Model =
-                self.tx.blob_limited(&source, self.remaining()).await?;
-            self.charge(&model)?;
-            model.validate_isometries()?;
+            let value: serde_json::Value = self.tx.blob_limited(&source, self.remaining()).await?;
+            self.charge(&value)?;
+            // Already-accepted canonical pieces remain authoritative when an
+            // optional editing hierarchy is no longer usable. Incoming models
+            // are checked separately before staging; current hints retain the
+            // strict nested-isometry check. No retired construct is resolved.
+            if let Ok(model) = serde_json::from_value::<ergo_world::assembly::Model>(value) {
+                model.validate_isometries()?;
+            }
         }
         let mut local = BTreeMap::new();
         let mut bricks = Vec::new();

@@ -38,6 +38,83 @@ fn public(bounds: Aabb) -> ([f64; 3], [f64; 3]) {
     let b = ergo_world::coordinates::public(bounds.max);
     (a.min(b).to_array(), a.max(b).to_array())
 }
+
+/// Optional immutable lookahead for a wave of required neighbour queries. This
+/// computes spatial paths only; the ordinary query still observes its precise
+/// directories/prefixes and reads pending values through the transaction.
+pub(super) fn neighbor_read_paths(bounds: &[Aabb]) -> SharedResult<Vec<OctreePath>> {
+    const MAX_PATHS: usize = 2048;
+    const DEPTH: usize = 6;
+    let mut cells = BTreeMap::<BlockCoord, Vec<([f64; 3], [f64; 3])>>::new();
+    for &bounds in bounds {
+        let (lo, hi) = public(bounds);
+        let low = lo.map(|v| (v / BLOCK_SIZE).floor() as i64);
+        let high = hi.map(|v| (v / BLOCK_SIZE).floor() as i64);
+        let lengths =
+            std::array::from_fn::<_, 3, _>(|a| i128::from(high[a]) - i128::from(low[a]) + 1);
+        // Large/custom parts retain the normal bounded query; speculative
+        // lookahead must not enumerate an enormous geographic volume.
+        if lengths.iter().any(|n| !(1..=8).contains(n)) || lengths.iter().product::<i128>() > 8 {
+            continue;
+        }
+        for x in low[0]..=high[0] {
+            for y in low[1]..=high[1] {
+                for z in low[2]..=high[2] {
+                    let coord = [x, y, z].into();
+                    if cells.len() < 512 || cells.contains_key(&coord) {
+                        cells.entry(coord).or_default().push((lo, hi));
+                    }
+                }
+            }
+        }
+    }
+    let mut paths = BTreeSet::new();
+    let mut ordered = Vec::new();
+    let mut queue = std::collections::VecDeque::new();
+    for (&coord, queries) in &cells {
+        let path = directory(coord);
+        if paths.insert(path.clone()) {
+            ordered.push(path);
+        }
+        let c: [i64; 3] = coord.into();
+        queue.push_back((
+            block_path(coord),
+            c.map(|v| v as f64 * BLOCK_SIZE),
+            BLOCK_SIZE,
+            0,
+            queries,
+        ));
+    }
+    while let Some((prefix, origin, size, depth, queries)) = queue.pop_front() {
+        let path = prefix.child(0)?;
+        if paths.insert(path.clone()) {
+            ordered.push(path);
+        }
+        if paths.len() >= MAX_PATHS {
+            break;
+        }
+        if depth == DEPTH {
+            continue;
+        }
+        let half = size / 2.;
+        for q in 0..8u8 {
+            let child_origin =
+                std::array::from_fn(|a| origin[a] + if q & (1 << a) != 0 { half } else { 0. });
+            if queries.iter().any(|(lo, hi)| {
+                (0..3).all(|a| child_origin[a] <= hi[a] && child_origin[a] + half >= lo[a])
+            }) {
+                queue.push_back((
+                    prefix.child(1)?.child(q)?,
+                    child_origin,
+                    half,
+                    depth + 1,
+                    queries,
+                ));
+            }
+        }
+    }
+    Ok(ordered)
+}
 fn reference(piece: &ContentId, coord: BlockCoord, bounds: Aabb) -> OctreePath {
     let (lo, hi) = public(bounds);
     let c: [i64; 3] = coord.into();
@@ -146,6 +223,26 @@ mod tests {
             }
         }
     }
+
+    #[test]
+    fn neighbour_lookahead_is_bounded_and_only_targets_requested_blocks() {
+        let bounds = Aabb::new(
+            glam::DVec3::new(8., 2., -20.),
+            glam::DVec3::new(16., 3., -12.),
+        );
+        let paths = neighbor_read_paths(&[bounds]).unwrap();
+        assert!(!paths.is_empty() && paths.len() <= 2048);
+        let block = block_path([0, 0, 0].into());
+        let dir = directory([0, 0, 0].into());
+        assert!(
+            paths
+                .iter()
+                .all(|p| *p == dir || p.octants().starts_with(block.octants()))
+        );
+        let huge = Aabb::new(glam::DVec3::splat(-1e10), glam::DVec3::splat(1e10));
+        assert!(neighbor_read_paths(&[huge]).unwrap().is_empty());
+        assert_eq!(neighbor_read_paths(&[bounds, bounds]).unwrap(), paths);
+    }
 }
 
 impl Working {
@@ -238,6 +335,7 @@ impl Working {
     ) -> SharedResult<BTreeSet<ContentId>> {
         let mut result = BTreeSet::new();
         let (query_lo, query_hi) = public(bounds);
+        self.discovery_phase("spatial_cover");
         for region in address::cover(bounds)? {
             let mut p = region.octants().to_vec();
             p[0] = 5;
@@ -245,8 +343,10 @@ impl Working {
             self.regions.insert(region.clone());
             let mut after = None;
             loop {
+                self.discovery_phase("spatial_directory");
                 let page = self.tx.scan_page(&directory, after.as_ref(), 128).await?;
                 for (path, cid) in page.leaves {
+                    self.discovery_phase("spatial_headers");
                     let h: BlockHeader = self.tx.blob_limited(&cid, self.remaining()).await?;
                     self.charge(&h)?;
                     ensure!(coordinate(&path)? == h.coord, "Block directory mismatch");
@@ -271,6 +371,7 @@ impl Working {
                         };
                         let mut cursor = None;
                         loop {
+                            self.discovery_phase("spatial_index");
                             let refs = self
                                 .tx
                                 .scan_page_prefetched(&own, cursor.as_ref(), 128)
@@ -284,14 +385,31 @@ impl Working {
                                 }
                                 ids.push(cid);
                             }
+                            self.discovery_phase("spatial_references");
                             self.load_spatial_refs(ids.iter().cloned().collect())
                                 .await?;
+                            if !first_only {
+                                let mut candidates = Vec::new();
+                                for cid in &ids {
+                                    let r = self.spatial_ref(cid).await?;
+                                    if r.bounds.intersects(bounds) {
+                                        candidates.push(r.piece.clone());
+                                    }
+                                }
+                                self.discovery_phase("spatial_pieces_warming");
+                                self.prefetch_pieces(candidates).await;
+                            }
                             for cid in ids {
                                 let r = self.spatial_ref(&cid).await?;
-                                if r.bounds.intersects(bounds)
-                                    && let Some(piece) = self.piece(&r.piece).await?
-                                    && self.brick(&piece, 1).await?.bounds.intersects(bounds)
-                                {
+                                if !r.bounds.intersects(bounds) {
+                                    continue;
+                                }
+                                self.discovery_phase("spatial_pieces");
+                                if let Some(piece) = self.piece(&r.piece).await? {
+                                    self.discovery_phase("spatial_meshes");
+                                    if !self.brick(&piece, 1).await?.bounds.intersects(bounds) {
+                                        continue;
+                                    }
                                     result.insert(r.piece.clone());
                                     // Read-only guards need one external witness,
                                     // not every building inside street bounds.
@@ -317,6 +435,7 @@ impl Working {
                                     continue;
                                 }
                                 let child = prefix.child(1)?.child(q)?;
+                                self.discovery_phase("spatial_presence");
                                 if self.tx.directory_exists(&child).await? {
                                     stack.push((child, origin, half, depth + 1));
                                 }

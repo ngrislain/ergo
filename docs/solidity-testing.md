@@ -262,6 +262,15 @@ reported. Optional post-test PNGs colour those pieces red. This is a bounded
 model test with disclosed calibration/friction/collider assumptions, not a
 universal earthquake guarantee. Complete mechanical domains are required.
 
+Reviewed circular wheel/tyre profiles roll on cylindrical dynamic envelopes.
+Their revolute bearings are not implicitly braked or rotation-locked. An unbraked
+tyre can therefore fail the stationary-pose tolerances by rolling even with no
+broken connection; that is not itself evidence of structural collapse. Reports
+include `statistics.rolling_wheel_colliders`. An explicitly rotation-locked
+synthetic regression contrasts braking with free rolling, but there is no shipped
+measured brake model or default brake option. Material friction and rolling
+resistance are not calibrated; see [physical calibration](physical-calibration.md).
+
 `connection_model:"measured"` is the default: inferred stud connections are added
 and missing measurements are disclosed; unmeasured joints are idealized
 diagnostics. `connection_model:"contacts_only"` removes joints explicitly and

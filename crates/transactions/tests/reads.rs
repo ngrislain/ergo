@@ -9,9 +9,20 @@ fn p(s: &str) -> OctreePath {
 async fn identity_path_prefetch_does_not_replace_observation_or_pending_reads() {
     let repo = Repository::new(Arc::new(InMemory::new()), "identity-prefetch").unwrap();
     repo.create("main").await.unwrap();
+    let mut seed = repo.begin("main").await.unwrap();
+    seed.put(&p("1/2"), &1_u32).await.unwrap();
+    seed.commit("seed", "existing immutable record", Default::default())
+        .await
+        .unwrap();
     let mut pending = repo.begin("main").await.unwrap();
     pending.put(&p("1/2"), &42_u32).await.unwrap();
     pending.prefetch_read_paths([p("1/2"), p("2/3")]).await;
+    pending
+        .prefetch_read_records(vec![p("1/2"), p("2/3")], 4096)
+        .await;
+    pending
+        .prefetch_read_pages(vec![p("1"), p("2")], 4096)
+        .await;
     assert_eq!(pending.get::<u32>(&p("1/2")).await.unwrap(), Some(42));
     assert_eq!(pending.get::<u32>(&p("2/3")).await.unwrap(), None);
     let mut competitor = repo.begin("main").await.unwrap();
@@ -34,6 +45,10 @@ async fn speculative_identity_paths_are_not_extra_transaction_dependencies() {
     repo.create("main").await.unwrap();
     let mut transaction = repo.begin("main").await.unwrap();
     transaction.prefetch_read_paths([p("1/2")]).await;
+    transaction
+        .prefetch_read_records(vec![p("1/2")], 4096)
+        .await;
+    transaction.prefetch_read_pages(vec![p("1")], 4096).await;
     let mut competitor = repo.begin("main").await.unwrap();
     competitor.put(&p("1/2"), &12_u32).await.unwrap();
     competitor

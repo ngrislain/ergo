@@ -9,10 +9,38 @@ use crate::{
 };
 use glam::DVec3;
 
-/// Reviewed clearance of a 3.2 mm antenna shaft through the moulded flag bore.
+/// Reviewed clearance of a 3.2 mm antenna/lance shaft through the moulded flag bore.
 /// This recognizes only coaxial, upright catalogue pairs within the straight
 /// shaft's axial range, not arbitrary overlap, retention or joint strength.
 pub fn registered_bar_clearance(a: &Brick, b: &Brick, tolerance: f64) -> bool {
+    let lance_pair = match (
+        crate::part_library::profile_id(&a.part),
+        crate::part_library::profile_id(&b.part),
+    ) {
+        ("3849.dat", "4495a.dat") => Some((a, b)),
+        ("4495a.dat", "3849.dat") => Some((b, a)),
+        _ => None,
+    };
+    if let Some((pole, flag)) = lance_pair {
+        if !axis_aligned(pole)
+            || !axis_aligned(flag)
+            || (flag.transform.y_axis - DVec3::Y).length() > 1e-8
+        {
+            return false;
+        }
+        let c = crate::ldraw::conversion();
+        // Official 3849.dat: radius-4 LDU straight shaft, source Z -146..-14.
+        // The guard, grip and rounded tip are excluded from the clearance.
+        let low = pole.position + pole.transform * (c * DVec3::new(0., 0., -14.));
+        let high = pole.position + pole.transform * (c * DVec3::new(0., 0., -146.));
+        return (high.x - low.x).abs() <= tolerance
+            && (high.z - low.z).abs() <= tolerance
+            && high.y > low.y
+            && (flag.position.x - low.x).abs() <= tolerance
+            && (flag.position.z - low.z).abs() <= tolerance
+            && flag.position.y - 1. >= low.y - tolerance
+            && flag.position.y + 1. / 6. <= high.y + tolerance;
+    }
     let (pole, flag) = match (
         crate::part_library::profile_id(&a.part),
         crate::part_library::profile_id(&b.part),
@@ -181,6 +209,31 @@ mod tests {
         assert!(!registered_bar_clearance(&pole, &flag, tolerance));
         let unrelated = part("3005.dat", DVec3::new(0., 1.5, 0.));
         assert!(bodies_penetrate(&pole, &unrelated, tolerance));
+    }
+    #[test]
+    fn a_jousting_lance_clears_only_the_flag_bore_on_its_straight_upright_shaft() {
+        let mut pole = part("3849.dat", DVec3::ZERO);
+        pole.transform = crate::physical::world_transform(glam::DMat3::from_rotation_x(
+            -std::f64::consts::FRAC_PI_2,
+        ));
+        // Native X rotation puts the source north-pointing lance upwards.
+        let c = crate::ldraw::conversion();
+        if (pole.transform * (c * DVec3::new(0., 0., -146.))).y < 0. {
+            pole.transform = crate::physical::world_transform(glam::DMat3::from_rotation_x(
+                std::f64::consts::FRAC_PI_2,
+            ));
+        }
+        pole.bounds = crate::geometry::nominal_body_bounds(&pole.part)
+            .unwrap()
+            .transformed(pole.transform, pole.position);
+        let mut flag = part("4495a.dat", DVec3::new(0., 4., 0.));
+        assert!(registered_bar_clearance(&pole, &flag, 0.002));
+        flag.translated(DVec3::X * 0.02);
+        assert!(!registered_bar_clearance(&pole, &flag, 0.002));
+        flag.translated(-DVec3::X * 0.02 - DVec3::Y * 4.);
+        assert!(!registered_bar_clearance(&pole, &flag, 0.002));
+        flag.translated(DVec3::Y * 10.);
+        assert!(!registered_bar_clearance(&pole, &flag, 0.002));
     }
     #[test]
     fn catalogue_frame_receives_registered_brick_studs_but_rejects_half_stud_shift() {

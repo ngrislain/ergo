@@ -40,6 +40,8 @@ read-only partial previews while materializing. The complete current basic libra
 (138 sourced parts and five common constructs) is proactively cached locally;
 obsolete pre-migration construct versions are rejected. Native saves/exports share
 identical reusable definitions while retaining every placed occurrence.
+The basic OSM ground style retains natural features, roads, place names and main
+landmarks while filtering commercial points of interest before rasterization.
 Current-source [Paris landmark recipes](docs/paris-landmarks.md) prepare detailed
 Saint-Sulpice and an extremely tall Technic Eiffel Tower at their real coordinates.
 Both are published with exact public geometry/source-credit readback and checked
@@ -62,11 +64,11 @@ The prebuilt bundle includes native binaries and WASM assets; consumers need
 Node.js 20+ and Chrome/Chromium, not Rust.
 
 ```sh
-npm install --global --ignore-scripts @ngrislain/ergo-mcp@0.5.21
+npm install --global --ignore-scripts @ngrislain/ergo-mcp@0.5.22
 ergo-mcp --login --publish-url https://ergosandbox.com
 ```
 
-The [GitHub Release](https://github.com/ngrislain/ergo/releases/tag/v0.5.21)
+The [GitHub Release](https://github.com/ngrislain/ergo/releases/tag/v0.5.22)
 also provides the verified complete tarball and checksum.
 
 Generate/download a token in the signed-in browser, keep it in a private file,
@@ -176,5 +178,8 @@ prepares a moat, walkable arched bridge, genuine arrowslit panels and plate-free
 standing figures with capes, helmets and horses. Held weapons and archer poses
 remain pending measured connector capacities; local validation and shared
 publication are recorded separately.
+Local [flush parking and two-colour lance proposals](docs/model-recipes.md#local-flush-parking-and-lance-standard-proposals)
+and [closed-roof/articulated Paris drafts](docs/paris-landmarks.md) preserve
+unrelated accepted occurrences and record validation separately from publication.
 The server's unlisted `/catalogue` reference shows all canonical base pieces, genuine
 geometry previews, reviewed interfaces, mass sources and a LEGO/LDraw preview palette.

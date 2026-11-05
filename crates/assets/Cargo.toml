@@ -21,6 +21,9 @@ png = "0.17"
 jpeg-decoder = { version = "0.3", default-features = false }
 serde_bytes = "0.11"
 flate2 = "1"
+prost = "0.14"
+tiny-skia = "0.12"
+font8x8 = "0.3"
 
 [dev-dependencies]
 tokio = {version="1",features=["macros","rt-multi-thread"]}

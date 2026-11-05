@@ -20,7 +20,9 @@ tokens, receive credentials, proxy the API, or provide a remote MCP endpoint.
 Agent instructions follow [access and onboarding](access-and-onboarding.md) and
 the [MCP guide](local-construction-mcp.md). The setup installs the prebuilt npm
 package with Node, not Rust. The verified public package is
-`@ngrislain/ergo-mcp@0.5.21` from npm, with a byte-identical GitHub Release tarball.
+the verified npm version selected by `ERGO_MCP_PACKAGE`, with a byte-identical
+GitHub Release tarball. Keep the prior verified setting until a new release passes
+registry and consumer checks.
 Google login stays in the human's browser. The agent receives the path to a
 downloaded, expiring delegation and the operator-selected API origin. The example
 prompt explicitly asks for a shared construction; accepted production mutations
@@ -110,7 +112,7 @@ repository variable stays on the last verified package until the new release is
 published and verified:
 
 ```text
-@ngrislain/ergo-mcp@0.5.21
+@ngrislain/ergo-mcp@0.5.22
 ```
 
 For a local override, copy `site/.env.example` to ignored `site/.env`, edit that
@@ -119,7 +121,7 @@ variable with the same name. Update it only after the release asset is verified:
 
 ```sh
 gh variable set ERGO_MCP_PACKAGE --repo ngrislain/ergo \
-  --body '@ngrislain/ergo-mcp@0.5.21'
+  --body '@ngrislain/ergo-mcp@0.5.22'
 gh workflow run pages.yml --repo ngrislain/ergo --ref main
 ```
 

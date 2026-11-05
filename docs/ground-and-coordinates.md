@@ -102,7 +102,8 @@ The browser requests ground cells only as they enter the current frustum and
 finite fog range. The server:
 
 1. Checks the generated-cell cache in local storage or S3.
-2. On a miss/needed refresh, samples map pixels covering that geographic footprint.
+2. On a miss/needed refresh, styles the relevant OSM vector tile or samples an
+   explicitly configured raster source covering that geographic footprint.
 3. Classifies the nearest source pixel into the standard terrain palette and
    stores a boundary-inclusive colour field without colour interpolation.
 4. Returns an empty construction cell (`bricks: []`) plus the baseplate field,
@@ -132,12 +133,28 @@ not authorize offline access to constructions.
 
 ## Natural map palette
 
-The default OSM source classifies source pixels into discrete materials: map water
-colours become standard LEGO blue; land uses green/dark green, light/dark grey,
-yellow, white, brown and beige/tan. This is raster map-colour classification,
-not a claimed vector land-cover dataset. Labels and other raster details can
-influence the result. The source resolution does not acquire stud-scale geographic
-detail merely because the renderer evaluates every stud separately.
+The default basic OSM style draws available forest/woodland, grass/parks, water,
+snow/glacier and rock polygons in discrete natural LEGO colours. Roads and streets
+have simple white surfaces and grey borders. Place names, road names, water/park
+names, summits and selected main cultural/historic landmarks are labelled. It is
+not a complete scientific land-cover or elevation dataset: mountains have map
+features/names, not physical height changes to the flat support plane.
+
+Commercial POIs are excluded from vector feature classes before label placement.
+Shops, offices, banks, hotels, cafes, bars, pubs and restaurants do not acquire
+labels/icons. Landmark POIs use a small allowlist (such as museums, monuments,
+castles, archaeological sites and places of worship) and source rank filtering;
+unknown POI classes fail closed. A business's landmark-like name cannot bypass its
+class. Crowded labels are collision-filtered, so not every landmark is named at
+every zoom. This is filtering OSM classifications, not a guarantee that upstream
+OSM tagging is complete or correct.
+
+The small bitmap label font supports Latin/Latin-1 and Greek, prefers available
+Latin names and falls back to English names; unsupported scripts are omitted.
+The map is styled server-side without browser map SDKs, cookies, registration or
+API keys. Explicit external raster sources retain baked-in details: their labels
+cannot be selectively filtered. Source resolution does not acquire stud-scale
+geographic detail merely because the renderer evaluates each stud separately.
 
 For optional satellite/custom imagery, each source pixel selects the nearest
 CIELAB swatch from the same restricted natural palette. Both paths choose the
@@ -192,12 +209,30 @@ measurements. Implementation: `world/src/terrain.rs`, `assets/src/ground.rs`,
 
 ## Map sources and projection
 
-The default `ERGO_GROUND_SOURCE=osm` uses **OpenStreetMap Carto**, with visible
-OSM contributor attribution. `satellite` optionally selects Esri World Imagery.
+The default `ERGO_GROUND_SOURCE=osm` uses the **Ergo basic OSM** style over
+[OpenFreeMap](https://openfreemap.org/quick_start/) / OpenMapTiles vector data,
+with visible OpenStreetMap, OpenMapTiles and OpenFreeMap attribution. Source tiles
+come from `https://tiles.openfreemap.org/planet/latest/{z}/{x}/{y}.pbf`; source zoom
+is capped at 14 and geometry is overzoomed for display/sampling up to 18.
+`ERGO_MAP_VECTOR_TILE_URL` can select another compatible OpenMapTiles source.
+The style identifier `ergo-basic-osm-v1` participates in both derived-cache keys
+and the provider identity used to screen retained snapshot fields. Thus old
+business-labelled ground fields are not reused as this style, even if an operator
+retains a custom provider name.
+
+`satellite` optionally selects Esri World Imagery.
 The sampled footprint determines the baseplate's spatial colour field.
 `ERGO_MAP_TILE_URL` supports alternative XYZ **PNG or JPEG**
 imagery with `{z}`, `{x}`, and `{y}` placeholders and 256×256 tiles. Set matching
-provider attribution when changing the source. `disabled` uses the labeled palette fallback.
+provider attribution when changing the source. Raster and vector URL overrides are
+mutually exclusive. `disabled` uses the labeled palette fallback.
+
+For an explicit one-tile local preview, with the default clean source:
+
+```sh
+cargo run --release -p ergo-assets --example preview_map -- \
+  48.85822222 2.2945 18 target/map-preview.png
+```
 
 Web Mercator addresses source pixels with:
 
@@ -215,12 +250,18 @@ Web Mercator's latitude coverage.
 
 ## Caching, failure, and attribution
 
-Raw PNG/JPEG tiles and derived ground cells are persisted separately. Source tiles
+Raw MVT or PNG/JPEG tiles and derived ground cells are persisted separately. Source tiles
 are cached for at least seven days; expired requests use ETag/Last-Modified
 conditions where available. Requests use a stable application User-Agent and
 configured public Referer. Only active viewing triggers generation. Use the
-configured imagery provider's service terms and attribution; when OSM is selected,
-follow the [OSM tile policy](https://operations.osmfoundation.org/policies/tiles/).
+configured provider's service terms and attribution. The default uses the
+[OpenFreeMap public service](https://openfreemap.org/); an explicitly configured
+OSM raster endpoint follows its [tile policy](https://operations.osmfoundation.org/policies/tiles/).
+Vector downloads are limited to 4 MiB, decoded tiles to 8 MiB, selected geometry to
+300,000 points and input tiles to 50,000 features. A malformed vector tile is
+rejected before source persistence. A sixteen-entry, sixty-second rendered-tile
+cache avoids repainting the same tile for adjacent ground cells. Neither source
+cache contains world geometry or changes permissions, physical models or bricks.
 
 The viewport shows visible source attribution. Configured provider URLs/keys are
 kept server-side; exported provenance uses provider/tile identifiers rather than
@@ -228,5 +269,5 @@ credential-bearing URLs. Map failures produce an explicitly labeled one-color
 fallback (light bluish gray), cached briefly and retried on demand.
 
 Configuration is in [`.env.example`](../.env.example): `ERGO_GROUND_SOURCE`,
-`ERGO_MAP_TILE_URL`, `ERGO_MAP_PROVIDER`, `ERGO_MAP_USER_AGENT`,
+`ERGO_MAP_VECTOR_TILE_URL`, `ERGO_MAP_TILE_URL`, `ERGO_MAP_PROVIDER`, `ERGO_MAP_USER_AGENT`,
 `ERGO_MAP_ATTRIBUTION`, and `ERGO_MAP_ATTRIBUTION_URL`.

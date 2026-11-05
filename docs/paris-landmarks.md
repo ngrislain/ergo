@@ -40,6 +40,24 @@ Anonymous real-browser checks of both public landmark links load all pieces,
 finish the complete region (not a partial preview) and render without page errors.
 Final actual-WASM nave/stained-glass views were also inspected.
 
+### Local closed-roof revision (not published)
+
+The current builder additionally produces a **75,716-piece** revision at the same
+148⅓-brick height. Architectural references include the construction vocabulary of
+[21061 Notre-Dame de Paris](https://brickset.com/article/109391/review-21061-notre-dame-de-paris)
+and [71043 Hogwarts Castle](https://brickset.com/sets/71043-1/Hogwarts-Castle).
+It adds genuine `3037`/`3039` slopes, `3941`/`87081`/`3062b` round detailing and
+eight grey minifigure statues. The narthex, nave, aisles, choir and apse have closed
+overhead masonry. The pointed vault is bonded/corbelled with genuine plate spans;
+this is not a claim of calibrated voussoir-arch lateral thrust mechanics.
+
+Native and actual-WASM static validation pass with a zero-joint-wrench compression
+certificate. All 21 walking waypoints pass. The `check_roof` example casts upward
+rays against opaque source triangles at **19,668 room stud centres**, with no open
+sample; the same plan detects the older published roof's openings. This is sampled
+coverage, not a continuous watertightness proof. These local checks do not replace
+the accepted model recorded above and do not establish shake/impact survival.
+
 ## Technic Eiffel Tower
 
 The reference coordinate is **48.85822222, 2.2945**, from the
@@ -108,6 +126,57 @@ current parts from the embedded complete library. `--native-validation` runs the
 same static kernel through `validate_native`; `--render` requests actual WASM
 WebGL captures. `scripts/verify-landmark.py` independently checks an existing draft.
 The Python construct expander preserves individually posed current limb rotations.
+
+`scripts/build/landmark_revision.py` prepares an identity-preserving local
+replacement from an explicit complete accepted workspace and a desired native
+draft. It matches unchanged part/colour/pose occurrences one-to-one, retaining
+their exact accepted coordinates, local IDs, RGB and steps, including duplicate
+occurrences. Matching rounds pose entries to seven decimal places to avoid
+serialization noise; retained output keeps the original floats. Changed/new
+occurrences receive fresh IDs above the accepted maximum;
+unused old occurrences are removed in the proposal. Existing source records,
+credits and frozen physical metadata take precedence over the draft's asset cache.
+The helper rejects authored joints, anchors and groups requiring an explicit
+metadata-aware edit. It does not certify external dependencies or submit a write;
+publication still needs a fresh base check and complete server validation.
+
+For the checked closed-roof revision, **48,679** unchanged accepted occurrence IDs
+are retained, with 16,048 removals and 27,037 additions. Its input local IDs were
+cross-checked against the original accepted receipt, and its exact checkpoint
+geometry/source credits against the independently read public packet. This is
+local proposal evidence, not a new accepted revision.
+
+```sh
+python3 scripts/build/landmark_revision.py --input /private/accepted-church-workspace.json \
+  --draft target/church-draft/construction.native.json --output target/church-revision
+```
+
+The separate `scripts/build/eiffel_truss.py` generates an **unpublished articulated
+prototype**, not a replacement of the accepted tower. It uses genuine long Technic
+beams, cross axles and retaining bushes, four inclined legs in two orthogonal planes,
+X-braces and horizontal ties at the feet, two floor levels and top. Pillar angles
+increase from approximately 64.62° to 75.52° and 83.41°. Parts retain proper metric
+rotations and their unscaled source geometry. Two spaced axles join overlapping
+beam splices; individual round bearings remain free revolute joints.
+
+The checked 4,070-part prototype is overlap-free, with 2,308 unlimited revolute
+joints and 2,342 fixed/keyed/stud joints. Its bearing bricks now align with actual
+foundation studs instead of resting diagonally on smooth tiles. It is still
+**not publication-ready**: the conservative static certificate reports unbalanced
+free-axis hinge torque, and measured axle/bearing capacities are missing. Neither
+the joint inventory nor an image proves rigidity, gravity balance or dynamic
+stability. `inspect_mechanism` reports the actual
+components, support issue and calibration issue; its optional diagnostic export
+does not authorize publication or add brakes/motors.
+
+```sh
+cargo build --release -p ergo-world --example check_roof --example inspect_mechanism
+python3 scripts/build/eiffel_truss.py --output target/articulated-tower-draft \
+  --assets-from /absolute/path/to/current-source-construction.native.json
+target/release/examples/inspect_mechanism target/articulated-tower-draft/construction.native.json
+target/release/examples/check_roof target/church-draft/construction.native.json \
+  target/church-draft/roof-coverage.plan.json
+```
 
 `scripts/publish-landmark.py` performs a fresh authenticated preflight and writes
 a durable MCP sidecar/journal. Only its explicit `--publish` submits a mutation.

@@ -310,9 +310,17 @@ pub fn registered_clearance(a: &Brick, b: &Brick, tolerance: f64) -> bool {
         vertices.as_ref().is_some_and(|points| {
             points.iter().all(|p| {
                 let epsilon = tolerance * physical::SCALE.min_element();
-                if female.source.kind == Kind::Grip {
+                if female.source.kind == Kind::Grip
+                    || male.source.kind == Kind::Axle
+                        && female.source.kind == Kind::RoundHole
+                        && male.radius <= female.radius
+                {
                     // A round bar can roll inside a hand. Its square box
                     // proxy rotates with the tool, not with the fingers.
+                    // Likewise a cross axle's outer lobes fit inside a round
+                    // bearing at any roll; the empty corners of its box are
+                    // not solid material. Keep the finite bore's axial range
+                    // and the shaft's own radial envelope; clear no collars.
                     (*p - female.centre).dot(female.axis).abs() <= female.half + epsilon
                         && male.contains_radial(*p, epsilon)
                 } else {
@@ -663,6 +671,24 @@ mod tests {
             JointKind::Revolute { .. }
         ));
         assert!(registered_clearance(&axle, &beam, 0.002));
+        let axis = Port::new(&beam, &connectors(&beam.part)[0]).axis;
+        let original = axle.transform;
+        for angle in [0.13, std::f64::consts::FRAC_PI_4, 0.9] {
+            axle.transform =
+                physical::world_transform(DMat3::from_axis_angle(axis, angle)) * original;
+            update(&mut axle);
+            assert!(matches!(
+                joint(&axle, &beam).kind,
+                JointKind::Revolute { limits: None, .. }
+            ));
+            assert!(
+                registered_clearance(&axle, &beam, 0.002),
+                "A free cross axle must not acquire square-box corner interference at roll {angle}"
+            );
+        }
+        axle.translated(DVec3::X * 0.02);
+        assert!(connection(&axle, &beam, 0.002).is_none());
+        assert!(!registered_clearance(&axle, &beam, 0.002));
     }
     #[test]
     fn wheel_bearings_rotate_and_tyres_require_their_matching_rim() {

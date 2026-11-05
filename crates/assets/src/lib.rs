@@ -1,5 +1,6 @@
 //! Cache-first, on-demand catalog assets. No physics engine or renderer runs here.
 pub mod ground;
+mod simple_map;
 use anyhow::{Context, Result, ensure};
 use ergo_world::{
     geometry::{Mesh, fallback_mesh},

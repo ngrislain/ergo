@@ -1,6 +1,7 @@
 //! A bounded rigid-body sandbox. Float64 world coordinates; nominal brick-body
-//! convex hulls, not decorative studs. Reviewed shields/spears use source-defined
-//! compound boxes; arbitrary hollow/Technic mesh collision remains unsupported.
+//! convex hulls, not decorative studs. Reviewed wheel/tyre outer envelopes roll
+//! as cylinders; shields/spears use source-defined compound boxes. Arbitrary
+//! hollow/Technic mesh collision remains unsupported.
 use crate::physical::{to_meters, to_world, world_transform};
 use crate::{Aabb, BlockCoord, Brick, JointKind, JointSpec, geometry::Mesh};
 use anyhow::{Context, Result, ensure};
@@ -59,6 +60,7 @@ pub struct SimulationStats {
     pub moved: usize,
     pub joints: usize,
     pub inferred_joints: usize,
+    pub rolling_wheel_colliders: usize,
     pub penetrating_pairs: usize,
     pub elapsed: f64,
     pub max_displacement: f64,
@@ -236,7 +238,12 @@ impl Simulation {
             ));
             let boxes = crate::part_profiles::collision_boxes(&brick.part);
             let compound = boxes.len() > 1 && _mesh.physical.is_none();
-            let collider = if compound {
+            let rolling = rolling_wheel(&brick.part, local);
+            let collider = if rolling {
+                // These source datums put the axle on local Z. In SI their X/Y
+                // radial extents agree; Rapier's cylinder axis is local Y.
+                ColliderBuilder::cylinder(half.z, half.x)
+            } else if compound {
                 ColliderBuilder::compound(
                     boxes
                         .into_iter()
@@ -259,7 +266,16 @@ impl Simulation {
                 } else {
                     vector(offset)
                 })
-                .rotation(rotation.scaled_axis())
+                .rotation(if rolling {
+                    (rotation
+                        * na::UnitQuaternion::from_axis_angle(
+                            &na::Vector3::x_axis(),
+                            std::f64::consts::FRAC_PI_2,
+                        ))
+                    .scaled_axis()
+                } else {
+                    rotation.scaled_axis()
+                })
                 .mass(
                     _mesh
                         .physical
@@ -660,6 +676,11 @@ impl Simulation {
             bodies: self.originals.len(),
             joints: self.joint_specs.len(),
             inferred_joints: self.inferred_count,
+            rolling_wheel_colliders: self
+                .originals
+                .iter()
+                .filter(|b| rolling_wheel(&b.part, self.body_bounds[&b.part]))
+                .count(),
             elapsed: self.elapsed,
             numerical: NumericalSettings {
                 timestep_s: self.parameters.dt,
@@ -695,6 +716,19 @@ impl Simulation {
     }
 }
 
+/// Only the reviewed axle-Z wheel/rim/tyre profiles use a rolling envelope.
+/// Preserve nominal dimensions and catalogue mass; do not reinterpret custom or
+/// noncircular measured bounds as a cylinder, or infer a brake/rotation lock.
+fn rolling_wheel(part: &str, bounds: Aabb) -> bool {
+    matches!(
+        crate::part_library::profile_id(part),
+        "3641.dat" | "4624.dat" | "4624c01.dat"
+    ) && crate::geometry::nominal_body_bounds(part).is_some_and(|nominal| {
+        let half = to_meters(bounds.size() * 0.5);
+        nominal.min == bounds.min && nominal.max == bounds.max && (half.x - half.y).abs() < 1e-8
+    })
+}
+
 /// Preflight rigid translations with the shared catalogue collision rules.
 /// Checks many small increments to avoid skipping thin obstacles; large moves are
 /// rejected rather than undersampled. Revolute manipulation belongs to Simulation.
@@ -723,6 +757,73 @@ pub fn connected_group(id: u32, joints: &[JointSpec]) -> HashSet<u32> {
 mod tests {
     use super::*;
     use crate::demo::Demo;
+    fn tyre_demo() -> Demo {
+        let mut d = Demo::new();
+        d.add("4624c01", 0, 4., 0., 4.);
+        // Demo's generic fallback is not this specialty part's source datum.
+        let bounds = crate::geometry::nominal_body_bounds("4624c01.dat").unwrap();
+        let mesh = d.meshes.get_mut("4624c01.dat").unwrap();
+        mesh.body_bounds = bounds;
+        mesh.bounds = bounds;
+        let brick = &mut d.bricks[0];
+        brick.position = DVec3::new(4., 0., 4.) - bounds.min;
+        brick.bounds = bounds.transformed(brick.transform, brick.position);
+        brick.render_bounds = brick.bounds;
+        d
+    }
+    #[test]
+    fn a_free_tyre_rolls_under_small_acceleration_while_an_explicitly_braked_one_can_stay() {
+        let d = tyre_demo();
+        let id = d.bricks[0].id;
+        let mut free = Simulation::new(&d.bricks, &d.meshes, &[], &[], false).unwrap();
+        let mut braked = Simulation::new(&d.bricks, &d.meshes, &[], &[], false).unwrap();
+        // Explicit synthetic brake for this contrast only. Real simulations do
+        // not lock an axle or add a motor just to make a stability check pass.
+        braked.bodies[braked.handles[&id]].lock_rotations(true, true);
+        for sim in [&mut free, &mut braked] {
+            sim.set_horizontal_acceleration(DVec3::X * 0.01 * crate::physical::GRAVITY_M_S2)
+                .unwrap();
+            for _ in 0..60 {
+                sim.step();
+            }
+        }
+        assert_eq!(free.stats().rolling_wheel_colliders, 1);
+        let motion = free.piece_motions().next().unwrap();
+        assert!(motion.displacement_world.x > 0.05, "{motion:?}");
+        assert!(motion.rotation_radians > 0.05, "{motion:?}");
+        assert!(
+            braked.stats().max_displacement < 0.01,
+            "{:?}",
+            braked.stats()
+        );
+    }
+
+    #[test]
+    fn random_shake_does_not_classify_a_free_rolling_tyre_as_stationary() {
+        let d = tyre_demo();
+        let id = d.bricks[0].id;
+        let scene = crate::WorldExport {
+            schema: crate::SCHEMA_VERSION,
+            name: "Unbraked rolling tyre regression".into(),
+            geo: Default::default(),
+            bricks: d.bricks,
+            meshes: d.meshes,
+            joints: vec![],
+            fixed_bricks: vec![],
+            groups: vec![],
+            ground: vec![],
+            model: None,
+        };
+        let (_, _, report) = crate::solidity::test(
+            &scene,
+            crate::solidity::LoadCase::SmallEarthquake(Default::default()),
+        )
+        .unwrap();
+        assert!(!report.survived_declared_case);
+        assert_eq!(report.statistics.rolling_wheel_colliders, 1);
+        assert!(report.unstable_pieces.iter().any(|b| b.motion.id == id));
+    }
+
     #[test]
     fn resting_body_contacts_are_initialized_before_short_probe() {
         let mut d = Demo::new();

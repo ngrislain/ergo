@@ -197,9 +197,15 @@ impl SharedWorlds {
             )
         };
         let source = if let Some(cid) = &rules.source_model {
-            let model: ergo_world::assembly::Model =
-                ws.tx.blob_limited(cid, ws.remaining()).await?;
-            Some(model)
+            // The hierarchy is an optional editing hint, not the authoritative
+            // piece inventory. Read/hash/size failures still propagate, but an
+            // unusable hint must not prevent exporting already-canonical pieces.
+            // Only the current Model parser is tried: retired constructs are
+            // never resolved or expanded. Native export rebuilds from the pieces.
+            let value: serde_json::Value = ws.tx.blob_limited(cid, ws.remaining()).await?;
+            serde_json::from_value::<ergo_world::assembly::Model>(value)
+                .ok()
+                .filter(|model| model.matches(&bricks))
         } else {
             None
         };
@@ -259,6 +265,12 @@ impl SharedWorlds {
         actor: &str,
         mut request: BatchReplaceRequest,
     ) -> SharedResult<BatchReplaced> {
+        let started = std::time::Instant::now();
+        tracing::info!(
+            world = id,
+            assemblies = request.assemblies.len(),
+            "Preparing bounded assembly replacement"
+        );
         self.destination(id)?;
         ensure!(
             !request.assemblies.is_empty() && request.assemblies.len() <= 32,
@@ -317,9 +329,60 @@ impl SharedWorlds {
             seeds.extend(original.pieces.values().cloned());
             originals.push(original);
         }
+        // Warm only immutable records of the explicitly selected assemblies.
+        // Working still performs every ordinary read/predicate, permission and
+        // byte charge. This avoids thousands of serial cold S3 piece lookups.
+        let snapshot = self
+            .repo(id)?
+            .accepted_snapshot("main", &request.base)
+            .await?;
+        let limit = ws.remaining();
+        let mut warm_bytes = limit;
+        let warm_ids = seeds.iter().cloned().collect::<Vec<_>>();
+        let mut records = futures::stream::iter(warm_ids)
+            .map(|piece| {
+                let snapshot = &snapshot;
+                async move {
+                    let value: Option<Piece> =
+                        snapshot.get_limited(&entity_path(3, &piece), limit).await?;
+                    Ok::<_, SharedError>(
+                        value
+                            .map(|value| canonical_cbor(&value))
+                            .transpose()?
+                            .map_or(0, |bytes| bytes.len()),
+                    )
+                }
+            })
+            .buffered(READ_CONCURRENCY);
+        while let Some(bytes) = records.try_next().await? {
+            warm_bytes = warm_bytes
+                .checked_sub(bytes)
+                .ok_or_else(|| SharedError::working_limit("replacement prefetch byte budget"))?;
+        }
+        drop(records);
+        snapshot.close().await?;
+        tracing::info!(
+            world = id,
+            pieces = seeds.len(),
+            elapsed_s = started.elapsed().as_secs(),
+            "Warming replacement spatial references"
+        );
+        ws.warm_member_spatial(&seeds).await?;
+        tracing::info!(
+            world = id,
+            pieces = seeds.len(),
+            elapsed_s = started.elapsed().as_secs(),
+            "Discovering old replacement dependencies"
+        );
         // Discover every old dependency before staging any replacement. Only
         // the final multi-assembly state is validated and published.
         let before = ws.discover(&seeds).await?;
+        tracing::info!(
+            world = id,
+            affected = before.len(),
+            elapsed_s = started.elapsed().as_secs(),
+            "Staging bounded assembly replacement"
+        );
         let mut changed = BTreeSet::new();
         let mut results = Vec::new();
         let mut rules_changed = false;
@@ -427,7 +490,18 @@ impl SharedWorlds {
         let mut validation_seeds = seeds;
         validation_seeds.extend(before);
         let affected = ws.discover(&validation_seeds).await?;
+        tracing::info!(
+            world = id,
+            affected = affected.len(),
+            elapsed_s = started.elapsed().as_secs(),
+            "Checking bounded assembly replacement"
+        );
         let report = ws.validate(&affected).await?;
+        tracing::info!(
+            world = id,
+            elapsed_s = started.elapsed().as_secs(),
+            "Publishing bounded assembly replacement"
+        );
         self.advertise_blocks(id, ws.metadata.geo, &ws.new_blocks)
             .await?;
         let prepared = self
@@ -448,6 +522,7 @@ impl SharedWorlds {
             )
             .await?;
         let accepted = prepared.publish_with(self).await?;
+        tracing::info!(world=id,revision=%accepted.revision,elapsed_s=started.elapsed().as_secs(),"Accepted bounded assembly replacement");
         Ok(BatchReplaced {
             accepted,
             assemblies: results,

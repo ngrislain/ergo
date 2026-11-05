@@ -1,6 +1,27 @@
 # Changelog
 
-## Unreleased
+## v0.5.22
+
+- Style OSM vector ground with natural areas, water, roads, street/place names
+  and selected non-commercial landmarks; exclude business POIs before rendering.
+  Version derived floor caches by source and style, with bounded source/render caches.
+- Use cylindrical collision proxies for reviewed circular wheel/tyre datums so
+  free wheels can roll and fail a stationary-pose shake test without implicit brakes.
+- Preserve canonical accepted geometry when an optional saved editing hierarchy
+  is unusable; continue rejecting retired constructs in incoming models.
+- Warm bounded immutable piece records during replacement/dependency discovery,
+  deduplicate pending closure work and report replacement phases without changing
+  transaction predicates, permissions or complete-domain validation.
+- Add bounded read-only dependency-phase profiling and optional loopback serving
+  with the same warmed verified cache; preserve ordinary API authentication and
+  admission. Warm exact selected-member spatial paths and independent neighbour
+  pages as hints, retaining precise empty predicates and same-cell independence.
+- Add local recipes for flush district parking inlays, a closed-roof Saint-Sulpice
+  revision, two-colour jousting-lance standards and an articulated long-beam Eiffel
+  prototype. Local checks are distinct from accepted publication; the articulated
+  tower still lacks a static hinge-torque certificate and measured bearing capacities.
+- Recognize finite round-bearing clearance for freely rolled cross axles and the
+  reviewed upright jousting-lance/flag bore, without adding connector strength.
 
 ## v0.5.21
 

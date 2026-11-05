@@ -447,7 +447,7 @@ pub fn test(
         shake_acceleration_bound_m_s2:accel,dropped_potential_energy_j:energy,
         limitations:vec![
             "A bounded load-case test is not proof against arbitrary earthquakes or impacts.".into(),
-            "Collision boxes and box inertia approximate hollow geometry; friction is assumed.".into(),
+            "Nominal boxes/compound proxies approximate most bodies; reviewed wheels/tyres use cylindrical outer envelopes and cylinder inertia. Tread, hollow interiors, rolling resistance and friction are not experimentally calibrated. Axles are not implicitly braked.".into(),
             "Iterative contact-solver error can destabilize tall loose stacks; check numerical convergence before attributing failure to the construction.".into(),
             if omitted_inferred_connections > 0 {"Inferred stud connections were omitted: this is an unbonded contact diagnostic, not a test of the assembled stud-clutch model."}
             else {"All geometrically inferred stud pairs are represented; see unmeasured_connections for missing capacities."}.into(),

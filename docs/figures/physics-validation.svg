@@ -1,5 +1,5 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="1040" height="440" viewBox="0 0 1040 440" role="img" aria-labelledby="title desc">
-  <title id="title">Box collision and static snapshot validation</title><desc id="desc">Detailed brick meshes are approximated by body boxes. Saving rejects overlaps, then checks a rigid support certificate or a bounded gravity simulation. Only accepted results publish a manifest; failed models remain working copies.</desc>
+  <title id="title">Box collision and static snapshot validation</title><desc id="desc">Static admission checks nominal body boxes with finite registered connector clearances, then a compression or support-and-wrench certificate without simulation. Dynamic diagnostics separately use box, compound or reviewed wheel-cylinder proxies. Only accepted results publish a manifest; failed models remain working copies.</desc>
   <defs><marker id="a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0L10 5L0 10Z" fill="#678296"/></marker></defs>
   <rect width="1040" height="440" rx="14" fill="#f5f9fc"/>
   <g font-family="Arial,sans-serif" fill="#263e50"><text x="28" y="40" font-size="21" font-weight="bold">A working copy can move. A published snapshot must pass the save gate.</text>

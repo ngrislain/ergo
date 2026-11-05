@@ -55,8 +55,24 @@ starting point than assigning one arbitrary mass or multiplying a solid body box
 by ABS density, but do not constitute a laboratory calibration of every part.
 
 The simulator assigns the sourced total mass to a nominal box inertia approximation
-(or the reviewed compound boxes for shields and spears). The current friction/restitution coefficients are solver assumptions,
-not sourced material measurements, and are disclosed as such in validation reports.
+(or the reviewed compound boxes for shields and spears). The reviewed `4624c01`
+wheel/tyre unit, `4624` rim and `3641` tyre instead use cylindrical outer envelopes
+and cylinder inertia when their bounds match the catalogue's circular SI profile.
+Their local axle is Z; the source part's proper metric rotation rotates the collider
+with it. Unreviewed/noncircular bounds keep their existing proxy. Tread, hollow
+interiors and rolling resistance are not resolved. The current friction/restitution
+coefficients are solver assumptions, not sourced material measurements, and are
+disclosed as such in validation reports.
+
+The solver does not brake axles or lock tyre rotation to obtain a stability pass.
+`rolling_wheel_colliders` reports how many reviewed rolling envelopes were used.
+The default random-shake regression makes an unbraked tyre roll and fails its
+stationary-pose criterion; a separate explicitly rotation-locked synthetic fixture
+shows why a braked tyre can stay below the sliding-friction threshold. That fixture
+is not a measured brake model. A car rolling without breaking is movement, not
+necessarily structural collapse; the existing shake result checks pose drift and
+rotation as well as connection breaks. Static gravity acceptance, walking and
+rendering evidence do not establish a random-shake pass for the district cars.
 
 ## Connection strength must be measured
 
@@ -78,10 +94,24 @@ Removing that support does not produce a
 zero-joint-wrench proof: the server's existing operator-measurement gate still
 applies. Neither a source mesh nor a geometric factory-fit relation is calibration.
 
+The upright `3849` jousting lance additionally has finite clearance through the
+`4495a` flag bore only on its reviewed straight shaft (source Z −146 to −14 LDU,
+radius 4 LDU). The guard, grip and rounded tip are not included. The two-colour
+lance recipe uses visible stone bearing pinnacles under its opposed pennants;
+this geometric clearance supplies no grip force or bending-moment capacity.
+
 There is no universal “LEGO joint strength” that can safely be inferred from a
 part name or its visual mesh. Relevant variables include part pair, engagement
 footprint, molding/material, age/wear, connection direction, assembly history,
 load rate, temperature, and whether loading is tension, shear, bending, or torsion.
+
+Cross axles in registered round Technic bearings keep a free revolute degree of
+freedom. Finite connector clearance uses the shaft's source-declared radial
+envelope rather than treating the empty corners of its rotating box as material.
+It still requires coaxial alignment, sufficient engagement and the bearing's
+finite axial range; collars and other intersections are not cleared. Keyed bushes
+retain their quarter-turn alignment requirement. This corrects a geometric fit,
+not a connector-capacity assumption or an implicit brake.
 
 In particular, a brick's compression-to-failure measurement is not its stud
 pull-off force. Dividing a full eight-stud measurement by eight and multiplying

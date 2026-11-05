@@ -16,6 +16,7 @@ s3://ergo/
     assets/parts/<part-id>.json
     objects/<mesh-sha256>.cbor
     ground/rasters/<provider-hash>/<z>/<x>/<y>.cbor
+    ground/vectors/<provider-hash>/<z>/<x>/<y>.cbor
     ground/blocks/<signature>/<east>_<north>.cbor
     cache/read-views/cell128-v1/<region-and-limits-hash>.cbor
     read-cache/metadata-cell128-v1/<world-id>/<00..15>.json
@@ -51,6 +52,9 @@ text only occupies a bounded transient import cache.
 
 Ground source tiles and derived per-stud baseplate colour fields are separate cache
 layers. Cached cells are not constructions, alternative worlds or physical anchors.
+The basic OSM style stores original vector bytes under `ground/vectors`; explicit
+raster and satellite sources use `ground/rasters`. Styled display tiles have only
+a bounded process-local cache; derived colour fields include the style identity.
 World GC does not manage asset, terrain or account namespaces.
 
 ## Derived shared-region packets
