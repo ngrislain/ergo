@@ -1,7 +1,12 @@
 # Changelog
 
-## v0.5.24
+## v0.5.25
 
+- Inventory/backfill packed read projections across every allocated world cell in
+  bounded pages. Verify all canonical model/policy/physics Merkle subtrees remain
+  identical and let changed accepted roots invalidate local view/workspace tokens.
+- Close successful block-packing reader pins, including already-packed skips, and
+  stop whole-world packing if an external head change intervenes between cells.
 - Add `shared-pack-region WORLD_ID X Y Z [RADIUS]` storage-operator backfill: enumerate the
   allocated cells of a bounded cube through the region reader's sparse directory scan and pack
   each unpacked cell's read projection in one storage-only commit per cell, reporting
@@ -12,6 +17,9 @@
   untouched since that first fit.
 - Report checkpointed loading progress stage-aware, so discovery shows "N cells checkpointed"
   instead of a misleading "0 bricks / N cells" while brick materialization has not started.
+
+## v0.5.24
+
 - Checkpoint browser read preparation in bounded, private S3 cache slots, including
   sparse-directory and spatial cursors, materialized bricks/meshes and membership
   paging. Retry/restart reauthorizes the exact accepted snapshot and resumes the

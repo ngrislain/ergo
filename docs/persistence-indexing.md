@@ -63,6 +63,9 @@ physics. `shared-pack-region WORLD_ID X Y Z [RADIUS]` enumerates the allocated
 cells of the bounded cube with the region reader's sparse directory scan and
 packs each unpacked one. Current unpacked cells retain the normal reference
 reader until packed.
+`shared-pack-world WORLD_ID [--check]` covers all allocated cells in bounded pages
+and verifies unchanged canonical Merkle subtrees; see the
+[whole-world migration runbook](storage-operations.md#whole-world-packing).
 
 The historical 4,096-brick cold-store fixture observed 574 GETs for packed reads versus 25,263
 for the reference/per-piece path, with identical scene geometry. This measures
@@ -88,4 +91,4 @@ a complete physics domain. Native asset, terrain and account caches have separat
 namespaces and retention rules.
 
 Source: `crates/transactions/src/{path,tree,lib}.rs`,
-`crates/server/src/shared/{address,spatial,bulk,paged,working}.rs`.
+`crates/server/src/shared/{address,spatial,bulk,world_pack,paged,working}.rs`.

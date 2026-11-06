@@ -122,6 +122,35 @@ Each fetched page is at most 1 MiB/1,024 records. Current unpacked cells use the
 reference path below and can be explicitly packed. Old cell layouts are migrated,
 not served through a compatibility reader. See [spatial packing](persistence-indexing.md#bulk-spatial-reads-and-local-traversal).
 
+For existing worlds, `shared-pack-world WORLD_ID [--check]` inventories/backfills
+all allocated cells, verifies unchanged canonical Merkle subtrees and advances the
+root only for newly packed cells. See the [whole-world runbook](storage-operations.md#whole-world-packing).
+This reduces small storage requests rather than merely increasing concurrency.
+It accelerates browser spatial reads; native authoring dependency discovery still
+uses the canonical contact/rule indexes and is a separate cost.
+
+### Measured whole-world backfill
+
+For a production radius-21 browser region centred at `[156,0,0]` (73,660 pieces),
+the pre-backfill read did not return response headers within a bounded 180-second
+observation. This is a censored observation, not a measured complete load time.
+After [all allocated cells were packed](storage-operations.md#verified-common-world-backfill),
+the first server-cache-miss request took 29.400 seconds: 29.184 seconds until
+headers, then 0.216 seconds to transfer 3,564,673 gzip-CBOR bytes. Server timing
+reported 15.358 seconds of discovery, 8.586 seconds of piece materialization,
+1.874 seconds of membership checks and 2.539 seconds of encoding. These phases
+include their storage waits and CPU work; they do not isolate an exact per-GET
+latency percentage.
+
+An immediate server-memory-cache response took 0.391 seconds for the same bytes;
+an authorized unchanged ETag check took 0.120 seconds and returned zero geometry
+bytes. The persistent packet was independently verified (30,253,154 decoded CBOR
+bytes) without a world commit. This shows that response-body volume was not the
+dominant cost in this run. It is a single post-migration server-side/transfer
+measurement, not a guarantee or a measurement of browser decode/GPU time.
+
+### Remaining reference-path reads
+
 Visual enumeration decodes the complete piece birth ID from each validated
 unpacked spatial key, without downloading its unused bounding-box payload.
 Piece reads use ordered batches with at most 64 reads in flight.

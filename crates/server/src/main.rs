@@ -579,6 +579,17 @@ async fn main() -> Result<()> {
                     warmed_shared = Some(shared);
                 }
             }
+            "shared-pack-world" => {
+                let option = args.next();
+                anyhow::ensure!(
+                    args.next().is_none() && option.as_deref().is_none_or(|s| s == "--check"),
+                    "Usage: ergo-server shared-pack-world WORLD_ID [--check]"
+                );
+                println!(
+                    "{}",
+                    serde_json::to_string_pretty(&shared.pack_world(&id, option.is_some()).await?)?
+                );
+            }
             "shared-pack-block" => {
                 let mut coord = [0i64; 3];
                 for value in &mut coord {

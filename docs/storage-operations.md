@@ -47,7 +47,7 @@ ambiguous mutation leaves fencing in place until the holder/remote requests are
 settled and an operator explicitly recovers it.
 
 Supported operator commands include `shared-maintenance-status`, `shared-gc`,
-`shared-prune`, `shared-compact`, `shared-warm-view`, current-format namespace migration and current
+`shared-prune`, `shared-compact`, `shared-warm-view`, `shared-pack-world`, current-format namespace migration and current
 history installation. They have no public HTTP mutation endpoint. See
 [the runbook](operations.md).
 
@@ -71,7 +71,7 @@ Only layout 4 and the 128-unit cell marker are accepted. Run
 before serving an old world; incompatible caches are deleted. Other current
 unpacked cells use the reference reader until explicitly packed.
 
-`shared-pack-region WORLD_ID X Y Z [RADIUS]` (after v0.5.24) enumerates the
+`shared-pack-region WORLD_ID X Y Z [RADIUS]` (since v0.5.25) enumerates the
 allocated cells in the bounded cube — the same sparse directory scan as the
 region reader — and packs each unpacked one, committing one storage-only pack
 per cell. It reports packed/already-packed counts and per-cell revisions. Run it
@@ -79,6 +79,59 @@ before `shared-warm-view`: every cell pack advances the head, invalidating
 revision-keyed view packets and loading checkpoints, so warm the packet once
 after the backfill completes. Concurrent external edits reject the whole-root
 watch and abort the run; re-run from the report.
+
+### Whole-world packing
+
+Servers since v0.5.25 additionally support:
+
+```sh
+target/release/ergo-server shared-pack-world "$ERGO_COMMON_WORLD_ID" --check
+target/release/ergo-server shared-pack-world "$ERGO_COMMON_WORLD_ID"
+target/release/ergo-server shared-pack-world "$ERGO_COMMON_WORLD_ID" --check
+```
+
+Use the existing production namespace, credentials, frozen physics and view budgets.
+`--check` inventories one pinned accepted snapshot without publishing. The migration
+scans **all** allocated-cell headers in ordered 64-row pages, rather than one camera
+radius, and packs every unpacked cell. Geometry loading remains bounded per cell
+by the configured view piece/byte budgets; already-packed cells are skipped.
+Each completed cell logs its coordinate and accepted revision. Re-running a
+completed migration is a no-op. A changed head between cells or a conflicting
+whole-root watch stops the operation; reconcile an uncertain publication before
+explicitly restarting. Earlier confirmed cell packs remain accepted.
+
+The final report compares Merkle subtrees for policy, the canonical spatial index,
+metadata/frozen physics, both canonical piece branches, assembly rules, joints and
+birth/ownership records. Only `/3/2` read projections and `/5` cell headers may
+change. This verifies all canonical model state without downloading every payload
+again. It also checks that no external head change intervened. Normal read pins
+are closed on successful completion and on already-packed skips.
+
+Storage-only commits change the accepted revision/root. Existing view/workspace
+ETags therefore miss and local current-state caches are refreshed through the
+normal authorized read path; no origin-wide deletion or asset-cache flush is
+needed. A retained historical snapshot remains valid for its own revision and
+never aliases the new current root. Warm frequently visited regions **after** the
+last pack to avoid invalidating each warm-up with the next storage commit.
+
+#### Verified common-world backfill
+
+The 2026-11-06 production run inventoried 113 allocated cells: 66 were already
+packed and all 47 remaining cells were packed in 1,074.6 seconds. The final
+accepted revision was
+`7555ca403e8934b3dabea0978e079d53ce9be837f0302ee688a6625fc19762d1`.
+The before/after canonical-subtree fingerprint was identical:
+`2b7e909301183778d64b7a57e44f8d07881268d98fe7453b848a546d65f9130e`.
+An independent `--check` confirmed all 113 cells packed; current-view HEAD with
+the pre-migration token returned 200/new ETag and the new token returned 304.
+Policy, frozen physics and canonical model state were unchanged. Historical
+accepted snapshots were retained, rather than rewritten or pruned.
+
+The same 73,660-piece district view at centre `[156,0,0]`, radius 21 was verified
+in the persistent read cache after packing. See the
+[measured loading breakdown](loading-and-cache.md#measured-whole-world-backfill).
+Private operational evidence is under `target/packed-world-migration/` and the
+before/after transfer reports under `target/loading-{before,after}-pack.json`.
 
 ### Current history installation
 
@@ -107,4 +160,4 @@ poses, identities, authors, geometry and references before this installation.
 Failure does not unlock and blindly repeat an uncertain operation.
 
 Source: `transactions/src/{history,maintenance}.rs` and
-`server/src/shared/{authoring,events,paged,spatial,administration,retention}.rs`.
+`server/src/shared/{authoring,events,paged,spatial,bulk,world_pack,administration,retention}.rs`.

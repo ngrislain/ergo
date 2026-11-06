@@ -25,6 +25,7 @@ mod spatial;
 mod tests;
 mod view;
 mod working;
+mod world_pack;
 
 use crate::{AppState, auth::Principal, store::Store};
 use address::{block_path, entity_path, root};
