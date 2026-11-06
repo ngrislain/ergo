@@ -1,6 +1,6 @@
 use super::*;
 use async_trait::async_trait;
-use futures::stream::BoxStream;
+use futures::stream::{BoxStream, StreamExt};
 use object_store::{
     GetOptions, GetResult, ListResult, MultipartUpload, ObjectMeta, ObjectStore,
     PutMultipartOptions, PutOptions, PutPayload, PutResult, path::Path,
@@ -232,6 +232,90 @@ async fn unpacked_current_block_backfill_changes_only_the_read_projection() {
     .await
     .unwrap();
     assert!(!legacy_read);
+}
+
+#[tokio::test]
+async fn region_backfill_packs_every_allocated_cell_in_radius_and_is_idempotent() {
+    let service = service();
+    let mut data = scene(100.);
+    let mut demo = ergo_world::demo::Demo::new();
+    for offset in [0., 128., 256., 384.] {
+        demo.add("3003", 19, 100. + offset, 0., 100.);
+    }
+    demo.add("3003", 19, 10_000., 0., 100.);
+    data.bricks = demo.bricks;
+    data.meshes = demo.meshes;
+    let (head, imported) = seeded(&service, data).await;
+    let repo = service.repo(&head.id).unwrap();
+    let mut near = std::collections::BTreeSet::new();
+    let mut far = std::collections::BTreeSet::new();
+    for index in 1..=5 {
+        let piece = piece(&service, &head.id, &imported.pieces[&index]).await;
+        if index == 5 {
+            far.extend(piece.replicas.iter().copied());
+        } else {
+            near.extend(piece.replicas.iter().copied());
+        }
+    }
+    let mut tx = repo.begin("main").await.unwrap();
+    for coord in near.iter().chain(far.iter()) {
+        let mut header: spatial::BlockHeader =
+            tx.get(&spatial::directory(*coord)).await.unwrap().unwrap();
+        header.packed = false;
+        tx.put(&spatial::directory(*coord), &header).await.unwrap();
+        tx.remove(&bulk::block_path(*coord)).await.unwrap();
+    }
+    let legacy = tx
+        .commit("test", "legacy region fixture", Default::default())
+        .await
+        .unwrap();
+    let mut original = BTreeMap::new();
+    for index in 1..=4 {
+        let id = imported.pieces[&index].clone();
+        let piece = piece(&service, &head.id, &id).await;
+        original.insert(id, piece);
+    }
+    let report = service.pack_region(&head.id, [1, 0, 0], 2).await.unwrap();
+    assert_eq!(report["packed"], serde_json::json!(near.len()));
+    assert_eq!(report["already_packed"], serde_json::json!(0));
+    let blocks = report["blocks"].as_array().unwrap();
+    // Each cell pack is its own storage-only commit; the last block's revision
+    // is the head after the whole region backfill.
+    let revision: ContentId =
+        serde_json::from_value(blocks[blocks.len() - 1]["revision"].clone()).unwrap();
+    let after = repo.accepted_snapshot("main", &revision).await.unwrap();
+    for coord in &near {
+        let values = packed_pieces(&service, &head.id, &revision, *coord).await;
+        assert!(!values.is_empty());
+        for (id, value) in &values {
+            assert_eq!(
+                canonical_cbor(value).unwrap(),
+                canonical_cbor(&original[id]).unwrap()
+            );
+        }
+    }
+    for coord in &far {
+        assert!(
+            !after
+                .get::<spatial::BlockHeader>(&spatial::directory(*coord))
+                .await
+                .unwrap()
+                .unwrap()
+                .packed
+        );
+    }
+    assert!(
+        !legacy
+            .snapshot
+            .get::<spatial::BlockHeader>(&spatial::directory(*far.iter().next().unwrap()))
+            .await
+            .unwrap()
+            .unwrap()
+            .packed
+    );
+    let again = service.pack_region(&head.id, [1, 0, 0], 2).await.unwrap();
+    assert_eq!(again["packed"], serde_json::json!(0));
+    assert_eq!(again["already_packed"], serde_json::json!(near.len()));
 }
 
 #[tokio::test]

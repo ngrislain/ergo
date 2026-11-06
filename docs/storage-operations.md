@@ -51,8 +51,11 @@ Supported operator commands include `shared-maintenance-status`, `shared-gc`,
 history installation. They have no public HTTP mutation endpoint. See
 [the runbook](operations.md).
 
-`shared-warm-view WORLD_ID X Y Z` materializes the existing accepted region through
-the normal bounded reader and confirms its discardable cache packet. It does not
+`shared-warm-view WORLD_ID X Y Z [RADIUS]` materializes the existing accepted region through
+the normal bounded reader and confirms its discardable cache packet. The optional radius
+(1–32, default 1) must match what browsers request — the navigator derives it from the fog
+distance (radius 21 at the default 2,200-stud cutoff) — otherwise the warmed packet's
+region key never matches a browser read. It does not
 advance the world head or publish geometry. See [cache warm-up](loading-and-cache.md#operator-warm-up)
 for the source-built command and required storage configuration.
 
@@ -67,6 +70,15 @@ Only layout 4 and the 128-unit cell marker are accepted. Run
 `shared-resize-cells WORLD_ID` for the [old-block migration](cells-and-migration.md)
 before serving an old world; incompatible caches are deleted. Other current
 unpacked cells use the reference reader until explicitly packed.
+
+`shared-pack-region WORLD_ID X Y Z [RADIUS]` (after v0.5.24) enumerates the
+allocated cells in the bounded cube — the same sparse directory scan as the
+region reader — and packs each unpacked one, committing one storage-only pack
+per cell. It reports packed/already-packed counts and per-cell revisions. Run it
+before `shared-warm-view`: every cell pack advances the head, invalidating
+revision-keyed view packets and loading checkpoints, so warm the packet once
+after the backfill completes. Concurrent external edits reject the whole-root
+watch and abort the run; re-run from the report.
 
 ### Current history installation
 

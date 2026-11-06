@@ -331,7 +331,8 @@ Reloading the same view reauthorizes that snapshot; HTTP 410 can restart once at
 the current revision, discarding the old preview. Different revisions are never spliced together. Late
 completion of an older request cannot erase a newer pending descriptor. Successful
 completion leaves a tiny completion marker. The loading panel reports saved/resumed
-counts, and `X-Ergo-Load-Resumed` identifies a resumed materialization response.
+counts (cells checkpointed during discovery, bricks and cells afterwards), and
+`X-Ergo-Load-Resumed` identifies a resumed materialization response.
 
 ### Fast Merkle-backed freshness checks
 
@@ -448,7 +449,10 @@ Late or noncontiguous batches are ignored by the client. If the full response is
 already available, no partial batch is needed.
 
 Initial loads and construction selections show an explicitly labelled partial
-preview in orbit mode. Background navigation/refreshes retain the completed
+preview in orbit mode. The view is fitted once when the preview begins; later
+preview batches never re-frame the camera, and completion only re-fits when the
+camera is untouched since that first fit, so a view the user adjusted while the
+region streamed in is kept. Background navigation/refreshes retain the completed
 resident scene. Editing, export and walking are blocked on a partial preview;
 its geometry never enters the authoritative client blocks or a completed region
 cache. The previous completed scene/camera is retained for cancellation, error
@@ -473,10 +477,19 @@ dense materialization that would exceed the hosting proxy's request deadline:
 
 ```sh
 ERGO_SHARED_VIEW_PIECES=100000 cargo run --release -p ergo-server -- \
-  shared-warm-view "$ERGO_COMMON_WORLD_ID" 19 0 0
+  shared-warm-view "$ERGO_COMMON_WORLD_ID" 156 0 0 21
 ```
 
 Use the existing application S3 credentials, prefix and common-world settings.
+Pass the radius browsers actually request: the navigator derives it from the fog
+distance (radius 21 at the default 2,200-stud cutoff). A default radius-1 warm-up
+only covers the 3×3×3 centre cube and never matches a radius-21 browser read.
+For a district-sized region, first backfill the packed read projection with
+`shared-pack-region "$ERGO_COMMON_WORLD_ID" 156 0 0 21` (see [the storage
+runbook](storage-operations.md#packed-block-backfill)); bulk pages remove the
+per-brick discovery walk that dominates cold materialization. Each cell pack is
+its own storage-only commit that advances the head, so warm the packet once
+after the backfill finishes.
 This has no public HTTP mutation route. It runs the same bounded region builder
 against the actual accepted S3 snapshot, holds its ordinary reader pin, and writes
 only the discardable cache packet. It does not import local construction JSON,

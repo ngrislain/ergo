@@ -1668,7 +1668,7 @@ async fn neighboring_views_reuse_only_proven_identical_geometry_and_persist_pinn
     }
     let (head, _) = seeded(&service, three).await;
     assert_eq!(
-        service.warm_view(&head.id, [0; 3]).await.unwrap()["pieces"],
+        service.warm_view(&head.id, [0; 3], 1).await.unwrap()["pieces"],
         2
     );
     let (app, headers) = http(&service);
@@ -1734,7 +1734,7 @@ async fn operator_warm_view_persists_verified_read_data_without_a_world_commit()
     use tower::ServiceExt;
     let service = service();
     let (head, _) = seeded(&service, scene(100.)).await;
-    let report = service.warm_view(&head.id, [0; 3]).await.unwrap();
+    let report = service.warm_view(&head.id, [0; 3], 1).await.unwrap();
     assert_eq!(report["revision"], serde_json::json!(head.revision));
     assert_eq!(report["pieces"], 1);
     assert_eq!(
@@ -1758,10 +1758,10 @@ async fn operator_warm_view_persists_verified_read_data_without_a_world_commit()
     assert_eq!(response.headers()["x-ergo-read-cache"], "persistent");
     let mut bounded = service.clone();
     bounded.view_limits.bytes = 1;
-    assert!(bounded.warm_view(&head.id, [0; 3]).await.is_err());
+    assert!(bounded.warm_view(&head.id, [0; 3], 1).await.is_err());
     assert!(
         service
-            .warm_view(&head.id, [1_000_000_000, 0, 0])
+            .warm_view(&head.id, [1_000_000_000, 0, 0], 1)
             .await
             .is_err()
     );

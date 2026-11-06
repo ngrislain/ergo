@@ -2,6 +2,16 @@
 
 ## v0.5.24
 
+- Add `shared-pack-region WORLD_ID X Y Z [RADIUS]` storage-operator backfill: enumerate the
+  allocated cells of a bounded cube through the region reader's sparse directory scan and pack
+  each unpacked cell's read projection in one storage-only commit per cell, reporting
+  packed/already-packed counts and per-cell revisions. Add an optional matching radius to
+  `shared-warm-view` so warmed packets cover what the navigator actually requests.
+- Keep the user's camera during progressive region previews: fit once when the partial preview
+  begins, never re-frame later batches, and only re-fit at completion when the camera is
+  untouched since that first fit.
+- Report checkpointed loading progress stage-aware, so discovery shows "N cells checkpointed"
+  instead of a misleading "0 bricks / N cells" while brick materialization has not started.
 - Checkpoint browser read preparation in bounded, private S3 cache slots, including
   sparse-directory and spatial cursors, materialized bricks/meshes and membership
   paging. Retry/restart reauthorizes the exact accepted snapshot and resumes the

@@ -399,10 +399,19 @@ async fn reuse_neighbor(
 impl SharedWorlds {
     /// Storage-operator cache warm-up, never exposed as a network write route.
     /// Materializes the same bounded accepted snapshot as the HTTP reader.
-    pub async fn warm_view(&self, id: &str, coord: [i64; 3]) -> anyhow::Result<serde_json::Value> {
+    pub async fn warm_view(
+        &self,
+        id: &str,
+        coord: [i64; 3],
+        radius: u8,
+    ) -> anyhow::Result<serde_json::Value> {
         ensure!(
             coord.iter().all(|n| n.unsigned_abs() < 1_000_000_000),
             "View block coordinate out of range"
+        );
+        ensure!(
+            (1..=32).contains(&radius),
+            "View radius must be 1..32 storage cells"
         );
         let started = std::time::Instant::now();
         let repo = self.repo(id)?;
@@ -424,7 +433,7 @@ impl SharedWorlds {
             world: id.into(),
             revision: snapshot.id().clone(),
             coord,
-            radius: 1,
+            radius,
             pieces: self.view_limits.pieces,
             read_bytes: self.view_limits.bytes,
         };
@@ -605,7 +614,7 @@ fn accepts_gzip(headers: &HeaderMap) -> bool {
 
 /// Wider views enumerate the sparse allocated-cell directory, not every empty
 /// cell in a large cube. Both directory work and materialization stay bounded.
-async fn view_cells(
+pub(super) async fn view_cells(
     snapshot: &Snapshot,
     key: &ViewKey,
     remaining: &mut usize,

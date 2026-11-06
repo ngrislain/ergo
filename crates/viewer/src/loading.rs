@@ -26,6 +26,8 @@ pub(crate) struct Checkpoint {
 struct CheckpointMark {
     cells: usize,
     pieces: usize,
+    #[serde(default)]
+    stage: String,
 }
 
 #[derive(Deserialize)]
@@ -111,15 +113,24 @@ impl Loading {
         }
         if let Some(checkpoint) = &status.checkpoint {
             let saved = &checkpoint.saved;
+            // Bricks only materialize after discovery; reporting "0 bricks"
+            // during discovery made the saved cell progress look like none.
+            let counts = if saved.stage == "discovery" {
+                format!("{} cells checkpointed", number(saved.cells))
+            } else {
+                format!(
+                    "{} bricks / {} cells checkpointed",
+                    number(saved.pieces),
+                    number(saved.cells)
+                )
+            };
             self.checkpoint = Some(format!(
-                "{} · {} bricks / {} cells checkpointed{}",
+                "{} · {counts}{}",
                 if checkpoint.resumed {
                     "Resumed saved load"
                 } else {
                     "Saved loading progress"
                 },
-                number(saved.pieces),
-                number(saved.cells),
                 if checkpoint.available {
                     ""
                 } else {

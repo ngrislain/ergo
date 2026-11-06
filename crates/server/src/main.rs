@@ -593,18 +593,44 @@ async fn main() -> Result<()> {
                     serde_json::to_string_pretty(&shared.pack_block(&id, coord).await?)?
                 );
             }
+            "shared-pack-region" => {
+                let mut coord = [0i64; 3];
+                for value in &mut coord {
+                    *value = args
+                        .next()
+                        .context("Usage: ergo-server shared-pack-region WORLD_ID X Y Z [RADIUS]")?
+                        .parse()?;
+                }
+                let radius = args
+                    .next()
+                    .map(|value| value.parse::<u8>())
+                    .transpose()
+                    .context("Usage: ergo-server shared-pack-region WORLD_ID X Y Z [RADIUS]")?
+                    .unwrap_or(1);
+                anyhow::ensure!(args.next().is_none(), "Unexpected argument");
+                println!(
+                    "{}",
+                    serde_json::to_string_pretty(&shared.pack_region(&id, coord, radius).await?)?
+                );
+            }
             "shared-warm-view" => {
                 let mut coord = [0i64; 3];
                 for value in &mut coord {
                     *value = args
                         .next()
-                        .context("Usage: ergo-server shared-warm-view WORLD_ID X Y Z")?
+                        .context("Usage: ergo-server shared-warm-view WORLD_ID X Y Z [RADIUS]")?
                         .parse()?;
                 }
+                let radius = args
+                    .next()
+                    .map(|value| value.parse::<u8>())
+                    .transpose()
+                    .context("Usage: ergo-server shared-warm-view WORLD_ID X Y Z [RADIUS]")?
+                    .unwrap_or(1);
                 anyhow::ensure!(args.next().is_none(), "Unexpected argument");
                 println!(
                     "{}",
-                    serde_json::to_string_pretty(&shared.warm_view(&id, coord).await?)?
+                    serde_json::to_string_pretty(&shared.warm_view(&id, coord, radius).await?)?
                 );
             }
             "shared-install-history" => {

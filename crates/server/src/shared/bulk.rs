@@ -1,5 +1,6 @@
 //! Transactional block-read projection. Canonical pieces and mechanical spatial
 //! predicates remain authoritative; these bounded pages avoid per-brick view GETs.
+use super::read_cache::ViewKey;
 use super::*;
 use ergo_world::BlockCoord;
 use futures::{StreamExt, TryStreamExt};
@@ -318,6 +319,101 @@ impl SharedWorlds {
         Ok(
             serde_json::json!({"revision":accepted.snapshot.id(),"base_revision":base,"block":<[i64;3]>::from(coord),"pieces":ids.len(),"pages":pages.len(),"logical_bytes":bytes,"geometry_changed":false}),
         )
+    }
+
+    /// Region-wide storage projection backfill: packs every allocated cell in
+    /// the bounded cube, one explicit storage-only commit per cell. Geometry,
+    /// births, ownership, geographic reference and frozen physics are
+    /// untouched; a whole-root watch rejects concurrent external changes.
+    pub async fn pack_region(
+        &self,
+        id: &str,
+        coord: [i64; 3],
+        radius: u8,
+    ) -> anyhow::Result<serde_json::Value> {
+        anyhow::ensure!(
+            coord.iter().all(|n| n.unsigned_abs() < 1_000_000_000),
+            "Block coordinate out of range"
+        );
+        anyhow::ensure!(
+            (1..=32).contains(&radius),
+            "View radius must be 1..32 storage cells"
+        );
+        let started = std::time::Instant::now();
+        let repo = self.repo(id)?;
+        let snapshot = repo.checkout("main").await?;
+        let metadata: Metadata = snapshot
+            .get_limited(&root(2), self.view_limits.bytes)
+            .await?
+            .context("Missing world metadata")?;
+        metadata.require_current_cells()?;
+        anyhow::ensure!(
+            metadata.id.as_deref().is_none_or(|stored| stored == id),
+            "Configured sandbox ID does not match the stored namespace"
+        );
+        anyhow::ensure!(
+            metadata.layout == 4,
+            "Only current paged shared records are supported"
+        );
+        let key = ViewKey {
+            world: id.into(),
+            revision: snapshot.id().clone(),
+            coord,
+            radius,
+            pieces: self.view_limits.pieces,
+            read_bytes: self.view_limits.bytes,
+        };
+        let mut remaining = self.view_limits.bytes;
+        let mut cells = super::view::view_cells(&snapshot, &key, &mut remaining).await?;
+        // A radius-1 cube enumerates all 27 neighbours; keep only allocated
+        // cells so the backfill reports skips instead of failing.
+        let mut allocated = Vec::new();
+        for cell in cells.drain(..) {
+            if snapshot
+                .get::<spatial::BlockHeader>(&spatial::directory(cell))
+                .await?
+                .is_some()
+            {
+                allocated.push(cell);
+            }
+        }
+        snapshot.close().await?;
+        let mut packed = 0usize;
+        let mut already = 0usize;
+        let mut blocks = Vec::new();
+        let total = allocated.len();
+        for (index, cell) in allocated.into_iter().enumerate() {
+            let cell_started = std::time::Instant::now();
+            let value = self.pack_block(id, cell.into()).await?;
+            if value["already_packed"].as_bool() == Some(true) {
+                already += 1;
+            } else {
+                packed += 1;
+            }
+            // Operator progress: one line per cell so a long backfill is
+            // observable in a detached run's log.
+            eprintln!(
+                "pack-region {}/{} {} {} in {:.1}s ({} newly packed)",
+                index + 1,
+                total,
+                match value["already_packed"].as_bool() {
+                    Some(true) => "already",
+                    _ => "packed",
+                },
+                <[i64; 3]>::from(cell)
+                    .map(|value| value.to_string())
+                    .join(" "),
+                cell_started.elapsed().as_secs_f64(),
+                packed
+            );
+            blocks.push(value);
+        }
+        Ok(serde_json::json!({
+            "packed": packed,
+            "already_packed": already,
+            "elapsed_s": started.elapsed().as_secs_f64(),
+            "blocks": blocks,
+        }))
     }
 }
 

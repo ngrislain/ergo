@@ -81,6 +81,7 @@ struct RegionPreview {
     selected: Option<u32>,
     highlighted: HashSet<u32>,
     explode: f64,
+    fitted: Option<(DVec3, f64, f64, f64)>,
 }
 fn legacy_view_radius() -> u8 {
     1
@@ -324,6 +325,7 @@ impl Client {
                 selected: renderer.selected,
                 highlighted: renderer.highlighted.clone(),
                 explode: renderer.explode,
+                fitted: None,
             });
             renderer.set_meshes(BTreeMap::new());
             renderer.set_bricks(Vec::new());
@@ -337,8 +339,21 @@ impl Client {
         let mut bricks = std::mem::take(&mut renderer.bricks);
         bricks.extend(batch.bricks);
         renderer.set_bricks(bricks);
-        if fit_view && let Some(bounds) = ergo_world::bounds(&renderer.bricks) {
+        // Fit only when the preview begins; later batches keep the camera the
+        // user may already have adjusted while the region streams in.
+        if fit_view
+            && count == 0
+            && let Some(bounds) = ergo_world::bounds(&renderer.bricks)
+        {
             renderer.fit(bounds);
+            if let Some(preview) = self.region_preview.as_mut() {
+                preview.fitted = Some((
+                    renderer.target,
+                    renderer.distance,
+                    renderer.yaw,
+                    renderer.pitch,
+                ));
+            }
         }
         let _ = renderer
             .canvas
@@ -1085,6 +1100,8 @@ fn request_shared_region(handle: Handle, id: String, coord: [i64; 3], fit_view: 
                             return false;
                         }
                     };
+                    let preview_fitted =
+                        c.region_preview.as_ref().and_then(|preview| preview.fitted);
                     c.region_preview = None;
                     if let Some(renderer) = &c.renderer {
                         let _ = renderer.canvas.remove_attribute("data-preview-pieces");
@@ -1147,7 +1164,19 @@ fn request_shared_region(handle: Handle, id: String, coord: [i64; 3], fit_view: 
                             .fog_distance
                             .min(crate::residency::visible_distance(region.radius));
                         if fit_view {
-                            renderer.fit(focus.unwrap_or(manifest.bounds));
+                            // The preview already framed the view once; only
+                            // re-fit at completion if the camera was untouched
+                            // since then, so an adjusted view is kept.
+                            let untouched =
+                                preview_fitted.is_none_or(|(target, distance, yaw, pitch)| {
+                                    renderer.target == target
+                                        && renderer.distance == distance
+                                        && renderer.yaw == yaw
+                                        && renderer.pitch == pitch
+                                });
+                            if untouched {
+                                renderer.fit(focus.unwrap_or(manifest.bounds));
+                            }
                         }
                         renderer.distance = renderer.distance.min(renderer.fog_distance * 0.85);
                         let _ = renderer

@@ -59,7 +59,10 @@ Only layout 4 and `cell_size:128` run. Existing old blocks require the
 [atomic cell migration](cells-and-migration.md); no legacy grid mode remains.
 `shared-pack-block WORLD_ID X Y Z` backfills a current unpacked cell under a
 whole-root optimistic watch, without changing piece payloads, births, poses or
-physics. Current unpacked cells retain the normal reference reader until packed.
+physics. `shared-pack-region WORLD_ID X Y Z [RADIUS]` enumerates the allocated
+cells of the bounded cube with the region reader's sparse directory scan and
+packs each unpacked one. Current unpacked cells retain the normal reference
+reader until packed.
 
 The historical 4,096-brick cold-store fixture observed 574 GETs for packed reads versus 25,263
 for the reference/per-piece path, with identical scene geometry. This measures
