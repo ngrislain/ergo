@@ -32,6 +32,7 @@ designs live in `todo/` and are indexed by [TODO.md](../TODO.md).
 - [Shared-world protocol](concurrent-global-editing.md)
 - [Transactional CBOR library](transactional-storage.md)
 - [Paging, history and maintenance](storage-operations.md)
+  includes whole-world packed-read migration and Merkle-based cache invalidation.
 - [Commit history](commit-history.md)
 - [Identity and private account state](identity-and-ownership.md)
 

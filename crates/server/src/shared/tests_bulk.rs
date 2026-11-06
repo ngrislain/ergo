@@ -1,6 +1,6 @@
 use super::*;
 use async_trait::async_trait;
-use futures::stream::{BoxStream, StreamExt};
+use futures::stream::BoxStream;
 use object_store::{
     GetOptions, GetResult, ListResult, MultipartUpload, ObjectMeta, ObjectStore,
     PutMultipartOptions, PutOptions, PutPayload, PutResult, path::Path,
@@ -316,6 +316,143 @@ async fn region_backfill_packs_every_allocated_cell_in_radius_and_is_idempotent(
     let again = service.pack_region(&head.id, [1, 0, 0], 2).await.unwrap();
     assert_eq!(again["packed"], serde_json::json!(0));
     assert_eq!(again["already_packed"], serde_json::json!(near.len()));
+}
+
+#[tokio::test]
+async fn world_packing_pages_all_cells_preserves_models_and_invalidates_current_merkle_tokens() {
+    use axum::{body::Body, http::Request};
+    use tower::ServiceExt;
+    let service = service();
+    let mut data = scene(100.);
+    let mut demo = ergo_world::demo::Demo::new();
+    demo.add("3003", 19, 100., 0., 100.);
+    demo.add("3003", 19, 1_000_000., 0., 100.);
+    data.bricks = demo.bricks;
+    data.meshes = demo.meshes;
+    let (head, imported) = seeded(&service, data).await;
+    let repo = service.repo(&head.id).unwrap();
+    let mut tx = repo.begin("main").await.unwrap();
+    let mut cells = BTreeSet::new();
+    for id in imported.pieces.values() {
+        cells.extend(piece(&service, &head.id, id).await.replicas);
+    }
+    // Cross directory-page boundaries and include allocated empty cells far
+    // outside any camera radius. The migration must neither omit nor invent one.
+    cells.extend((0..70).map(|i| ergo_world::BlockCoord::from([-1_000_000 - i, 0, 0])));
+    for coord in &cells {
+        tx.put(
+            &spatial::directory(*coord),
+            &spatial::BlockHeader {
+                coord: *coord,
+                paged: true,
+                packed: false,
+            },
+        )
+        .await
+        .unwrap();
+        tx.remove(&bulk::block_path(*coord)).await.unwrap();
+    }
+    let legacy = tx
+        .commit("test", "unpacked world fixture", Default::default())
+        .await
+        .unwrap();
+    let old_revision = legacy.snapshot.id().clone();
+    let mut piece_ids = BTreeMap::new();
+    for id in imported.pieces.values() {
+        piece_ids.insert(
+            id.clone(),
+            legacy.snapshot.value_id(&entity_path(3, id)).await.unwrap(),
+        );
+    }
+    let (app, headers) = http(&service);
+    let view_url = format!("/api/shared-worlds/{}/view?format=cbor", head.id);
+    let workspace_url = format!(
+        "/api/shared-worlds/{}/assemblies/{}/workspace",
+        head.id, imported.assembly
+    );
+    let mut tokens = Vec::new();
+    for url in [&view_url, &workspace_url] {
+        let mut request = Request::builder().method("HEAD").uri(url);
+        for (key, value) in &headers {
+            request = request.header(key, value);
+        }
+        let response = app
+            .clone()
+            .oneshot(request.body(Body::empty()).unwrap())
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::OK);
+        tokens.push(response.headers()["etag"].clone());
+    }
+    let survey = service.pack_world(&head.id, true).await.unwrap();
+    assert_eq!(survey["unpacked_before"], serde_json::json!(cells.len()));
+    assert_eq!(survey["fully_packed"], false);
+    assert_eq!(survey["base_revision"], survey["revision"]);
+    let report = service.pack_world(&head.id, false).await.unwrap();
+    assert_eq!(report["cells"], serde_json::json!(cells.len()));
+    assert_eq!(report["packed"], serde_json::json!(cells.len()));
+    assert_eq!(report["fully_packed"], true);
+    assert_eq!(report["canonical_subtrees_unchanged"], true);
+    assert_ne!(report["root_before"], report["root_after"]);
+    let current = repo.checkout("main").await.unwrap();
+    for (id, cid) in piece_ids {
+        assert_eq!(current.value_id(&entity_path(3, &id)).await.unwrap(), cid);
+    }
+    for coord in &cells {
+        assert!(
+            current
+                .get::<spatial::BlockHeader>(&spatial::directory(*coord))
+                .await
+                .unwrap()
+                .unwrap()
+                .packed
+        );
+        assert!(
+            !legacy
+                .snapshot
+                .get::<spatial::BlockHeader>(&spatial::directory(*coord))
+                .await
+                .unwrap()
+                .unwrap()
+                .packed
+        );
+    }
+    let revision = current.id().clone();
+    current.close().await.unwrap();
+    for (url, token) in [&view_url, &workspace_url].into_iter().zip(tokens) {
+        let mut request = Request::builder()
+            .method("HEAD")
+            .uri(url)
+            .header("If-None-Match", token);
+        for (key, value) in &headers {
+            request = request.header(key, value);
+        }
+        let response = app
+            .clone()
+            .oneshot(request.body(Body::empty()).unwrap())
+            .await
+            .unwrap();
+        assert_eq!(
+            response.status(),
+            StatusCode::OK,
+            "Old local tokens must miss after the storage Merkle root changes"
+        );
+        assert_eq!(response.headers()["x-ergo-revision"], revision.as_str());
+    }
+    let again = service.pack_world(&head.id, false).await.unwrap();
+    assert_eq!(again["packed"], 0);
+    assert_eq!(again["already_packed"], serde_json::json!(cells.len()));
+    assert_eq!(again["base_revision"], again["revision"]);
+    assert!(
+        service
+            .pack_block_checked(&head.id, [0; 3], Some(&old_revision))
+            .await
+            .is_err()
+    );
+    let verified = service.pack_world(&head.id, true).await.unwrap();
+    assert_eq!(verified["fully_packed"], true);
+    assert_eq!(verified["revision"], serde_json::json!(revision));
+    legacy.snapshot.close().await.unwrap();
 }
 
 #[tokio::test]

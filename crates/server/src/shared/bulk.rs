@@ -207,6 +207,15 @@ impl SharedWorlds {
     /// One-block storage projection backfill. Geometry, births and physics are
     /// untouched; an optimistic whole-root watch rejects concurrent changes.
     pub async fn pack_block(&self, id: &str, coord: [i64; 3]) -> anyhow::Result<serde_json::Value> {
+        self.pack_block_checked(id, coord, None).await
+    }
+
+    pub(super) async fn pack_block_checked(
+        &self,
+        id: &str,
+        coord: [i64; 3],
+        expected: Option<&ContentId>,
+    ) -> anyhow::Result<serde_json::Value> {
         anyhow::ensure!(
             coord.iter().all(|n| n.unsigned_abs() < 1_000_000_000),
             "Block coordinate out of range"
@@ -214,6 +223,10 @@ impl SharedWorlds {
         let coord: BlockCoord = coord.into();
         let repo = self.repo(id)?;
         let mut tx = repo.begin("main").await?;
+        if expected.is_some_and(|expected| expected != tx.base_id()) {
+            tx.close().await?;
+            anyhow::bail!("World changed between packed cells; inspect progress before resuming");
+        }
         tx.watch(&OctreePath::new(Vec::new())?).await?;
         let base = tx.base_id().clone();
         let snapshot = repo.accepted_snapshot("main", &base).await?;
@@ -233,6 +246,7 @@ impl SharedWorlds {
                 "Packed block requires spatial layout 3"
             );
             snapshot.close().await?;
+            tx.close().await?;
             return Ok(serde_json::json!({"already_packed":true,"revision":base}));
         }
         let mut pages = BTreeMap::<u8, Page>::new();
@@ -316,9 +330,9 @@ impl SharedWorlds {
                 CommitOptions::default(),
             )
             .await?;
-        Ok(
-            serde_json::json!({"revision":accepted.snapshot.id(),"base_revision":base,"block":<[i64;3]>::from(coord),"pieces":ids.len(),"pages":pages.len(),"logical_bytes":bytes,"geometry_changed":false}),
-        )
+        let report = serde_json::json!({"revision":accepted.snapshot.id(),"base_revision":base,"block":<[i64;3]>::from(coord),"pieces":ids.len(),"pages":pages.len(),"logical_bytes":bytes,"geometry_changed":false});
+        accepted.snapshot.close().await?;
+        Ok(report)
     }
 
     /// Region-wide storage projection backfill: packs every allocated cell in

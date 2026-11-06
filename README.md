@@ -28,6 +28,8 @@ Read-only regions have independent budgets, defaulting to 50,000 pieces and
 64 MiB of charged reads, for denser neighborhoods.
 Storage operators can [warm an accepted region's discardable cache](docs/loading-and-cache.md#operator-warm-up)
 without publishing or changing constructions.
+They can also [inventory and pack all existing cells](docs/storage-operations.md#whole-world-packing)
+with canonical Merkle-subtree verification; new roots invalidate current-view cache tokens.
 The loading overlay shows the current stage, elapsed time and known-total stage
 percentages; discovery reports counts while its final brick total is still unknown.
 Packed spatial pages bulk-load block metadata for local traversal. The browser
@@ -65,11 +67,11 @@ The prebuilt bundle includes native binaries and WASM assets; consumers need
 Node.js 20+ and Chrome/Chromium, not Rust.
 
 ```sh
-npm install --global --ignore-scripts @ngrislain/ergo-mcp@0.5.24
+npm install --global --ignore-scripts @ngrislain/ergo-mcp@0.5.25
 ergo-mcp --login --publish-url https://ergosandbox.com
 ```
 
-The [GitHub Release](https://github.com/ngrislain/ergo/releases/tag/v0.5.24)
+The [GitHub Release](https://github.com/ngrislain/ergo/releases/tag/v0.5.25)
 also provides the verified complete tarball and checksum.
 
 Generate/download a token in the signed-in browser, keep it in a private file,
