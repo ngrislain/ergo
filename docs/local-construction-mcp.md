@@ -7,15 +7,23 @@ shared Sandbox. The bridge never grants itself acceptance or direct agent S3 acc
 ## Install and configure
 
 ```sh
-npm install --global --ignore-scripts @ngrislain/ergo-mcp@0.5.25
+npm install --global --ignore-scripts @ngrislain/ergo-mcp@0.5.26
 ergo-mcp --login --publish-url https://ergosandbox.com
 ```
 
-Generate/download a delegated token in the signed-in browser, then configure a
-private token path and absolute cache path. Consumers need Node 20+ and a local
+Version 0.5.26 opens human browser approval and privately saves/picks up a
+delegated token automatically; see [browser delegation](access-and-onboarding.md).
+This requires the matching client and browser deployment; v0.5.25 does not
+gain the behavior retroactively. Manual generation/download remains supported.
+Configure an absolute cache path and optionally an explicit private token path.
+Consumers need Node 20+ and a local
 Chrome/Chromium execution host, not Rust. `--headless` uses isolated Chrome;
 `--attach` prints a local capability URL for manual attachment. Normal startup
-opens the minimal client. Quit/restart the MCP client after configuration/token changes.
+opens the minimal client. The npm launcher defaults tokenless runs to the hosted
+Sandbox; `--local` explicitly disables publication/sign-in for isolated proposals.
+Bare native runs with no configured URL retain local-only behavior. `--headless`
+affects the WASM execution host, not the human's sign-in browser. Complete
+`ergo-mcp --login` first if the MCP host cannot wait for interactive setup.
 
 ### OpenCode
 
@@ -23,22 +31,23 @@ opens the minimal client. Quit/restart the MCP client after configuration/token 
 {
   "$schema":"https://opencode.ai/config.json",
   "mcp":{
-    "ergo":{
+    "servers":{"ergo":{
       "type":"local",
       "command":["ergo-mcp","--workspace","/absolute/path/sandbox.cache.json","--headless"],
       "environment":{
-        "ERGO_PUBLISH_URL":"https://ergosandbox.com",
-        "ERGO_PUBLISH_TOKEN_FILE":"/absolute/private/path/ergo-mcp-token"
+        "ERGO_PUBLISH_URL":"https://ergosandbox.com"
       },
-      "enabled":true,
-      "timeout":3900000
-    }
+      "timeout":{"startup":660000,"catalog":30000,"execution":3900000}
+    }}
   }
 }
 ```
 
 Google sign-in stays in the human's browser. Tokens delegate the signed-in actor,
 expire and are origin/purpose-bound. They are not S3 credentials.
+Installable source wrappers for Codex and Claude Code are documented in
+[MCP plugins](mcp-plugins.md); the underlying transport remains standard stdio MCP.
+The dedicated [official Inspector page](mcp-inspector.md) remains unlinked.
 
 ## Position and current state
 
@@ -79,6 +88,23 @@ expire and are origin/purpose-bound. They are not S3 credentials.
   resolves native Ergo part descriptions by ID.
 - `list_bricks` and `inspect_brick` expose actual IDs, poses, bounds, sourced
   masses and contact/constraint metadata.
+- `get_build_feedback` supplies an inspect–act–review–adjust harness: local
+  structural/calibration findings, measured part/color counts, actionable next
+  tools and heuristic plate/tile review suggestions. Pass `goal` (at most 2000
+  bytes) and optionally `include_images:true` for actual WebGL images from up to
+  four views. It does not edit, simulate, publish, certify aesthetics or infer
+  requested feature correctness from inventories. Review images against the human
+  brief, then improve the specific finding. A successful shared receipt remains
+  distinct from visual quality; duplicate validation/dynamics is not a default
+  gate after every edit. Per-piece examples in heuristic suggestions are capped
+  at 20 IDs; counts describe the full local construction. Names in the canonical
+  catalogue classify bricks/plates/tiles. Plate review triggers at four or more
+  plates when plates outnumber recognized bricks; tile review triggers at four or
+  more tiles when tiles exceed half the pieces. These are prompts to inspect an
+  intentional design choice, not rejection thresholds.
+  Rendered `view_construction`, `test_visual_appearance` and image-inclusive
+  feedback responses also expose their local numeric feedback as
+  `structuredContent`, alongside real PNG content and the text fallback.
 - `get_catalog` also lists versioned common-construct IDs. Reference canonical parts
   and reusable plate-free `minifigure-v2`/`classic-car-v2` models rather than copying definitions.
   Recorded `set_count` values and hand/wheel/Technic connector endpoints are included

@@ -1,0 +1,9 @@
+{
+  "mcpServers": {
+    "ergo": {
+      "command": "ergo-mcp",
+      "args": ["--headless"],
+      "env": {"ERGO_PUBLISH_URL": "https://ergosandbox.com"}
+    }
+  }
+}

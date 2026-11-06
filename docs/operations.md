@@ -62,13 +62,29 @@ discovery with an independent 100,000-piece diagnostic cap and the configured
 working-byte budget. It reports completion/timeout/errors, loaded
 counts, cache statistics and phase times for piece/rule/mesh reads, external joints
 and spatial neighbours. Timeout output contains partial **diagnostic counts**,
-never an authoring scene or a passing validation certificate. It stages no edits,
+never an authoring scene or a passing validation certificate. The new
+`rules_milliseconds` and `prefetch_milliseconds` fields record completed phases;
+null means that phase had not finished when the deadline expired. Compare a cold
+run with the same immutable revision and the current release build; packed browser
+regions do not themselves accelerate authoring member rules. It stages no edits,
 does not publish a candidate/head and explicitly closes its snapshot/transaction
 handles. It may create and release normal GC activity pins; it never clears other
 requests' pins. Run a fresh process for a cold process-cache comparison. Concurrent
 accepted edits do not change the pinned diagnostic revision.
 
-An explicit trailing `--serve` retains that process's verified immutable cache
+To reproduce the **actual authoring-workspace read** without returning its scene,
+use `ergo-server shared-profile-workspace WORLD_ID ASSEMBLY_ID ACTOR_ID [SECONDS]`
+with the same private storage configuration. Its default deadline is 600 seconds
+(allowed range 1–1,800). It checks that actor's normal read permission and
+authoring entitlement, pins the current revision, then reports only the brick
+count, elapsed time, errors and cache statistics. It does not mutate the world,
+log credentials, or print construction geometry. In particular, a successful
+`HEAD` freshness check does not establish that a full `GET` will finish.
+Operator JSON goes to stdout; progress and server logs go to stderr so a
+completed profile can be parsed without stripping log prefixes.
+
+For `shared-profile-dependencies` only, an explicit trailing `--serve` retains
+that process's verified immutable cache
 and starts the ordinary API after the bounded profile. It requires an explicit
 loopback `ERGO_BIND` and the configured common-world ID. Authentication, pacing,
 frozen physics and authoring budgets remain the normal server settings; a
@@ -87,12 +103,12 @@ prove an asset or image was published.
 
 ```sh
 gh run list --repo ngrislain/ergo --workflow release.yml --limit 5
-gh release view v0.5.25 --repo ngrislain/ergo
+gh release view v0.5.26 --repo ngrislain/ergo
 ```
 
 Verify the public tarball version/checksum, consumer install and actual MCP smoke
 before changing the displayed installation source. Promote
-`@ngrislain/ergo-mcp@0.5.25` only after registry and consumer checks; retain the
+`@ngrislain/ergo-mcp@0.5.26` only after registry and consumer checks; retain the
 last verified public setting while building the candidate. GitHub also hosts the
 identical complete tarball and checksum. The package includes all 138 source parts
 and the reviewed wall bearing profile; check an outside-checkout npm installation
@@ -116,7 +132,7 @@ After publication, set the public Pages variable and rebuild:
 
 ```sh
 gh variable set ERGO_MCP_PACKAGE --repo ngrislain/ergo \
-  --body '@ngrislain/ergo-mcp@0.5.25'
+  --body '@ngrislain/ergo-mcp@0.5.26'
 gh workflow run pages.yml --repo ngrislain/ergo --ref main
 ```
 

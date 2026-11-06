@@ -162,7 +162,18 @@ fn TokenPanel(account: RwSignal<Option<Account>>) -> impl IntoView {
     let busy = RwSignal::new(false);
     let error = RwSignal::new(None::<String>);
     let copied = RwSignal::new(false);
+    let callback = mcp_callback();
+    if callback.is_err() {
+        error.set(Some(
+            "Invalid MCP callback. Restart your MCP server to get a new sign-in link.".into(),
+        ));
+    }
+    let invalid_callback = callback.is_err();
+    let callback = StoredValue::new(callback.ok().flatten());
     let generate = move |_| {
+        if busy.get_untracked() || invalid_callback {
+            return;
+        }
         busy.set(true);
         error.set(None);
         copied.set(false);
@@ -191,6 +202,12 @@ fn TokenPanel(account: RwSignal<Option<Account>>) -> impl IntoView {
                         value["expires_at"].as_f64().unwrap_or_default() * 1000.,
                     ));
                     expires.set(date.to_iso_string().as_string().unwrap_or_default());
+                    if let Some(destination) = callback.get_value()
+                        && let Some(value_token) = value["token"].as_str()
+                        && let Err(e) = return_mcp_token(&destination, value_token)
+                    {
+                        error.set(Some(format!("Could not connect to your MCP server: {e:?}. You can still download this token.")));
+                    }
                 }
                 Err(e) => error.set(Some(e.to_string())),
             }
@@ -201,9 +218,10 @@ fn TokenPanel(account: RwSignal<Option<Account>>) -> impl IntoView {
         <section class="token-panel" aria-labelledby="token-title"><div><h2 id="token-title">"Your MCP and API access token"</h2>
             <p class="account-id">{move ||account.get().and_then(|a|a.id).map(|id|format!("Account: {id}")).unwrap_or_default()}</p>
             <p>"Tokens last 365 days, independently of your browser session. S3 credentials stay on the server."</p>
+            <Show when=move ||callback.get_value().is_some()><p>"Authorize only the MCP server you just started on this device. This sends it an edit token and lets it save that token privately for future sessions."</p></Show>
             <p class="allowance-label">{move ||account.get().and_then(|a|a.edit_allowance).map(allowance_label).unwrap_or_else(||"Sign in to see your edit allowance.".into())}</p>
         </div><div class="token-actions">
-            <button class="button primary" disabled=move ||busy.get()||!account.get().is_some_and(|a|a.signed_in||a.development) on:click=generate>{move ||if busy.get(){"Generating…"}else{"Generate access token"}}</button>
+            <button class="button primary" disabled=move ||busy.get()||invalid_callback||!account.get().is_some_and(|a|a.signed_in||a.development) on:click=generate>{move ||if busy.get(){"Generating…"}else if callback.get_value().is_some(){"Authorize MCP server"}else{"Generate access token"}}</button>
             <Show when=move ||token.get().is_some()><label>"Access token"<textarea readonly aria-label="MCP and API token" prop:value=move ||token.get().unwrap_or_default()/></label>
                 <p class="subtle">{move ||format!("Expires {}. Sign-out does not revoke already-issued tokens.",expires.get())}</p>
                 <div class="token-buttons"><button class="button quiet" on:click=move |_|{
@@ -217,6 +235,57 @@ fn TokenPanel(account: RwSignal<Option<Account>>) -> impl IntoView {
             <Show when=move ||error.get().is_some()><p class="onboarding-error" role="alert">{move ||error.get().unwrap_or_default()}</p></Show>
         </div></section>
     }
+}
+
+fn mcp_callback() -> Result<Option<String>, JsValue> {
+    let query = web_sys::window().unwrap().location().search()?;
+    let Some(value) = web_sys::UrlSearchParams::new_with_str(&query)?.get("mcp_callback") else {
+        return Ok(None);
+    };
+    let url = web_sys::Url::new(&value)?;
+    let path = url.pathname();
+    let capability = path.strip_prefix("/callback/").unwrap_or_default();
+    if url.protocol() != "http:"
+        || url.hostname() != "127.0.0.1"
+        || url
+            .port()
+            .parse::<u16>()
+            .ok()
+            .filter(|port| *port > 0)
+            .is_none()
+        || !url.username().is_empty()
+        || !url.password().is_empty()
+        || !url.search().is_empty()
+        || !url.hash().is_empty()
+        || capability.len() != 64
+        || !capability.bytes().all(|b| b.is_ascii_hexdigit())
+    {
+        return Err(JsValue::from_str(
+            "Expected a one-time loopback MCP callback",
+        ));
+    }
+    Ok(Some(url.href()))
+}
+
+fn return_mcp_token(destination: &str, token: &str) -> Result<(), JsValue> {
+    let document = web_sys::window().unwrap().document().unwrap();
+    let form = document
+        .create_element("form")?
+        .dyn_into::<web_sys::HtmlFormElement>()?;
+    form.set_method("post");
+    form.set_action(destination);
+    let input = document
+        .create_element("input")?
+        .dyn_into::<web_sys::HtmlInputElement>()?;
+    input.set_type("hidden");
+    input.set_name("token");
+    input.set_value(token);
+    form.append_child(&input)?;
+    document.body().unwrap().append_child(&form)?;
+    // Top-level form POST avoids CORS and never puts credentials in the URL.
+    form.submit()?;
+    form.remove();
+    Ok(())
 }
 
 fn download_token(token: &str) -> Result<(), JsValue> {

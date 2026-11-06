@@ -15,6 +15,21 @@ spec.loader.exec_module(packaging)
 
 
 class DistributionTests(unittest.TestCase):
+    def test_source_plugins_match_portable_and_claude_transports_without_credentials(self):
+        root=ROOT/'plugins/ergo'
+        portable=json.loads((root/'plugin.json').read_text())
+        claude=json.loads((root/'.claude-plugin/plugin.json').read_text())
+        self.assertEqual(portable['name'],claude['name'])
+        self.assertEqual(portable['version'],packaging.version())
+        self.assertEqual(claude['version'],packaging.version())
+        standard=json.loads((root/'mcp.json').read_text())['mcpServers']['ergo']
+        compatible=json.loads((root/'.mcp.json').read_text())['mcpServers']['ergo']
+        self.assertEqual(standard.pop('type'),'stdio')
+        self.assertEqual(standard,compatible)
+        self.assertEqual(standard['env'],{'ERGO_PUBLISH_URL':'https://ergosandbox.com'})
+        self.assertEqual(standard['args'],['--headless'])
+        self.assertIn('get_build_feedback',(root/'skills/build/SKILL.md').read_text())
+
     def test_source_template_is_private_and_does_not_have_install_hooks(self):
         package = json.loads((ROOT / 'packages/mcp/package.json').read_text())
         self.assertTrue(package['private'])

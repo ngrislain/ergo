@@ -67,15 +67,20 @@ The prebuilt bundle includes native binaries and WASM assets; consumers need
 Node.js 20+ and Chrome/Chromium, not Rust.
 
 ```sh
-npm install --global --ignore-scripts @ngrislain/ergo-mcp@0.5.25
+npm install --global --ignore-scripts @ngrislain/ergo-mcp@0.5.26
 ergo-mcp --login --publish-url https://ergosandbox.com
 ```
 
-The [GitHub Release](https://github.com/ngrislain/ergo/releases/tag/v0.5.25)
+The [GitHub Release](https://github.com/ngrislain/ergo/releases/tag/v0.5.26)
 also provides the verified complete tarball and checksum.
 
-Generate/download a token in the signed-in browser, keep it in a private file,
-and configure the client:
+In v0.5.26, `--login` opens browser sign-in, asks the human to approve
+the MCP server, receives the token over a one-time loopback POST and saves it in
+a private origin-specific file. Normal hosted startup does the same for missing
+or HTTP-401-rejected credentials. These changes require a matching v0.5.26 client
+and deployed browser UI; the older v0.5.25 bundle cannot pick up tokens this way.
+Manual token generation/download remains at `/login#connect`.
+Configure an explicit private token file if preferred:
 
 ```sh
 ERGO_PUBLISH_URL=https://ergosandbox.com \
@@ -99,7 +104,14 @@ Before a new design, [search/retrieve similar models](docs/model-library.md) wit
 their source/author/licence attribution.
 
 See [agent workflows](docs/agent-shared-editing.md), [MCP tools](docs/local-construction-mcp.md)
-and [distribution](docs/distribution.md).
+and [distribution](docs/distribution.md). Source plugin packages for Codex and
+Claude Code live in [`plugins/ergo`](plugins/ergo); see
+[plugin setup](docs/mcp-plugins.md). The current-source `get_build_feedback` harness
+adds actionable findings, measured part/palette observations and optional actual
+rendered views for an inspect–act–review–adjust workflow; acceptance is not an
+automatic aesthetic verdict. The unlisted [`/catalogue`](https://ergosandbox.com/catalogue)
+shows supported pieces/colors in 3D. The source also provides an unlisted
+`/mcp-inspector` page for displaying the official, locally running Inspector.
 
 ## Native descriptions and assets
 

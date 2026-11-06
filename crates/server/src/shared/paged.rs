@@ -126,7 +126,7 @@ pub(super) async fn rows<T: serde::de::DeserializeOwned + Serialize>(
     loop {
         let page = ws
             .tx
-            .scan_page_prefetched(prefix, after.as_ref(), 128)
+            .scan_page_prefetched(prefix, after.as_ref(), 1024)
             .await?;
         let limit = ws.remaining();
         let tx = &ws.tx;

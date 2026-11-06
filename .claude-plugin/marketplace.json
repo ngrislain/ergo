@@ -1,0 +1,5 @@
+{
+  "name": "ergo",
+  "owner": {"name": "Ergo"},
+  "plugins": [{"name": "ergo", "source": "./plugins/ergo", "description": "LEGO set inspiration and shared-world building."}]
+}

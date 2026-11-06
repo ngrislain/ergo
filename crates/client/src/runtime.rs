@@ -248,7 +248,58 @@ impl LocalClientRuntime {
         } else {
             issue
         };
-        json!({"revision":self.revision,"brick_count":scene.bricks.len(),"overlap_free":overlap_free(&scene).is_ok(),"static_under_current_joint_model":valid,"publication_ready":valid&&issue.is_none(),"stability_report":validation.as_ref().ok(),"failure":validation.err().map(|e|e.to_string()),"calibration_issue":issue,"connector_calibration_issue":connector_issue,"global_commit_available":false,"execution":"local-wasm-client","next_action":if valid{"Inspect visual feedback and connector calibration before requesting an authorized commit."}else{"Add support or fix the reported constraint/contact. A client gravity test can provide additional diagnostics but cannot override the server certificate."}})
+        json!({"revision":self.revision,"brick_count":scene.bricks.len(),"overlap_free":overlap_free(&scene).is_ok(),"static_under_current_joint_model":valid,"publication_ready":valid&&issue.is_none(),"stability_report":validation.as_ref().ok(),"failure":validation.err().map(|e|e.to_string()),"calibration_issue":issue,"connector_calibration_issue":connector_issue,"global_commit_available":false,"execution":"local-wasm-client","next_action":if valid{"Review actual rendered views against the brief and inspect the shared receipt. Local static success is not a visual-quality or publication verdict."}else{"Add support or fix the reported constraint/contact. A client gravity test can provide additional diagnostics but cannot override the server certificate."}})
+    }
+    fn build_feedback(&self, args: &Value) -> Result<Value> {
+        let goal = args["goal"].as_str().unwrap_or_default();
+        ensure!(goal.len() <= 2000, "Keep the review goal within 2000 bytes");
+        let mut feedback = self.feedback();
+        let mut parts = BTreeMap::<String, usize>::new();
+        let mut colors = BTreeMap::<u32, usize>::new();
+        let mut plates = Vec::new();
+        let mut tiles = Vec::new();
+        let mut bricks = 0;
+        for brick in &self.scene.bricks {
+            *parts.entry(brick.part.clone()).or_default() += 1;
+            *colors.entry(brick.color).or_default() += 1;
+            let name = ergo_world::catalog::part_name(&brick.part).to_ascii_lowercase();
+            if name.starts_with("plate ") {
+                plates.push(brick.id);
+            }
+            if name.starts_with("tile ") {
+                tiles.push(brick.id);
+            }
+            if name.starts_with("brick ") {
+                bricks += 1;
+            }
+        }
+        let mut suggestions = Vec::new();
+        if self.scene.bricks.is_empty() {
+            suggestions.push(json!({"kind":"next_step","action":"Search existing sets and building techniques, then place a small self-supporting first section.","next_tools":["get_lego_models","get_building_techniques","get_catalog"]}));
+        }
+        if feedback["failure"].is_string() {
+            suggestions.push(json!({"kind":"structural","evidence":feedback["failure"],"action":"Inspect the reported pieces and contacts. Repair the specific support/constraint issue in a small atomic edit; do not repeat an unchanged failing edit.","next_tools":["inspect_brick","place_submodel"]}));
+        }
+        if feedback["calibration_issue"].is_string()
+            || feedback["connector_calibration_issue"].is_string()
+        {
+            suggestions.push(json!({"kind":"calibration","action":"Disclose missing connector measurements. Contact-only gravity support is not measured clutch strength; do not claim dynamic safety from an idealized model.","evidence":[feedback["calibration_issue"],feedback["connector_calibration_issue"]]}));
+        }
+        if plates.len() >= 4 && plates.len() > bricks {
+            suggestions.push(json!({"kind":"design_review","heuristic":true,"action":"Plate-heavy construction: review whether larger upright studded bricks can preserve the intended shape with fewer pieces. Keep plates where thin layers are intentional.","piece_count":plates.len(),"example_piece_ids":plates.iter().take(20).collect::<Vec<_>>() }));
+        }
+        if tiles.len() >= 4 && tiles.len() * 2 > self.scene.bricks.len() {
+            suggestions.push(json!({"kind":"design_review","heuristic":true,"action":"Tile-heavy construction: verify that smooth surfaces are intentional rather than substituting tiles for the requested studded build.","piece_count":tiles.len(),"example_piece_ids":tiles.iter().take(20).collect::<Vec<_>>() }));
+        }
+        feedback["working_copy_changed"] = json!(false);
+        feedback["observations"] = json!({"piece_count":self.scene.bricks.len(),"unique_parts":parts.len(),"unique_colors":colors.len(),"standard_brick_count":bricks,"plate_count":plates.len(),"tile_count":tiles.len(),"parts":parts,"colors":colors});
+        feedback["suggestions"] = json!(suggestions);
+        feedback["review_brief"] = json!(goal);
+        feedback["visual_review"] = json!({"automated_aesthetic_pass":false,"action":"Inspect actual images against the brief: silhouette, minifigure-scale proportions, openings, roof details, palette and the requested features. Report observed issues and preserve successful choices.","next_tools":["view_construction","test_visual_appearance"]});
+        feedback["next_action"] = json!(
+            "Review the concrete findings and actual images, choose a targeted improvement, inspect its accepted/rejected receipt, then review again at a meaningful milestone. Do not treat this diagnostic as a commit or rerun expensive dynamics without a reason."
+        );
+        Ok(feedback)
     }
     fn update(&mut self, edit: impl FnOnce(&mut WorldExport) -> Result<()>) -> Result<Value> {
         let mut next = self.scene.clone();
@@ -927,7 +978,10 @@ impl LocalClientRuntime {
                 feedback["calibration_issue"] = json!(issue);
                 Ok(text(feedback))
             }
-            "test_visual_appearance" | "view_construction" => {
+            "get_build_feedback" if args["include_images"] != true => {
+                Ok(text(self.build_feedback(&args)?))
+            }
+            "test_visual_appearance" | "view_construction" | "get_build_feedback" => {
                 ensure!(
                     args.get("camera").is_none() || args.get("views").is_none(),
                     "Choose a camera or preset views"
@@ -939,14 +993,19 @@ impl LocalClientRuntime {
                     .unwrap_or_else(|| vec!["isometric".into()]);
                 ensure!(!views.is_empty() && views.len() <= 4, "Choose 1–4 views");
                 let scene = self.scene.clone();
+                let feedback = if name == "get_build_feedback" {
+                    self.build_feedback(&args)?
+                } else {
+                    self.feedback()
+                };
                 let mut content = vec![
-                    json!({"type":"text","text":json!({"feedback":self.feedback(),"execution":"local-wasm-webgl2-client","camera":args.get("camera")}).to_string()}),
+                    json!({"type":"text","text":json!({"feedback":feedback,"execution":"local-wasm-webgl2-client","camera":args.get("camera")}).to_string()}),
                 ];
                 for view in views {
                     content.push(json!({"type":"text","text":format!("View: {view}")}));
                     content.push(self.capture(&scene, &view, &args)?);
                 }
-                Ok(json!({"content":content,"isError":false}))
+                Ok(json!({"content":content,"structuredContent":feedback,"isError":false}))
             }
             "undo" => {
                 self.scene = self.undo.take().context("No previous edit")?;

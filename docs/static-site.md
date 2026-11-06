@@ -112,7 +112,7 @@ repository variable stays on the last verified package until the new release is
 published and verified:
 
 ```text
-@ngrislain/ergo-mcp@0.5.25
+@ngrislain/ergo-mcp@0.5.26
 ```
 
 For a local override, copy `site/.env.example` to ignored `site/.env`, edit that
@@ -121,7 +121,7 @@ variable with the same name. Update it only after the release asset is verified:
 
 ```sh
 gh variable set ERGO_MCP_PACKAGE --repo ngrislain/ergo \
-  --body '@ngrislain/ergo-mcp@0.5.25'
+  --body '@ngrislain/ergo-mcp@0.5.26'
 gh workflow run pages.yml --repo ngrislain/ergo --ref main
 ```
 

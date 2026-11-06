@@ -32,7 +32,7 @@ test('version is available without native startup or MCP stdout noise', () => {
   assert.equal(result.stderr, '');
 });
 
-test('the launched bridge defaults hosted login/publishing and preserves local editing and overrides', () => {
+test('the launched bridge defaults hosted login/publishing and preserves explicit local mode and overrides', () => {
   const root = realpathSync(mkdtempSync(path.join(tmpdir(), 'ergo-npm-hosted-')));
   try {
     const launcher = path.join(root, 'bin/ergo-mcp.cjs');
@@ -56,7 +56,8 @@ process.stdout.write(JSON.stringify({
     const cleanEnvironment = Object.fromEntries(Object.entries(process.env)
       .filter(([key]) => !key.startsWith('ERGO_')));
     const cases = [
-      { args: ['--attach'], env: {}, url: null },
+      { args: ['--attach'], env: {}, url: 'https://ergosandbox.com' },
+      { args: ['--local', '--attach'], env: {}, url: null },
       { args: ['--login'], env: {}, url: 'https://ergosandbox.com' },
       { args: ['--attach'], env: { ERGO_PUBLISH_TOKEN: 'test.delegation' }, url: 'https://ergosandbox.com' },
       { args: ['--attach'], env: { ERGO_PUBLISH_TOKEN_FILE: '/tmp/token with spaces' }, url: 'https://ergosandbox.com' },

@@ -13,6 +13,7 @@ class Mcp:
         if token_file:
             command += ['--publish-url', url, '--publish-token-file', str(token_file)]
         else:
+            command += ['--local']
             for key in ['ERGO_PUBLISH_URL', 'ERGO_PUBLISH_TOKEN', 'ERGO_PUBLISH_TOKEN_FILE']:
                 environment.pop(key, None)
         self.log = tempfile.TemporaryFile(mode='w+t')

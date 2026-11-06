@@ -9,6 +9,8 @@ import select
 import subprocess
 import sys
 import tempfile
+import time
+import urllib.parse
 import urllib.request
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
@@ -61,17 +63,32 @@ def main():
         login_environment = dict(environment, PATH=str(browser_bin)+os.pathsep+environment['PATH'],
                                  ERGO_TEST_LOGIN_CAPTURE=str(captured_login))
         for arguments, override, expected in [
-            (['--login'], {}, 'https://ergosandbox.com/login#connect'),
-            (['--login'], {'ERGO_PUBLISH_URL':'https://custom.example'}, 'https://custom.example/login#connect'),
+            (['--login'], {}, 'https://ergosandbox.com'),
+            (['--login'], {'ERGO_PUBLISH_URL':'https://custom.example'}, 'https://custom.example'),
             (['--login','--publish-url','http://127.0.0.1:3000'],
-             {'ERGO_PUBLISH_URL':'https://custom.example'}, 'http://127.0.0.1:3000/login#connect'),
+             {'ERGO_PUBLISH_URL':'https://custom.example'}, 'http://127.0.0.1:3000'),
         ]:
-            login = subprocess.run([str(executable),*arguments], cwd=workspace_dir,
-                                   env={**login_environment,**override}, check=True,
-                                   capture_output=True, text=True, timeout=15)
-            assert captured_login.read_text() == expected
-            assert login.stdout == '', 'Browser-login diagnostics must stay off MCP stdout'
-        process = subprocess.Popen([str(executable),'--workspace',str(workspace_dir/'construction.ergo.json'),'--attach'],
+            captured_login.unlink(missing_ok=True)
+            login = subprocess.Popen([str(executable),*arguments], cwd=workspace_dir,
+                                     env={**login_environment,**override}, stdout=subprocess.PIPE,
+                                     stderr=subprocess.PIPE, text=True)
+            try:
+                for _ in range(150):
+                    if captured_login.exists() and captured_login.read_text(): break
+                    assert login.poll() is None, 'Login exited before browser approval'
+                    time.sleep(.1)
+                else: raise AssertionError('No browser sign-in URL')
+                parsed=urllib.parse.urlsplit(captured_login.read_text())
+                assert parsed.scheme+'://'+parsed.netloc == expected
+                assert parsed.path == '/login' and parsed.fragment == 'connect'
+                callback=urllib.parse.parse_qs(parsed.query)['mcp_callback'][0]
+                assert callback.startswith('http://127.0.0.1:') and '/callback/' in callback
+                assert 'token' not in urllib.parse.parse_qs(parsed.query)
+            finally:
+                login.terminate()
+                stdout,_=login.communicate(timeout=15)
+                assert stdout == '', 'Browser-login diagnostics must stay off MCP stdout'
+        process = subprocess.Popen([str(executable),'--workspace',str(workspace_dir/'construction.ergo.json'),'--attach','--local'],
                                    cwd=workspace_dir,env=environment,stdin=subprocess.PIPE,
                                    stdout=subprocess.PIPE,stderr=subprocess.PIPE,text=True)
         assert process.stdin is not None and process.stdout is not None and process.stderr is not None

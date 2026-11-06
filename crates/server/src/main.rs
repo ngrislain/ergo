@@ -515,6 +515,9 @@ async fn snapshot(
 async fn main() -> Result<()> {
     dotenvy::dotenv().ok();
     tracing_subscriber::fmt()
+        // Operator subcommands print machine-readable JSON on stdout. Keep
+        // progress diagnostics on stderr so profiles remain parseable.
+        .with_writer(std::io::stderr)
         .with_env_filter(
             tracing_subscriber::EnvFilter::try_from_default_env()
                 .unwrap_or_else(|_| "ergo_server=info,tower_http=info".into()),
@@ -547,6 +550,23 @@ async fn main() -> Result<()> {
         let shared = shared::SharedWorlds::from_env(store.clone())?;
         let repo = shared.repo(&id)?;
         match command.as_str() {
+            "shared-profile-workspace" => {
+                let assembly = args.next().context("Expected an assembly ID")?.parse()?;
+                let actor = args.next().context("Expected an actor ID")?;
+                let seconds = args.next().map(|s| s.parse()).transpose()?.unwrap_or(600);
+                anyhow::ensure!(
+                    args.next().is_none(),
+                    "Usage: ergo-server shared-profile-workspace WORLD_ID ASSEMBLY_ID ACTOR_ID [SECONDS]"
+                );
+                println!(
+                    "{}",
+                    serde_json::to_string_pretty(
+                        &shared
+                            .profile_workspace(&id, &assembly, &actor, seconds)
+                            .await?
+                    )?
+                );
+            }
             "shared-profile-dependencies" => {
                 let assembly = args.next().context("Expected an assembly ID")?.parse()?;
                 let mut rest = args.collect::<Vec<_>>();
@@ -899,6 +919,8 @@ async fn main() -> Result<()> {
         .route_service("/app", ServeFile::new("web/index.html"))
         .route_service("/catalogue", ServeFile::new("web/catalogue.html"))
         .route_service("/catalogue/", ServeFile::new("web/catalogue.html"))
+        .route_service("/mcp-inspector", ServeFile::new("web/inspector.html"))
+        .route_service("/mcp-inspector/", ServeFile::new("web/inspector.html"))
         .route_service("/login", ServeFile::new("web/index.html"))
         .fallback_service(ServeDir::new("web").append_index_html_on_directories(true))
         .layer(DefaultBodyLimit::max(128 * 1024 * 1024))

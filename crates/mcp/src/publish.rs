@@ -7,6 +7,9 @@ use serde::Deserialize;
 use serde_json::{Value, json};
 use std::{env, path::PathBuf, time::Duration};
 
+#[path = "login.rs"]
+mod login;
+
 const MAX_RESPONSE_BYTES: usize = 128 * 1024 * 1024;
 
 #[derive(Clone)]
@@ -64,32 +67,9 @@ fn cid(value: &str) -> Result<&str> {
     Ok(value)
 }
 
-pub fn open_login(url: Option<String>) -> Result<()> {
-    let url = url
-        .or_else(|| env::var("ERGO_PUBLISH_URL").ok())
+pub fn open_login(url: Option<String>, token_file: Option<PathBuf>) -> Result<()> {
+    login::configure(url, token_file, true)?
         .context("Set --publish-url or ERGO_PUBLISH_URL for browser sign-in")?;
-    // Reuse the transport/origin validation. This placeholder is never sent.
-    let destination = Publisher::new(&url, Some("interactive-login".into()))?;
-    let mut login = destination.base.clone();
-    login.set_path("/login");
-    login.set_fragment(Some("connect"));
-    eprintln!("Sign in and generate/download an MCP access token at {login}");
-    let command = if cfg!(target_os = "macos") {
-        "open"
-    } else {
-        "xdg-open"
-    };
-    let status = std::process::Command::new(command)
-        .arg(login.as_str())
-        .status()
-        .context("Could not open browser; open the displayed login URL manually")?;
-    ensure!(
-        status.success(),
-        "Could not open browser; open the displayed login URL manually"
-    );
-    eprintln!(
-        "Save the downloaded ergo-mcp-token file, set ERGO_PUBLISH_TOKEN_FILE to its path, then start the MCP bridge normally."
-    );
     Ok(())
 }
 
@@ -120,19 +100,7 @@ impl Publisher {
         }
     }
     pub fn from_env(url: Option<String>, token_file: Option<PathBuf>) -> Result<Option<Self>> {
-        let url = url.or_else(|| env::var("ERGO_PUBLISH_URL").ok());
-        let token_file =
-            token_file.or_else(|| env::var_os("ERGO_PUBLISH_TOKEN_FILE").map(PathBuf::from));
-        let token = if let Some(path) = token_file {
-            Some(std::fs::read_to_string(path).context("Read MCP publication token file")?)
-        } else {
-            env::var("ERGO_PUBLISH_TOKEN").ok()
-        };
-        let Some(url) = url else {
-            ensure!(token.is_none(), "Set ERGO_PUBLISH_URL for MCP publishing");
-            return Ok(None);
-        };
-        Ok(Some(Self::new(&url, token)?))
+        login::configure(url, token_file, false)
     }
 
     fn new(url: &str, token: Option<String>) -> Result<Self> {

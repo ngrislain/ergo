@@ -149,10 +149,23 @@ with tempfile.TemporaryDirectory(prefix="ergo-common-") as directory:
             assert native['format']=='ergo-construction-1' and len(native['pieces'])==3
             short_list_height=guest.locator(".construction-list").evaluate("el=>el.clientHeight")
             assert guest.locator(".world-coordinates").bounding_box()['y']<guest.locator(".browser").bounding_box()['y']
+            guest.get_by_role('link',name='Edit with MCP / API',exact=True).click()
+            guest.wait_for_url(url+'/login#connect')
+            expect(guest.get_by_role('link',name='Continue with Google',exact=True)).to_be_visible()
+            expect(guest.get_by_role('button',name='Generate access token',exact=True)).to_be_disabled()
             guest.close()
             context=browser.new_context(viewport={"width":1440,"height":950})
             context.add_cookies([{"name":"ergo_session","value":helpers.signed_session("alice"),"url":url,"httpOnly":True}])
             page=context.new_page()
+            page.goto(url+'/app')
+            page.get_by_role('link',name='Edit with MCP / API',exact=True).click(timeout=30000)
+            page.wait_for_url(url+'/login#connect')
+            page.get_by_role('button',name='Generate access token',exact=True).click()
+            token_field=page.get_by_role('textbox',name='MCP and API token',exact=True)
+            expect(token_field).to_be_visible()
+            ui_token=token_field.input_value()
+            allowance=context.request.get(url+'/api/shared-worlds/allowance',headers={'Authorization':'Bearer '+ui_token})
+            assert allowance.status==200 and allowance.json()['actor']=='alice'
             # Exercise scrolling pagination without creating fake accepted objects.
             actual=helpers.http(url+f"/api/shared-worlds/{head['id']}/assemblies?limit=32")[1]
             # Older catalogue payloads without exact sizes take the safe server

@@ -17,6 +17,22 @@ source page and thumbnail URL. Use broader subject/style queries such as `car`,
 `house` or `bridge`, then inspect the closest useful result. If a first query has
 no suitable result, try related terminology instead of inventing a model match.
 
+Feature-first inspiration is also supported in the current source:
+
+```json
+{"feature":"arches","source":"ldraw","limit":5}
+```
+
+The schema exposes `arches`, `pitched_roofs`, `modular_buildings`, `steering`,
+`suspension`, `gears`, and `trees`. With no text query, each feature expands to two
+bounded public catalogue subject searches (for example, arches searches `castle`
+and `bridge`). LDraw results are deduplicated by model ID. An explicit query uses
+that text instead. The response includes `feature.search_terms`, an
+`inspection_hint`, and an evidence disclaimer. These are **inspiration candidates,
+not verified feature/geometry matches**: retrieve the source and inspect the
+relevant submodels before claiming a set contains a mechanism. No paid instructions
+or semantic inventory-to-geometry inference is involved.
+
 Retrieve by ID, optionally selecting a reusable MPD section:
 
 ```json
@@ -60,14 +76,15 @@ useful model exists, report the searches and build an original sourced design.
   inventory or download paid instructions.
 - **Custom LDraw:** set `ERGO_MODEL_LIBRARY_DIR` to a local directory with an
   `index.json` manifest and `.ldr`/`.mpd` files. Entries declare `id`, `name`,
-  relative `path`, `author`, `license` and optional `tags`. Search matches names
-  and tags; retrieve with `model_id:"custom:ID"`. Paths/symlinks must stay inside
+   relative `path`, `author`, `license` and optional `tags` and `features`. Search matches names,
+   tags and feature labels. A `feature` argument filters exact maintainer-supplied
+   labels (it does not certify geometry); retrieve with `model_id:"custom:ID"`. Paths/symlinks must stay inside
   the configured directory.
 
 ```json
 [
   {"id":"town-car","name":"Custom Town car","path":"town-car.mpd",
-   "author":"Example Builder","license":"CC BY 4.0","tags":["car","vehicle"]}
+    "author":"Example Builder","license":"CC BY 4.0","tags":["car","vehicle"],"features":["steering"]}
 ]
 ```
 

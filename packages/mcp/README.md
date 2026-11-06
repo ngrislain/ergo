@@ -23,10 +23,7 @@ MCP client configuration:
   "mcpServers": {
     "ergo": {
       "command": "ergo-mcp",
-      "args": ["--workspace", "/absolute/path/construction.ergo.json"],
-      "env": {
-        "ERGO_PUBLISH_TOKEN_FILE": "/absolute/path/ergo-mcp-token"
-      }
+      "args": ["--workspace", "/absolute/path/construction.ergo.json", "--headless"]
     }
   }
 }
@@ -40,9 +37,14 @@ native `--web-dir` option can explicitly override the packaged assets.
 Login and authenticated publishing default to **https://ergosandbox.com**.
 Override the server with `ERGO_PUBLISH_URL` or `--publish-url`; the CLI option takes
 precedence. With a production token, accepted edits automatically update the one
-public Ergo Sandbox and the file is a cache. Runs without a URL/token are isolated
-developer/proposal tests, not alternative hosted worlds. Supply `ERGO_PUBLISH_TOKEN_FILE`,
-`--publish-token-file`, or `ERGO_PUBLISH_TOKEN` after signing in.
+public Ergo Sandbox and the file is a cache. In the current source, missing or
+HTTP-401-rejected credentials automatically open browser sign-in and explicit
+human approval, then save the approved token privately for the configured origin.
+Tokenless npm startup uses the hosted Sandbox; `--local` explicitly selects
+isolated developer/proposal tests. Supply `ERGO_PUBLISH_TOKEN_FILE`,
+`--publish-token-file`, or `ERGO_PUBLISH_TOKEN` to override credential lookup.
+These source changes require a rebuilt bundle and matching browser deployment;
+they are not retroactively present in the already-published v0.5.25 package.
 
 The default opens your browser; `--attach` prints the local attachment URL.
 `--headless` requires an installed Google Chrome (or `ERGO_CHROME_BIN`). The
@@ -53,6 +55,14 @@ For sign-in/token setup:
 ```sh
 ergo-mcp --login
 ```
+
+This completes approval and saves the token before exiting. Use it before
+connecting clients whose startup deadline is too short for interactive sign-in.
+The default token path is `~/.config/ergo/tokens/<origin-sha256>.token`
+(`$XDG_CONFIG_HOME` is honored), with Unix mode 0600. No token is put in chat,
+workspace files, URLs, or MCP stdout. Source plugin wrappers for Codex and Claude
+Code are available under `plugins/ergo` in the repository; they require the bridge
+to be installed and are not a public plugin-directory listing.
 
 Publishing retains server authorization, pacing, and measured-physics checks.
 The client uses native Ergo construction/model/part descriptions. `get_user_position`

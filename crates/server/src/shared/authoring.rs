@@ -66,6 +66,7 @@ impl SharedWorlds {
         revision: &ContentId,
         export_only: bool,
     ) -> SharedResult<serde_json::Value> {
+        let started = std::time::Instant::now();
         let mut ws = if export_only {
             // Geometry interchange is read-only, not an authoring or dynamics
             // operation. Retain authorization/byte limits without a body cap or
@@ -89,62 +90,27 @@ impl SharedWorlds {
         } else {
             self.working(id, actor, revision).await?
         };
-        // Reopening a cold assembly must not serialize one object-store round
-        // trip per member and then another per piece. Warm only this accepted
-        // assembly's bounded records; Working still performs and charges every
-        // ordinary read below, with its original dependency/identity checks.
-        let snapshot = self.repo(id)?.accepted_snapshot("main", revision).await?;
-        let header: paged::RulesHeader = snapshot
-            .get_limited(&paged::rule_path(assembly, 0), ws.remaining())
-            .await?
-            .context("Missing paged assembly header")?;
-        if header
-            .piece_count
-            .is_some_and(|count| count > ws.piece_limit())
-        {
-            return Err(SharedError::working_limit("authoring assembly"));
-        }
-        let mut after = None;
-        let mut warm_bytes = ws.remaining();
-        let mut count = 0;
-        loop {
-            let page = snapshot
-                .scan_page_prefetched(&paged::rule_path(assembly, 1), after.as_ref(), 512)
-                .await?;
-            let limit = warm_bytes;
-            let mut records = futures::stream::iter(page.leaves)
-                .map(|(_, cid)| {
-                    let snapshot = &snapshot;
-                    async move {
-                        let member: paged::MemberRow = snapshot.blob_limited(&cid, limit).await?;
-                        let piece: Piece = snapshot
-                            .get_limited(&entity_path(3, &member.piece), limit)
-                            .await?
-                            .context("Missing assembly piece")?;
-                        Ok::<_, SharedError>(
-                            canonical_cbor(&member)?.len() + canonical_cbor(&piece)?.len(),
-                        )
-                    }
-                })
-                .buffered(READ_CONCURRENCY);
-            while let Some(bytes) = records.try_next().await? {
-                count += 1;
-                if count > ws.piece_limit() {
-                    return Err(SharedError::working_limit("authoring assembly"));
-                }
-                warm_bytes = warm_bytes
-                    .checked_sub(bytes)
-                    .ok_or_else(|| SharedError::working_limit("CBOR byte budget"))?;
-            }
-            after = page.next;
-            if after.is_none() {
-                break;
-            }
-        }
+        // Reconstruct once, under the ordinary transaction's byte/identity
+        // checks. A separate snapshot scan used to walk every member first,
+        // then scan the same tree again during rules reconstruction. In a cold
+        // 14k-piece assembly that doubles hundreds of thousands of index reads.
         let rules = ws.rules(assembly).await?;
+        tracing::info!(assembly = %assembly, pieces = rules.pieces.len(), elapsed_ms = started.elapsed().as_millis(), "Authoring rules reconstructed");
         if rules.pieces.len() > ws.piece_limit() {
             return Err(SharedError::working_limit("authoring assembly"));
         }
+        // Speculate only immutable piece records after their authoritative IDs
+        // have been checked. Ordinary ws.piece() still charges and validates
+        // each record, and failures here cannot mask a missing/corrupt piece.
+        let mut piece_ids = Vec::with_capacity(rules.pieces.len().min(1024));
+        for id in rules.pieces.values() {
+            piece_ids.push(id.clone());
+            if piece_ids.len() == 512 {
+                ws.prefetch_pieces(std::mem::take(&mut piece_ids)).await;
+            }
+        }
+        ws.prefetch_pieces(piece_ids).await;
+        tracing::info!(assembly = %assembly, pieces = rules.pieces.len(), elapsed_ms = started.elapsed().as_millis(), "Authoring pieces prefetched");
         let mut bricks = Vec::new();
         let mut meshes = BTreeMap::new();
         let mut mesh_names = BTreeMap::<ContentId, String>::new();
@@ -187,15 +153,24 @@ impl SharedWorlds {
             }
             bricks.push(brick);
         }
+        tracing::info!(assembly = %assembly, pieces = bricks.len(), elapsed_ms = started.elapsed().as_millis(), "Authoring pieces materialized");
         let ids = rules.pieces.values().cloned().collect::<BTreeSet<_>>();
+        let bounds = ergo_world::bounds(&bricks);
+        let conservative_dependencies = !export_only
+            && bounds.is_some_and(|bounds| bounds.size().max_element() > ergo_world::BLOCK_SIZE);
         let external = if export_only {
             None
+        } else if conservative_dependencies {
+            // An isolated simulation of a multi-cell assembly cannot prove
+            // completeness cheaply: per-member spatial closure can exceed the
+            // request lifetime. Treat it as *possibly* dependent, disabling only
+            // local simulations. Authoritative writes still validate the full
+            // affected domain and are not weakened by this read-only shortcut.
+            Some(true)
         } else {
-            Some(
-                ws.has_external_dependencies(&ids, ergo_world::bounds(&bricks))
-                    .await?,
-            )
+            Some(ws.has_external_dependencies(&ids, bounds).await?)
         };
+        tracing::info!(assembly = %assembly, pieces = bricks.len(), external_dependencies = ?external, elapsed_ms = started.elapsed().as_millis(), "Authoring geometry and dependencies loaded");
         let source = if let Some(cid) = &rules.source_model {
             // The hierarchy is an optional editing hint, not the authoritative
             // piece inventory. Read/hash/size failures still propagate, but an
@@ -223,7 +198,7 @@ impl SharedWorlds {
         };
         Ok(
             serde_json::json!({"world_id":id,"assembly_id":assembly,"base_revision":revision,
-            "scene":scene,"external_dependencies":external}),
+            "scene":scene,"external_dependencies":external,"external_dependency_check":if export_only {"not_checked_export"} else if conservative_dependencies {"conservative_large_span"} else {"verified"}}),
         )
     }
 

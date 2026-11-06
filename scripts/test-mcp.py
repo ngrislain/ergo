@@ -20,7 +20,7 @@ def main():
         (library / "parts").mkdir(parents=True)
         (library / "parts" / "custom-part.dat").write_text("0 Synthetic custom part\n0 Author: Test fixture\n0 !LICENSE Synthetic test fixture\n4 16 -20 0 -20 20 0 -20 20 0 20 -20 0 20\n4 16 -20 24 -20 -20 24 20 20 24 20 20 24 -20\n")
         process = subprocess.Popen(
-            [str(pathlib.Path(args.binary).resolve()), "--workspace", str(workspace), "--headless"],
+            [str(pathlib.Path(args.binary).resolve()), "--workspace", str(workspace), "--headless", "--local"],
             stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
             text=True,
             env={**os.environ,"ERGO_ASSET_FETCH":"0","ERGO_ASSET_LIBRARY_DIR":str(library)},
@@ -50,6 +50,9 @@ def main():
                                             "capabilities": {}, "clientInfo": {"name": "ergo-smoke", "version": "1"}})
             assert initialized["capabilities"]["tools"]["listChanged"] is False
             names = {tool["name"] for tool in rpc("tools/list")["tools"]}
+            empty_review=call('get_build_feedback')['structuredContent']
+            assert empty_review['observations']['piece_count']==0
+            assert empty_review['suggestions'][0]['kind']=='next_step'
             techniques=call('get_building_techniques',query='Swiss chalet')['structuredContent']['techniques']
             assert any(t['id']=='interlocked-corner' for t in techniques)
             assert any(t['id']=='stepped-roof' for t in techniques)
@@ -66,6 +69,18 @@ def main():
             assert call("list_bricks")["structuredContent"]["total"] == 1
             result = call("place_brick", part="3003", color=1, min_corner=[8, 2, 8])
             assert result["structuredContent"]["static_under_current_joint_model"] is False
+            before_review=workspace.read_bytes()
+            review=call('get_build_feedback',goal='A minifigure-scale house')['structuredContent']
+            assert review['working_copy_changed'] is False and workspace.read_bytes()==before_review
+            assert review['observations']['piece_count']==2
+            assert review['visual_review']['automated_aesthetic_pass'] is False
+            assert any(item['kind']=='structural' and item['action'] for item in review['suggestions']),review
+            review_images=call('get_build_feedback',goal='Review the roof and proportions',include_images=True,views=['isometric'],width=320,height=240)
+            assert len([item for item in review_images['content'] if item['type']=='image'])==1
+            assert review_images['structuredContent']['review_brief']=='Review the roof and proportions'
+            assert workspace.read_bytes()==before_review
+            assert call('get_build_feedback',goal='x'*2001)['isError'] is True
+            assert workspace.read_bytes()==before_review
             result = call("test_stability_by_gravity", steps=1)
             assert result["structuredContent"]["report"]["survived_declared_case"] is False
             moving=result['structuredContent']['unstable_pieces']

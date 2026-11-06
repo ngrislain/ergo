@@ -423,10 +423,29 @@ uncached fallbacks use `no-store`. Native filesystem part caches remain supporte
 These caches never replace server-owned physical normalization or validation.
 
 Complete authoring reads retain canonical member/identity and byte-budget checks.
-Their conservative external-dependency guard stops after its first verified
-external spatial witness instead of materializing every nearby building inside a
-street assembly's broad bounds. A negative result still traverses the full query
-and checks remote explicit dependencies; edit validation is unchanged.
+Cold authoring rule reconstruction now scans each member prefix once (1,024-row
+pages) instead of first running a separate full snapshot warm-up and then
+repeating the scan in the transaction. For 512–20,000 declared members, bounded
+512-path waves speculatively prefetch consecutive local-ID member rows; sparse
+or missing IDs simply miss the cache and the ordinary observed scan remains the
+authority. Once IDs are verified, bounded waves prefetch immutable piece records
+before the usual identity-checked and charged reads. Neither lookahead serves an
+unchecked scene, changes transaction predicates, or expands authoring budgets.
+Server logs report the elapsed rules, piece-prefetch and dependency stages by
+assembly ID without logging actor tokens or construction contents. The read-only
+`shared-profile-dependencies` report also separates rule reconstruction and
+piece-prefetch durations (null when its deadline fires before that phase).
+For compact authoring assemblies spanning at most one 128-stud cell width,
+the external-dependency guard stops after its first verified external spatial
+witness. A negative result still traverses the full query and checks remote
+explicit dependencies. A broader assembly returns `external_dependencies:true`
+with `external_dependency_check:"conservative_large_span"`: **possible** external
+dependencies are not asserted as verified. This avoids a potentially unbounded
+per-member read-only spatial closure before an MCP session can start, at the
+cost of disabling isolated local simulations even for some independent broad
+assemblies. It does not skip or weaken the complete affected-domain validation
+on edits. Complete authoring downloads remain revision-pinned and charge
+authoritative records; the `HEAD` freshness check is still not a geometry read.
 
 ## Observe and measure
 

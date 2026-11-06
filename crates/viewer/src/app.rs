@@ -2199,7 +2199,7 @@ pub fn App() -> impl IntoView {
                 {loading_indicator(ui)}
                 <Show when=move ||ui.fullscreen.get()><ErrorToast/></Show>
             </section>
-            <aside class="right-dock"><BrickInspector/><Show when=move ||ui.current.get().is_some_and(|w|w.owner=="shared") fallback=move ||view!{<SimulationControls/>}><div class="dock-section"><h2>"Shared-world navigation"</h2><p class="subtle compact">"This is a bounded spatial view. Edit complete constructions through MCP or the API; the server checks permissions, edit allowance, and measured physics."</p><a class="button full quiet" href="/#connect">"Edit with MCP / API"</a></div></Show></aside>
+            <aside class="right-dock"><BrickInspector/><Show when=move ||ui.current.get().is_some_and(|w|w.owner=="shared") fallback=move ||view!{<SimulationControls/>}><div class="dock-section"><h2>"Shared-world navigation"</h2><p class="subtle compact">"This is a bounded spatial view. Edit complete constructions through MCP or the API; the server checks permissions, edit allowance, and measured physics."</p><a class="button full quiet" href="/login#connect">"Edit with MCP / API"</a></div></Show></aside>
         </main>
         <footer class="status-bar"><span class="status-message" role="status">{move ||ui.message.get()}</span><span>{move ||format!("{} blocks · {} bricks · {} draw calls · {:.1} MB GPU",ui.blocks.get(),number(ui.count.get()),ui.draws.get(),ui.gpu.get() as f64/1e6)}</span></footer>
         <Show when=move ||!ui.fullscreen.get()><ErrorToast/></Show>

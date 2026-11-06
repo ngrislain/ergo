@@ -416,6 +416,7 @@ fn main() -> Result<()> {
     let mut publish_url = None;
     let mut publish_token_file = None;
     let mut login = false;
+    let mut local = false;
     let mut web = std::env::var_os("ERGO_WEB_DIR")
         .map(PathBuf::from)
         .unwrap_or_else(|| PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../web"));
@@ -431,6 +432,7 @@ fn main() -> Result<()> {
             "--attach" => attach = true,
             "--publish-url" => publish_url = Some(args.next().context("Missing publication URL")?),
             "--login" => login = true,
+            "--local" => local = true,
             "--publish-token-file" => {
                 publish_token_file = Some(PathBuf::from(
                     args.next().context("Missing publication token file")?,
@@ -439,7 +441,7 @@ fn main() -> Result<()> {
             "--web-dir" => web = args.next().context("Missing web directory")?.into(),
             "--help" => {
                 eprintln!(
-                    "ergo-mcp --workspace path.json [--measurements file.json] [--attach | --headless] [--web-dir web] [--publish-url HTTPS_ORIGIN] [--publish-token-file FILE]\nergo-mcp --login --publish-url HTTPS_ORIGIN\n--login opens browser SSO/token setup and exits. The normal command opens the minimal WASM client. Heavy work runs locally; publication uses the authenticated REST API. Build the client with cargo xtask build-web."
+                    "ergo-mcp --workspace path.json [--measurements file.json] [--attach | --headless] [--web-dir web] [--publish-url HTTPS_ORIGIN] [--publish-token-file FILE] [--local]\nergo-mcp --login --publish-url HTTPS_ORIGIN [--publish-token-file FILE]\nMissing or rejected credentials open browser sign-in and securely save the approved token. --login completes that setup and exits; --local disables publishing and login. Heavy work runs in the minimal local WASM client; publication uses the authenticated REST API. Build the client with cargo xtask build-web."
                 );
                 return Ok(());
             }
@@ -447,10 +449,15 @@ fn main() -> Result<()> {
         }
     }
     if login {
-        return publish::open_login(publish_url);
+        ensure!(!local, "--login and --local cannot be combined");
+        return publish::open_login(publish_url, publish_token_file);
     }
     measurements.validate()?;
-    let publisher = publish::Publisher::from_env(publish_url, publish_token_file)?;
+    let publisher = if local {
+        None
+    } else {
+        publish::Publisher::from_env(publish_url, publish_token_file)?
+    };
     // One continuously driven runtime serves HTTP jobs and remote requests even
     // while the stdio thread waits for a browser result.
     let runtime = tokio::runtime::Builder::new_multi_thread()

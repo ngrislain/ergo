@@ -5,12 +5,12 @@
 The current prebuilt client is published on npm with GitHub Actions provenance:
 
 ```sh
-npm install --global --ignore-scripts @ngrislain/ergo-mcp@0.5.25
+npm install --global --ignore-scripts @ngrislain/ergo-mcp@0.5.26
 ergo-mcp --version
 ```
 
 The identical complete tarball and `SHA256SUMS` are also available on the
-[v0.5.25 GitHub Release](https://github.com/ngrislain/ergo/releases/tag/v0.5.25).
+[v0.5.26 GitHub Release](https://github.com/ngrislain/ergo/releases/tag/v0.5.26).
 Verify its `SHA256SUMS`, registry integrity/provenance and an installed MCP client
 using the release verification workflow below.
 
@@ -22,6 +22,14 @@ The launcher chooses OS/architecture, verifies bundle/native versions/checksums
 and locates packaged runtime assets. It handles browser login, origin overrides,
 headless/manual attachment and token-free local proposals. Authenticated shared
 editing defaults to the canonical apex service. Local files are caches when bound.
+
+Version 0.5.26 changes tokenless npm startup to the hosted Sandbox with
+human-approved browser token pickup; `--local` explicitly selects isolated
+proposals. This requires a rebuilt client and matching browser deployment and is
+not retroactively available in the published v0.5.25 artifact. Source plugin
+wrappers for Codex/Claude are in `plugins/ergo`, with repo-local marketplace
+manifests; they require an installed bridge and are not a public marketplace
+release. See [plugin setup](mcp-plugins.md) and [browser approval](access-and-onboarding.md).
 
 ## Release automation
 
@@ -86,7 +94,7 @@ coordinated storage migration and matching client upgrade accompany a breaking
 format change. Bound caches reload authoritative state; they are not data roots.
 
 `ERGO_MCP_PACKAGE` is the public website's installation-source setting. Production
-is promoted to `@ngrislain/ergo-mcp@0.5.25` only after registry/consumer verification;
+is promoted to `@ngrislain/ergo-mcp@0.5.26` only after registry/consumer verification;
 npm trusted publication is enabled. Never embed a token,
 S3 credentials or a credential-bearing URL in the package configuration.
 

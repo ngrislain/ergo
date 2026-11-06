@@ -1,0 +1,9 @@
+{
+  "name": "ergo",
+  "version": "0.5.26",
+  "description": "Find LEGO set inspiration and build in the shared Ergo world with human-approved browser sign-in.",
+  "author": {"name": "Ergo"},
+  "homepage": "https://ergosandbox.com",
+  "repository": "https://github.com/ngrislain/ergo",
+  "license": "Apache-2.0"
+}

@@ -228,6 +228,32 @@ impl Working {
             .await?
             .context("Missing paged assembly header")?;
         self.charge(&header)?;
+        if header
+            .piece_count
+            .is_some_and(|count| count > self.piece_limit())
+        {
+            return Err(SharedError::working_limit("authoring assembly"));
+        }
+        if let Some(count) = header
+            .piece_count
+            .filter(|&count| (512..=20_000).contains(&count))
+        {
+            // Current imports assign consecutive local IDs. Concurrent bounded
+            // immutable lookahead avoids a cold, one-object-at-a-time walk of
+            // the member trie. This is only speculation: sparse/legacy IDs,
+            // failed probes and changed records still use the ordinary scan
+            // below, which observes the full prefix and charges every row.
+            let mut paths = Vec::with_capacity(512);
+            for local in 1..=count {
+                paths.push(super::paged::row(id, 1, local as u64));
+                if paths.len() == 512 {
+                    self.tx
+                        .prefetch_read_records(std::mem::take(&mut paths), self.remaining())
+                        .await;
+                }
+            }
+            self.tx.prefetch_read_records(paths, self.remaining()).await;
+        }
         let rules = super::paged::reconstruct(self, &header).await?;
         ensure!(rules.id == *id, "Stored assembly identity mismatch");
         rules.validate()?;
@@ -541,9 +567,10 @@ impl Working {
         let Some(bounds) = bounds else {
             return Ok(false);
         };
-        if bounds.size().max_element() > ergo_world::BLOCK_SIZE {
-            return Ok(self.discover(ids).await?.iter().any(|id| !ids.contains(id)));
-        }
+        ensure!(
+            bounds.size().max_element() <= ergo_world::BLOCK_SIZE,
+            "Exact external-dependency check requires a compact assembly"
+        );
         let halo = self
             .model
             .tolerances

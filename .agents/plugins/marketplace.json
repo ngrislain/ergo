@@ -1,0 +1,10 @@
+{
+  "name": "ergo",
+  "interface": {"displayName": "Ergo"},
+  "plugins": [{
+    "name": "ergo",
+    "source": {"source": "local", "path": "./plugins/ergo"},
+    "policy": {"installation": "AVAILABLE", "authentication": "ON_USE"},
+    "category": "Productivity"
+  }]
+}

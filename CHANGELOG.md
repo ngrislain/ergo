@@ -1,5 +1,20 @@
 # Changelog
 
+## v0.5.26
+
+- Fix the shared-world editing handoff link and add explicit, human-approved
+  browser delegation with private token renewal for the native MCP bridge.
+- Avoid redundant full assembly scans on cold authoring reads; use bounded
+  immutable member/piece lookahead, and return an explicitly conservative
+  external-dependency warning for wide constructions instead of blocking on
+  an unbounded read-only dependency walk. Authoritative edit validation remains
+  unchanged. Add read-only operator workspace profiling and phase diagnostics.
+- Package source plugins for Codex and Claude Code; search existing LEGO sets
+  by feature for inspiration, and return actionable build feedback with optional
+  real WebGL views rather than treating validation as aesthetic review.
+- Add an unlisted local-only official MCP Inspector host page. The unlisted 3D
+  pieces and colors catalogue continues to use real sourced geometry.
+
 ## v0.5.25
 
 - Inventory/backfill packed read projections across every allocated world cell in

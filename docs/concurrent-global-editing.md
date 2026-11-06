@@ -214,7 +214,13 @@ directly. See [MCP setup and outcome handling](local-construction-mcp.md#publica
   native JSON retains Ergo-specific metadata. Optional `revision` selects an
   accepted revision, also returned in `X-Ergo-Revision`.
 - `GET /api/shared-worlds/{id}/assemblies/{assembly}/workspace?revision=CID`:
-  bounded complete authoring scene, with `external_dependencies` disclosed.
+  bounded complete authoring scene, with `external_dependencies` and
+  `external_dependency_check` disclosed. `verified` means a compact assembly's
+  external spatial and explicit peers were checked; `conservative_large_span`
+  means external dependencies are **possible**, not confirmed. This disables
+  incomplete isolated local simulation for broad assemblies without skipping the
+  authoritative affected-domain validation on subsequent writes. `HEAD` and
+  conditional `304` still recheck permissions and limits before any cache hit.
 - `PUT /api/shared-worlds/{id}/assemblies/{assembly}/workspace`: `{base, scene}`
   replaces one assembly, retaining its identity and the birth IDs of retained
   local piece numbers. Added occurrences receive new birth identities.

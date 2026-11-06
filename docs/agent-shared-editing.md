@@ -3,9 +3,15 @@
 There is one **public Ergo Sandbox**. Anyone can view it; signed-in users can
 edit it, subject to pacing and physical validation. Current MCP clients commit
 accepted edits to that same S3-backed world automatically. A working file is a
-cache, not a private world. Use MCP **v0.5.25** for current cells, attachment checks and canonical part/construct references,
+cache, not a private world. Use MCP **v0.5.26** for current cells, attachment
+checks and canonical part/construct references,
 coherent grid snapping, proper-isometry checks, per-piece stability diagnostics,
 explicit estimated connector tests and long shared operations.
+
+Version 0.5.26 additionally packages [Codex/Claude plugins](mcp-plugins.md),
+feature-first reference discovery and the feedback harness below. Those additions
+require a matching rebuilt bundle; installing published v0.5.25 does not update
+its tool catalogue retroactively.
 
 Call `get_lego_models` to search and retrieve similar official/custom examples
 first; inspect their poses, parts and source attribution, and follow their demonstrated
@@ -144,6 +150,22 @@ construction, or submit an existing validated proposal; it cannot create another
 world. There is no `authenticated_editing=false` private-world option in the
 production tool schema.
 
+## Inspect–act–review–adjust harness
+
+At a meaningful construction milestone, call `get_build_feedback` with the user's
+goal and optionally `include_images:true`. Read structural/calibration findings,
+measured part/color observations and actionable next-tool suggestions. Plate/tile
+suggestions are disclosed heuristics, not style rejection rules. The diagnostic
+does not edit, simulate, publish or claim an automatic aesthetic pass.
+
+Inspect the actual rendered views against the brief: silhouette, minifigure-scale
+proportions, openings, roofs, palette and requested features. Preserve successful
+choices and user feedback; make a small targeted improvement and inspect its
+accepted/rejected receipt before reviewing again. A valid structure is not
+necessarily a good design. Do not turn the harness into duplicate validation or
+expensive dynamics after every accepted edit. The remote acceptance gate remains
+authoritative; uncertain writes are not automatically repeated.
+
 ## Acceptance, conflicts, and cache recovery
 
 Native publication HTTP requests default to 300 seconds. Bridges in v0.5.23 and
@@ -165,6 +187,12 @@ validated spatial keys, avoiding unused self-reference payloads.
 Nearby unrelated candidates can conservatively block a
 clipped local simulation. Remote explicit joint endpoints are still checked;
 authoritative publication continues to discover/validate the complete affected domain.
+For an assembly wider than one storage cell, the authoring read instead returns
+`external_dependencies:true` with `external_dependency_check:"conservative_large_span"`:
+the existence of external dependencies has **not** been proven, and local
+simulation is conservatively disabled. The server still validates the complete
+affected domain before accepting edits; read-only dependency avoidance does not
+relax that gate.
 
 Prefer gradual edits to the same assembly in small supported batches. Server
 publication validates the affected domain, so avoid a duplicate standalone

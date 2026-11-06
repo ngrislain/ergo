@@ -1038,6 +1038,14 @@ async fn dependency_profile_reports_a_read_only_closure_without_publishing() {
     assert_eq!(report["revision"], imported.accepted.revision.to_string());
     assert_eq!(report["discovery"]["visited"], 2);
     assert_eq!(report["discovery"]["active_phase"], "complete");
+    let workspace = service
+        .profile_workspace(&head.id, &imported.assembly, "alice", 5)
+        .await
+        .unwrap();
+    assert_eq!(workspace["read_only"], true);
+    assert_eq!(workspace["complete"], true);
+    assert_eq!(workspace["pieces"], 2);
+    assert_eq!(workspace["revision"], report["revision"]);
     let snapshot = service
         .repo(&head.id)
         .unwrap()
@@ -1054,6 +1062,37 @@ async fn dependency_profile_reports_a_read_only_closure_without_publishing() {
                 .is_err()
         );
     }
+}
+
+#[tokio::test]
+async fn large_authoring_rule_lookahead_preserves_sparse_members_and_verified_reads() {
+    let service = service();
+    let (head, imported) = seeded(&service, scene(10.)).await;
+    let repo = service.repo(&head.id).unwrap();
+    let mut tx = repo.begin("main").await.unwrap();
+    let mut ws = service
+        .working(&head.id, "alice", &head.revision)
+        .await
+        .unwrap();
+    let mut rules = ws.rules(&imported.assembly).await.unwrap().as_ref().clone();
+    ws.tx.close().await.unwrap();
+    rules.pieces = (1..=550_u32)
+        .map(|local| (local * 3, ContentId::of(&local.to_le_bytes())))
+        .collect();
+    paged::write(&mut tx, &rules).await.unwrap();
+    let committed = tx
+        .commit("alice", "Sparse member read fixture", Default::default())
+        .await
+        .unwrap();
+    let mut ws = service
+        .working(&head.id, "alice", &committed.snapshot.id().clone())
+        .await
+        .unwrap();
+    let loaded = ws.rules(&imported.assembly).await.unwrap();
+    assert_eq!(loaded.pieces, rules.pieces);
+    assert!(ws.loaded_bytes > 0);
+    ws.tx.close().await.unwrap();
+    committed.snapshot.close().await.unwrap();
 }
 
 #[tokio::test]
@@ -3022,6 +3061,33 @@ async fn authoring_dependency_guard_stops_at_the_first_verified_external_piece()
         .unwrap();
     assert_eq!(guarded["external_dependencies"], true);
     assert_eq!(guarded["scene"]["bricks"].as_array().unwrap().len(), 2);
+}
+
+#[tokio::test]
+async fn broad_authoring_views_safely_disclose_unchecked_dependencies_without_scanning_the_world() {
+    let service = service();
+    let (head, imported) = seeded(&service, scene(10.)).await;
+    let view = service
+        .authoring_scene(&head.id, "alice", &imported.assembly, &head.revision)
+        .await
+        .unwrap();
+    assert_eq!(view["scene"]["bricks"].as_array().unwrap().len(), 2);
+    assert_eq!(view["external_dependencies"], true);
+    assert_eq!(view["external_dependency_check"], "conservative_large_span");
+    assert_eq!(
+        service
+            .head(
+                &head.id,
+                &Principal {
+                    id: Some("alice".into())
+                },
+                None
+            )
+            .await
+            .unwrap()
+            .revision,
+        head.revision
+    );
 }
 
 #[tokio::test]

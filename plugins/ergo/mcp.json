@@ -1,0 +1,11 @@
+{
+  "$schema": "https://agent-plugins.org/schemas/1.0.0/mcp.schema.json",
+  "mcpServers": {
+    "ergo": {
+      "type": "stdio",
+      "command": "ergo-mcp",
+      "args": ["--headless"],
+      "env": {"ERGO_PUBLISH_URL": "https://ergosandbox.com"}
+    }
+  }
+}

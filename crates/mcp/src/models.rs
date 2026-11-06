@@ -13,6 +13,41 @@ use std::{
 
 const ORIGIN: &str = "https://library.ldraw.org";
 const MAX_BYTES: usize = 8 * 1024 * 1024;
+fn feature_search(feature: &str) -> Result<(&'static [&'static str], &'static str)> {
+    Ok(match feature {
+        "arches" => (
+            &["castle", "bridge"],
+            "Inspect opening spans, arch pieces and how the walls carry the load.",
+        ),
+        "pitched_roofs" => (
+            &["house", "cottage"],
+            "Inspect roof slopes, ridge construction and removable roof sections.",
+        ),
+        "modular_buildings" => (
+            &["modular", "building"],
+            "Inspect floor separation, facade details and repeated structural bays.",
+        ),
+        "steering" => (
+            &["Technic", "car"],
+            "Inspect the steering linkage, pivots and wheel clearance.",
+        ),
+        "suspension" => (
+            &["Technic", "truck"],
+            "Inspect suspension travel, axle mounting and genuine spring parts.",
+        ),
+        "gears" => (
+            &["Technic", "machine"],
+            "Inspect gear meshes, axle support and transmission ratios.",
+        ),
+        "trees" => (
+            &["tree", "forest"],
+            "Inspect trunks, branching and foliage attachment.",
+        ),
+        _ => anyhow::bail!(
+            "Unknown feature; use arches, pitched_roofs, modular_buildings, steering, suspension, gears or trees"
+        ),
+    })
+}
 fn selector(value: &str) -> Selector {
     Selector::parse(value).unwrap()
 }
@@ -311,6 +346,8 @@ struct Custom {
     license: String,
     #[serde(default)]
     tags: Vec<String>,
+    #[serde(default)]
+    features: Vec<String>,
 }
 fn custom(
     root: &Path,
@@ -318,6 +355,7 @@ fn custom(
     id: Option<&str>,
     submodel: Option<&str>,
     limit: usize,
+    feature: Option<&str>,
 ) -> Result<Value> {
     let root = root.canonicalize()?;
     let index: Vec<Custom> = serde_json::from_slice(&std::fs::read(root.join("index.json"))?)?;
@@ -344,13 +382,16 @@ fn custom(
         value["author"] = json!(item.author);
         value["license"] = json!(item.license);
         value["name"] = json!(item.name);
+        value["features"] = json!(item.features);
+        value["tags"] = json!(item.tags);
         return Ok(value);
     }
     let tokens: Vec<_> = query.split_whitespace().map(str::to_lowercase).collect();
     let mut results:Vec<_>=index.into_iter().filter_map(|item| {
-        let haystack=format!("{} {}",item.name,item.tags.join(" ")).to_lowercase();
+        if feature.is_some_and(|feature| !item.features.iter().any(|f| f == feature)) { return None; }
+        let haystack=format!("{} {} {}",item.name,item.tags.join(" "),item.features.join(" ")).to_lowercase();
         let score=tokens.iter().filter(|token|haystack.contains(token.as_str())).count();
-        (score>0).then(||(score,json!({"model_id":format!("custom:{}",item.id),"source":"custom","kind":"custom_model","name":item.name,"author":item.author,"license":item.license,"tags":item.tags})))
+        (score>0 || tokens.is_empty()).then(||(score,json!({"model_id":format!("custom:{}",item.id),"source":"custom","kind":"custom_model","name":item.name,"author":item.author,"license":item.license,"tags":item.tags,"features":item.features,"feature_evidence":"Library-maintainer metadata; inspect the retrieved document before reuse"})))
     }).collect();
     results.sort_by_key(|(score, _)| std::cmp::Reverse(*score));
     Ok(json!(
@@ -368,20 +409,26 @@ pub async fn call(arguments: Value) -> Result<Value> {
     let source = arguments["source"].as_str().unwrap_or("all");
     let limit = arguments["limit"].as_u64().unwrap_or(5) as usize;
     let submodel = arguments["submodel"].as_str();
+    let feature = arguments["feature"].as_str();
+    let feature_search = feature.map(feature_search).transpose()?;
+    ensure!(
+        ["all", "ldraw", "custom", "rebrickable", "bricklink"].contains(&source),
+        "Unknown model source"
+    );
     ensure!(
         (1..=10).contains(&limit) && query.len() <= 200,
         "Use a query up to 200 bytes and limit 1..10"
     );
     ensure!(
-        model_id.is_some() || !query.is_empty(),
-        "Supply query or model_id"
+        model_id.is_some() || !query.is_empty() || feature.is_some(),
+        "Supply query, feature or model_id"
     );
     let http = client()?;
     if let Some(id) = model_id {
         if let Some(id) = id.strip_prefix("custom:") {
             let root = std::env::var_os("ERGO_MODEL_LIBRARY_DIR")
                 .context("Configure ERGO_MODEL_LIBRARY_DIR for custom models")?;
-            return custom(Path::new(&root), query, Some(id), submodel, limit);
+            return custom(Path::new(&root), query, Some(id), submodel, limit, None);
         }
         if let Some(id) = id.strip_prefix("rebrickable:") {
             ensure!(
@@ -426,21 +473,40 @@ pub async fn call(arguments: Value) -> Result<Value> {
     }
     let mut models = Vec::new();
     let mut providers = Vec::new();
+    // Public catalogues do not label internal mechanisms. Feature navigation
+    // deliberately returns subject-search candidates, never invented matches.
+    let searches = if !query.is_empty() {
+        vec![query]
+    } else {
+        feature_search
+            .map(|(terms, _)| terms.to_vec())
+            .unwrap_or_default()
+    };
     if source == "all" || source == "ldraw" {
-        match ldraw_search(&http, query, limit).await {
-            Ok(rows) => {
-                models.extend(rows);
-                providers.push(json!({"source":"ldraw","status":"searched"}));
+        for search in &searches {
+            match ldraw_search(&http, search, limit).await {
+                Ok(rows) => {
+                    for row in rows {
+                        if !models
+                            .iter()
+                            .any(|old: &Value| old["model_id"] == row["model_id"])
+                        {
+                            models.push(row);
+                        }
+                    }
+                    providers.push(json!({"source":"ldraw","status":"searched","query":search}));
+                }
+                Err(error) => providers.push(
+                    json!({"source":"ldraw","status":"unavailable","error":error.to_string()}),
+                ),
             }
-            Err(error) => providers
-                .push(json!({"source":"ldraw","status":"unavailable","error":error.to_string()})),
         }
     }
     if (source == "all" || source == "custom")
         && let Some(root) = std::env::var_os("ERGO_MODEL_LIBRARY_DIR")
     {
         models.extend(
-            custom(Path::new(&root), query, None, None, limit)?
+            custom(Path::new(&root), query, None, None, limit, feature)?
                 .as_array()
                 .cloned()
                 .unwrap_or_default(),
@@ -452,34 +518,57 @@ pub async fn call(arguments: Value) -> Result<Value> {
     }
     if source == "all" || source == "rebrickable" {
         if let Ok(key) = std::env::var("ERGO_REBRICKABLE_API_KEY") {
-            let mut url = reqwest::Url::parse("https://rebrickable.com/api/v3/lego/sets/")?;
-            url.query_pairs_mut()
-                .append_pair("search", query)
-                .append_pair("page_size", &limit.to_string());
-            match fetch(&http,url,Some(&key)).await.and_then(|bytes|Ok(serde_json::from_slice::<Value>(&bytes)?)) {
+            for search in &searches {
+                let mut url = reqwest::Url::parse("https://rebrickable.com/api/v3/lego/sets/")?;
+                url.query_pairs_mut()
+                    .append_pair("search", search)
+                    .append_pair("page_size", &limit.to_string());
+                match fetch(&http,url,Some(&key)).await.and_then(|bytes|Ok(serde_json::from_slice::<Value>(&bytes)?)) {
                 Ok(value)=>{for item in value["results"].as_array().into_iter().flatten(){models.push(json!({"model_id":format!("rebrickable:{}",item["set_num"].as_str().unwrap_or_default()),"source":"rebrickable","kind":"catalogue_reference","name":item["name"],"set_number":item["set_num"],"thumbnail_url":item["set_img_url"],"source_url":item["set_url"],"part_count":item["num_parts"],"document_available":false}));}providers.push(json!({"source":"rebrickable","status":"searched"}));}
                 Err(error)=>providers.push(json!({"source":"rebrickable","status":"unavailable","error":error.to_string()})),
+            }
             }
         } else {
             providers.push(json!({"source":"rebrickable","status":"api_key_required","configuration":"ERGO_REBRICKABLE_API_KEY"}));
         }
     }
     if source == "all" || source == "bricklink" {
-        let mut url = reqwest::Url::parse("https://www.bricklink.com/catalogList.asp")?;
-        url.query_pairs_mut()
-            .append_pair("catType", "S")
-            .append_pair("q", query);
-        providers.push(json!({"source":"bricklink","status":"catalogue_reference_link","search_url":url.as_str(),"note":"BrickLink catalogue references do not supply reusable model poses; copyrighted/paid instructions are not downloaded."}));
+        for search in &searches {
+            let mut url = reqwest::Url::parse("https://www.bricklink.com/catalogList.asp")?;
+            url.query_pairs_mut()
+                .append_pair("catType", "S")
+                .append_pair("q", search);
+            providers.push(json!({"source":"bricklink","status":"catalogue_reference_link","search_url":url.as_str(),"note":"BrickLink catalogue references do not supply reusable model poses; copyrighted/paid instructions are not downloaded."}));
+        }
     }
     models.truncate(limit);
     Ok(
-        json!({"query":query,"models":models,"providers":providers,"guidance":"Retrieve and inspect the closest relevant official/custom model before designing. Reuse its document or adapt demonstrated part choices, shape and techniques; preserve attribution and user-requested scale. If no suitable match exists, report the searches and build an original model using sourced parts."}),
+        json!({"query":query,"feature":feature_search.map(|(_, hint)|json!({"id":feature,"search_terms":searches,"inspection_hint":hint,"evidence":"Public results are inspiration candidates selected by catalogue text, not verified feature/geometry matches. Custom features are maintainer-supplied metadata."})),"models":models,"providers":providers,"guidance":"Retrieve and inspect the closest relevant official/custom model before designing. Verify the requested feature in the retrieved document. Reuse its document or adapt demonstrated part choices, shape and techniques; preserve attribution and user-requested scale. If no suitable match exists, report the searches and build an original model using sourced parts."}),
     )
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn feature_navigation_matches_the_published_schema() {
+        let tools = ergo_world::mcp::tools();
+        let schema = tools["tools"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|tool| tool["name"] == "get_lego_models")
+            .unwrap();
+        for value in schema["inputSchema"]["properties"]["feature"]["enum"]
+            .as_array()
+            .unwrap()
+        {
+            let (terms, hint) = feature_search(value.as_str().unwrap()).unwrap();
+            assert_eq!(terms.len(), 2);
+            assert!(!hint.is_empty());
+        }
+        assert!(feature_search("invented_feature").is_err());
+    }
     #[test]
     fn parses_public_omr_search_and_downloads_without_accepting_foreign_hosts() {
         let rows = set_rows(

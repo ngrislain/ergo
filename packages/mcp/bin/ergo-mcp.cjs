@@ -46,10 +46,9 @@ function main() {
   }
   const args = process.argv.slice(2);
   const env = { ...process.env, ERGO_WEB_DIR: process.env.ERGO_WEB_DIR || runtime.web };
-  // A remote URL without a token prevents native startup, so leave unauthenticated
-  // local editing alone while making hosted login/publishing work without a URL.
-  if (!env.ERGO_PUBLISH_URL && (args.includes('--login') ||
-    args.includes('--publish-token-file') || env.ERGO_PUBLISH_TOKEN || env.ERGO_PUBLISH_TOKEN_FILE)) {
+  // Hosted use works without preconfigured credentials: the native bridge opens
+  // human-approved browser sign-in. Isolated development is an explicit opt-out.
+  if (!env.ERGO_PUBLISH_URL && !args.includes('--local')) {
     env.ERGO_PUBLISH_URL = 'https://ergosandbox.com';
   }
   const child = spawn(runtime.binary, args, {
