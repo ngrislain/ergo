@@ -103,12 +103,12 @@ prove an asset or image was published.
 
 ```sh
 gh run list --repo ngrislain/ergo --workflow release.yml --limit 5
-gh release view v0.5.27 --repo ngrislain/ergo
+gh release view v0.5.28 --repo ngrislain/ergo
 ```
 
 Verify the public tarball version/checksum, consumer install and actual MCP smoke
 before changing the displayed installation source. Promote
-`@ngrislain/ergo-mcp@0.5.27` only after registry and consumer checks; retain the
+`@ngrislain/ergo-mcp@0.5.28` only after registry and consumer checks; retain the
 last verified public setting while building the candidate. GitHub also hosts the
 identical complete tarball and checksum. The package includes all 138 source parts
 and the reviewed wall bearing profile; check an outside-checkout npm installation
@@ -132,7 +132,7 @@ After publication, set the public Pages variable and rebuild:
 
 ```sh
 gh variable set ERGO_MCP_PACKAGE --repo ngrislain/ergo \
-  --body '@ngrislain/ergo-mcp@0.5.27'
+  --body '@ngrislain/ergo-mcp@0.5.28'
 gh workflow run pages.yml --repo ngrislain/ergo --ref main
 ```
 

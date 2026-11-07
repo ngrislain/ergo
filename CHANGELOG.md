@@ -1,5 +1,12 @@
 # Changelog
 
+## v0.5.28
+
+- The parts catalogue opens on the whole library (reviewed parts first, then
+  derived parts, then BrickLink-only items) instead of only the reviewed tier.
+- Seed test stores without a server binary; fix the release container and npm
+  package checks.
+
 ## v0.5.27
 
 - Make the whole official LDraw library buildable as one synthesized part

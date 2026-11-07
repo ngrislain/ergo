@@ -42,13 +42,16 @@ with sync_playwright() as playwright:
         page.goto(args.url+'/catalogue', wait_until='domcontentloaded')
         page.wait_for_function("document.body.dataset.catalogueReady==='true'")
         page.wait_for_load_state('networkidle')
-        first_page = min(48, library['reviewed'])
+        # The default view is the whole library, reviewed parts first.
+        everything = library['parts'] + library['listed']
+        first_page = min(48, everything)
         assert page.locator('#part-results > li').count() == first_page
+        assert f"of {everything:,} pieces" in page.locator('#part-count').inner_text()
         assert 'noindex' in page.locator('meta[name=robots]').get_attribute('content')
         assert '/catalogue' not in page.request.get(args.url+'/app').text()
-        if library['reviewed'] > 48:
+        if everything > 48:
             page.get_by_role('button', name='Show more pieces').click()
-            page.wait_for_function(f"document.querySelectorAll('#part-results > li').length==={min(96, library['reviewed'])}")
+            page.wait_for_function(f"document.querySelectorAll('#part-results > li').length==={min(96, everything)}")
         page.locator('#search').fill('tree')
         page.wait_for_function("document.querySelectorAll('#part-results > li').length===2")
         page.get_by_role('button', name=re.compile(r'3470\.dat')).click()

@@ -188,7 +188,7 @@ part-local construction coordinates. Mechanical port radii remain SI metres.
 The reference page provides:
 
 - server-side search with paged results;
-- library tier and category filters;
+- library tier and category filters (the default shows everything: reviewed, then derived, then BrickLink-only);
 - a Reviewed/Derived/BrickLink-only badge per card;
 - real source-mesh thumbnails;
 - an orbit/zoom/keyboard preview and optional interface markers.
