@@ -35,7 +35,9 @@ with tempfile.TemporaryDirectory(prefix="ergo-isolated-web-") as temporary:
         server = subprocess.Popen([str(pathlib.Path(args.server_binary).resolve())], cwd=directory,
                                   env=environment, stdout=log, stderr=log)
         try:
-            for _ in range(100):
+            # A debug server validates its fixture examples with the unoptimized
+            # equilibrium solver before listening; allow it a minute.
+            for _ in range(600):
                 if server.poll() is not None:
                     log.seek(0)
                     raise RuntimeError(log.read())

@@ -1,5 +1,15 @@
 # Changelog
 
+## v0.5.32
+
+- Re-release of v0.5.31, whose npm package and GitHub release were not
+  published: two release checks still expected the old capacity rule. Cars,
+  guards and archers are now expected to be publication-ready, and the isolated
+  web-test server gets a minute to start (a debug build validates its fixture
+  examples with the unoptimized equilibrium solver).
+- `validate_native` also reads materialized exports and shared workspace
+  responses.
+
 ## v0.5.31
 
 - Replace the spanning-tree static certificate with one general static

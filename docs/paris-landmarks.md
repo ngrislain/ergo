@@ -179,7 +179,7 @@ equilibrium certificate with the reviewed connector estimates. Its most loaded
 joint uses 46% of its capacity, with 4,680 inferred joints. The two planes are
 joined only through the ground; it is a skeletal truss, not a detailed replica.
 It is not yet published: the production server must first run the equilibrium
-certificate (release 0.5.31 or later). `inspect_mechanism` reports its joint
+certificate (release 0.5.32 or later). `inspect_mechanism` reports its joint
 components.
 
 ```sh
@@ -193,7 +193,8 @@ python3 scripts/publish-landmark.py --construction target/articulated-tower-draf
   --token-file /path/to/token --output target/articulated-tower-publication --publish
 ```
 
-`validate_native` needs the current part library, the one the server installs:
+`validate_native` reads a native construction, a materialized export or a shared
+workspace response. It needs the current part library, the one the server installs:
 `/api/library/<revision>/library.json`, where `/api/config` gives the revision as
 `part_library`. `scripts/publish-landmark.py` downloads it from its `--url` before
 validating.

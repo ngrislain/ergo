@@ -35,7 +35,8 @@ with tempfile.TemporaryDirectory(prefix='ergo-library-') as temporary:
             *road,placed('construct','classic-car-v2',[0,0,0],4),placed('construct','classic-car-v2',[16,0,0],1)]}}
         feedback=client.call('place_submodel',model=model)['structuredContent']
         assert feedback['brick_count']==54 and feedback['overlap_free'] and feedback['static_under_current_joint_model'],feedback
-        assert not feedback['publication_ready'] and feedback['calibration_issue'],feedback
+        # Wheel bearings, tyres, shoulders, wrists and grips use reviewed connector estimates.
+        assert feedback['publication_ready'] and not feedback['calibration_issue'],feedback
         client.call('export_construction');accepted=json.loads(workspace.read_text())
         assert len(accepted['pieces'])==54
         assert all(mesh['quality']=='source' for mesh in accepted['meshes'].values())
@@ -84,7 +85,8 @@ with tempfile.TemporaryDirectory(prefix='ergo-library-') as temporary:
             placed('construct','classic-car-v2',[0,0,0],4),placed('construct','minifigure-v2',[14,4,0],1)]}}
         feedback=client.call('place_submodel',model=model)['structuredContent']
         assert feedback['brick_count']==31 and feedback['overlap_free'] and feedback['static_under_current_joint_model'],feedback
-        assert not feedback['publication_ready'] and feedback['calibration_issue'],feedback
+        # Wheel bearings, tyres, shoulders, wrists and grips use reviewed connector estimates.
+        assert feedback['publication_ready'] and not feedback['calibration_issue'],feedback
         bricks=client.call('list_bricks',limit=100)['structuredContent']['bricks']
         grounded=[b for b in bricks if abs(b['bounds']['min'][2])<1e-6]
         assert len(grounded)==5 and all(b['part'] in ['3815c01.dat','4624c01.dat'] for b in grounded),grounded
@@ -105,7 +107,8 @@ with tempfile.TemporaryDirectory(prefix='ergo-library-') as temporary:
             placed('construct','medieval-guard-v3',[0,0,0],4),placed('construct','medieval-archer-v1',[6,0,0],4)]}}
         feedback=client.call('place_submodel',model=model)['structuredContent']
         assert feedback['brick_count']==19 and feedback['overlap_free'] and feedback['static_under_current_joint_model'],feedback
-        assert not feedback['publication_ready'] and feedback['calibration_issue'],feedback
+        # Wheel bearings, tyres, shoulders, wrists and grips use reviewed connector estimates.
+        assert feedback['publication_ready'] and not feedback['calibration_issue'],feedback
         bricks=client.call('list_bricks',limit=100)['structuredContent']['bricks']
         assert sum(b['part']=='4499.dat' for b in bricks)==1
         grips=0

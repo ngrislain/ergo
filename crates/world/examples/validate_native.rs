@@ -5,14 +5,23 @@ fn main() -> Result<()> {
     let args: Vec<_> = std::env::args().skip(1).collect();
     ensure!(
         args.len() == 3 && args[0] == "--library",
-        "Usage: validate_native --library LIBRARY.json CONSTRUCTION.native.json"
+        "Usage: validate_native --library LIBRARY.json CONSTRUCTION.json"
     );
     // The same synthesized part library the server installs supplies masses,
     // bounds and connectors; there is no built-in fallback.
     ergo_world::part_library::install_json(
         &std::fs::read(&args[1]).with_context(|| format!("Read {}", args[1]))?,
     )?;
-    let mut scene = ergo_world::storage::decode(&std::fs::read(&args[2])?)?;
+    // A native construction, a materialized export or a shared workspace response.
+    let bytes = std::fs::read(&args[2])?;
+    let raw: serde_json::Value = serde_json::from_slice(&bytes)?;
+    let mut scene: ergo_world::WorldExport = if raw["format"] == "ergo-construction-1" {
+        ergo_world::storage::decode(&bytes)?
+    } else if raw.get("scene").is_some() {
+        serde_json::from_value(raw["scene"].clone())?
+    } else {
+        serde_json::from_value(raw)?
+    };
     let measurements = ergo_world::physical::ConnectionMeasurements::default();
     let result = ergo_world::validation::validate_static_with_measurements(
         &mut scene,
