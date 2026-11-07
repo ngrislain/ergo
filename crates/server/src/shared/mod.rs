@@ -16,6 +16,7 @@ mod metadata_cache;
 mod model;
 pub(crate) mod pacing;
 mod paged;
+mod part_inventory;
 mod profiling;
 mod read_cache;
 mod resize;

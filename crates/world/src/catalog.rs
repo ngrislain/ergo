@@ -302,6 +302,32 @@ mod tests {
         assert_eq!(color_alpha(999_999), 255);
     }
     #[test]
+    fn natural_id_order() {
+        let mut ids = vec!["3001b", "10", "3001", "2", "3001a", "973p4f", "03080board"];
+        ids.sort_by(|a, b| natural(a, b));
+        assert_eq!(
+            ids,
+            ["2", "10", "973p4f", "3001", "3001a", "3001b", "03080board"]
+        );
+        let page = search(&SearchQuery {
+            limit: Some(128),
+            ..Default::default()
+        })
+        .unwrap();
+        let keys: Vec<String> = page
+            .results
+            .iter()
+            .map(|hit| match hit {
+                SearchHit::Part(p) => p.id.trim_end_matches(".dat").to_owned(),
+                SearchHit::Listed(l) => l.bricklink.to_owned(),
+            })
+            .collect();
+        assert!(
+            keys.windows(2).all(|w| natural(&w[0], &w[1]).is_le()),
+            "{keys:?}"
+        );
+    }
+    #[test]
     fn search_folds_dimension_spellings() {
         assert_eq!(fold("Brick 2 × 4"), "brick 2x4");
         assert_eq!(fold("brick 2 x 4"), "brick 2x4");
@@ -436,6 +462,43 @@ pub struct SearchPage {
 
 pub const MAX_SEARCH_LIMIT: usize = 128;
 
+/// Natural ordering: digit runs compare numerically, other characters by
+/// case-insensitive code point; ties fall back to the plain string.
+fn natural(a: &str, b: &str) -> std::cmp::Ordering {
+    let (mut x, mut y) = (a.chars().peekable(), b.chars().peekable());
+    loop {
+        match (x.peek().copied(), y.peek().copied()) {
+            (None, None) => return a.cmp(b),
+            (None, _) => return std::cmp::Ordering::Less,
+            (_, None) => return std::cmp::Ordering::Greater,
+            (Some(p), Some(q)) if p.is_ascii_digit() && q.is_ascii_digit() => {
+                let take = |it: &mut std::iter::Peekable<std::str::Chars>| {
+                    let mut digits = String::new();
+                    while let Some(c) = it.peek().copied().filter(char::is_ascii_digit) {
+                        digits.push(c);
+                        it.next();
+                    }
+                    digits
+                };
+                let (m, n) = (take(&mut x), take(&mut y));
+                let (m, n) = (m.trim_start_matches('0'), n.trim_start_matches('0'));
+                let order = m.len().cmp(&n.len()).then_with(|| m.cmp(n));
+                if order.is_ne() {
+                    return order;
+                }
+            }
+            (Some(p), Some(q)) => {
+                let order = p.to_ascii_lowercase().cmp(&q.to_ascii_lowercase());
+                if order.is_ne() {
+                    return order;
+                }
+                x.next();
+                y.next();
+            }
+        }
+    }
+}
+
 /// Case- and dimension-insensitive search form: `Brick 2 × 4`, `brick 2 x 4`
 /// and `brick 2x4` all fold to `brick 2x4`.
 fn fold(text: &str) -> String {
@@ -461,9 +524,9 @@ fn fold(text: &str) -> String {
     out.join(" ")
 }
 
-/// Search the installed library. Reviewed parts come first, then derived
-/// parts, then listed BrickLink-only items, each by ID. Cursors are offsets
-/// bound to the library revision, which is immutable.
+/// Search the installed library. Results are in one natural ID order across
+/// every tier (`2` < `10` < `3001` < `3001b`); listed BrickLink-only items use
+/// their BrickLink number. Cursors are offsets bound to the immutable revision.
 pub fn search(query: &SearchQuery) -> Result<SearchPage> {
     let library = crate::part_library::library();
     let limit = query.limit.unwrap_or(48).clamp(1, MAX_SEARCH_LIMIT);
@@ -516,7 +579,7 @@ pub fn search(query: &SearchQuery) -> Result<SearchPage> {
             matches(&fields)
         })
         .collect();
-    parts.sort_by_key(|entry| (entry.catalogue.derivation.is_some(), &entry.catalogue.id));
+
     let listed: Vec<&'static crate::part_library::Listed> =
         if matches!(query.tier, Tier::All | Tier::Listed) {
             library
@@ -550,20 +613,42 @@ pub fn search(query: &SearchQuery) -> Result<SearchPage> {
         .filter(|i| category.is_none_or(|c| i.category.as_deref() == Some(c)))
         .collect();
     let total = parts.len() + listed.len();
-    let results: Vec<SearchHit> = parts
+    // One ID order across every tier; listed items are keyed by BrickLink number.
+    let mut ordered: Vec<(
+        &str,
+        Option<&'static crate::part_library::LibraryPart>,
+        Option<&'static crate::part_library::Listed>,
+    )> = parts
         .iter()
-        .map(|entry| SearchHit::Part(Box::new(describe(entry))))
-        .chain(listed.iter().map(|item| {
-            SearchHit::Listed(ListedInfo {
+        .map(|entry| {
+            (
+                entry.catalogue.id.trim_end_matches(".dat"),
+                Some(*entry),
+                None,
+            )
+        })
+        .chain(
+            listed
+                .iter()
+                .map(|item| (item.bricklink.as_str(), None, Some(*item))),
+        )
+        .collect();
+    ordered.sort_by(|a, b| natural(a.0, b.0).then(a.1.is_none().cmp(&b.1.is_none())));
+    let results: Vec<SearchHit> = ordered
+        .into_iter()
+        .skip(offset)
+        .take(limit)
+        .map(|(_, part, item)| match (part, item) {
+            (Some(entry), _) => SearchHit::Part(Box::new(describe(entry))),
+            (None, Some(item)) => SearchHit::Listed(ListedInfo {
                 bricklink: &item.bricklink,
                 name: &item.name,
                 category: item.category.as_deref(),
                 rebrickable: item.rebrickable.as_deref(),
                 buildable: false,
-            })
-        }))
-        .skip(offset)
-        .take(limit)
+            }),
+            (None, None) => unreachable!("every hit is a part or a listed item"),
+        })
         .collect();
     let end = offset + results.len();
     Ok(SearchPage {

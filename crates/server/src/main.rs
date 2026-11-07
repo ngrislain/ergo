@@ -679,6 +679,16 @@ async fn main() -> Result<()> {
                     warmed_shared = Some(shared);
                 }
             }
+            "shared-part-inventory" => {
+                anyhow::ensure!(
+                    args.next().is_none(),
+                    "Usage: ergo-server shared-part-inventory WORLD_ID"
+                );
+                println!(
+                    "{}",
+                    serde_json::to_string_pretty(&shared.part_inventory(&id).await?)?
+                );
+            }
             "shared-pack-world" => {
                 let option = args.next();
                 anyhow::ensure!(

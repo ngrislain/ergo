@@ -34,7 +34,8 @@ class SourceRenderer {
       out vec3 n, c;
       void main(){
         gl_Position=projection*view*vec4(position*vec3(1.,1.,1.2)-centre,1.);
-        gl_PointSize=6.; n=normal/vec3(1.,1.,1.2); c=colour;
+        // View-space normal: the light is fixed relative to the camera.
+        gl_PointSize=6.; n=mat3(view)*(normal/vec3(1.,1.,1.2)); c=colour;
       }`);
     const fragment = compile(gl.FRAGMENT_SHADER, `#version 300 es
       precision highp float;
@@ -47,8 +48,11 @@ class SourceRenderer {
         if(mode==2 && length(gl_PointCoord-vec2(.5))>.5)discard;
         if(mode!=0){outColour=vec4(c,1.);return;}
         vec3 material=c.r<0.?base:c;
-        vec3 normal=normalize(n);
-        float light=.48+.38*max(dot(normal,normalize(vec3(-.6,-.7,1.))),0.)+.14*max(dot(normal,normalize(vec3(.7,.4,.5))),0.);
+        // Official LDraw winding is not always consistent: shade every face
+        // as seen from the camera. One key light, upper left, behind the
+        // viewer, identical for every part and every orbit angle.
+        vec3 normal=normalize(n); if(normal.z<0.)normal=-normal;
+        float light=.42+.58*max(dot(normal,normalize(vec3(-.55,.65,.55))),0.);
         outColour=vec4(material*light,alpha);
       }`);
     this.program = gl.createProgram(); gl.attachShader(this.program, vertex); gl.attachShader(this.program, fragment); gl.linkProgram(this.program);

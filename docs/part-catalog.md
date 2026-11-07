@@ -172,7 +172,8 @@ APIs:
   the whole library.
   - `tier` is one of `all`, `buildable`, `reviewed`, `derived`, `listed`;
     `limit` is at most 128.
-  - Results are ordered reviewed first, then derived, then listed, each by ID.
+  - Results are in one natural ID order across every tier (`2` < `10` < `3001`
+    < `3001b`); listed items use their BrickLink number.
   - Cursors are offsets bound to the immutable library revision.
   - Matching is case-insensitive over ID, name, aliases, BrickLink numbers,
     category and keywords. `2x4`, `2 x 4` and `2 × 4` match alike.
@@ -188,11 +189,14 @@ part-local construction coordinates. Mechanical port radii remain SI metres.
 The reference page provides:
 
 - server-side search with paged results;
-- library tier and category filters (the default shows everything: reviewed, then derived, then BrickLink-only);
+- library tier and category filters (the default shows everything, ordered by ID);
 - a Reviewed/Derived/BrickLink-only badge per card;
 - real source-mesh thumbnails;
 - an orbit/zoom/keyboard preview and optional interface markers.
 
+Previews and thumbnails share one camera-relative key light (upper left,
+behind the viewer) with two-sided shading, so official parts with
+inconsistent face winding shade the same way.
 It distinguishes nominal physics envelopes from rendered envelopes, labels
 derived masses as estimates, and links mass records and geometry credits.
 BrickLink-only items show their BrickLink link and no preview; no generic box

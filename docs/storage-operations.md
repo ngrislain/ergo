@@ -46,7 +46,12 @@ active pins. Pins and barriers never expire merely with time. Cancellation or an
 ambiguous mutation leaves fencing in place until the holder/remote requests are
 settled and an operator explicitly recovers it.
 
-Supported operator commands include `shared-maintenance-status`, `shared-gc`,
+`shared-part-inventory WORLD_ID` reads a pinned snapshot and reports, for the
+installed [part library](part-library.md), stored alias part IDs, unknown parts,
+assembly headers keyed by aliases and stored meshes whose vertex stream differs
+from the library's. It never changes the head.
+
+Supported operator commands include `shared-part-inventory`, `shared-maintenance-status`, `shared-gc`,
 `shared-prune`, `shared-compact`, `shared-warm-view`, `shared-pack-world`, current-format namespace migration and current
 history installation. They have no public HTTP mutation endpoint. See
 [the runbook](operations.md).

@@ -1,5 +1,15 @@
 # Changelog
 
+## v0.5.29
+
+- Order the parts catalogue and `/api/catalog/parts` results by natural part
+  ID across every tier (BrickLink-only items by BrickLink number).
+- Light every catalogue preview with one camera-relative key light (upper
+  left, behind the viewer) and two-sided shading, so official parts with
+  inconsistent face winding shade alike.
+- Add the read-only `ergo-server shared-part-inventory WORLD_ID`: alias part
+  IDs, unknown parts and stored geometry that differs from the library.
+
 ## v0.5.28
 
 - The parts catalogue opens on the whole library (reviewed parts first, then
