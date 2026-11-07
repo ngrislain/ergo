@@ -7,7 +7,7 @@ shared Sandbox. The bridge never grants itself acceptance or direct agent S3 acc
 ## Install and configure
 
 ```sh
-npm install --global --ignore-scripts @ngrislain/ergo-mcp@0.5.29
+npm install --global --ignore-scripts @ngrislain/ergo-mcp@0.5.30
 ergo-mcp --login --publish-url https://ergosandbox.com
 ```
 
@@ -105,15 +105,14 @@ The dedicated [official Inspector page](mcp-inspector.md) remains unlinked.
   Rendered `view_construction`, `test_visual_appearance` and image-inclusive
   feedback responses also expose their local numeric feedback as
   `structuredContent`, alongside real PNG content and the text fallback.
-- `get_catalog` lists the reviewed parts and versioned common-construct IDs.
+- `get_catalog` lists common starting pieces and versioned common-construct IDs.
   Reference library parts and reusable plate-free `minifigure-v2`/`classic-car-v2`
   models rather than copying definitions.
   - Recorded `set_count` values and hand/wheel/Technic connector endpoints are
     included where reviewed; endpoint coordinates use public part-local brick units.
-  - `search` (with `category`, `tier`, `cursor`, `limit`) pages through the whole
-    library.
-  - Derived parts are buildable; their assets carry a warning that the physical
-    profile and mass are derived estimates.
+  - `search` (with `category`, `cursor`, `limit`) pages through every supported
+    piece; `list=bricklink` searches the separate BrickLink items without
+    official geometry. Each piece states its mass source.
 - The MCP installs the verified [part library](part-library.md#distribution) from
   its origin and keeps an offline mirror in `.ergo-assets` (or
   `ERGO_MCP_ASSET_DIR`), including fetched mesh objects. The origin is

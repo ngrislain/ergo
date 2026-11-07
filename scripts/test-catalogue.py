@@ -24,10 +24,9 @@ with sync_playwright() as playwright:
         assert response.ok
         catalogue = response.json()
         library = catalogue['library']
-        assert len(catalogue['parts']) == library['reviewed'] >= 138
-        assert library['derived'] >= 1 and library['parts'] == library['reviewed'] + library['derived']
+        assert len(catalogue['parts']) >= 138 and library['parts'] > len(catalogue['parts'])
         for part in catalogue['parts']:
-            assert part['recommended'] and 'derivation' not in part
+            assert 'recommended' not in part and 'derivation' not in part
             assert part['mass_kg'] > 0 and all(v > 0 for v in part['nominal_dimensions_mm'])
             assert 'https://www.bricklink.com/' in part['mass_source']
             assert len(part['library_revision']) == 64
@@ -35,15 +34,17 @@ with sync_playwright() as playwright:
         assert tree['receiving_grids'][0]['first'][:2] == [-.5, -.5]
         horse = next(part for part in catalogue['parts'] if part['id'] == '4493c01.dat')
         assert {tuple(grid['first'][:2]) for grid in horse['receiving_grids']} == {(-.5, -1.25), (.5, -1.25), (-.5, 1.75), (.5, 1.75)}
-        derived = page.request.get(args.url+'/api/catalog/parts?tier=derived&limit=128').json()
-        assert derived['total'] == library['derived'] and all(r['derivation'] == 'auto-v1' and not r['recommended'] for r in derived['results'])
-        assert all(r['mass_source'].startswith('estimated:voxel-v1') for r in derived['results'])
+        pieces = page.request.get(args.url+'/api/catalog/parts?limit=128').json()
+        assert pieces['total'] == library['parts']
+        estimated = [r for r in pieces['results'] if r.get('derivation')]
+        assert estimated and all(r['mass_source'].startswith('estimated:voxel-v1') for r in estimated)
+        assert page.request.get(args.url+'/api/catalog/parts?list=bricklink').json()['total'] == library['listed']
         assert page.request.get(args.url+'/catalogue/').ok
         page.goto(args.url+'/catalogue', wait_until='domcontentloaded')
         page.wait_for_function("document.body.dataset.catalogueReady==='true'")
         page.wait_for_load_state('networkidle')
-        # The default view is the whole library, reviewed parts first.
-        everything = library['parts'] + library['listed']
+        # The default view is every supported piece, ordered by ID.
+        everything = library['parts']
         first_page = min(48, everything)
         assert page.locator('#part-results > li').count() == first_page
         assert f"of {everything:,} pieces" in page.locator('#part-count').inner_text()
@@ -73,16 +74,14 @@ with sync_playwright() as playwright:
         page.locator('#show-interfaces').check()
         assert plain != page.locator('#part-preview').evaluate('(canvas)=>canvas.toDataURL()')
         assert page.locator('#part-preview').evaluate("canvas=>canvas.getContext('webgl2').getError()") == 0
-        # Derived tier: buildable, badged and honest about its estimated mass.
-        page.locator('#search').fill('')
-        page.locator('#tier').select_option('derived')
-        page.wait_for_function(f"document.querySelectorAll('#part-results > li').length==={library['derived']}")
-        assert page.locator('#part-results .tier-badge').all_text_contents() == ['Derived'] * library['derived']
+        # Every supported piece looks alike; its facts state an estimated mass.
+        assert page.locator('#part-results .tier-badge').count() == 0
+        page.locator('#search').fill('2412b')
+        page.wait_for_function("document.querySelectorAll('#part-results > li').length===1")
         page.get_by_role('button', name=re.compile(r'2412b\.dat')).click()
         page.wait_for_function("document.querySelector('#part-id').textContent==='2412b.dat' && document.querySelector('#preview-status').textContent.startsWith('Source mesh')")
         assert 'Estimated mass' in page.locator('#part-facts').inner_text()
         # BrickLink/official alias numbers find their canonical geometry.
-        page.locator('#tier').select_option('buildable')
         page.locator('#search').fill('15561')
         page.wait_for_function("document.querySelectorAll('#part-results > li').length===1")
         assert page.get_by_role('button', name=re.compile(r'2412b\.dat')).count() == 1
@@ -103,6 +102,6 @@ with sync_playwright() as playwright:
         page.screenshot(path=str(output/'catalogue-mobile.png'), full_page=False)
         assert page.evaluate('document.documentElement.scrollWidth <= innerWidth + 1'), 'Mobile page overflows horizontally'
         assert not errors, errors
-        print(f'Catalogue passed: {library["reviewed"]} reviewed and {library["derived"]} derived pieces, paged search, tiers, aliases, genuine geometry, colours, keyboard rotation, interfaces, mobile and unlisted route.')
+        print(f'Catalogue passed: {library["parts"]} supported pieces, paged ID-ordered search, separate BrickLink list, aliases, genuine geometry, colours, keyboard rotation, interfaces, mobile and unlisted route.')
     finally:
         browser.close()

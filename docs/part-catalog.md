@@ -166,14 +166,14 @@ reference for already-public catalogue data, not an authentication boundary.
 
 APIs:
 
-- `/api/catalog`: colours, constructs, the reviewed parts and a `library`
-  summary (revision, reviewed/derived/listed counts, mass calibration).
-- `GET /api/catalog/parts?q=&category=&tier=&cursor=&limit=`: paged search over
-  the whole library.
-  - `tier` is one of `all`, `buildable`, `reviewed`, `derived`, `listed`;
-    `limit` is at most 128.
-  - Results are in one natural ID order across every tier (`2` < `10` < `3001`
-    < `3001b`); listed items use their BrickLink number.
+- `/api/catalog`: colours, constructs, common starting pieces and a `library`
+  summary (revision, supported-piece and BrickLink-item counts, mass calibration).
+- `GET /api/catalog/parts?q=&category=&list=&cursor=&limit=`: paged search.
+  - `list` is `pieces` (the default: every supported, buildable piece) or
+    `bricklink` (the separate BrickLink items with no official geometry).
+  - `limit` is at most 128.
+  - Results are in natural ID order (`2` < `10` < `3001` < `3001b`); BrickLink
+    items use their BrickLink number.
   - Cursors are offsets bound to the immutable library revision.
   - Matching is case-insensitive over ID, name, aliases, BrickLink numbers,
     category and keywords. `2x4`, `2 x 4` and `2 × 4` match alike.
@@ -181,7 +181,7 @@ APIs:
 - `/api/parts/{id}`: one verified asset with its library entry.
 
 Part records include identity aliases and BrickLink numbers, `mass_kg`,
-`mass_source`, `derivation` for derived parts, `nominal_dimensions_mm` in
+`mass_source` (an estimate for pieces with a `derivation`), `nominal_dimensions_mm` in
 east/north/up order, `top_studs`, `receiving_grids` and `library_revision`.
 Each receiving grid supplies width/depth and its first centre in public
 part-local construction coordinates. Mechanical port radii remain SI metres.
@@ -189,8 +189,8 @@ part-local construction coordinates. Mechanical port radii remain SI metres.
 The reference page provides:
 
 - server-side search with paged results;
-- library tier and category filters (the default shows everything, ordered by ID);
-- a Reviewed/Derived/BrickLink-only badge per card;
+- one list of every supported piece, ordered by ID, with a category filter;
+- a separate "BrickLink only" list for items with no official geometry;
 - real source-mesh thumbnails;
 - an orbit/zoom/keyboard preview and optional interface markers.
 
@@ -209,7 +209,8 @@ illustrative, not metallic/refraction/material qualification.
 
 Verification: `scripts/test-catalogue.py` runs against the isolated real server
 through `scripts/test-web-isolated.py`, which publishes the synthesized fixture
-library. It checks reviewed paging, tiers, a derived part and an alias, source
+library. It checks ID-ordered paging, the separate BrickLink list, an estimated
+mass and an alias, source
 geometry, colour changes, keyboard orbit, interfaces and mobile layout.
 
 ## Physical and material limits

@@ -441,14 +441,14 @@ impl LocalClientRuntime {
                 });
                 if args.get("search").is_some()
                     || args.get("category").is_some()
-                    || args.get("tier").is_some()
+                    || args.get("list").is_some()
                     || args.get("cursor").is_some()
                 {
                     let query = ergo_world::catalog::SearchQuery {
                         q: args["search"].as_str().map(str::to_owned),
                         category: args["category"].as_str().map(str::to_owned),
-                        tier: serde_json::from_value(
-                            args.get("tier").cloned().unwrap_or(json!("all")),
+                        list: serde_json::from_value(
+                            args.get("list").cloned().unwrap_or(json!("pieces")),
                         )?,
                         cursor: args["cursor"].as_str().map(str::to_owned),
                         limit: args["limit"].as_u64().map(|l| l as usize),

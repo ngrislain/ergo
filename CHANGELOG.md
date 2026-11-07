@@ -1,5 +1,13 @@
 # Changelog
 
+## v0.5.30
+
+- Treat every library piece alike in the catalogue, `/api/catalog/parts` and
+  MCP `get_catalog`: one ID-ordered list of supported pieces, with no
+  reviewed/derived labels or tiers. BrickLink items without official geometry
+  are a separate list (`list=bricklink`). Each piece still states its mass
+  source; estimated masses are labelled.
+
 ## v0.5.29
 
 - Order the parts catalogue and `/api/catalog/parts` results by natural part

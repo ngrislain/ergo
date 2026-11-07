@@ -21,7 +21,7 @@
       <div class="library-heading"><h1 id="catalogue-heading">Find your next piece.</h1><span id="part-count" role="status">Loading catalogue…</span></div>
       <form id="filters" class="filters" role="search">
         <label class="search-label">Search pieces<input id="search" type="search" placeholder="Name, LDraw or BrickLink number, keyword" autocomplete="off"></label>
-        <label>Library<select id="tier"><option value="all">Everything</option><option value="buildable">Every buildable part</option><option value="reviewed">Reviewed parts</option><option value="derived">Derived profiles</option><option value="listed">BrickLink only</option></select></label>
+        <label>List<select id="list"><option value="pieces">Supported pieces</option><option value="bricklink">BrickLink only (no geometry)</option></select></label>
         <label>Category<select id="category"><option value="">Every category</option></select></label>
       </form>
       <p id="library-summary" class="library-summary"></p>
@@ -47,7 +47,7 @@
         <p class="small-note">Palette previews do not assert that every mould was manufactured in every colour. Printed details retain their source colours.</p>
       </section>
       <details class="credits"><summary>Sources and geometry credits</summary><div id="part-credits"></div></details>
-      <p class="small-note">Reviewed parts carry hand-checked physical records. Derived parts are buildable with automatically derived bodies, stud and socket grids and estimated masses; their connectors are not inferred. No datum supplies measured holding strength. Body dimensions are nominal physics envelopes; the preview uses the actual source mesh.</p>
+      <p class="small-note">Every supported piece is buildable. Each lists its mass source; estimated masses come from the official geometry. No datum supplies measured holding strength. Body dimensions are nominal physics envelopes; the preview uses the actual source mesh.</p>
       <a class="back-to-results" href="#part-results">Back to pieces</a>
       </div>
     </aside>

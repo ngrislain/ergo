@@ -124,23 +124,19 @@ pub struct Catalog {
 pub struct LibrarySummary {
     pub revision: &'static str,
     pub format: &'static str,
+    /// Supported (buildable) pieces.
     pub parts: usize,
-    pub reviewed: usize,
-    pub derived: usize,
-    /// BrickLink items without official geometry (listed, not buildable).
+    /// BrickLink items without official geometry (a separate, non-buildable list).
     pub listed: usize,
     pub mass_calibration: &'static crate::part_library::MassCalibration,
 }
 impl LibrarySummary {
     pub fn current() -> Self {
         let library = crate::part_library::library();
-        let reviewed = crate::part_library::reviewed_parts().count();
         Self {
             revision: &library.revision,
             format: crate::part_library::FORMAT,
             parts: library.parts.len(),
-            reviewed,
-            derived: library.parts.len() - reviewed,
             listed: library.listed.len(),
             mass_calibration: &library.mass_calibration,
         }
@@ -150,8 +146,6 @@ impl LibrarySummary {
 pub struct Part {
     pub id: &'static str,
     pub name: &'static str,
-    /// Human-reviewed physical record; derived parts are buildable but not reviewed.
-    pub recommended: bool,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub category: Option<&'static str>,
     #[serde(skip_serializing_if = "<[String]>::is_empty")]
@@ -223,7 +217,7 @@ pub fn catalog() -> Catalog {
                     }),
             )
             .collect(),
-        part_resolution: "Every part of the installed library is buildable: the official LDraw library deduplicated against BrickLink numbers (via Rebrickable) as identity aliases. `parts` lists the human-reviewed recommended set; search the rest with get_catalog(search=...) or GET /api/catalog/parts. Derived parts (`derivation`) carry automatically derived nominal bodies, stud and socket grids and a calibrated ABS volume mass estimate, not reviewed records; derived connectors and clutch strengths are not inferred. Connector endpoints are part-local public east/north/up brick units; radius_m is SI. Fits infer geometric connectivity, not calibrated strength.",
+        part_resolution: "Every piece of the installed library is supported and buildable: the official LDraw library deduplicated against BrickLink numbers (via Rebrickable) as identity aliases. `parts` lists common starting pieces; search every piece with get_catalog(search=...) or GET /api/catalog/parts. Each piece states its mass source; pieces with a `derivation` have automatically derived bodies, stud and socket grids and an estimated mass. BrickLink items without official geometry are a separate, non-buildable list. Connector endpoints are part-local public east/north/up brick units; radius_m is SI. Fits infer geometric connectivity, not calibrated strength.",
     }
 }
 
@@ -242,7 +236,6 @@ pub fn describe(entry: &'static crate::part_library::LibraryPart) -> Part {
     Part {
         id,
         name: &entry.catalogue.name,
-        recommended: entry.catalogue.derivation.is_none(),
         category: entry.catalogue.category.as_deref(),
         bricklink: &entry.catalogue.bricklink,
         derivation: entry.catalogue.derivation.as_deref(),
@@ -403,19 +396,14 @@ mod tests {
     }
 }
 
-/// Which library tier a search covers.
+/// Which list a search covers: the supported (buildable) pieces, or the
+/// separate BrickLink items that have no official geometry.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, serde::Deserialize, Serialize)]
 #[serde(rename_all = "lowercase")]
-pub enum Tier {
-    /// Reviewed and derived buildable parts plus listed BrickLink-only items.
+pub enum List {
     #[default]
-    All,
-    /// Buildable parts only (reviewed and derived).
-    Buildable,
-    Reviewed,
-    Derived,
-    /// BrickLink items without official geometry.
-    Listed,
+    Pieces,
+    Bricklink,
 }
 
 #[derive(Clone, Debug, Default, serde::Deserialize)]
@@ -425,7 +413,7 @@ pub struct SearchQuery {
     #[serde(default)]
     pub category: Option<String>,
     #[serde(default)]
-    pub tier: Tier,
+    pub list: List,
     #[serde(default)]
     pub cursor: Option<String>,
     #[serde(default)]
@@ -456,7 +444,7 @@ pub struct SearchPage {
     pub results: Vec<SearchHit>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub next_cursor: Option<String>,
-    /// Category counts for the query and tier, before the category filter.
+    /// Category counts for the query and list, before the category filter.
     pub categories: Vec<(&'static str, usize)>,
 }
 
@@ -524,9 +512,10 @@ fn fold(text: &str) -> String {
     out.join(" ")
 }
 
-/// Search the installed library. Results are in one natural ID order across
-/// every tier (`2` < `10` < `3001` < `3001b`); listed BrickLink-only items use
-/// their BrickLink number. Cursors are offsets bound to the immutable revision.
+/// Search the installed library: the supported pieces, or separately the
+/// BrickLink items without official geometry. Results are in natural ID order
+/// (`2` < `10` < `3001` < `3001b`). Cursors are offsets bound to the immutable
+/// library revision.
 pub fn search(query: &SearchQuery) -> Result<SearchPage> {
     let library = crate::part_library::library();
     let limit = query.limit.unwrap_or(48).clamp(1, MAX_SEARCH_LIMIT);
@@ -559,16 +548,10 @@ pub fn search(query: &SearchQuery) -> Result<SearchPage> {
         }
     };
     let category = query.category.as_deref().filter(|c| !c.is_empty());
-    let wants = |reviewed: bool| match query.tier {
-        Tier::All | Tier::Buildable => true,
-        Tier::Reviewed => reviewed,
-        Tier::Derived => !reviewed,
-        Tier::Listed => false,
-    };
     let mut parts: Vec<&'static crate::part_library::LibraryPart> = library
         .parts
         .values()
-        .filter(|entry| wants(entry.catalogue.derivation.is_none()))
+        .filter(|_| query.list == List::Pieces)
         .filter(|entry| {
             let c = &entry.catalogue;
             let mut fields: Vec<&str> = vec![&c.id, &c.name];
@@ -580,21 +563,20 @@ pub fn search(query: &SearchQuery) -> Result<SearchPage> {
         })
         .collect();
 
-    let listed: Vec<&'static crate::part_library::Listed> =
-        if matches!(query.tier, Tier::All | Tier::Listed) {
-            library
-                .listed
-                .iter()
-                .filter(|item| {
-                    let mut fields: Vec<&str> = vec![&item.bricklink, &item.name];
-                    fields.extend(item.category.as_deref());
-                    fields.extend(item.rebrickable.as_deref());
-                    matches(&fields)
-                })
-                .collect()
-        } else {
-            vec![]
-        };
+    let listed: Vec<&'static crate::part_library::Listed> = if query.list == List::Bricklink {
+        library
+            .listed
+            .iter()
+            .filter(|item| {
+                let mut fields: Vec<&str> = vec![&item.bricklink, &item.name];
+                fields.extend(item.category.as_deref());
+                fields.extend(item.rebrickable.as_deref());
+                matches(&fields)
+            })
+            .collect()
+    } else {
+        vec![]
+    };
     let mut counts: std::collections::BTreeMap<&'static str, usize> = Default::default();
     for c in parts
         .iter()
@@ -613,7 +595,7 @@ pub fn search(query: &SearchQuery) -> Result<SearchPage> {
         .filter(|i| category.is_none_or(|c| i.category.as_deref() == Some(c)))
         .collect();
     let total = parts.len() + listed.len();
-    // One ID order across every tier; listed items are keyed by BrickLink number.
+    // Natural ID order; BrickLink items are keyed by their BrickLink number.
     let mut ordered: Vec<(
         &str,
         Option<&'static crate::part_library::LibraryPart>,

@@ -174,12 +174,7 @@ impl PartCache {
             credits: mesh.credits.clone(),
             mesh,
             cache_hit,
-            warning: entry.catalogue.derivation.as_ref().map(|derivation| {
-                format!(
-                    "{} uses an automatically derived ({derivation}) physical profile and an estimated mass; it is not a reviewed record",
-                    entry.catalogue.id
-                )
-            }),
+            warning: None,
             entry: entry.clone(),
         })
     }

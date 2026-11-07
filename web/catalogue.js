@@ -3,7 +3,6 @@ const state = {results: [], byKey: new Map(), total: 0, cursor: null, library: n
 let searchController = null, searchTimer = 0;
 const itemKey = item => item.id ?? `bricklink:${item.bricklink}`;
 const buildable = item => item.id !== undefined;
-const tierLabel = item => !buildable(item) ? 'BrickLink only' : item.recommended ? 'Reviewed' : 'Derived';
 const meshes = new Map(), pending = new Map(), thumbnails = new Map();
 let meshBytes = 0, preview, thumbnailRenderer, queue = [], pumping = false;
 const number = value => Number(value).toLocaleString('en', {maximumFractionDigits: 3});
@@ -152,7 +151,7 @@ async function pumpThumbnails() {
 }
 
 function searchURL(cursor) {
-  const params = new URLSearchParams({tier: $('tier').value, limit: '48'});
+  const params = new URLSearchParams({list: $('list').value, limit: '48'});
   const q = $('search').value.trim(); if (q) params.set('q', q);
   if ($('category').value) params.set('category', $('category').value);
   if (cursor) params.set('cursor', cursor);
@@ -188,15 +187,14 @@ function renderCategories(categories) {
 
 function card(item) {
   const key = itemKey(item), li = make('li'), button = make('button', undefined, 'part-card'); button.type = 'button'; button.dataset.part = key;
-  button.dataset.tier = tierLabel(item).toLowerCase().replace(/ .*/, '');
   button.setAttribute('aria-pressed', String(state.selected && itemKey(state.selected) === key));
   const code = buildable(item) ? item.id : `BrickLink ${item.bricklink}`;
-  button.setAttribute('aria-label', `${item.name}, ${code}, ${tierLabel(item)}`);
+  button.setAttribute('aria-label', `${item.name}, ${code}`);
   const holder = make('span', undefined, 'card-image');
   if (buildable(item)) {
     const image = make('img'); image.alt = `${item.name}, genuine source geometry`; image.dataset.part = key; image.width = 256; image.height = 192; holder.append(image);
   } else holder.dataset.empty = 'No official geometry';
-  button.append(holder, make('span', tierLabel(item), 'tier-badge'), make('code', code), make('span', item.name, 'piece-name'));
+  button.append(holder, make('code', code), make('span', item.name, 'piece-name'));
   const label = !buildable(item) ? (item.category ?? 'Listed item') : item.connectors.length ? [...new Set(item.connectors.map(p => words(p.kind)))].slice(0, 2).join(', ') : item.top_studs ? `${item.top_studs} top studs` : `${item.receiving_grids.length} receiving ${item.receiving_grids.length === 1 ? 'grid' : 'grids'}`;
   button.append(make('span', label, 'piece-features')); button.addEventListener('click', () => { void selectPart(item, true); }); li.append(button); return li;
 }
@@ -233,7 +231,7 @@ function setInspector(open) {
 function selectListed(item) {
   $('part-id').textContent = `BrickLink ${item.bricklink}`; $('part-name').textContent = item.name; $('retry-preview').hidden = true;
   $('preview-status').textContent = 'No official LDraw geometry exists for this BrickLink item, so it is listed for reference and cannot be built. No substitute shape is invented.';
-  $('part-facts').replaceChildren(); fact('Library tier', 'BrickLink only'); if (item.category) fact('Category', item.category); if (item.rebrickable) fact('Rebrickable', item.rebrickable);
+  $('part-facts').replaceChildren(); if (item.category) fact('Category', item.category); if (item.rebrickable) fact('Rebrickable', item.rebrickable);
   $('interface-details').replaceChildren();
   const url = `https://www.bricklink.com/v2/catalog/catalogitem.page?P=${encodeURIComponent(item.bricklink)}`;
   $('part-credits').replaceChildren(sourceLink(`BrickLink ${item.bricklink}`, url));
@@ -245,8 +243,8 @@ async function selectPart(part, focus = false) {
   document.querySelectorAll('.part-card').forEach(card => card.setAttribute('aria-pressed', String(card.dataset.part === itemKey(part))));
   if (!buildable(part)) { selectListed(part); updateURL(); return; }
   $('part-id').textContent = part.id; $('part-name').textContent = part.name; $('preview-status').textContent = 'Loading genuine source geometry…'; $('retry-preview').hidden = true;
-  $('part-facts').replaceChildren(); fact('Library tier', part.recommended ? 'Reviewed record' : `Derived profile (${part.derivation})`); if (part.category) fact('Category', part.category);
-  fact(part.recommended ? 'Catalogue mass' : 'Estimated mass', `${number(part.mass_kg * 1000)} g`); fact('Nominal body', part.nominal_dimensions_mm.map(number).join(' × ') + ' mm'); fact('Top studs', part.top_studs); fact('Receiving grids', part.receiving_grids.length);
+  $('part-facts').replaceChildren(); if (part.category) fact('Category', part.category);
+  fact(part.derivation ? 'Estimated mass' : 'Catalogue mass', `${number(part.mass_kg * 1000)} g`); fact('Nominal body', part.nominal_dimensions_mm.map(number).join(' × ') + ' mm'); fact('Top studs', part.top_studs); fact('Receiving grids', part.receiving_grids.length);
   if (part.set_count !== undefined) fact('Recorded set usage', number(part.set_count));
   if (part.aliases.length) fact('Identity aliases', part.aliases.join(', '));
   if (part.bricklink?.length) fact('BrickLink numbers', part.bricklink.join(', '));
@@ -257,7 +255,7 @@ async function selectPart(part, focus = false) {
   if (!interfaces.children.length) interfaces.append(make('li', 'No additional interface datums are registered.'));
   const credits = $('part-credits'); credits.replaceChildren();
   const massURLs = [...new Set(part.mass_source.match(/https:\/\/www\.bricklink\.com\/v2\/catalog\/catalogitem\.page\?P=[A-Za-z0-9]+/g) || [])];
-  credits.append(make('p', !part.recommended ? 'Mass: calibrated ABS volume estimate from the official geometry, not a catalogue measurement.' : massURLs.length > 1 ? 'Mass record: sourced component sum.' : 'Mass record: catalogue average.'));
+  credits.append(make('p', part.derivation ? 'Mass: calibrated ABS volume estimate from the official geometry, not a catalogue measurement.' : massURLs.length > 1 ? 'Mass record: sourced component sum.' : 'Mass record: catalogue average.'));
   for (const url of massURLs) { credits.append(sourceLink(`BrickLink ${new URL(url).searchParams.get('P')}`, url), document.createTextNode(' ')); }
   credits.append(make('p', part.mass_source), make('p', `Library revision ${part.library_revision}`));
   updateURL();
@@ -297,7 +295,7 @@ function installControls() {
   });
   $('filters').addEventListener('submit', event => event.preventDefault());
   $('search').addEventListener('input', scheduleSearch);
-  for (const id of ['tier', 'category']) $(id).addEventListener('change', () => { void search(); });
+  for (const id of ['list', 'category']) $(id).addEventListener('change', () => { void search(); });
   $('load-more').addEventListener('click', () => { void search(true); });
   $('clear-filters').addEventListener('click', () => { $('filters').reset(); void search(); $('search').focus(); });
   $('all-colours').addEventListener('change', renderColours); $('show-interfaces').addEventListener('change', drawPreview);
@@ -321,14 +319,15 @@ async function start() {
   try {
     const response = await fetch('/api/catalog'); if (!response.ok) throw Error(`Catalogue request failed (${response.status}). Reload to try again.`);
     const catalogue = await response.json(); state.colours = catalogue.colors; state.library = catalogue.library;
-    $('library-summary').textContent = `${number(catalogue.library.reviewed)} reviewed and ${number(catalogue.library.derived)} derived buildable parts, ${number(catalogue.library.listed)} BrickLink-only items. Library ${catalogue.library.revision.slice(0, 12)}.`;
+    $('library-summary').textContent = `${number(catalogue.library.parts)} supported pieces; ${number(catalogue.library.listed)} more BrickLink items have no official geometry. Library ${catalogue.library.revision.slice(0, 12)}.`;
     const params = new URLSearchParams(location.search);
     state.colour = state.colours.find(c => c.code === Number(params.get('colour') ?? 71)) || state.colours.find(c => c.code === 71) || state.colours[0];
     renderColours(); await search();
     const wanted = params.get('part');
     let selected = state.results.find(p => p.id === wanted || p.aliases?.includes(wanted));
     if (wanted && !selected) {
-      const found = await fetch('/api/catalog/parts?' + new URLSearchParams({q: wanted, tier: 'all', limit: '20'})).then(r => r.ok ? r.json() : {results: []});
+      const lookup = list => fetch('/api/catalog/parts?' + new URLSearchParams({q: wanted, list, limit: '20'})).then(r => r.ok ? r.json() : {results: []});
+      const found = {results: [...(await lookup('pieces')).results, ...(await lookup('bricklink')).results]};
       selected = found.results.find(p => p.id === wanted || p.aliases?.includes(wanted) || p.bricklink === wanted || p.bricklink?.includes?.(wanted));
       if (selected) state.byKey.set(itemKey(selected), selected);
     }

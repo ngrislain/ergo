@@ -142,14 +142,13 @@ def main():
             assert len(json.loads(workspace.read_text())["groups"]) == 2
             assert len(call("get_catalog")["structuredContent"]["catalog"]["colors"]) == 20
             assert len(call("get_catalog", include_extended=True)["structuredContent"]["catalog"]["colors"]) > 300
-            # A derived (unreviewed) library part is found by search and placed
-            # with an explicit warning; its estimated mass is never a BrickLink record.
-            found = call("get_catalog", search="grille", tier="derived")["structuredContent"]["search"]
+            # Any supported piece is found by search and placed; an estimated
+            # mass is labelled as such, never as a BrickLink record.
+            found = call("get_catalog", search="grille")["structuredContent"]["search"]
             assert [hit["id"] for hit in found["results"]] == ["2412b.dat"], found
             assert found["results"][0]["mass_source"].startswith("estimated:voxel-v1"), found
             derived = call("get_catalog", part="15561")
             assert derived["structuredContent"]["requested_part"]["part"] == "2412b.dat", derived
-            assert "derived" in derived["content"][0]["text"], derived
             derived = call("place_brick", part="2412b", color=47, min_corner=[16, 2, 0])
             assert derived["isError"] is False, derived
             assert call("get_catalog", part="not-a-library-part")["isError"] is True
