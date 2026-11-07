@@ -33,12 +33,15 @@ def main():
     name = "ergo-container-smoke-" + uuid.uuid4().hex[:12]
     created = False
     try:
-        # The server requires a published part library: mount a store seeded
-        # with the synthesized fixture library.
+        # The server requires a published part library: seed a mounted store
+        # with the synthesized fixture, using the image's own `parts-publish`.
         store = pathlib.Path(tempfile.mkdtemp(prefix="ergo-container-store-"))
-        library_fixture.seed(store)
-        for path in [store, *store.rglob("*")]:
-            path.chmod(0o777 if path.is_dir() else 0o666)
+        store.chmod(0o777)
+        engine("run", "--rm", "--pull=never", "--platform", "linux/amd64",
+               "--volume", f"{store}:/data", "--env", "ERGO_DATA_DIR=/data",
+               "--volume", f"{library_fixture.LIBRARY}:/fixtures/library.json:ro",
+               "--volume", f"{library_fixture.OBJECTS}:/fixtures/objects.cbor.gz:ro",
+               args.image, "parts-publish", "/fixtures/library.json", "/fixtures/objects.cbor.gz")
         engine("run", "--detach", "--pull=never", "--name", name, "--platform", "linux/amd64",
                "--publish", "127.0.0.1::8080", "--env", "ERGO_GROUND_SOURCE=disabled",
                "--volume", f"{store}:/data", "--env", "ERGO_DATA_DIR=/data",
