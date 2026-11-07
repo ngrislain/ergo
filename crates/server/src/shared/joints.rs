@@ -95,6 +95,8 @@ impl Working {
                 break_force: None,
                 break_torque: None,
                 strength_source: None,
+                axial_force: None,
+                friction_torque: None,
             };
             let joint = GlobalJoint {
                 id: id.clone(),

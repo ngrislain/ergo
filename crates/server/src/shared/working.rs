@@ -698,17 +698,12 @@ impl Working {
         Ok(Some(tokio::task::spawn_blocking(move || -> anyhow::Result<_> {
             let pairs: BTreeSet<_> = scene.joints.iter().map(|j| (j.a.min(j.b), j.a.max(j.b))).collect();
             scene.joints.extend(ergo_world::constraints::inferred_joints_with_tolerance(&scene.bricks, model.tolerances.position_brick_units).into_iter().filter(|j| !pairs.contains(&(j.a.min(j.b), j.a.max(j.b)))));
-            for joint in &mut scene.joints {
-                joint.break_force=None; joint.break_torque=None; joint.strength_source=None;
-            }
+            // Validation assigns every capacity from the frozen measurement
+            // book and the reviewed connector estimates; uploads claim none.
             let mut report = ergo_world::validation::validate_static_with_measurements(&mut scene, model.tolerances,&model.measurements)?;
-            if report.joint_strength_required != Some(false) {
-                model.measurements.apply(&scene.bricks, &mut scene.joints)?;
-                report = ergo_world::validation::validate_static_with_measurements(&mut scene, model.tolerances,&model.measurements)?;
-            }
             report.physical_calibration = if report.joint_strength_required == Some(false) {
                 "Frozen model, sourced masses and nominal bounds; complete gravity-contact proof with zero joint wrench; no clutch capacity assumed; no simulation"
-            } else { "Frozen server-owned measurement/model version; complete affected dependency domain; measured connector capacities; no simulation" }.into();
+            } else { "Frozen server-owned measurement/model version; complete affected dependency domain; equilibrium with measured or reviewed-estimate connector capacities; no simulation" }.into();
             Ok(report)
         }).await.map_err(anyhow::Error::from)??))
     }

@@ -110,7 +110,7 @@ socket is derived where the reviewed part has one. Measure with
 
 Derived parts therefore rest, stack and connect through studs and sockets.
 Their envelopes are nominal boxes, which are coarser than reviewed cores.
-Joint-dependent publication still requires measured capacities, as for every part.
+Their stud joints, like every stud joint, carry load only with a measured capacity.
 
 ## Reviewed display-detail library
 
@@ -281,16 +281,16 @@ and only within the straight shaft's axial range. Wrong parts, lateral offsets,
 tilts, the wide antenna foot and placement above the tip remain rejected. Client
 edits, group moves, server admission and inferred connectivity share this rule.
 This geometric clearance does not establish retention, friction or clutch strength.
-The supported standard has a capped bearing post under the cloth; removing it
-requires measured connector capacities for any force/moment consumed by admission.
+The supported standard has a capped bearing post under the cloth; without it the
+cloth would hang on unmeasured stud joints, which carry no load in admission.
 Dynamic tests retain their nominal box/contact approximations; this is not an
 exact annular-contact simulation or a new calibrated connection model.
 
 Nominal collision boxes intentionally differ from render bounds, which include
 studs/details. The server supplies trusted mass/body measurements and connector
 capacities from its frozen physical model; uploaded description claims cannot
-override them. Missing measurements are disclosed and block the relevant physical
-admission. See [calibration](physical-calibration.md).
+override them. Joints with neither a measurement nor a reviewed estimate carry no
+load in admission. See [calibration](physical-calibration.md).
 Collision clearance and connectivity use the same interface lookup in
 `part_profiles.rs`; strength estimation remains a separate opt-in mechanism.
 
@@ -314,9 +314,13 @@ small wheel pins/bearings, and explicitly matched rim/tyre groups.
   fixed factory hands. A nearby tool with an offset, wrong diameter or wrong axis
   does not become held just because its envelope touches the figure.
 - Technic **3700/3701/3894/3702/3895/3703/6541/32000** bricks and the reviewed
-  straight beams expose their individual bores. Friction pins infer fixed joints;
-  frictionless pins and cross axles through round bores infer revolute bearings.
+  straight beams expose their individual bores. Frictionless `3673` pins and cross
+  axles through round bores infer free revolute bearings; friction pins (`2780`
+  and every other pin) infer revolute joints that hold up to their friction torque.
   Cross axles in bushes require quarter-turn key registration and infer fixed joints.
+- Minifigure **shoulder**, **wrist** and **hand-grip** clips infer friction revolute
+  joints, so arms, hands and held equipment can be posed at any angle
+  (`rotate_about_pivot`, or the inspector's pivot buttons) and hold that pose.
 - **4600** wheel holders and **4624/4624c01** wheel bearings infer revolute joints.
   Rims and tyres require their explicit matching group and coincident seating.
   Wrong rims, absent engagement, mis-keyed axles and affine/scaled poses fail mating.
@@ -325,7 +329,9 @@ small wheel pins/bearings, and explicitly matched rim/tyre groups.
 
 Fits require coaxial axes and full functional receiving-span engagement within
 tolerance. Body overlap is cleared only when the complete nominal intersection
-fits a matching finite bore prism. Other collisions on the same pair remain
+fits a matching finite bore prism. A round pin or axle in a round bore is
+roll-invariant: the prism applies at any roll of the beam about it, so a beam
+pinned at a free angle does not collide with its own pin. Other collisions on the same pair remain
 collisions. Static/edit collision preflights use oriented-box SAT, with compound
 boxes for shield face/handles, spear blade/shaft and bow limbs/string/arrow; these remain approximate
 solids, not exact mesh cavities. Dynamic colliders share those compound proxies.
@@ -335,13 +341,14 @@ Peripheral grips/pins extend beyond bearing cores. Local inference indexes their
 port bounds; server dependency discovery expands body-index queries by the reviewed
 port overhang, so it can find a held object starting from either endpoint.
 
-Connector anchors and free axes feed fixed/revolute joints, leaving measured force
-and torque capacities unset. Tilted pieces can use joint-supported load paths, but
+Connector anchors and free axes feed fixed/revolute joints. Capacities come from
+the operator's measurement book or, for these registered connector types, from the
+reviewed connector estimates (see [calibration](physical-calibration.md)). Tilted pieces can use joint-supported load paths, but
 their envelope faces never become invented compression-bearing patches. Tyres
 support the ground below the axle line, without an assumed rolling-resistance
 moment. Feet snap/register by receiving stud centres rather than rounded envelope
-edges. These rules support plate-free v2 constructs without declaring their joints
-calibrated. See [calibration](physical-calibration.md).
+edges. These rules support plate-free v2 constructs; their reviewed estimates are
+labelled as estimates, not calibrated measurements.
 
 Authoritative admission also validates **claimed** joints against source
 interfaces: canonical anchors, fixed/revolute kind, bearing axes and absence of

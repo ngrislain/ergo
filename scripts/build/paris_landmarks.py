@@ -490,6 +490,7 @@ def main():
     parser.add_argument('--prepare-only',action='store_true');parser.add_argument('--render',action='store_true')
     parser.add_argument('--assets-from',type=pathlib.Path,help='Reuse a current native source-asset cache')
     parser.add_argument('--native-validation',action='store_true',help='Use the identical native static kernel for faster local iterations')
+    parser.add_argument('--library',type=pathlib.Path,help='Current part-library JSON for --native-validation (from /api/library/<revision>/library.json)')
     args=parser.parse_args();args.output.mkdir(parents=True,exist_ok=False);register_profiles()
     local,notes,route=(church if args.kind=='saint-sulpice' else eiffel)()
     site=SITES[args.kind];east=round((site['gps'][1]-GEO['longitude'])*3600*128);north=round((site['gps'][0]-GEO['latitude'])*3600*128)
@@ -537,7 +538,8 @@ def main():
     client=None if args.native_validation else Mcp(str(ROOT/'target/debug/ergo-mcp'),workspace,None,None)
     try:
         if args.native_validation:
-            checked=subprocess.run([str(ROOT/'target/debug/examples/validate_native'),str(workspace)],capture_output=True,text=True,check=True)
+            if not args.library:raise SystemExit('--native-validation requires --library (a current part-library JSON)')
+            checked=subprocess.run([str(ROOT/'target/debug/examples/validate_native'),'--library',str(args.library),str(workspace)],capture_output=True,text=True,check=True)
             feedback=json.loads(checked.stdout)
         else:
             assert client is not None

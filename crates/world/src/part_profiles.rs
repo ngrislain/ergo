@@ -313,11 +313,11 @@ mod tests {
         }
         let mut joints = crate::constraints::inferred_joints(&demo.bricks);
         assert_eq!(joints.len(), 2);
-        assert!(
-            crate::physical::ConnectionMeasurements::default()
-                .apply(&demo.bricks, &mut joints)
-                .is_err()
-        );
+        // Factory clips have no measurement or reviewed estimate: no capacity.
+        crate::physical::ConnectionMeasurements::default()
+            .apply(&demo.bricks, &mut joints)
+            .unwrap();
+        assert!(joints.iter().all(|j| j.break_force.is_none()));
         assert_eq!(
             crate::estimates::apply_stud_estimates(&demo.bricks, &mut joints).estimated_connections,
             0

@@ -488,7 +488,7 @@ impl LocalClientRuntime {
                     .filter_map(|b| ergo_world::spatial::relation(brick, b))
                     .collect();
                 Ok(text(
-                    json!({"brick":brick,"mass_kg":self.measurements.mass_kg(&brick.part).ok(),"mass_source":self.measurements.parts.iter().find(|p|p.part==brick.part).map(|p|p.source.clone()).or_else(||ergo_world::physical::mass_kg(&brick.part).ok().map(|_|ergo_world::physical::mass_source(&brick.part))),"body_dimensions_m":ergo_world::coordinates::dimensions(ergo_world::physical::to_meters(brick.bounds.size())),"contacts":contacts,"constraints":self.scene.joints.iter().filter(|j|j.a==id||j.b==id).collect::<Vec<_>>()}),
+                    json!({"brick":brick,"mass_kg":self.measurements.mass_kg(&brick.part).ok(),"mass_source":self.measurements.parts.iter().find(|p|p.part==brick.part).map(|p|p.source.clone()).or_else(||ergo_world::physical::mass_kg(&brick.part).ok().map(|_|ergo_world::physical::mass_source(&brick.part))),"body_dimensions_m":ergo_world::coordinates::dimensions(ergo_world::physical::to_meters(brick.bounds.size())),"contacts":contacts,"constraints":self.scene.joints.iter().filter(|j|j.a==id||j.b==id).collect::<Vec<_>>(),"pivots":ergo_world::articulation::pivots(&self.scene,id)?.into_iter().map(|p|json!({"pivot_id":p.other,"part":p.other_part,"connection":p.label,"bearing":p.bearing,"anchor_world":ergo_world::coordinates::public(p.anchor),"turns_with":p.moving})).collect::<Vec<_>>()}),
                 ))
             }
             "place_brick" => {
@@ -743,6 +743,8 @@ impl LocalClientRuntime {
                         break_force: None,
                         break_torque: None,
                         strength_source: None,
+                        axial_force: None,
+                        friction_torque: None,
                     });
                     Ok(())
                 })?))
@@ -781,6 +783,22 @@ impl LocalClientRuntime {
                 Ok(text(self.update_metadata(|scene| {
                     ergo_world::groups::set_members(scene, id, members, reparent)
                 })?))
+            }
+            "rotate_about_pivot" => {
+                let piece = id(&args, "id")?;
+                let other = id(&args, "pivot_id")?;
+                let angle = args
+                    .get("angle_radians")
+                    .and_then(Value::as_f64)
+                    .context("angle_radians is required")?;
+                let mut moved = Vec::new();
+                let mut feedback = self.update(|scene| {
+                    moved =
+                        ergo_world::articulation::rotate_about_joint(scene, piece, other, angle)?;
+                    Ok(())
+                })?;
+                feedback["rotated_piece_ids"] = json!(moved);
+                Ok(text(feedback))
             }
             "transform_group" => {
                 let id = id(&args, "group_id")?;
@@ -972,27 +990,34 @@ impl LocalClientRuntime {
                 Ok(json!({"content":content,"isError":false}))
             }
             "simulate_gravity" => {
-                let (scene, issue) = self.prepared();
                 let seconds = args.get("seconds").and_then(Value::as_f64).unwrap_or(2.0);
-                ensure!((0.0..=4.0).contains(&seconds), "Duration must be 0–4 s");
-                let mut sim = ergo_world::physics::Simulation::new(
-                    &scene.bricks,
-                    &scene.meshes,
-                    &scene.joints,
-                    &scene.fixed_bricks,
-                    false,
-                )?;
-                for _ in 0..(seconds / ergo_world::physics::TIMESTEP).ceil() as usize {
-                    sim.step();
-                }
-                let mut next = scene;
-                next.bricks = sim.bricks();
-                next.joints = sim.current_joints();
-                self.undo = Some(std::mem::replace(&mut self.scene, next));
-                self.revision += 1;
-                self.dirty = true;
-                let mut feedback = self.feedback();
-                feedback["simulation_stats"] = json!(sim.stats());
+                let (prepared, issue) = self.prepared();
+                let mut settled = None;
+                let mut feedback = self.update(|scene| {
+                    // Settle with the prepared capacities (friction pins hold),
+                    // then keep the projected pose with the scene's own joints.
+                    let mut working = prepared.clone();
+                    working.joints = scene.joints.clone();
+                    for joint in &mut working.joints {
+                        if let Some(p) = prepared
+                            .joints
+                            .iter()
+                            .find(|p| (p.a, p.b) == (joint.a, joint.b))
+                        {
+                            joint.friction_torque = p.friction_torque;
+                            joint.break_force = p.break_force;
+                            joint.break_torque = p.break_torque;
+                        }
+                    }
+                    let mut capacities = prepared.joints.clone();
+                    capacities.retain(|p| !working.joints.iter().any(|j| (j.a, j.b) == (p.a, p.b)));
+                    working.joints.extend(capacities);
+                    let report = ergo_world::articulation::settle(&mut working, seconds)?;
+                    scene.bricks = working.bricks;
+                    settled = Some(report);
+                    Ok(())
+                })?;
+                feedback["settled"] = json!(settled);
                 feedback["calibration_issue"] = json!(issue);
                 Ok(text(feedback))
             }

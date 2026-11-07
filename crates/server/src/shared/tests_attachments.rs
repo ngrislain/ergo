@@ -50,6 +50,7 @@ fn calibrated_service(scene: &WorldExport) -> SharedWorlds {
     service.store.measurements = Arc::new(ergo_world::physical::ConnectionMeasurements {
         parts: vec![],
         entries,
+        idealized_fixture: false,
     });
     service
 }
@@ -121,10 +122,15 @@ async fn server_rejects_forged_spear_shield_and_bow_joints_before_publication() 
                         ) * brick.transform;
                     }
                     "anchor" => invalid.joints[joint_index].anchor += DVec3::X,
+                    // Claim the opposite of the registered behaviour.
                     "kind" => {
-                        invalid.joints[joint_index].kind = JointKind::Revolute {
-                            axis: DVec3::Y,
-                            limits: None,
+                        let joint = &mut invalid.joints[joint_index];
+                        joint.kind = match joint.kind {
+                            JointKind::Fixed => JointKind::Revolute {
+                                axis: DVec3::Y,
+                                limits: None,
+                            },
+                            JointKind::Revolute { .. } => JointKind::Fixed,
                         }
                     }
                     "mesh" => invalid.meshes.get_mut(part).unwrap().vertices[0] += 0.1,

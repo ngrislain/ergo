@@ -248,11 +248,11 @@ mod tests {
         assert!(first_stud_collision(&d.bricks, 1e-4).is_none());
         let mut joints = crate::constraints::inferred_joints(&d.bricks);
         assert_eq!(joints.len(), 2);
-        assert!(
-            crate::physical::ConnectionMeasurements::default()
-                .apply(&d.bricks, &mut joints)
-                .is_err()
-        );
+        // Stud joints have no measurement or reviewed estimate: no capacity.
+        crate::physical::ConnectionMeasurements::default()
+            .apply(&d.bricks, &mut joints)
+            .unwrap();
+        assert!(joints.iter().all(|j| j.break_force.is_none()));
         let estimates = crate::estimates::apply_stud_estimates(&d.bricks, &mut joints);
         assert_eq!(estimates.estimated_connections, 0);
         assert_eq!(estimates.unsupported_piece_pairs.len(), 2);

@@ -99,6 +99,8 @@ struct Ui {
     current: RwSignal<Option<WorldManifest>>,
     selected: RwSignal<Option<Brick>>,
     relations: RwSignal<Vec<Relation>>,
+    /// Pivots of the selected piece: (other piece, connection label, turns freely).
+    pivots: RwSignal<Vec<(u32, String, bool)>>,
     message: RwSignal<String>,
     error: RwSignal<Option<String>>,
     count: RwSignal<usize>,
@@ -192,6 +194,7 @@ impl Ui {
             current: RwSignal::new(None),
             selected: RwSignal::new(None),
             relations: RwSignal::new(Vec::new()),
+            pivots: RwSignal::new(Vec::new()),
             message: RwSignal::new("Opening your workbench…".into()),
             error: RwSignal::new(None),
             count: RwSignal::new(0),
@@ -447,6 +450,48 @@ impl Client {
             .relations
             .set(r.selected.map(|id| r.relations(id)).unwrap_or_default());
         self.ui.joint_count.set(self.joints.len());
+        let pivots = r
+            .selected
+            .zip(self.scene().ok())
+            .and_then(|(id, scene)| ergo_world::articulation::pivots(&scene, id).ok())
+            .unwrap_or_default()
+            .into_iter()
+            .filter(|p| p.moving.is_some())
+            .map(|p| {
+                (
+                    p.other,
+                    format!("{} · {}", p.label, p.other_part.trim_end_matches(".dat")),
+                    p.bearing == ergo_world::attachments::Bearing::Free,
+                )
+            })
+            .collect();
+        self.ui.pivots.set(pivots);
+    }
+    /// Turn the selected piece, and what it carries, about its pivot with
+    /// `other` by `degrees` (right-hand rule about the connector axis).
+    fn rotate_selected(&mut self, other: u32, degrees: f64) -> anyhow::Result<()> {
+        self.remember()?;
+        self.freeze_simulation();
+        let id = self
+            .renderer
+            .as_ref()
+            .and_then(|r| r.selected)
+            .ok_or_else(|| anyhow::anyhow!("Select a brick in the viewport"))?;
+        let mut scene = self.scene()?;
+        let moved = ergo_world::articulation::rotate_about_joint(
+            &mut scene,
+            id,
+            other,
+            degrees.to_radians(),
+        )?;
+        self.joints = scene.joints;
+        self.renderer.as_mut().unwrap().set_bricks(scene.bricks);
+        self.refresh_selection();
+        self.ui.message.set(format!(
+            "Turned {} piece(s) {degrees:+}° about the pivot with brick {other}",
+            moved.len()
+        ));
+        Ok(())
     }
     fn rebuild(&mut self) {
         let mut bricks = BTreeMap::new();
@@ -788,6 +833,7 @@ fn shared_manifest(
             checked_bricks: 0,
             max_displacement: 0.,
             joint_strength_required: None,
+            max_joint_utilisation: 0.,
             compression_issue: None,
             physical_calibration: "No physical claim for a clipped navigation view".into(),
             tolerances: Default::default(),
@@ -1577,6 +1623,7 @@ fn open_draft(handle: Handle, scene: WorldExport) -> anyhow::Result<()> {
                 checked_bricks: 0,
                 max_displacement: 0.0,
                 joint_strength_required: None,
+                max_joint_utilisation: 0.,
                 compression_issue: None,
                 physical_calibration: "Not yet validated".into(),
                 tolerances: Default::default(),
@@ -2625,6 +2672,7 @@ fn BrickInspector() -> impl IntoView {
                 <div class="swatches" aria-label="Available brick colors">{catalog::COLORS.iter().map(|&(code,name)|view!{<button class="swatch" title=name aria-label=name style:background=format!("#{:06x}",ergo_world::color_rgb(code)) on:click=move |_|act(handle,|c|{c.remember()?;c.freeze_simulation();let r=c.renderer.as_mut().unwrap();if let Some(id)=r.selected{for b in &mut r.bricks{if b.id==id{b.color=code;b.rgb=ergo_world::color_rgb(code);}}r.scene_changed();}c.refresh_selection();Ok(())})></button>}).collect_view()}</div>
                 <div class="inspector-actions"><button class="button quiet small" on:click=move |_|{ui.first.set(ui.selected.get_untracked().map(|b|b.id));ui.message.set("First brick selected. Select a second brick, then add a connection".into());}>"Use as first brick"</button><button class="button quiet small" disabled=move ||ui.first.get().is_none() on:click=move |_|show_dialog("constraint-dialog")>"Connect…"</button><button class="button quiet small" on:click=move |_|{if let Some(brick)=ui.selected.get_untracked(){ui.group_selection.update(|ids|{if !ids.contains(&brick.id){ids.push(brick.id);}});ui.message.set(format!("{} pieces selected for grouping",ui.group_selection.get_untracked().len()));}}>"Add to group selection"</button></div>
                 <label class="toggle-row"><span>"Pull in simulation"</span><input type="checkbox" on:change=move |e|pull.set(event_target_checked(&e))/></label>
+                <Show when=move ||!ui.pivots.get().is_empty()><div class="pivots" aria-label="Turn the selected piece about a pivot"><h3>"Pivots"</h3>{move ||ui.pivots.get().into_iter().map(|(other,label,free)|view!{<div class="pivot-row"><span>{label}{if free{" (free)"}else{" (friction)"}}</span>{[-15.0,-5.0,5.0,15.0].into_iter().map(|degrees|view!{<button class="button quiet small" aria-label=format!("Turn {degrees:+}° about brick {other}") on:click=move |_|act(handle,|c|c.rotate_selected(other,degrees))>{format!("{degrees:+}°")}</button>}).collect_view()}</div>}).collect_view()}</div></Show>
                 <div class="move-grid" aria-label="Move selected connected group">{[("−X",DVec3::NEG_X),("+X",DVec3::X),("−Y",DVec3::Z),("+Y",DVec3::NEG_Z),("−Z",DVec3::NEG_Y),("+Z",DVec3::Y)].into_iter().map(|(label,delta)|view!{<button class="button quiet small" on:click=move |_|act(handle,|c|c.move_selected(delta, pull.get_untracked()))>{label}</button>}).collect_view()}</div>
                 <button class="text-button" on:click=move |_|act(handle,|c|{c.remember()?;c.freeze_simulation();let id=c.renderer.as_ref().and_then(|r|r.selected).unwrap();if c.fixed.contains(&id){c.fixed.retain(|i|*i!=id);c.ui.message.set("Brick released from its anchor".into());}else{c.fixed.push(id);c.ui.message.set("Brick anchored in world space".into());}Ok(())})>"Toggle world anchor"</button>
                 <details class="connections"><summary>"Nearby contacts"</summary>{move ||ui.relations.get().into_iter().take(12).map(|r|view!{<p>{format!("#{} · {} ({})",r.brick_id,r.kind,r.certainty)}</p>}).collect_view()}</details>
@@ -2862,7 +2910,7 @@ fn ConstraintDialog() -> impl IntoView {
                         JointKind::Revolute{axis:match axis.get_untracked().as_str(){"y"=>DVec3::NEG_Z,"z"=>DVec3::Y,_=>DVec3::X},limits:None}
                     };
                     c.joints.retain(|j|!((j.a==a&&j.b==b)||(j.a==b&&j.b==a)));
-                    c.joints.push(JointSpec{a,b,anchor,kind,break_force:None,break_torque:None,strength_source:None});
+                    c.joints.push(JointSpec{a,b,anchor,kind,break_force:None,break_torque:None,axial_force:None,friction_torque:None,strength_source:None});
                     c.refresh_selection();ui.message.set("Connection added to the working copy; measured capacity is required for publication".into());
                     Ok(())
                 });

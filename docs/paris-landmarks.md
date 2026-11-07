@@ -58,6 +58,12 @@ sample; the same plan detects the older published roof's openings. This is sampl
 coverage, not a continuous watertightness proof. These local checks do not replace
 the accepted model recorded above and do not establish shake/impact survival.
 
+```sh
+cargo build --release -p ergo-world --example check_roof
+target/release/examples/check_roof target/church-draft/construction.native.json \
+  target/church-draft/roof-coverage.plan.json
+```
+
 ## Technic Eiffel Tower
 
 The reference coordinate is **48.85822222, 2.2945**, from the
@@ -123,7 +129,8 @@ python3 scripts/build/paris_landmarks.py eiffel --output target/eiffel-draft
 Output directories must be fresh. `--prepare-only` emits compact model/proposal
 data; `--assets-from` reuses a current native source-asset cache, resolving missing
 current parts from the embedded complete library. `--native-validation` runs the
-same static kernel through `validate_native`; `--render` requests actual WASM
+same static kernel through `validate_native` and needs `--library` (a current
+part-library JSON); `--render` requests actual WASM
 WebGL captures. `scripts/verify-landmark.py` independently checks an existing draft.
 The Python construct expander preserves individually posed current limb rotations.
 
@@ -151,32 +158,45 @@ python3 scripts/build/landmark_revision.py --input /private/accepted-church-work
   --draft target/church-draft/construction.native.json --output target/church-revision
 ```
 
-The separate `scripts/build/eiffel_truss.py` generates an **unpublished articulated
-prototype**, not a replacement of the accepted tower. It uses genuine long Technic
-beams, cross axles and retaining bushes, four inclined legs in two orthogonal planes,
-X-braces and horizontal ties at the feet, two floor levels and top. Pillar angles
-increase from approximately 64.62° to 75.52° and 83.41°. Parts retain proper metric
-rotations and their unscaled source geometry. Two spaced axles join overlapping
-beam splices; individual round bearings remain free revolute joints.
+The separate `scripts/build/eiffel_truss.py` generates an **articulated Technic
+tower**, not a replacement of the accepted tower. It uses genuine long Technic
+beams at free angles, cross axles in round bearings and retaining bushes. Its four
+inclined legs lie in two orthogonal planes, with X-braces and horizontal ties at
+the feet, two floor levels and the top. Pillar angles increase from approximately
+64.62° to 75.52° and 83.41°. Parts retain proper metric rotations and their
+unscaled source geometry. Two spaced axles join overlapping beam splices; every
+round bearing is a free revolute joint, so the braced panels, not friction, carry
+the loads.
 
-The checked 4,070-part prototype is overlap-free, with 2,308 unlimited revolute
-joints and 2,342 fixed/keyed/stud joints. Its bearing bricks now align with actual
-foundation studs instead of resting diagonally on smooth tiles. It is still
-**not publication-ready**: the conservative static certificate reports unbalanced
-free-axis hinge torque, and measured axle/bearing capacities are missing. Neither
-the joint inventory nor an image proves rigidity, gravity balance or dynamic
-stability. `inspect_mechanism` reports the actual
-components, support issue and calibration issue; its optional diagnostic export
-does not authorize publication or add brakes/motors.
+- **Central bearing bricks** (3700) hang on the cross-tie axles. Their centre of
+  mass lies just below the hole, so they rest without a stud connection.
+- **Feet:** each foot axle carries bearing bricks on every free layer, resting on
+  one foundation block of 2×2 bricks and plates. Loads entering the axle along
+  its whole length then reach the ground directly.
+
+The 4,096-part tower is overlap-free and publication-ready under the general
+equilibrium certificate with the reviewed connector estimates. Its most loaded
+joint uses 46% of its capacity, with 4,680 inferred joints. The two planes are
+joined only through the ground; it is a skeletal truss, not a detailed replica.
+It is not yet published: the production server must first run the equilibrium
+certificate (release 0.5.31 or later). `inspect_mechanism` reports its joint
+components.
 
 ```sh
-cargo build --release -p ergo-world --example check_roof --example inspect_mechanism
+cargo build --release -p ergo-world --example validate_native --example inspect_mechanism
 python3 scripts/build/eiffel_truss.py --output target/articulated-tower-draft \
   --assets-from /absolute/path/to/current-source-construction.native.json
+target/release/examples/validate_native --library part-library.json \
+  target/articulated-tower-draft/construction.native.json
 target/release/examples/inspect_mechanism target/articulated-tower-draft/construction.native.json
-target/release/examples/check_roof target/church-draft/construction.native.json \
-  target/church-draft/roof-coverage.plan.json
+python3 scripts/publish-landmark.py --construction target/articulated-tower-draft/construction.native.json \
+  --token-file /path/to/token --output target/articulated-tower-publication --publish
 ```
+
+`validate_native` needs the current part library, the one the server installs:
+`/api/library/<revision>/library.json`, where `/api/config` gives the revision as
+`part_library`. `scripts/publish-landmark.py` downloads it from its `--url` before
+validating.
 
 `scripts/publish-landmark.py` performs a fresh authenticated preflight and writes
 a durable MCP sidecar/journal. Only its explicit `--publish` submits a mutation.

@@ -155,6 +155,8 @@ jobs:
       - run: python3 scripts/test-npm-package.py --package-dir target/distribution/npm --browser
       - name: Verify current-only offline canonical parts and shared common constructs
         run: python3 scripts/test-part-library.py --binary target/distribution/npm/bin/ergo-mcp.cjs
+      - name: Pose a guard, settle a pinned Technic chain and hold it with friction pins
+        run: python3 scripts/test-articulation.py --binary target/distribution/npm/bin/ergo-mcp.cjs
       - name: Pack the complete npm release
         run: |
           mkdir -p target/distribution/tarballs

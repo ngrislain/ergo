@@ -64,6 +64,19 @@ Anchor coincidence supplies three independent conditions; aligned axes supply
 two. Optional limits impose $\theta_{min}\le\theta\le\theta_{max}$. A motor
 can request angular velocity or position, subject to torque limits.
 
+**Posing about a pivot.** Selecting a piece lists its pivots in the inspector:
+every revolute connection, with its bearing (`free` or `friction`). Buttons turn
+the piece by ±5° or ±15° about a pivot; MCP `rotate_about_pivot` takes any angle.
+Both call [`articulation::rotate_about_joint`](../crates/world/src/articulation.rs).
+It removes that joint, takes the connected side containing the piece, and rotates
+it exactly about the connection axis through the anchor, with no grid snap.
+It rejects the turn if the moving side is still connected to the other side
+through another path (a loop), contains an anchored piece, crosses the floor or
+overlaps another piece. Joints are then re-inferred from the new geometry, so a
+held spear stays in its hand while the arm turns at the shoulder. A friction
+joint keeps the new angle under load up to its friction torque; a free one may
+swing back under gravity in simulation.
+
 The recommendations contain basic bricks, plates, and tiles; wheel/axle and other
 catalog meshes resolve on demand when their source is available. Revolute
 constraints are supported, but geometry alone does not provide a connector model

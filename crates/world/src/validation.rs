@@ -1,7 +1,7 @@
 //! Persistence gate: no penetrating nominal body boxes, plus a conservative
 //! static support/constraint-wrench certificate. No time integration runs here.
 //! declared simplified model, not real ABS stress, clutch strength, or earthquakes.
-use crate::{Brick, JointKind, WorldExport, constraints, spatial::Octree};
+use crate::{Brick, WorldExport, constraints, spatial::Octree};
 use anyhow::{Result, ensure};
 use glam::{DVec2, DVec3};
 use serde::{Deserialize, Serialize};
@@ -52,8 +52,13 @@ pub struct ValidationReport {
     pub max_displacement: f64,
     /// None on historical reports. False means the certificate consumes no
     /// joint strength; the method distinguishes contact-only and anchored proofs.
+    /// True when the certificate loads at least one joint (its capacity is
+    /// then consumed); false for a contact-only proof.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub joint_strength_required: Option<bool>,
+    /// Largest joint load / capacity ratio in the certificate.
+    #[serde(default)]
+    pub max_joint_utilisation: f64,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub compression_issue: Option<CompressionIssue>,
     #[serde(default)]
@@ -205,6 +210,20 @@ pub fn validate_static_with_measurements(
         None
     };
     let contact_only = scene.fixed_bricks.is_empty() && compression_issue.is_none();
+    // Capacities: the measurement book, then reviewed estimates. A joint
+    // without either may carry no load.
+    measurements.apply(&scene.bricks, &mut scene.joints)?;
+    let certificate = if contact_only {
+        crate::equilibrium::Certificate::default()
+    } else {
+        support_certificate(
+            &scene.bricks,
+            &scene.joints,
+            &scene.fixed_bricks,
+            tolerances,
+            measurements,
+        )?
+    };
     let report = ValidationReport {
         collision_model:
             "nominal body boxes with finite registered connector clearance; visual studs excluded"
@@ -212,27 +231,19 @@ pub fn validate_static_with_measurements(
         method: if contact_only {
             "static compression certificate (zero joint wrench; no simulation)"
         } else {
-            "static support and constraint-wrench certificate (no simulation)"
+            "static equilibrium certificate (joints within measured or reviewed capacities; no simulation)"
         }
         .into(),
         inferred_joints: inferred_count,
         checked_bricks: scene.bricks.len(),
         max_displacement: 0.0,
-        joint_strength_required: Some(!contact_only && !scene.joints.is_empty()),
+        joint_strength_required: Some(certificate.loaded_joints > 0),
+        max_joint_utilisation: certificate.max_utilisation,
         compression_issue,
         physical_calibration:
-            "Metric dimensions and catalog masses; check connector calibration separately".into(),
+            "Metric dimensions and catalog masses; joint capacities from the measurement book or reviewed estimates".into(),
         tolerances,
     };
-    if !contact_only {
-        support_certificate(
-            &scene.bricks,
-            &scene.joints,
-            &scene.fixed_bricks,
-            tolerances,
-            measurements,
-        )?;
-    }
     Ok(report)
 }
 
@@ -413,291 +424,114 @@ mod registration_tests {
     }
 }
 
-#[derive(Clone, Copy)]
-enum EdgeKind {
-    Joint(usize),
-    Contact(crate::Aabb),
-}
-struct Edge {
-    a: usize,
-    b: usize,
-    kind: EdgeKind,
-}
+/// Certify static equilibrium of every body with the general solver
+/// ([`crate::equilibrium`]): joints within their capacities, frictionless
+/// unilateral contact patches between axis-aligned bodies, ground supports
+/// and anchored bricks.
 fn support_certificate(
     bricks: &[Brick],
     joints: &[crate::JointSpec],
     fixed: &[u32],
     tol: StaticTolerances,
     measurements: &crate::physical::ConnectionMeasurements,
-) -> Result<()> {
-    // Loose blocks can balance gravity by distributing compression downwards.
-    // This avoids inventing tensile loads in a spanning tree of a multi-support
-    // roof. It is a constructive proof in the same frictionless box model.
-    if joints.is_empty() && fixed.is_empty() && compression_certificate(bricks, tol, measurements)?
-    {
-        return Ok(());
-    }
-    use crate::physical::{GRAVITY_M_S2, to_meters};
+) -> Result<crate::equilibrium::Certificate> {
     let n = bricks.len();
     let index: HashMap<_, _> = bricks.iter().enumerate().map(|(i, b)| (b.id, i)).collect();
-    let mut edges = Vec::new();
-    let mut pairs = HashSet::new();
-    for (j, joint) in joints.iter().enumerate() {
-        let a = index[&joint.a];
-        let b = index[&joint.b];
-        pairs.insert((a.min(b), a.max(b)));
-        edges.push(Edge {
-            a,
-            b,
-            kind: EdgeKind::Joint(j),
-        });
-    }
-    let tree = Octree::new(bricks.iter().map(|b| b.bounds).collect());
-    for (a, brick) in bricks.iter().enumerate() {
-        for b in tree.query(brick.bounds.expanded(tol.position_brick_units)) {
-            if b <= a || pairs.contains(&(a, b)) {
-                continue;
-            }
-            let overlap = brick.bounds.max.min(bricks[b].bounds.max)
-                - brick.bounds.min.max(bricks[b].bounds.min);
-            if crate::interference::axis_aligned(brick)
-                && crate::interference::axis_aligned(&bricks[b])
-                && overlap.y.abs() <= tol.position_brick_units
-                && overlap.x > tol.position_brick_units
-                && overlap.z > tol.position_brick_units
-            {
-                let min = brick.bounds.min.max(bricks[b].bounds.min);
-                let max = brick.bounds.max.min(bricks[b].bounds.max);
-                edges.push(Edge {
-                    a,
-                    b,
-                    kind: EdgeKind::Contact(crate::Aabb::new(
-                        DVec3::new(min.x, (min.y + max.y) * 0.5, min.z),
-                        DVec3::new(max.x, (min.y + max.y) * 0.5, max.z),
-                    )),
-                });
-            }
-        }
-    }
-    // Select a forest globally in edge order: authored/inferred joints first,
-    // then unilateral contacts. BFS alone could take a contact shortcut through
-    // an already rigid component and invent unnecessary tipping reactions.
-    let mut component: Vec<_> = (0..n).collect();
+    let mut parent: Vec<usize> = (0..n).collect();
     fn root(p: &mut [usize], i: usize) -> usize {
         if p[i] != i {
             p[i] = root(p, p[i]);
         }
         p[i]
     }
-    let mut adjacency = vec![Vec::new(); n];
-    for (i, e) in edges.iter().enumerate() {
-        let a = root(&mut component, e.a);
-        let b = root(&mut component, e.b);
-        if a != b {
-            component[a] = b;
-            adjacency[e.a].push(i);
-            adjacency[e.b].push(i);
-        }
+    let union = |p: &mut Vec<usize>, a: usize, b: usize| {
+        let (a, b) = (root(p, a), root(p, b));
+        p[a] = b;
+    };
+    for joint in joints {
+        let (a, b) = (index[&joint.a], index[&joint.b]);
+        union(&mut parent, a, b);
     }
-    let mut seen = vec![false; n];
-    let mut parent = vec![usize::MAX; n];
-    let mut parent_edge = vec![usize::MAX; n];
-    let mut forces = vec![DVec3::ZERO; n];
-    let mut moments = forces.clone();
-    for start in 0..n {
-        if seen[start] {
-            continue;
-        }
-        let mut group = vec![start];
-        seen[start] = true;
-        let mut cursor = 0;
-        while cursor < group.len() {
-            let i = group[cursor];
-            cursor += 1;
-            for &e in &adjacency[i] {
-                let edge = &edges[e];
-                let other = if edge.a == i { edge.b } else { edge.a };
-                if !seen[other] {
-                    seen[other] = true;
-                    group.push(other);
-                }
-            }
-        }
-        let root = group
-            .iter()
-            .copied()
-            .find(|&i| fixed.contains(&bricks[i].id))
-            .unwrap_or(start);
-        let origin = to_meters(bricks[root].bounds.center());
-        let mut mass = 0.0;
-        let mut center = DVec3::ZERO;
-        let mut supports = Vec::new();
-        for &i in &group {
-            let m = measurements.mass_kg(&bricks[i].part)?;
-            let p = to_meters(bricks[i].bounds.center()) - origin;
-            mass += m;
-            center += p * m;
-            forces[i] = DVec3::NEG_Y * m * GRAVITY_M_S2;
-            moments[i] = p.cross(forces[i]);
-            if bricks[i].bounds.min.y.abs() <= tol.position_brick_units {
-                for point in ground_support_points(&bricks[i]) {
-                    let p = to_meters(point) - origin;
-                    supports.push((DVec2::new(p.x, p.z), i));
-                }
-            }
-        }
-        ensure!(
-            !supports.is_empty(),
-            "Construction is not static: component containing brick {} has no ground support",
-            bricks[start].id
-        );
-        center /= mass;
-        if fixed.contains(&bricks[root].id) {
-            forces[root] += DVec3::Y * mass * GRAVITY_M_S2;
-            let total_moment = group.iter().map(|&i| moments[i]).sum::<DVec3>();
-            moments[root] -= total_moment;
-        } else {
-            let hull = convex_hull(supports.iter().map(|(p, _)| *p).collect());
-            let p = DVec2::new(center.x, center.z);
-            ensure!(
-                hull.len() >= 3
-                    && (0..hull.len()).all(|i| {
-                        let edge = hull[(i + 1) % hull.len()] - hull[i];
-                        edge.perp_dot(p - hull[i])
-                            >= -tol.position_brick_units * 0.008 * edge.length()
-                    }),
-                "Construction is not static: center of mass lies outside the ground support polygon near brick {}",
-                bricks[start].id
-            );
-            let mut distributed = false;
-            for i in 1..hull.len() - 1 {
-                let [a, b, c] = [hull[0], hull[i], hull[i + 1]];
-                let area = (b - a).perp_dot(c - a);
-                if area <= 1e-15 {
-                    continue;
-                }
-                let wa = (b - p).perp_dot(c - p) / area;
-                let wb = (c - p).perp_dot(a - p) / area;
-                let wc = 1.0 - wa - wb;
-                if [wa, wb, wc].iter().all(|w| *w >= -1e-10) {
-                    for (point, w) in [(a, wa), (b, wb), (c, wc)] {
-                        let node = supports.iter().find(|(q, _)| *q == point).unwrap().1;
-                        let force = DVec3::Y * (mass * GRAVITY_M_S2 * w.max(0.0));
-                        forces[node] += force;
-                        moments[node] += DVec3::new(point.x, -origin.y, point.y).cross(force);
-                    }
-                    distributed = true;
-                    break;
-                }
-            }
-            ensure!(
-                distributed,
-                "No conservative nonnegative ground-reaction distribution found"
-            );
-        }
-        let mut order = vec![root];
-        parent[root] = root;
-        let mut cursor = 0;
-        while cursor < order.len() {
-            let i = order[cursor];
-            cursor += 1;
-            for &e in &adjacency[i] {
-                let edge = &edges[e];
-                let other = if edge.a == i { edge.b } else { edge.a };
-                if parent[other] == usize::MAX {
-                    parent[other] = i;
-                    parent_edge[other] = e;
-                    order.push(other);
-                }
-            }
-        }
-        for &i in order.iter().rev() {
-            if i == root {
+    let mut contacts = Vec::new();
+    let tree = Octree::new(bricks.iter().map(|b| b.bounds).collect());
+    for (a, brick) in bricks.iter().enumerate() {
+        for b in tree.query(brick.bounds.expanded(tol.position_brick_units)) {
+            // Touching axis-aligned bodies bear in compression whether or not
+            // a joint also holds them: the joint only adds its capacity.
+            if b <= a {
                 continue;
             }
-            let e = &edges[parent_edge[i]];
-            let anchor = match e.kind {
-                EdgeKind::Joint(j) => joints[j].anchor,
-                EdgeKind::Contact(patch) => patch.center(),
-            };
-            let anchor = to_meters(anchor) - origin;
-            let force = -forces[i];
-            let torque = -(moments[i] - anchor.cross(forces[i]));
-            match e.kind {
-                EdgeKind::Joint(j) => {
-                    let joint = &joints[j];
-                    ensure!(joint.break_force.is_none_or(|cap|force.length()<=cap+tol.force_newtons)&&joint.break_torque.is_none_or(|cap|torque.length()<=cap+tol.torque_newton_meters),"Gravity certificate overloads connection {} ↔ {}: {:.4} N / {:.6} N m",joint.a,joint.b,force.length(),torque.length());
-                    if let JointKind::Revolute { axis, limits } = &joint.kind {
-                        ensure!(
-                            torque.dot(axis.normalize()).abs() <= tol.torque_newton_meters,
-                            "Construction is not static: hinge {} ↔ {} has unbalanced torque about its free axis",
-                            joint.a,
-                            joint.b
-                        );
-                        ensure!(
-                            limits.is_none_or(|[lo, hi]| lo <= tol.rotation_radians
-                                && hi >= -tol.rotation_radians),
-                            "Reference hinge pose violates its angle limits"
-                        );
-                    }
-                }
-                EdgeKind::Contact(patch) => {
-                    let other = if e.a == i { e.b } else { e.a };
-                    let normal = if bricks[i].bounds.center().y > bricks[other].bounds.center().y {
-                        1.0
-                    } else {
-                        -1.0
-                    };
-                    ensure!(
-                        force.y * normal >= -tol.force_newtons
-                            && force.x.abs() <= tol.force_newtons
-                            && force.z.abs() <= tol.force_newtons
-                            && torque.y.abs() <= tol.torque_newton_meters,
-                        "Construction is not static: unsupported/tensile box contact near brick {}",
-                        bricks[i].id
-                    );
-                    if force.y.abs() <= tol.force_newtons {
-                        ensure!(
-                            torque.length() <= tol.torque_newton_meters,
-                            "Unbalanced contact moment"
-                        );
-                    } else {
-                        let cop = anchor + DVec3::new(torque.z / force.y, 0.0, -torque.x / force.y);
-                        let min = to_meters(patch.min) - origin;
-                        let max = to_meters(patch.max) - origin;
-                        let epsilon = tol.position_brick_units * 0.008;
-                        ensure!(
-                            cop.x >= min.x - epsilon
-                                && cop.x <= max.x + epsilon
-                                && cop.z >= min.z - epsilon
-                                && cop.z <= max.z + epsilon,
-                            "Construction is not static: contact support moment tips brick {}",
-                            bricks[i].id
-                        );
-                    }
-                }
+            let other = &bricks[b];
+            let overlap =
+                brick.bounds.max.min(other.bounds.max) - brick.bounds.min.max(other.bounds.min);
+            if crate::interference::axis_aligned(brick)
+                && crate::interference::axis_aligned(other)
+                && overlap.y.abs() <= tol.position_brick_units
+                && overlap.x > tol.position_brick_units
+                && overlap.z > tol.position_brick_units
+            {
+                let min = brick.bounds.min.max(other.bounds.min);
+                let max = brick.bounds.max.min(other.bounds.max);
+                let (lower, upper) = if brick.bounds.center().y < other.bounds.center().y {
+                    (a, b)
+                } else {
+                    (b, a)
+                };
+                contacts.push(crate::equilibrium::Contact {
+                    lower,
+                    upper,
+                    patch: crate::Aabb::new(
+                        DVec3::new(min.x, (min.y + max.y) * 0.5, min.z),
+                        DVec3::new(max.x, (min.y + max.y) * 0.5, max.z),
+                    ),
+                });
+                union(&mut parent, a, b);
             }
-            let p = parent[i];
-            let f = forces[i];
-            let m = moments[i];
-            forces[p] += f;
-            moments[p] += m;
         }
+    }
+    let mut supports = Vec::new();
+    let mut supported = vec![false; n];
+    for (i, brick) in bricks.iter().enumerate() {
+        if brick.bounds.min.y.abs() <= tol.position_brick_units {
+            for point in ground_support_points(brick) {
+                supports.push((i, point));
+            }
+            let r = root(&mut parent, i);
+            supported[r] = true;
+        }
+    }
+    let anchored: Vec<usize> = bricks
+        .iter()
+        .enumerate()
+        .filter(|(_, b)| fixed.contains(&b.id))
+        .map(|(i, _)| i)
+        .collect();
+    for &i in &anchored {
+        let r = root(&mut parent, i);
+        supported[r] = true;
+    }
+    for (i, brick) in bricks.iter().enumerate() {
+        let r = root(&mut parent, i);
         ensure!(
-            forces[root].length() <= tol.force_newtons
-                && moments[root].length() <= tol.torque_newton_meters,
-            "Static certificate has unbalanced residual wrench"
+            supported[r],
+            "Construction is not static: component containing brick {} has no ground support",
+            brick.id
         );
     }
-    Ok(())
-}
-
-fn compression_certificate(
-    bricks: &[Brick],
-    tol: StaticTolerances,
-    measurements: &crate::physical::ConnectionMeasurements,
-) -> Result<bool> {
-    Ok(compression_issue(bricks, tol, measurements)?.is_none())
+    let masses = bricks
+        .iter()
+        .map(|b| measurements.mass_kg(&b.part))
+        .collect::<Result<Vec<_>>>()?;
+    crate::equilibrium::certify(&crate::equilibrium::Problem {
+        bricks,
+        joints,
+        contacts,
+        supports,
+        anchored,
+        masses,
+        force_tolerance: tol.force_newtons,
+        torque_tolerance: tol.torque_newton_meters,
+    })
 }
 
 pub fn compression_issue(
@@ -1051,18 +885,17 @@ mod tests {
 
     #[test]
     fn pavilion_has_a_scalable_ground_support_certificate() {
+        // The pavilion's authored bonds are idealized (a read-only example):
+        // without measured or reviewed capacities they cannot carry load.
         let d = crate::demo::pavilion();
         let joints = crate::demo::authored_bonds(&d.bricks);
-        support_certificate(
-            &d.bricks,
-            &joints,
-            &[],
-            StaticTolerances::default(),
-            &Default::default(),
-        )
-        .unwrap();
         let mut s = scene(d);
         s.joints = joints;
-        validate_static(&mut s).unwrap();
+        assert!(validate_static(&mut s.clone()).is_err());
+        let idealized = crate::physical::ConnectionMeasurements {
+            idealized_fixture: true,
+            ..Default::default()
+        };
+        validate_static_with_measurements(&mut s, StaticTolerances::default(), &idealized).unwrap();
     }
 }

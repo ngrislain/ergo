@@ -7,6 +7,7 @@ import os
 import pathlib
 import shutil
 import subprocess
+import urllib.request
 from mcp_client import Mcp
 
 ROOT=pathlib.Path(__file__).resolve().parents[1]
@@ -23,7 +24,11 @@ args.output.mkdir(parents=True,exist_ok=False)
 for name in ['ERGO_SHARED_ASSEMBLY_ID','ERGO_POSITION_WORLD','ERGO_WEB_DIR']:
     os.environ.pop(name,None)
 os.environ['ERGO_MCP_HTTP_TIMEOUT_SECONDS']='1800'
-checked=subprocess.run([str(args.validator),str(args.construction)],capture_output=True,text=True,check=True)
+# Validate with the origin's current part library, the one its server installs.
+config=json.loads(urllib.request.urlopen(args.url.rstrip('/')+'/api/config',timeout=60).read())
+library=args.output/'part-library.json'
+library.write_bytes(urllib.request.urlopen(args.url.rstrip('/')+f"/api/library/{config['part_library']}/library.json",timeout=600).read())
+checked=subprocess.run([str(args.validator),'--library',str(library),str(args.construction)],capture_output=True,text=True,check=True)
 validation=json.loads(checked.stdout)
 (args.output/'validation.json').write_text(json.dumps(validation,indent=2)+'\n')
 if not validation.get('publication_ready'):raise SystemExit('Local static validation is not publication-ready')

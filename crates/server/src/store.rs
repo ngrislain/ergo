@@ -219,22 +219,16 @@ impl Store {
         notes: Vec<String>,
         owner: String,
     ) -> Result<WorldManifest> {
-        let measurements = self.measurements.clone();
         let example = owner == "examples";
+        let mut measurements = (*self.measurements).clone();
+        measurements.idealized_fixture = example;
         let tolerances = self.static_tolerances;
         let (scene, validation) = tokio::task::spawn_blocking(move || -> Result<_> {
             measurements.normalize_scene(&mut scene)?;
             let pairs:std::collections::HashSet<_>=scene.joints.iter().map(|j|(j.a.min(j.b),j.a.max(j.b))).collect();
             scene.joints.extend(ergo_world::constraints::inferred_joints(&scene.bricks).into_iter().filter(|j|!pairs.contains(&(j.a.min(j.b),j.a.max(j.b)))));
-            if !example {for joint in &mut scene.joints {
-                joint.break_force=None;joint.break_torque=None;joint.strength_source=None;
-            }}
             let mut validation = ergo_world::validation::validate_static_with_measurements(&mut scene,tolerances,&measurements)?;
-            if !example && validation.joint_strength_required != Some(false) {
-                measurements.apply(&scene.bricks,&mut scene.joints)?;
-                validation = ergo_world::validation::validate_static_with_measurements(&mut scene,tolerances,&measurements)?;
-            }
-            validation.physical_calibration=if example {"Read-only fixture example: nominal metric dimensions and catalog masses; idealized unbreakable joints"}else if validation.joint_strength_required == Some(false) {"Sourced catalog masses and nominal bounds; gravity balanced by compression with zero joint wrench; no clutch capacity assumed"}else{"Nominal metric dimensions; sourced catalog masses; server-supplied measured connector capacities; box inertia and assumed friction"}.into();
+            validation.physical_calibration=if example {"Read-only fixture example: nominal metric dimensions and catalog masses; idealized unbreakable joints"}else if validation.joint_strength_required == Some(false) {"Sourced catalog masses and nominal bounds; gravity balanced by compression with zero joint wrench; no clutch capacity assumed"}else{"Nominal metric dimensions; sourced catalog masses; equilibrium with measured or reviewed-estimate connector capacities"}.into();
             Ok((scene, validation))
         }).await??;
         let id = uuid::Uuid::new_v4().to_string();
@@ -415,6 +409,8 @@ mod tests {
             break_force: Some(1e20),
             break_torque: Some(1e20),
             strength_source: Some("untrusted client".into()),
+            axial_force: None,
+            friction_torque: None,
         }];
         let error = store
             .save(untrusted, "test".into(), Vec::new(), "alice".into())

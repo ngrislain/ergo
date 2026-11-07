@@ -210,8 +210,8 @@ in public east/north/up brick units with `radius_m` in SI. See
   bodywork, fixed wheel/trim colours and transparent windscreen. Two genuine 4600
   holders seat four wheel/tyre units on revolute bearings. The 27 parts include
   internal axle spacers and a structural chassis plate; tyres alone touch ground.
-  No road tile, pedestal or display plate is added. Joint-dependent publication
-  still requires measured connector capacities.
+  No road tile, pedestal or display plate is added. Its wheel bearings and tyres
+  use the reviewed connector estimates.
 - `medieval-guard-v3`: a ten-part Lion Knights guard with genuine **973p4f** printed
   torso, separately posed **3818/3819** arms and **3820** hands, **3844** helmet,
   **4497** spear and **3846p4h** shield. Shoulder elevation and wrist roll align

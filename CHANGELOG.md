@@ -1,5 +1,36 @@
 # Changelog
 
+## v0.5.31
+
+- Replace the spanning-tree static certificate with one general static
+  equilibrium per scene (a sparse second-order cone program, Clarabel, also in
+  WASM). Load loops now share their loads, so chains hung between two supports,
+  pinned trusses and two-handed holds can be admitted. Reports give
+  `max_joint_utilisation`; failures name the joints that would need more
+  capacity.
+- Resolve joint capacities as measured book, then reviewed connector estimates
+  (`connector-estimates.json`, `estimate:ergo-connector-review-v1`), then none
+  (the joint carries no load). Technic pins and axles, wheel bearings, tyres and
+  minifigure shoulders, wrists and hand grips have reviewed estimates; studs
+  still need measurements.
+- Friction pins (2780 and every pin except 3673) and minifigure shoulder, wrist
+  and hand-grip clips are now revolute joints that hold up to their friction
+  torque, in admission and in physics. Free bearings keep a small bearing
+  friction. Guards and archers publish holding their spears, shields and bows.
+- Pose pieces at any angle about a registered pivot: MCP `rotate_about_pivot`,
+  `inspect_brick` `pivots`, and pivot buttons in the viewer's inspector. Group
+  rotations are no longer snapped to the grid.
+- `simulate_gravity` settles (damped, at most 8 s), projects every connection
+  back onto its exact geometry and keeps a validated pose: a Technic chain
+  settles into its hanging shape and becomes publishable.
+- Beams pinned at free angles no longer collide with their own pins.
+- Rework the articulated Technic Eiffel Tower (`scripts/build/eiffel_truss.py`):
+  hanging central bearing bricks and full-length foot bearings; its 4,096 parts
+  now pass admission locally (it is not yet published).
+- `validate_native` takes the current part library (`--library`);
+  `publish-landmark.py` downloads it from the target origin.
+- Add `scripts/test-articulation.py` to the release checks.
+
 ## v0.5.30
 
 - Treat every library piece alike in the catalogue, `/api/catalog/parts` and

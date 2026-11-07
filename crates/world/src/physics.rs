@@ -377,6 +377,14 @@ impl Simulation {
                 if let Some(limits) = limits {
                     j = j.limits(limits);
                 }
+                // Friction bearings: a zero-velocity motor whose torque is
+                // capped at the friction torque holds until it is exceeded.
+                if let Some(friction) = spec.friction_torque.filter(|f| *f > 0.) {
+                    j = j
+                        .motor_model(MotorModel::ForceBased)
+                        .motor_velocity(0., friction * 1e3)
+                        .motor_max_force(friction);
+                }
                 self.joints.insert(a, b, j, true)
             }
         };
@@ -514,7 +522,9 @@ impl Simulation {
                         + body.translation()),
                 ));
                 if let JointKind::Revolute { axis, .. } = &mut joint.kind {
-                    *axis = dvec(&(body.rotation() * vector(*axis))).normalize();
+                    // Rotate the metric direction, then return to construction units.
+                    *axis =
+                        to_world(dvec(&(body.rotation() * vector(to_meters(*axis))))).normalize();
                 }
                 Some(joint)
             })
@@ -650,6 +660,35 @@ impl Simulation {
             }
         })
     }
+    /// Damp every body strongly (per second). Velocity damping removes energy
+    /// without changing where the bodies come to rest, so a settle converges
+    /// on the static pose instead of swinging about it. Bodies never sleep.
+    pub fn settling_damping(&mut self, rate: f64) {
+        for (_, body) in self.bodies.iter_mut() {
+            body.set_linear_damping(rate as _);
+            body.set_angular_damping(rate as _);
+            // Sleeping would freeze a slowly creeping chain short of rest.
+            *body.activation_mut() = RigidBodyActivation::cannot_sleep();
+            body.wake_up(true);
+        }
+    }
+    /// Total mass of the dynamic bodies (kg).
+    pub fn dynamic_mass(&self) -> f64 {
+        self.bodies
+            .iter()
+            .filter(|(_, body)| body.is_dynamic())
+            .map(|(_, body)| body.mass())
+            .sum()
+    }
+    /// Total kinetic energy of the dynamic bodies (J).
+    pub fn kinetic_energy(&self) -> f64 {
+        self.bodies
+            .iter()
+            .filter(|(_, body)| body.is_dynamic())
+            .map(|(_, body)| body.kinetic_energy())
+            .sum()
+    }
+
     pub fn bricks(&self) -> Vec<Brick> {
         self.originals
             .iter()
@@ -951,6 +990,8 @@ mod tests {
             break_force: None,
             break_torque: None,
             strength_source: None,
+            axial_force: None,
+            friction_torque: None,
         };
         let mut sim = Simulation::new(&d.bricks, &d.meshes, &[joint], &[a], false).unwrap();
         for _ in 0..240 {

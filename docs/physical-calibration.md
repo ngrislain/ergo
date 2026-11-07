@@ -74,25 +74,66 @@ necessarily structural collapse; the existing shake result checks pose drift and
 rotation as well as connection breaks. Static gravity acceptance, walking and
 rendering evidence do not establish a random-shake pass for the district cars.
 
-## Connection strength must be measured
+## Connection capacities: measured, else reviewed estimates
+
+Every joint's capacities are resolved in one order by
+[`ConnectionMeasurements::apply`](../crates/world/src/physical.rs):
+
+1. the operator's measurement book (below), when it has a matching record;
+2. otherwise the reviewed estimate for the registered connector type in
+   [`connector-estimates.json`](../crates/world/library/connector-estimates.json)
+   (source `estimate:ergo-connector-review-v1`);
+3. otherwise none: the joint carries no load in the static certificate.
+
+The reviewed estimates are engineering assumptions, documented with their basis,
+not laboratory measurements:
+
+| Connection | Force (N) | Bending (N·m) | Axial (N) | Friction torque (N·m) |
+|---|---|---|---|---|
+| Frictionless pin `3673` in a round hole | 150 | 0.3 | 1 | 0.00001 |
+| Other (friction) pin in a round hole | 150 | 0.3 | 2 | 0.005 |
+| Cross axle in a round hole | 150 | 0.3 | 0.2 | 0.00001 |
+| Cross axle in an axle hole (keyed, fixed) | 2 | 0.02 | – | – |
+| Small wheel bearing | 2 | 0.01 | 0.5 | 0.00001 |
+| Tyre on its rim (fixed) | 2 | 0.01 | – | – |
+| Hand or clip on a bar; shoulder; wrist | 1 | 0.003 | 0.5 | 0.002 |
+
+- **Technic radial capacity:** ABS allowable bearing stress (40 MPa) divided by a
+  safety factor of 10, times the pin or axle diameter (4.8 mm), times one beam of
+  engagement (8 mm) gives 153.6 N, rounded down to 150 N. Bending capacity is
+  that force times a quarter of the engaged length.
+- **Friction torques** are the smallest torques that hold what real parts are
+  seen to hold, with margin. A friction pin holds a horizontal 15-hole beam
+  (about 0.002 N·m). A minifigure hand holds a spear or shield (well under
+  0.0001 N·m).
+- **Free bearings** are never exactly frictionless. They keep a Coulomb bearing
+  friction of about μ·r·F = 0.2 (ABS on ABS) × 2.4 mm (pin radius) × 0.02 N (the
+  weight of a few beams) = 1e-5 N·m. That is far below the roughly 1e-4 N·m that
+  would hold an unbalanced beam, so free mechanisms still swing to equilibrium.
+- **Axial capacities** are the smaller of pull-out and sliding friction.
+- **Studs have no estimate:** an unmeasured stud joint carries no load.
+
+The physics engine uses the same friction torques for its friction-joint motors,
+so a pose that settles under gravity is one the certificate can admit.
 
 Additional source-only catalogue parts are described in
 [part profiles](part-catalog.md#physical-and-material-limits). Their masses and
 nominal datum/interface records are distinct from connector calibration. Collision
 boxes are approximations; figure core proxies omit rendered appendages and factory
-units do not model internal joints. A new inferred interface still needs measured capacities whenever its
+units do not model internal joints. A new inferred stud interface still needs measured capacities whenever its
 force/torque is consumed; adding a mass/bounds profile supplies no clutch strength.
 
 The Castle profiles include the real printed Lion Knights factory torso, helmet,
 spear, shield, antenna and wavy pennant. The registered antenna/flag bore clearance
 permits the source assembly's hollow geometry, but supplies no force/torque values.
 The recommended plate-free `medieval-guard-v3` and `medieval-archer-v1` use genuine
-separately posed arms/hands and source shoulder/wrist/grip interfaces. They require
-measured capacities to publish joint-dependent loads. Obsolete guard versions
+separately posed arms/hands and source shoulder/wrist/grip interfaces. They publish
+with the reviewed shoulder, wrist and hand-grip estimates, which hold a posed arm
+with its held spear, shield or bow; `rotate_about_pivot` poses them at any angle. Obsolete guard versions
 are not supported. `castle-standard-v1` supports the cloth with a capped post.
 Removing that support does not produce a
-zero-joint-wrench proof: the server's existing operator-measurement gate still
-applies. Neither a source mesh nor a geometric factory-fit relation is calibration.
+zero-joint-wrench proof, and an unmeasured stud joint carries no load, so the
+cloth is then rejected. Neither a source mesh nor a geometric factory-fit relation is calibration.
 
 The upright `3849` jousting lance additionally has finite clearance through the
 `4495a` flag bore only on its reviewed straight shaft (source Z −146 to −14 LDU,
@@ -110,17 +151,19 @@ freedom. Finite connector clearance uses the shaft's source-declared radial
 envelope rather than treating the empty corners of its rotating box as material.
 It still requires coaxial alignment, sufficient engagement and the bearing's
 finite axial range; collars and other intersections are not cleared. Keyed bushes
-retain their quarter-turn alignment requirement. This corrects a geometric fit,
-not a connector-capacity assumption or an implicit brake.
+retain their quarter-turn alignment requirement. A round pin in a round bore is
+likewise roll-invariant: the bore's square clearance prism applies at any roll of
+the beam about the pin, so beams pinned at free angles keep their clearance. These
+correct a geometric fit, not a connector-capacity assumption or an implicit brake.
 
 In particular, a brick's compression-to-failure measurement is not its stud
 pull-off force. Dividing a full eight-stud measurement by eight and multiplying
 by a different engagement count is not automatically valid.
 
-The repository therefore does **not** ship invented default clutch capacities.
-Local drafts and read-only fixture examples can run with idealized joints, but
-ordinary server publication requires operator-owned measured capacities whenever
-the static certificate relies on a connection's force or torque capacity. A complete
+The repository therefore does **not** ship stud clutch capacities. Registered
+Technic and minifigure connectors use the reviewed estimates above; stud joints
+need operator-owned measurements before the static certificate may load them.
+Only the server's built-in fixture examples use idealized joint capacities. A complete
 nonnegative contact-reaction proof may instead establish gravity balance with zero
 wrench at every joint, including inferred stud joints. In that case
 `joint_strength_required:false` records that no clutch strength was used or assumed.
@@ -156,8 +199,8 @@ Each entry must specify:
 - `source`: a traceable test report or dataset identifier.
 - `samples`: positive number of tested samples.
 
-Use values from actual measurements. Missing values should remain missing and
-block calibrated publication; do not populate a plausible-looking example with
+Use values from actual measurements. Missing stud values should remain missing:
+those joints then carry no load; do not populate a plausible-looking example with
 fabricated newton values. The MCP binary accepts the same book through
 `--measurements`.
 
@@ -226,8 +269,8 @@ thresholds and absence of brick/stud crushing remain approximations.
 The result returns `estimate_model`, `estimated_connections`, and
 `stable_under_declared_estimates`; `calibrated_stability_verified` remains false.
 The working copy, stored measurement book and authoritative model are unchanged.
-Server admission still requires its independent static certificate and trusted
-measurements wherever that certificate consumes joint strength.
+Server admission still requires its independent static certificate with measured
+or reviewed capacities; these ballpark stud estimates are never used for admission.
 
 ## Inventory the measurements a construction requires
 
@@ -256,8 +299,8 @@ fields. Research and the remaining implementation work are recorded in
 For unanchored assemblies the server first tries nonnegative gravity
 reactions through horizontal contact patches from top to bottom. This balances
 each supporting body's own weight and the loads delivered to it. For constrained
-assemblies that cannot obtain that contact-only proof it checks the static wrench
-assignment against measured connection capacities;
+assemblies that cannot obtain that contact-only proof it solves the general static
+equilibrium against measured or reviewed connection capacities;
 it runs no dynamic fallback. Client dynamic
 working sets remain bounded to 5,000 bricks; short gravity probes default to one
 step with explicit pose tolerances.

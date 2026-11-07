@@ -1,3 +1,4 @@
+pub mod articulation;
 pub mod assembly;
 pub mod attachments;
 pub mod catalog;
@@ -6,6 +7,7 @@ pub mod constructs;
 pub mod coordinates;
 pub mod demo;
 pub mod derive;
+pub mod equilibrium;
 pub mod estimates;
 pub mod exchange;
 pub mod geometry;
@@ -304,6 +306,14 @@ pub struct JointSpec {
     pub break_force: Option<f64>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub break_torque: Option<f64>,
+    /// Revolute joints: largest force along the axis (N). Fixed joints use
+    /// `break_force` in every direction.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub axial_force: Option<f64>,
+    /// Revolute joints: torque about the axis held before turning (N m);
+    /// zero or absent for free bearings.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub friction_torque: Option<f64>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub strength_source: Option<String>,
 }

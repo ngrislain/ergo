@@ -144,8 +144,15 @@ affect drift and apparent rigidity; they are not free accuracy.
   brick IDs with a world-space reference anchor.
 
 Only inference supported by catalogue rules becomes an automatic connection.
-Wheel bearings, frictionless pins and axles in round bores are revolute; friction
-pins, keyed axles and held accessories preserve their assembled pose with fixed joints.
+Each registered connection has a bearing kind
+([`Bearing`](../crates/world/src/attachments.rs)):
+
+- **Free** revolute: frictionless `3673` pins, cross axles in round bores and wheel
+  bearings. They turn freely apart from a small bearing friction.
+- **Friction** revolute: friction pins (`2780` and every other pin in a round bore)
+  and minifigure shoulder, wrist and hand-grip clips. They hold a pose until the
+  load torque about the axis exceeds their friction torque.
+- **Fixed**: keyed cross axles, rim/tyre fits and studs.
 An AABB intersection alone must not magically glue arbitrary parts together.
 The pavilion example uses a genuine cross-bonded plate deck and plate-supported
 tree crowns. Connections are registered stud engagements, not imaginary
@@ -159,11 +166,12 @@ browser's simulation result or an imported validation report.
 1. Validate the catalog, schema, IDs, transforms, geometry bounds, and constraints.
 2. Reject positive-volume body-box overlaps and baseplate intersections.
 3. Add justified inferred stud joints, preserving explicit joints for the same
-   pair of bricks.
-   For ordinary publication, require matching server-owned measured connector
-   force/torque capacities and replace untrusted client capacity claims.
-4. Construct a conservative support/constraint-wrench certificate with nonnegative
-   ground reactions, admissible contacts, and force/torque capacity checks.
+   pair of bricks. Give every joint its capacities from the server's measurement
+   book, else from the reviewed connector estimates, else none (the joint may then
+   carry no load), replacing untrusted client capacity claims.
+4. Solve one general static equilibrium with nonnegative ground and contact
+   reactions and every joint load inside its capacities, and verify the solution
+   independently.
 5. Reject an uncertified result. The server does not run a time-integrated fallback;
    rendering and all dynamic tests execute in the browser/minimal WASM client.
 
@@ -179,51 +187,59 @@ axes follow the reviewed [connector definitions](part-catalog.md#hand-wheel-and-
 
 ### Lightweight static certificate
 
-The graph includes explicit/inferred joints and vertical face-contact candidates.
-A forest is selected globally with joint edges before unilateral contact edges.
-Using sourced part masses and box-center approximations, compute each component's
-center of mass:
+[`equilibrium::certify`](../crates/world/src/equilibrium.rs) finds a static
+equilibrium of the whole scene at its submitted pose, as one sparse convex
+second-order cone program solved by the pure-Rust Clarabel solver (the same code
+runs on the server and in the WASM client). Using sourced part masses and
+box-center approximations, every body $i$ must balance its weight:
 
 $$
-\mathbf{c}=\frac{\sum_i m_i\mathbf{c}_i}{\sum_i m_i}.
+\sum_k \mathbf{f}_k + m_i\mathbf{g} = 0,\qquad
+\sum_k (\mathbf{r}_k-\mathbf{c}_i)\times\mathbf{f}_k + \sum_j \mathbf{M}_j = 0.
 $$
 
-Collect all direct horizontal baseplate-contact patches and take the convex hull
-$P$ of their XY corners. Round tyres instead contribute their ground line below
-the axle, avoiding a false rolling-resistance moment from envelope corners.
-Under downward gravity alone, a component has an
-admissible vertical support-force distribution if:
+The unknown reactions are:
+
+- one wrench $(\mathbf{F}_j,\mathbf{M}_j)$ per joint, acting at its anchor (equal
+  and opposite on its two bodies);
+- nonnegative vertical forces at the corners of every horizontal contact patch
+  between axis-aligned bodies, and at ground-contact corners (round tyres
+  contribute their ground line below the axle);
+- an unrestricted wrench on each anchored foundation brick.
+
+Every joint load must stay inside its capacities. For a revolute joint with axis
+$\mathbf{u}$:
 
 $$
-\operatorname{proj}_{XY}(\mathbf{c})\in P.
+\|\mathbf{F}_j\|\le F_{cap},\quad
+|\mathbf{u}\cdot\mathbf{F}_j|\le F_{axial},\quad
+\|\mathbf{M}_j-(\mathbf{u}\cdot\mathbf{M}_j)\mathbf{u}\|\le M_{cap},\quad
+|\mathbf{u}\cdot\mathbf{M}_j|\le T_{friction}.
 $$
 
-Ground reactions are distributed at support-hull vertices using nonnegative
-barycentric weights. For each selected tree edge, sum external forces and moments
-on its subtree. The edge must supply the opposing wrench:
+A fixed joint needs $\|\mathbf{F}_j\|\le F_{cap}$ and $\|\mathbf{M}_j\|\le M_{cap}$.
+A joint without capacity carries no load. Unlike a spanning tree, load loops share
+their loads: a chain hung between two supports, a pinned truss, or a minifigure
+holding a spear with both hands. The objective minimises the sum of squared
+utilisations, each load component against its own capacity, so a weak capacity
+such as bearing friction is used only where equilibrium needs it.
 
-$$
-\mathbf{F}_e=-\sum_{i\in S_e}\mathbf{f}_i,\qquad
-\boldsymbol\tau_e=-\sum_{i\in S_e}(\mathbf{r}_i-\mathbf{a}_e)\times\mathbf{f}_i.
-$$
+The solution is then re-checked independently: body balance within the force and
+moment tolerances (scaled to the total weight) and every capacity within its own
+tolerance. The report gives `max_joint_utilisation`. If no equilibrium exists, a
+relaxed solve without capacity limits names the joints that would need more
+capacity than measured or estimated, with the force and moment each would need.
 
-Fixed joints must remain within their measured force/torque envelopes; a revolute
-joint additionally cannot supply torque about its free axis. Unilateral contacts
-must be compressive and have their center of pressure inside the shared patch.
-Grounded authored fixtures can supply a foundation reaction. Residual wrench must
-be within the configured numerical tolerances.
-
-For unanchored blocks, a separate constructive path processes bodies from
-top to bottom. Each body's own gravity and loads received from above are balanced
-by nonnegative barycentric reactions inside its horizontal support patches. Loads
-are passed to supporting bodies; grounded bodies balance their own weight rather
-than receiving zero reaction merely because a spanning tree selected other ground
-vertices. The certificate is independent of piece ordering and needs no dynamic
+For unanchored blocks, a faster constructive path is tried first. It processes
+bodies from top to bottom: each body's own gravity and loads received from above
+are balanced by nonnegative barycentric reactions inside its horizontal support
+patches, and loads pass to supporting bodies; grounded bodies balance their own
+weight. Its result is a feasible point of the same equilibrium. The certificate is independent of piece ordering and needs no dynamic
 simulation or guessed contact tension.
 It can also certify studded assemblies by assigning zero wrench to every joint.
 Reports mark this with `joint_strength_required:false`; no unmeasured clutch
-capacity is used. When a certificate needs bond forces/torques instead, the server
-still requires and checks its measurement book. Dynamic probes retain their
+capacity is used. When it fails, the general equilibrium above decides, with the
+measured or reviewed capacities. Dynamic probes retain their
 connector-calibration requirements.
 When the constructive compression path fails, `compression_issue` identifies the
 piece, its accumulated-load projection and bearing polygon. This explains the
@@ -236,8 +252,7 @@ rejected. Mere graph reachability to the floor is not sufficient.
 Contact-only static admission requires axis-aligned body faces (including rigid
 quarter-turns). A tilted body's world AABB cannot establish a real bearing patch.
 Tilted bodies must instead be above ground and have a registered joint-supported
-load path that passes the constraint-wrench certificate and applicable capacity
-checks. Viewing and dynamic probing retain rigid tilted poses. Dynamic shapes use
+load path that passes the equilibrium certificate and its capacity checks. Viewing and dynamic probing retain rigid tilted poses. Dynamic shapes use
 nominal local dimensions and actual metric orientation, never the world AABB as
 a replacement shape.
 
@@ -278,10 +293,33 @@ For Rapier 0.26 joint impulses, $\Delta t$ is the solver substep interval
 `dt / num_solver_iterations`; dividing by the full frame would understate a
 steady joint load. CCD impact subdivision remains a separate qualification limit.
 
-The force threshold is supplemented by an analogous torque threshold. Missing
-capacity data is disclosed in a local sandbox and blocks publication when the
-static certificate needs joint strength. A zero-joint-wrench compression proof
-does not establish clutch strength or dynamic robustness.
+The force threshold is supplemented by an analogous torque threshold. A joint
+with neither a measured nor an estimated capacity carries no load in the static
+certificate. A zero-joint-wrench compression proof does not establish clutch
+strength or dynamic robustness.
+
+### Friction joints and settling
+
+A friction revolute joint carries a Rapier velocity motor with target velocity 0
+and a maximum torque equal to its friction torque: it holds until the load torque
+exceeds that friction, then slips. Free bearings carry the same motor with their
+small bearing friction.
+
+`simulate_gravity` ([`articulation::settle`](../crates/world/src/articulation.rs))
+lets gravity act for at most 8 s with strong velocity damping (5 s⁻¹) and no
+sleeping. Damping removes energy without moving the rest pose. It stops once
+every body has moved slower than about 14 µm/s (kinetic energy below
+$10^{-10}\,\text{J/kg}$ of dynamic mass) for 0.5 s. A square piece resting on
+the floor that moved only by contact-solver jitter (at most 0.5 mm and 0.5°)
+keeps its exact pose.
+
+Every connection is then projected back onto its exact registered geometry
+(`project_joints`: position-based coaxial and rigid links, with anchored and
+floor-resting pieces held). Joints are re-inferred from that geometry rather than
+copied from the simulation, and the kept pose is validated like any edit. A free
+Technic chain hung between two supports therefore settles into its funicular
+shape and becomes publishable; an unbalanced chain on friction pins already
+holds.
 
 Destruction occurs in the transient sandbox. The result can be saved only after
 it has settled, is overlap-free, and passes the same server-side validation gate.

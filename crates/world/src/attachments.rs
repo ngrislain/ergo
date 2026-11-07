@@ -9,7 +9,7 @@ use serde::{Deserialize, Serialize};
 /// keeps peripheral connectors discoverable without changing stored geometry.
 pub const PORT_OVERHANG: f64 = 1.;
 
-#[derive(Clone, Copy, Debug, Deserialize, Serialize, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, Deserialize, Serialize, PartialEq, Eq, Hash)]
 #[serde(rename_all = "snake_case")]
 pub enum Kind {
     Bar,
@@ -155,24 +155,46 @@ pub struct Connection {
     pub anchor: DVec3,
     pub kind: JointKind,
     pub label: &'static str,
+    /// Registered connector kinds (male, female) and the male part, which
+    /// select the connection's capacity estimate.
+    pub male: Kind,
+    pub female: Kind,
+    pub male_part: String,
+    pub bearing: Bearing,
 }
 
-fn compatible(male: &Connector, female: &Connector) -> Option<(&'static str, bool)> {
+/// How a registered connection behaves about its axis.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum Bearing {
+    /// Welded in every degree of freedom (keyed axles, rim/tyre seats).
+    Fixed,
+    /// Turns freely (axle in a round hole, frictionless pins, wheels).
+    Free,
+    /// Turns once its friction torque is exceeded (friction pins, minifigure
+    /// shoulder, wrist and hand clips).
+    Friction,
+}
+
+fn compatible(male: &Connector, female: &Connector) -> Option<(&'static str, Bearing)> {
     use Kind::*;
     Some(match (male.kind, female.kind) {
-        (Bar, Grip) => ("minifigure grip / bar connection", false),
-        (Pin, RoundHole) => ("Technic pin connection", false),
-        (Axle, RoundHole) => ("Technic axle / round bearing", true),
-        (Axle, AxleHole) => ("Technic keyed axle connection", false),
-        (WheelPin, WheelSocket) => ("wheel pin / bearing connection", true),
-        (ShoulderPeg, ShoulderSocket) => ("minifigure shoulder connection", false),
-        (WristPeg, WristSocket) => ("minifigure wrist connection", false),
+        (Bar, Grip) => ("minifigure grip / bar connection", Bearing::Friction),
+        (Pin, RoundHole) => ("Technic pin connection", Bearing::Friction),
+        (Axle, RoundHole) => ("Technic axle / round bearing", Bearing::Free),
+        (Axle, AxleHole) => ("Technic keyed axle connection", Bearing::Fixed),
+        (WheelPin, WheelSocket) => ("wheel pin / bearing connection", Bearing::Free),
+        (ShoulderPeg, ShoulderSocket) => ("minifigure shoulder connection", Bearing::Friction),
+        (WristPeg, WristSocket) => ("minifigure wrist connection", Bearing::Friction),
         (Rim, Tyre) if male.group.is_some() && male.group == female.group => {
-            ("wheel rim / tyre connection", false)
+            ("wheel rim / tyre connection", Bearing::Fixed)
         }
         _ => return None,
     })
 }
+
+/// Frictionless Technic pins turn freely in round holes.
+const FREE_PINS: &[&str] = &["3673.dat"];
 
 fn fits(male: &Port<'_>, female: &Port<'_>, epsilon: f64, rotation_tolerance: f64) -> bool {
     let delta = female.centre - male.centre;
@@ -210,7 +232,7 @@ fn matches(
     b: &Brick,
     tolerance: f64,
     rotation_tolerance: f64,
-    mut visit: impl FnMut(Port<'_>, Port<'_>, &'static str, bool) -> bool,
+    mut visit: impl FnMut(Port<'_>, Port<'_>, &'static str, Bearing) -> bool,
 ) -> bool {
     if connectors(&a.part).is_empty()
         || connectors(&b.part).is_empty()
@@ -223,10 +245,10 @@ fn matches(
     for (male, female) in [(a, b), (b, a)] {
         for m in connectors(&male.part) {
             for f in connectors(&female.part) {
-                if let Some((label, rotating)) = compatible(m, f) {
+                if let Some((label, bearing)) = compatible(m, f) {
                     let m = Port::new(male, m);
                     let f = Port::new(female, f);
-                    if fits(&m, &f, epsilon, rotation_tolerance) && visit(m, f, label, rotating) {
+                    if fits(&m, &f, epsilon, rotation_tolerance) && visit(m, f, label, bearing) {
                         return true;
                     }
                 }
@@ -252,34 +274,98 @@ pub fn connection_with_tolerances(
         b,
         tolerance,
         rotation_tolerance,
-        |male, female, label, rotating| {
-            let free_pin = male.source.kind == Kind::Pin
-                && crate::catalog::canonical_id(
-                    if connectors(&a.part)
-                        .iter()
-                        .any(|c| std::ptr::eq(c, male.source))
-                    {
-                        &a.part
-                    } else {
-                        &b.part
-                    },
-                ) == "3673.dat";
+        |male, female, label, bearing| {
+            let male_part = if connectors(&a.part)
+                .iter()
+                .any(|c| std::ptr::eq(c, male.source))
+            {
+                &a.part
+            } else {
+                &b.part
+            };
+            let male_part = crate::catalog::canonical_id(male_part).to_owned();
+            let bearing =
+                if male.source.kind == Kind::Pin && FREE_PINS.contains(&male_part.as_str()) {
+                    Bearing::Free
+                } else {
+                    bearing
+                };
             result = Some(Connection {
                 anchor: physical::to_world(female.centre),
-                kind: if rotating || free_pin {
-                    JointKind::Revolute {
+                kind: match bearing {
+                    Bearing::Fixed => JointKind::Fixed,
+                    Bearing::Free | Bearing::Friction => JointKind::Revolute {
                         axis: physical::to_world(female.axis).normalize(),
                         limits: None,
-                    }
-                } else {
-                    JointKind::Fixed
+                    },
                 },
                 label,
+                male: male.source.kind,
+                female: female.source.kind,
+                male_part,
+                bearing,
             });
             true
         },
     );
     result
+}
+
+/// The mating ports of a registered connection between `a` and `b`, in metric
+/// coordinates: each piece's port centre and axis (axes point the same way).
+pub struct Mating {
+    pub a_centre: DVec3,
+    pub a_axis: DVec3,
+    pub b_centre: DVec3,
+    pub b_axis: DVec3,
+    pub bearing: Bearing,
+}
+
+/// Find the registered connection between `a` and `b` within `tolerance`
+/// (construction units) and `rotation_tolerance` (radians); loose tolerances
+/// let a drifted pose (after simulation) be matched and then projected.
+pub fn mating(a: &Brick, b: &Brick, tolerance: f64, rotation_tolerance: f64) -> Option<Mating> {
+    let mut found = None;
+    matches(
+        a,
+        b,
+        tolerance,
+        rotation_tolerance,
+        |male, female, _, bearing| {
+            let a_is_male = connectors(&a.part)
+                .iter()
+                .any(|c| std::ptr::eq(c, male.source));
+            let (pa, pb) = if a_is_male {
+                (&male, &female)
+            } else {
+                (&female, &male)
+            };
+            let b_axis = if pa.axis.dot(pb.axis) < 0. {
+                -pb.axis
+            } else {
+                pb.axis
+            };
+            let bearing = if male.source.kind == Kind::Pin
+                && FREE_PINS.contains(&crate::catalog::canonical_id(if a_is_male {
+                    &a.part
+                } else {
+                    &b.part
+                })) {
+                Bearing::Free
+            } else {
+                bearing
+            };
+            found = Some(Mating {
+                a_centre: pa.centre,
+                a_axis: pa.axis,
+                b_centre: pb.centre,
+                b_axis,
+                bearing,
+            });
+            true
+        },
+    );
+    found
 }
 
 /// Broad-phase includes hands, axle pegs and other ports outside bearing cores.
@@ -323,6 +409,16 @@ pub fn registered_clearance(a: &Brick, b: &Brick, tolerance: f64) -> bool {
                     // and the shaft's own radial envelope; clear no collars.
                     (*p - female.centre).dot(female.axis).abs() <= female.half + epsilon
                         && male.contains_radial(*p, epsilon)
+                } else if male.source.kind == Kind::Pin && female.source.kind == Kind::RoundHole {
+                    // A round pin and a round bore are roll-invariant, so the
+                    // bore's square clearance prism applies at any roll of the
+                    // beam about the pin: a beam turned about its pin keeps
+                    // the same clearance it has when square to the pin.
+                    let delta = *p - female.centre;
+                    let along = delta.dot(female.axis);
+                    along.abs() <= female.half + epsilon
+                        && (delta - female.axis * along).length()
+                            <= female.radius * std::f64::consts::SQRT_2 + epsilon
                 } else {
                     female.contains_clearance(*p, epsilon)
                 }
@@ -483,6 +579,8 @@ pub fn joint_with_tolerance(a: &Brick, b: &Brick, tolerance: f64) -> JointSpec {
         break_force: None,
         break_torque: None,
         strength_source: None,
+        axial_force: None,
+        friction_torque: None,
     }
 }
 
@@ -631,7 +729,15 @@ mod tests {
         let beam = part("3700.dat", 1);
         let mut pin = part("2780.dat", 2);
         mate(&mut pin, &beam, 0, 0);
-        assert!(matches!(joint(&pin, &beam).kind, JointKind::Fixed));
+        // Friction pins turn once their friction torque is exceeded.
+        assert!(matches!(
+            joint(&pin, &beam).kind,
+            JointKind::Revolute { .. }
+        ));
+        assert_eq!(
+            connection(&pin, &beam, 0.002).unwrap().bearing,
+            Bearing::Friction
+        );
         assert!(registered_clearance(&pin, &beam, 0.002));
         assert!(!crate::interference::bodies_penetrate(&pin, &beam, 0.002));
         let mut rotated = [pin.clone(), beam.clone()];
@@ -645,6 +751,27 @@ mod tests {
         assert!(crate::interference::bodies_penetrate(&pin, &beam, 0.002));
         let solid = part("3004.dat", 3);
         assert!(!registered_clearance(&pin, &solid, 0.002));
+    }
+    #[test]
+    fn beams_turn_freely_about_a_mated_pin() {
+        let mut pin = part("3673.dat", 1);
+        let beam = part("32316.dat", 2);
+        mate(&mut pin, &beam, 0, 0);
+        let bore = Port::new(&beam, &connectors(&beam.part)[0]);
+        for angle in [0.0, 0.5, 1.0, 0.25 * std::f64::consts::PI] {
+            let rotation = physical::world_transform(DMat3::from_axis_angle(bore.axis, angle));
+            let centre = physical::to_world(bore.centre);
+            let mut turned = beam.clone();
+            turned.transform = rotation * turned.transform;
+            turned.position = centre + rotation * (turned.position - centre);
+            update(&mut turned);
+            assert!(connection(&pin, &turned, 0.002).is_some(), "{angle}");
+            assert!(registered_clearance(&pin, &turned, 0.002), "{angle}");
+            assert!(
+                !crate::interference::bodies_penetrate(&pin, &turned, 0.002),
+                "{angle}"
+            );
+        }
     }
     #[test]
     fn cross_axles_lock_in_bushes_but_turn_in_round_bearings() {
@@ -708,10 +835,18 @@ mod tests {
         sheared.transform *= 1.01;
         assert!(connection(&sheared, &wheel, 0.002).is_none());
         let mut joints = vec![joint(&holder, &wheel)];
+        // A reviewed estimate, never a measurement, for the wheel bearing.
+        physical::ConnectionMeasurements::default()
+            .apply(&[holder, wheel], &mut joints)
+            .unwrap();
         assert!(
-            physical::ConnectionMeasurements::default()
-                .apply(&[holder, wheel], &mut joints)
-                .is_err()
+            joints[0].break_force.is_some_and(|f| f > 0.)
+                // Bearing friction only, far below a friction pin's.
+                && joints[0].friction_torque == Some(1e-5)
+                && joints[0]
+                    .strength_source
+                    .as_deref()
+                    .is_some_and(|s| s.starts_with("estimate:"))
         );
     }
     #[test]

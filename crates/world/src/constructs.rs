@@ -416,15 +416,12 @@ mod tests {
         .unwrap()
         .unwrap();
         assert_eq!(issue.part, "4495a.dat");
-        let report = crate::validation::validate_static(&mut floating).unwrap();
-        assert_eq!(report.joint_strength_required, Some(true));
-        // The server's existing admission path requires the operator book for
-        // this case; the geometry-only local solver supplies no calibration.
-        assert!(
-            crate::physical::ConnectionMeasurements::default()
-                .apply(&floating.bricks, &mut floating.joints)
-                .is_err()
-        );
+        // Held only by unmeasured stud joints, the flying flag gains no
+        // invented clutch strength: equilibrium names the joints it would need.
+        let error = crate::validation::validate_static(&mut floating)
+            .unwrap_err()
+            .to_string();
+        assert!(error.contains("would need more capacity"), "{error}");
     }
 
     #[test]

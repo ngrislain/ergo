@@ -759,6 +759,8 @@ async fn upright_gravity_support_does_not_authorize_uncalibrated_hanging_bonds()
         break_force: Some(1e20),
         break_torque: Some(1e20),
         strength_source: Some("untrusted".into()),
+        axial_force: None,
+        friction_torque: None,
     }];
     let error = service
         .import(
@@ -773,9 +775,7 @@ async fn upright_gravity_support_does_not_authorize_uncalibrated_hanging_bonds()
         .err()
         .expect("Hanging joint must require measured capacity");
     assert!(
-        error
-            .to_string()
-            .contains("Missing measured connector capacity"),
+        error.to_string().contains("would need more capacity"),
         "{error}"
     );
 }
@@ -912,7 +912,7 @@ async fn genuine_castle_bore_clearance_keeps_server_support_and_capacity_gates()
             "{response}"
         );
         let expected = if missing_support {
-            "Missing measured connector capacity"
+            "would need more capacity"
         } else {
             "overlap"
         };
@@ -2433,6 +2433,7 @@ async fn support_removal_checks_old_and_new_domains_across_spatial_blocks() {
             source: "synthetic test fixture, not production measurements".into(),
             samples: 1,
         }],
+        idealized_fixture: false,
     });
     let mut initial = scene(1023.0);
     let mut top = initial.bricks[0].clone();
@@ -2873,6 +2874,7 @@ async fn cross_assembly_joints_track_both_ends_and_prevent_dangling_deletions() 
             source: "synthetic test-only fixture".into(),
             samples: 1,
         }],
+        idealized_fixture: false,
     });
     let (head, first) = seeded(&service, scene(100.)).await;
     let mut stacked = scene(100_000.);
@@ -3101,6 +3103,7 @@ async fn compact_authoring_guard_rejects_remote_forged_attachments() {
             source: "synthetic test-only fixture".into(),
             samples: 1,
         }],
+        idealized_fixture: false,
     });
     let mut one = scene(100.);
     one.bricks.truncate(1);

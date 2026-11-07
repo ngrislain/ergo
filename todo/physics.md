@@ -4,16 +4,17 @@ These items are not implemented. Current guarantees are in
 [validation](../docs/validation-gates.md) and [calibration](../docs/physical-calibration.md).
 
 - Obtain measured connector capacities by part pair, mold, engagement, wear and
-  loading direction. Do not invent universal clutch-force defaults.
-- Measure centers of mass, hollow-part inertia, friction, restitution and mold variants.
-- Extend the constructive certificates with a general sparse feasibility search:
-
-$$
-A\mathbf f+\mathbf w=0,\qquad
-\mathbf f\in\mathcal K_{contact},\qquad
-\mathbf f_{joint}\in\mathcal K_{capacity}.
-$$
-
+  loading direction, to replace the reviewed Technic and minifigure connector
+  estimates and to give stud joints any capacity. Do not invent universal
+  clutch-force defaults.
+- Measure centers of mass, hollow-part inertia, friction (including the bearing
+  friction of free Technic pins and axles, now a reviewed 1e-5 N·m estimate),
+  restitution and mold variants.
+- Load-dependent (Coulomb) bearing friction, |τ| ≤ μ r ‖F‖, in the equilibrium
+  certificate. It is not convex in this form; the certificate uses a constant
+  friction torque per connector type.
+- Join the two planes of the articulated Technic Eiffel Tower with registered
+  Technic connectors, and add panels and arches for a closer silhouette.
 - Experimentally justify directional failure envelopes, for example:
 
 $$
@@ -45,5 +46,6 @@ The interaction form and exponent require measurements; this is not a shipped mo
   survival from the static proof. Preserve failed diagnostic receipts separately.
 - Ground-motion models only with traceable region/distance/site inputs; magnitude
   is not local PGA. Impact energy alone does not specify peak force.
-- Contact-force, support-polygon and connector-utilization overlays.
+- Contact-force, support-polygon and connector-utilization overlays (the report
+  gives only `max_joint_utilisation`).
 - Variable physical terrain/support domains beyond the global Z=0 floor.

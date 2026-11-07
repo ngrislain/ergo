@@ -265,88 +265,23 @@ pub fn transform(
         "Group has a mechanical constraint to an outside piece; include it or use the client constraint solver"
     );
     let rotation_metric = DMat3::from_axis_angle(axis_metric.normalize(), angle);
-    let rotation = crate::physical::world_transform(rotation_metric);
-    let destination = scene
-        .bricks
-        .iter()
-        .filter(|b| pieces.contains(&b.id))
-        .map(|b| {
-            let position = pivot + rotation * (b.position - pivot) + translation;
-            let mesh = scene
-                .meshes
-                .get(&b.part)
-                .context("Missing group geometry")?;
-            let mut destination = b.clone();
-            destination.position = position;
-            destination.transform = rotation * b.transform;
-            destination.bounds =
-                crate::placement::body_bounds(mesh).transformed(destination.transform, position);
-            Ok(destination)
-        })
-        .collect::<Result<Vec<_>>>()?;
-    let translation = (translation
-        + crate::placement::snap_bricks_translation(&destination, DVec3::ZERO))
-    .map(|v| if v.abs() < 1e-9 { 0. } else { v });
-    let point = |p: DVec3| pivot + rotation * (p - pivot) + translation;
-    let mut bricks = scene.bricks.clone();
-    for b in &mut bricks {
-        if pieces.contains(&b.id) {
-            b.position = point(b.position);
-            b.transform = rotation * b.transform;
-            let mesh = scene
-                .meshes
-                .get(&b.part)
-                .context("Missing group geometry")?;
-            b.bounds = mesh.body_bounds.transformed(b.transform, b.position);
-            b.render_bounds = mesh.bounds.transformed(b.transform, b.position);
-            crate::physical::validate_pose(b)?;
-            ensure!(
-                b.bounds.min.y >= -crate::validation::OVERLAP_TOLERANCE,
-                "Group transform crosses the Z=0 floor"
-            );
-        }
-    }
-    let tree = crate::spatial::Octree::new(bricks.iter().map(|b| b.bounds).collect());
-    for (i, b) in bricks
-        .iter()
-        .enumerate()
-        .filter(|(_, b)| pieces.contains(&b.id))
-    {
-        for j in tree.query(b.bounds) {
-            if i == j {
-                continue;
-            }
-            let other = &bricks[j];
-            ensure!(
-                !crate::interference::bodies_penetrate(
-                    b,
-                    other,
-                    crate::validation::OVERLAP_TOLERANCE
-                ),
-                "Group transform overlaps piece {} with {}",
-                b.id,
-                other.id
-            );
-        }
-    }
-    crate::partition(&bricks)?;
+    // A pure translation keeps the stud grid; a rotation keeps its exact pivot.
+    let point = crate::articulation::rigid_motion(
+        scene,
+        &pieces,
+        rotation_metric,
+        pivot,
+        translation,
+        angle == 0.,
+    )?;
     let mut groups = scene.groups.clone();
     for group in &mut groups {
         if nodes.contains(&group.id) {
             group.pivot_world = point(group.pivot_world);
         }
     }
-    validate(&bricks, &groups)?;
-    for joint in &mut scene.joints {
-        if pieces.contains(&joint.a) {
-            joint.anchor = point(joint.anchor);
-            if let crate::JointKind::Revolute { axis, .. } = &mut joint.kind {
-                *axis = (rotation_metric * *axis).normalize();
-            }
-        }
-    }
+    validate(&scene.bricks, &groups)?;
     scene.groups = groups;
-    scene.bricks = bricks;
     Ok(pieces.len())
 }
 

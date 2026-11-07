@@ -67,11 +67,11 @@ The prebuilt bundle includes native binaries and WASM assets; consumers need
 Node.js 20+ and Chrome/Chromium, not Rust.
 
 ```sh
-npm install --global --ignore-scripts @ngrislain/ergo-mcp@0.5.30
+npm install --global --ignore-scripts @ngrislain/ergo-mcp@0.5.31
 ergo-mcp --login --publish-url https://ergosandbox.com
 ```
 
-The [GitHub Release](https://github.com/ngrislain/ergo/releases/tag/v0.5.30)
+The [GitHub Release](https://github.com/ngrislain/ergo/releases/tag/v0.5.31)
 also provides the verified complete tarball and checksum.
 
 In v0.5.26, `--login` opens browser sign-in, asks the human to approve
@@ -146,11 +146,14 @@ fields are small display caches, independent of authored bricks and physics.
 
 Nominal geometry uses 8 mm stud pitch, 9.6 mm brick height and 3.2 mm plate height.
 The simulator uses sourced masses and SI gravity with box collision/inertia
-approximations. Loose blocks need a compressive static support certificate;
-certificates relying on physical joints need server-owned measured capacities.
-A contact-only gravity proof may instead use zero joint wrench, without assuming
-any clutch strength. Authoritative acceptance does not invent measured forces;
-explicit local ballpark diagnostics report their estimated assumptions separately.
+approximations. Every published construction needs a static equilibrium
+certificate: joints carry loads only within server-owned measured capacities or,
+for Technic and minifigure connectors, reviewed estimates labelled as such. Stud
+joints without a measurement carry no load. A contact-only gravity proof may use
+zero joint wrench, without assuming any clutch strength. Pieces can be posed at
+any angle about pins, axles, hinges, shoulders, wrists and hand grips, and a
+Technic chain settles into its hanging shape under `simulate_gravity`.
+Explicit local ballpark diagnostics report their estimated assumptions separately.
 Dynamic simulations are bounded to 5,000 pieces; the world has no aggregate
 piece-count limit. God-mode accounts have no authoring brick-count cap; physical
 acceptance and byte/request budgets still apply.
@@ -221,9 +224,9 @@ The [terraced park recipe](docs/model-recipes.md#terraced-park-recipe) adds a so
 explicitly published landscape workflow with ponds, trees and summit walking checks.
 The [castle mountain recipe](docs/model-recipes.md#castle-mountain-recipe)
 prepares a moat, walkable arched bridge, genuine arrowslit panels and plate-free
-standing figures with capes, helmets and horses. Held weapons and archer poses
-remain pending measured connector capacities; local validation and shared
-publication are recorded separately.
+standing figures with capes, helmets and horses. Guards and archers hold their
+weapons, shields and bows with reviewed grip estimates; local validation and
+shared publication are recorded separately.
 Local [flush parking and two-colour lance proposals](docs/model-recipes.md#local-flush-parking-and-lance-standard-proposals)
 and [closed-roof/articulated Paris drafts](docs/paris-landmarks.md) preserve
 unrelated accepted occurrences and record validation separately from publication.

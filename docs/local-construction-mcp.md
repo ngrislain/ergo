@@ -7,7 +7,7 @@ shared Sandbox. The bridge never grants itself acceptance or direct agent S3 acc
 ## Install and configure
 
 ```sh
-npm install --global --ignore-scripts @ngrislain/ergo-mcp@0.5.30
+npm install --global --ignore-scripts @ngrislain/ergo-mcp@0.5.31
 ergo-mcp --login --publish-url https://ergosandbox.com
 ```
 
@@ -81,13 +81,16 @@ The dedicated [official Inspector page](mcp-inspector.md) remains unlinked.
   adjacent wall courses and interlock corners where geometry permits, using
   half/end bricks to preserve the footprint instead of shifting whole walls.
   Support/connection checks still establish solidity. Static reports may prove
-  gravity balance with zero joint wrench (`joint_strength_required:false`);
-  `connector_calibration_issue` still discloses unavailable clutch measurements,
-  which remain required for dynamic probes or certificates relying on bond strength.
+  gravity balance with zero joint wrench (`joint_strength_required:false`).
+  Otherwise joints use measured or reviewed connector capacities; an unmeasured
+  stud joint carries no load. `max_joint_utilisation` reports the most loaded
+  joint's fraction of its capacity.
   The catalog
   resolves native Ergo part descriptions by ID.
 - `list_bricks` and `inspect_brick` expose actual IDs, poses, bounds, sourced
-  masses and contact/constraint metadata.
+  masses and contact/constraint metadata. `inspect_brick` also lists the piece's
+  `pivots`: each revolute connection with its `pivot_id`, connection, bearing
+  (`free` or `friction`), anchor and the pieces that would turn with it.
 - `get_build_feedback` supplies an inspect–act–review–adjust harness: local
   structural/calibration findings, measured part/color counts, actionable next
   tools and heuristic plate/tile review suggestions. Pass `goal` (at most 2000
@@ -137,7 +140,8 @@ replace the server's independent static gate or establish solver convergence.
 An explicit `--estimated-connectors` instead runs the disclosed ballpark model
 and requires `stable_under_declared_estimates` for that example workflow. It also
 runs without `--publish` for local preflight. It is not measured calibration and
-cannot bypass a server certificate that requires measured joint strength.
+cannot bypass the server certificate, which uses only measured or reviewed
+joint capacities.
 
 For the MCP small-shake tool, `connection_model:"estimated"` returns the estimate
 profile, engagement-based thresholds and unsupported pairs. Results expose
@@ -208,6 +212,12 @@ definitions; cancelling parent/child scales are rejected.
   with collision checks. A snapped zero move leaves cache/revision unchanged.
 - `remove_bricks`: remove parts and incident constraints, reporting lost support.
 - `connect_bricks`: author a fixed or explicit revolute constraint.
+- `rotate_about_pivot`: turn a piece by any angle (`angle_radians`) about one of
+  its pivots (`pivot_id` from `inspect_brick`). The pieces on its side of that
+  pivot turn exactly about the connection axis, with no grid snap. Loops through
+  the pivot, anchored pieces, floor crossings and overlaps are rejected; joints
+  are re-inferred. Use it to pose arms, wrists and held equipment, hinges and
+  Technic beams on pins or axles.
 - `create_group`, `set_group_members`, `transform_group`, `list_groups`, `ungroup`:
   nested authoring membership and rigid transforms; grouping is not welding.
 - `undo`: restore the preceding local working copy; in shared mode mutations still
@@ -253,7 +263,12 @@ publication receipts remain separate.
 - `validate_construction`: overlap/static feedback and calibration gaps.
 - `test_stability_by_gravity`: non-mutating short equilibrium probe, default one
   step with explicit tolerances.
-- `simulate_gravity`: retain the resulting local working pose; not a global commit.
+- `simulate_gravity`: let gravity act (at most 8 s, damped, stopping once at rest),
+  project every connection back onto its exact geometry and keep that pose as a
+  local edit, then validate it; not a global commit. A Technic chain on free pins
+  settles into its hanging (funicular) shape and becomes publishable. The result's
+  `settled` reports the duration, whether it came to rest and the projection
+  residual.
 - `test_stability_by_earthquake`: bounded X/Y shake by local PGA, not magnitude.
 - `test_moderate_earthquake_stability`: named 0.15g,4Hz preset.
 - `test_solidity`: declared earthquake or dropped-object load case.

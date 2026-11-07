@@ -333,6 +333,7 @@ mod tests {
         let measurements = ergo_world::physical::ConnectionMeasurements {
             entries: Vec::new(),
             parts: vec![record],
+            idealized_fixture: false,
         };
         ergo_world::validation::validate_static_with_measurements(
             &mut scene,

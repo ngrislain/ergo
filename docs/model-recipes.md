@@ -113,8 +113,10 @@ a neighbouring summit with an arched masonry bridge. Sixty genuine `4444`
 panels provide arrowslits, and genuine `3308a` arches form the two entrances.
 `--varied-garrison` adds 200 genuine capes, three helmet variants and four horses
 with saddles to the 300 existing guards. These edits retain the old grounded
-weapon/support arrangements; plate-free archers, swords and independently posed
-hand-held equipment remain pending valid load paths and measured capacities.
+weapon/support arrangements. Plate-free archers, swords and independently posed
+hand-held equipment were then pending valid load paths and capacities; reviewed
+grip, shoulder and wrist estimates now admit them (`medieval-guard-v3`,
+`medieval-archer-v1`), but this recipe does not yet place them.
 
 `--plate-free-garrison` instead removes all 300 individual display bases, 300
 shield stops and 600 legacy supported weapons. The 300 factory figures stand
@@ -165,8 +167,9 @@ The accepted **27,833-piece** construction includes both mountains, the continuo
 tiled moat, arched bridge, two arched entrances, **60 genuine wall panels**, **300
 plate-free standing figures**, **200 capes**, three helmet variants and **four
 horses with saddles**. All 300 individual soldier bases and 300 shield stops are
-removed. Held weapons and archer poses are explicitly deferred pending measured
-connector capacities; the published figures do not pretend to carry them.
+removed. Held weapons and archer poses were deferred pending connector
+capacities; the published figures do not carry them. Reviewed grip estimates now
+admit them, but no replacement garrison has been published.
 
 The single normal authenticated replacement retained **10,419 birth identities**,
 removed 2,805 old occurrences and added 17,414 new ones. The assembly identity,

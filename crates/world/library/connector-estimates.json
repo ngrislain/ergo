@@ -1,0 +1,76 @@
+{
+  "format": "ergo-connector-estimates-1",
+  "source": "estimate:ergo-connector-review-v1",
+  "note": "Reviewed engineering estimates for registered connector types, used by static admission when the operator measurement book has no record for a joint. They are conservative assumptions, not laboratory measurements. Technic bearings: radial capacity = ABS allowable bearing stress (40 MPa) / safety factor 10 x pin or axle diameter (4.8 mm) x engaged length (8 mm, one beam thickness) = 153.6 N, rounded down to 150 N; bending capacity = radial capacity x one quarter of the engaged length. Friction torques are the smallest torques that hold the light loads real parts are seen to hold (a friction pin holds a horizontal 15-hole beam, about 0.002 N m; a minifigure hand holds a spear or shield, well under 0.0001 N m), with margin. No bearing is exactly frictionless: a free bearing keeps Coulomb bearing friction of about mu r F = 0.2 (ABS on ABS) x 2.4 mm (pin radius) x 0.02 N (the weight of a few beams) = 1e-5 N m, far below what holds an unbalanced beam (about 1e-4 N m), so free mechanisms still swing to equilibrium. Axial capacities are the smallest of pull-out or sliding friction.",
+  "estimates": [
+    {
+      "connection": ["pin", "round_hole"],
+      "parts": ["3673.dat"],
+      "force_n": 150,
+      "torque_nm": 0.3,
+      "axial_n": 1,
+      "friction_nm": 0.00001,
+      "basis": "Frictionless Technic pin: free rotation apart from bearing friction; its ridge retains it axially."
+    },
+    {
+      "connection": ["pin", "round_hole"],
+      "force_n": 150,
+      "torque_nm": 0.3,
+      "axial_n": 2,
+      "friction_nm": 0.005,
+      "basis": "Friction Technic pin: holds a horizontal 15-hole beam (about 0.002 N m) with margin; pull-out about 2 N."
+    },
+    {
+      "connection": ["axle", "round_hole"],
+      "force_n": 150,
+      "torque_nm": 0.3,
+      "axial_n": 0.2,
+      "friction_nm": 0.00001,
+      "basis": "Cross axle in a round hole: free rotation apart from bearing friction; it slides axially with little friction."
+    },
+    {
+      "connection": ["axle", "axle_hole"],
+      "force_n": 2,
+      "torque_nm": 0.02,
+      "basis": "Keyed cross axle: the key resists twist; the scalar limit is the axial sliding friction of the cross fit, the weakest direction."
+    },
+    {
+      "connection": ["wheel_pin", "wheel_socket"],
+      "force_n": 2,
+      "torque_nm": 0.01,
+      "axial_n": 0.5,
+      "friction_nm": 0.00001,
+      "basis": "Small wheel bearing: free rotation apart from bearing friction; clip retention."
+    },
+    {
+      "connection": ["rim", "tyre"],
+      "force_n": 2,
+      "torque_nm": 0.01,
+      "basis": "Tyre stretched on its matching rim."
+    },
+    {
+      "connection": ["bar", "grip"],
+      "force_n": 1,
+      "torque_nm": 0.003,
+      "axial_n": 0.5,
+      "friction_nm": 0.002,
+      "basis": "Minifigure hand or clip on a 3.2 mm bar: holds a held spear, shield, bow or tool (well under 0.0001 N m) with margin."
+    },
+    {
+      "connection": ["shoulder_peg", "shoulder_socket"],
+      "force_n": 1,
+      "torque_nm": 0.003,
+      "axial_n": 0.5,
+      "friction_nm": 0.002,
+      "basis": "Minifigure shoulder: holds a posed arm with its hand and held item."
+    },
+    {
+      "connection": ["wrist_peg", "wrist_socket"],
+      "force_n": 1,
+      "torque_nm": 0.003,
+      "axial_n": 0.5,
+      "friction_nm": 0.002,
+      "basis": "Minifigure wrist: holds a posed hand with its held item."
+    }
+  ]
+}

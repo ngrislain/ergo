@@ -114,7 +114,15 @@ pub struct ConnectionMeasurements {
     pub entries: Vec<ConnectionMeasurement>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub parts: Vec<PartMeasurement>,
+    /// Read-only fixture examples only: joints with neither a measurement nor
+    /// a reviewed estimate get idealized, effectively unbreakable capacities.
+    /// Never set for user, shared-world or MCP publication.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub idealized_fixture: bool,
 }
+
+/// Idealized capacity of fixture-example joints (not a measurement).
+pub const IDEALIZED_CAPACITY: f64 = 1e6;
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct PartMeasurement {
     pub part: String,
@@ -229,39 +237,127 @@ impl ConnectionMeasurements {
     }
     /// Ignore capacity claims from an untrusted client; use only this server-owned
     /// measurement book for publication. No made-up default clutch strength.
+    /// Assign every joint's capacity: the operator measurement book first,
+    /// then the reviewed connector estimate for its registered connection,
+    /// otherwise none. Static admission treats a joint without capacity as
+    /// unable to carry load; it never invents a value.
     pub fn apply(&self, bricks: &[Brick], joints: &mut [JointSpec]) -> Result<()> {
         self.validate()?;
         let index: std::collections::HashMap<_, _> = bricks.iter().map(|b| (b.id, b)).collect();
-        let mut matched = Vec::new();
-        for joint in joints.iter() {
+        for joint in joints.iter_mut() {
             let a = index.get(&joint.a).context("Missing joint endpoint")?;
             let b = index.get(&joint.b).context("Missing joint endpoint")?;
-            let overlap = a.bounds.max.min(b.bounds.max) - a.bounds.min.max(b.bounds.min);
-            let footprint = [
-                overlap.x.max(0.0).round() as u32,
-                overlap.z.max(0.0).round() as u32,
-            ];
-            let kind = if matches!(joint.kind, JointKind::Fixed) {
-                "fixed"
-            } else {
-                "revolute"
-            };
-            let a_part = crate::catalog::canonical_part(&a.part);
-            let b_part = crate::catalog::canonical_part(&b.part);
-            let measurement=self.entries.iter().find(|e|{
-                let left=crate::catalog::canonical_part(&e.part_a);let right=crate::catalog::canonical_part(&e.part_b);
-                ((left==a_part&&right==b_part)||(left==b_part&&right==a_part))&&e.kind==kind&&e.overlap_studs==footprint
-            })
-                .with_context(||format!("Missing measured connector capacity for {} ↔ {} ({kind}, footprint {}×{}). Configure ERGO_CONNECTION_MEASUREMENTS; no realistic strength is assumed",a.part,b.part,footprint[0],footprint[1]))?;
-            matched.push(measurement);
-        }
-        for (joint, measurement) in joints.iter_mut().zip(matched) {
-            joint.break_force = Some(measurement.conservative_force_limit_n);
-            joint.break_torque = Some(measurement.conservative_torque_limit_nm);
-            joint.strength_source = Some(measurement.source.clone());
+            let connection =
+                crate::attachments::connection(a, b, crate::validation::OVERLAP_TOLERANCE);
+            let estimate = connection.as_ref().and_then(connector_estimate);
+            joint.break_force = None;
+            joint.break_torque = None;
+            joint.axial_force = None;
+            joint.friction_torque = None;
+            joint.strength_source = None;
+            if let Some(measurement) = self.measurement(a, b, joint) {
+                joint.break_force = Some(measurement.conservative_force_limit_n);
+                joint.break_torque = Some(measurement.conservative_torque_limit_nm);
+                joint.strength_source = Some(measurement.source.clone());
+                if let Some(estimate) = estimate {
+                    joint.axial_force = estimate.axial_n;
+                    joint.friction_torque = estimate.friction_nm;
+                }
+            } else if let Some(estimate) = estimate {
+                joint.break_force = Some(estimate.force_n);
+                joint.break_torque = Some(estimate.torque_nm);
+                joint.axial_force = estimate.axial_n;
+                joint.friction_torque = estimate.friction_nm;
+                joint.strength_source =
+                    Some(format!("{} ({})", estimates().source, estimate.basis));
+            } else if self.idealized_fixture {
+                joint.break_force = Some(IDEALIZED_CAPACITY);
+                joint.break_torque = Some(IDEALIZED_CAPACITY);
+                joint.friction_torque = Some(IDEALIZED_CAPACITY);
+                joint.strength_source =
+                    Some("idealized fixture example (not a measurement)".into());
+            }
         }
         Ok(())
     }
+
+    fn measurement(
+        &self,
+        a: &Brick,
+        b: &Brick,
+        joint: &JointSpec,
+    ) -> Option<&ConnectionMeasurement> {
+        let overlap = a.bounds.max.min(b.bounds.max) - a.bounds.min.max(b.bounds.min);
+        let footprint = [
+            overlap.x.max(0.0).round() as u32,
+            overlap.z.max(0.0).round() as u32,
+        ];
+        let kind = if matches!(joint.kind, JointKind::Fixed) {
+            "fixed"
+        } else {
+            "revolute"
+        };
+        let a_part = crate::catalog::canonical_part(&a.part);
+        let b_part = crate::catalog::canonical_part(&b.part);
+        self.entries.iter().find(|e| {
+            let left = crate::catalog::canonical_part(&e.part_a);
+            let right = crate::catalog::canonical_part(&e.part_b);
+            ((left == a_part && right == b_part) || (left == b_part && right == a_part))
+                && e.kind == kind
+                && e.overlap_studs == footprint
+        })
+    }
+}
+
+/// Reviewed connector estimates (`library/connector-estimates.json`).
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ConnectorEstimates {
+    pub format: String,
+    pub source: String,
+    pub note: String,
+    pub estimates: Vec<ConnectorEstimate>,
+}
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ConnectorEstimate {
+    pub connection: [crate::attachments::Kind; 2],
+    #[serde(default)]
+    pub parts: Vec<String>,
+    pub force_n: f64,
+    pub torque_nm: f64,
+    #[serde(default)]
+    pub axial_n: Option<f64>,
+    #[serde(default)]
+    pub friction_nm: Option<f64>,
+    pub basis: String,
+}
+
+pub fn estimates() -> &'static ConnectorEstimates {
+    static ESTIMATES: std::sync::LazyLock<ConnectorEstimates> = std::sync::LazyLock::new(|| {
+        let value: ConnectorEstimates =
+            serde_json::from_str(include_str!("../library/connector-estimates.json"))
+                .expect("Valid connector estimates");
+        assert_eq!(value.format, "ergo-connector-estimates-1");
+        value
+    });
+    &ESTIMATES
+}
+
+/// The reviewed estimate of one registered connection: a part-specific entry
+/// first, then the entry for its connector kinds.
+pub fn connector_estimate(
+    connection: &crate::attachments::Connection,
+) -> Option<&'static ConnectorEstimate> {
+    let pair = [connection.male, connection.female];
+    let entries = estimates()
+        .estimates
+        .iter()
+        .filter(|e| e.connection == pair);
+    entries
+        .clone()
+        .find(|e| e.parts.iter().any(|p| p == &connection.male_part))
+        .or_else(|| entries.clone().find(|e| e.parts.is_empty()))
 }
 
 #[cfg(test)]
@@ -343,11 +439,34 @@ mod tests {
         d.add("3003", 4, 2.0, 0.0, 2.0);
         d.add("3003", 1, 2.0, 1.0, 2.0);
         let mut joints = crate::constraints::inferred_joints(&d.bricks);
-        assert!(
-            ConnectionMeasurements::default()
-                .apply(&d.bricks, &mut joints)
-                .is_err()
-        );
-        assert!(joints[0].break_force.is_none());
+        ConnectionMeasurements::default()
+            .apply(&d.bricks, &mut joints)
+            .unwrap();
+        // Studs have no reviewed estimate: no capacity, so admission lets the
+        // joint carry no load.
+        assert!(joints[0].break_force.is_none() && joints[0].strength_source.is_none());
+    }
+    #[test]
+    fn reviewed_estimates_cover_every_registered_connection_kind() {
+        use crate::attachments::Kind::*;
+        let estimates = estimates();
+        for pair in [
+            [Pin, RoundHole],
+            [Axle, RoundHole],
+            [Axle, AxleHole],
+            [Bar, Grip],
+            [ShoulderPeg, ShoulderSocket],
+            [WristPeg, WristSocket],
+            [WheelPin, WheelSocket],
+            [Rim, Tyre],
+        ] {
+            let entry = estimates
+                .estimates
+                .iter()
+                .find(|e| e.connection == pair && e.parts.is_empty())
+                .unwrap_or_else(|| panic!("{pair:?}"));
+            assert!(entry.force_n > 0. && entry.torque_nm > 0.);
+        }
+        assert!(estimates.source.starts_with("estimate:"));
     }
 }
