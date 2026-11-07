@@ -25,7 +25,12 @@ with tempfile.TemporaryDirectory(prefix="ergo-isolated-web-") as temporary:
     directory = pathlib.Path(temporary)
     (directory / "web").symlink_to(ROOT / "web", target_is_directory=True)
     environment = {k:v for k,v in os.environ.items() if not k.startswith(("ERGO_","GOOGLE_","S3_"))}
-    environment.update(ERGO_BIND=f"127.0.0.1:{port}", ERGO_ASSET_FETCH="0", ERGO_GROUND_SOURCE="disabled",ERGO_ISOLATED_FIXTURES="1")
+    environment.update(ERGO_BIND=f"127.0.0.1:{port}", ERGO_GROUND_SOURCE="disabled",ERGO_ISOLATED_FIXTURES="1")
+    # Publish the reviewed-tier library fixture produced by the synthesis.
+    subprocess.run([str(pathlib.Path(args.server_binary).resolve()), "parts-publish",
+                    str(ROOT / "crates/world/tests/fixtures/part-library.json"),
+                    str(ROOT / "crates/assets/tests/fixtures/library-objects.cbor.gz")],
+                   cwd=directory, env=environment, check=True, stdout=subprocess.DEVNULL)
     with tempfile.TemporaryFile(mode="w+t") as log:
         server = subprocess.Popen([str(pathlib.Path(args.server_binary).resolve())], cwd=directory,
                                   env=environment, stdout=log, stderr=log)

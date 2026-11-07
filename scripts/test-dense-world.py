@@ -12,6 +12,7 @@ import urllib.request
 import urllib.error
 
 from playwright.sync_api import expect, sync_playwright
+import library_fixture
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -38,7 +39,7 @@ def main():
         (directory / 'web').symlink_to(ROOT / 'web', target_is_directory=True)
         environment.update(ERGO_BIND=f'127.0.0.1:{port}', ERGO_PUBLIC_URL=base,
                            ERGO_DATA_DIR=str(directory / 'store'), ERGO_ISOLATED_FIXTURES='1',
-                           ERGO_ASSET_FETCH='0', ERGO_GROUND_SOURCE='disabled',
+                           ERGO_GROUND_SOURCE='disabled',
                            # Explicit smaller authoring budget, independent of
                            # pacing and the normal 10,000-piece default.
                            ERGO_SHARED_WORKING_PIECES='5000',

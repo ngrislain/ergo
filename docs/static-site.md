@@ -56,6 +56,12 @@ Vite builds separate HTML entries for the home, privacy, terms, and 404 pages.
 The build injects the shared header/footer from `site/src/layout.ts`.
 `cargo xtask build-site` builds the navigator's `ergo-client` renderer with the
 small `site-entry` wrapper and copies the canonical `web/favicon.svg` logo.
+It also writes `engine/v{version}/reviewed-library.json`, the verified reviewed
+tier of the [part library](part-library.md). It takes this from
+`ERGO_PART_LIBRARY` (a local `library.json`) or from the origin's
+`/api/library/{revision}/reviewed.json` (`ERGO_LIBRARY_ORIGIN`, default
+`https://ergosandbox.com`). The landing preview installs it before building its
+scene.
 Generated bindings/logo in `site/public/engine` and `site/public/favicon.svg` are
 ignored. The build uses those generated outputs, not checked-in binaries.
 `site/public/brick-outline.svg` is also generated: the inspector, fallback and
@@ -112,7 +118,7 @@ repository variable stays on the last verified package until the new release is
 published and verified:
 
 ```text
-@ngrislain/ergo-mcp@0.5.26
+@ngrislain/ergo-mcp@0.5.27
 ```
 
 For a local override, copy `site/.env.example` to ignored `site/.env`, edit that
@@ -121,7 +127,7 @@ variable with the same name. Update it only after the release asset is verified:
 
 ```sh
 gh variable set ERGO_MCP_PACKAGE --repo ngrislain/ergo \
-  --body '@ngrislain/ergo-mcp@0.5.26'
+  --body '@ngrislain/ergo-mcp@0.5.27'
 gh workflow run pages.yml --repo ngrislain/ergo --ref main
 ```
 

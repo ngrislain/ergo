@@ -22,8 +22,8 @@ designs live in `todo/` and are indexed by [TODO.md](../TODO.md).
 ## Formats and storage
 
 - [Native construction/model format](construction-format.md)
-- [Native part descriptions and unlisted HTML catalogue](part-catalog.md)
-- [Canonical parts, compact common constructs and deterministic source updates](part-library.md)
+- [Part library entries, derived profiles and the unlisted HTML catalogue](part-catalog.md)
+- [The synthesized part library (LDraw + BrickLink), parts-sync and common constructs](part-library.md)
   includes common-part usage audits, hand/wheel/Technic attachments, plate-free figures/cars,
   printed Lion Knights torsos and supported pennant standards.
 - [S3 organization](object-store-layout.md)

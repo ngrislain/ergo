@@ -4,10 +4,14 @@ import math
 import json
 from pathlib import Path
 
-PART_LIBRARY=json.loads((Path(__file__).resolve().parents[1]/'crates/world/library/sources.lock.json').read_text())
-STANDARD_PARTS=[entry['catalogue'] for entry in PART_LIBRARY['parts'].values() if entry['catalogue']['size'] is not None]
-PART_ALIASES={alias.removesuffix('.dat'):entry['catalogue']['id'].removesuffix('.dat') for entry in PART_LIBRARY['parts'].values() for alias in entry['catalogue']['aliases']}
-CONSTRUCTS={value['id']:value for value in json.loads((Path(__file__).resolve().parents[1]/'crates/world/library/constructs.json').read_text())}
+ROOT=Path(__file__).resolve().parents[1]
+# Reviewed physical records are committed; identity aliases come from the
+# synthesized library (its committed reviewed-tier fixture).
+REVIEWS=json.loads((ROOT/'crates/world/library/reviews.json').read_text())['parts']
+STANDARD_PARTS=[review for review in REVIEWS if review.get('size') is not None]
+PART_LIBRARY=json.loads((ROOT/'crates/world/tests/fixtures/part-library.json').read_text())
+PART_ALIASES={alias.removesuffix('.dat'):entry['catalogue']['id'].removesuffix('.dat') for entry in PART_LIBRARY['parts'].values() for alias in entry['catalogue'].get('aliases',[])}
+CONSTRUCTS={value['id']:value for value in json.loads((ROOT/'crates/world/library/constructs.json').read_text())}
 
 def canonical_part(part):
     part=part.removesuffix('.dat')

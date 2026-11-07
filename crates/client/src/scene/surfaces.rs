@@ -49,7 +49,7 @@ impl Surfaces {
                                         && bounds.max == mesh.body_bounds.max
                                 })
                                 && ergo_world::part_library::get(id)
-                                    .and_then(|part| part.vertex_hash.as_deref())
+                                    .map(|part| part.vertex_hash.as_str())
                                     .is_some_and(|hash| crate::part_lod::vertex_hash(mesh) == hash);
                             (spec, trusted)
                         }),

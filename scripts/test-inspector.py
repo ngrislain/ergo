@@ -10,6 +10,7 @@ import tempfile
 import time
 import urllib.request
 from playwright.sync_api import sync_playwright, expect
+import library_fixture
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 parser = argparse.ArgumentParser(description=__doc__)
@@ -35,7 +36,8 @@ with tempfile.TemporaryDirectory(prefix='ergo-inspector-') as temporary:
     directory = pathlib.Path(temporary)
     (directory/'web').symlink_to(ROOT/'web', target_is_directory=True)
     env = {key:value for key,value in os.environ.items() if not key.startswith(('ERGO_','GOOGLE_','S3_','AWS_','MCP_','INSPECTOR_'))}
-    env.update(ERGO_ASSET_FETCH='0', ERGO_GROUND_SOURCE='disabled', ERGO_ISOLATED_FIXTURES='1')
+    env.update(ERGO_GROUND_SOURCE='disabled', ERGO_ISOLATED_FIXTURES='1')
+    library_fixture.seed(directory/'data', environment=env)
     address = f'127.0.0.1:{port()}'
     url = 'http://'+address
     with tempfile.TemporaryFile() as log:

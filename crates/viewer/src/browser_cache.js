@@ -22,7 +22,6 @@ const skipped = reason => { writes.skipped++; writes.lastSkipReason = reason; re
 let database, opening, maintenance = Promise.resolve(), enabled = true, epoch = 0, pinTimer;
 const versions = new Map(), pinned = new Set(), libraryPinned = new Set();
 const activeReads = new Map();
-let basicLibrary;
 const isPinned = url => pinned.has(url) || libraryPinned.has(url);
 const request = value => new Promise((resolve, reject) => {
   value.onsuccess = () => resolve(value.result);
@@ -261,48 +260,20 @@ export function cacheResume() { enabled = true;refreshPins(); }
 export async function requestPersistence() { try { return await navigator.storage?.persist?.(); } catch { return false; } }
 
 // Only public, content-versioned library data may be used without a world GET.
-// Construction packets still require fresh authorization, including HTTP 304.
-export async function warmBasicLibrary(revision) {
-  if (!/^[0-9a-f]{64}$/.test(revision) || !enabled) return false;
-  const started=epoch, root=`/api/library/${revision}/`;
-  const controller=new AbortController(), timer=setTimeout(()=>controller.abort(),3600000);
+// The part library document is immutable per revision; Rust verifies its
+// content hash before installing it. Construction packets still require
+// fresh authorization, including HTTP 304.
+export async function partLibrary(revision) {
+  if (!/^[0-9a-f]{64}$/.test(revision)) return null;
+  const url=`/api/library/${revision}/library.json`;
   try {
-    const load=async file=>{
-      const url=root+file, cached=await cacheGet(url);
-      if(cached)return {url,bytes:cached.bytes,etag:cached.etag,stored:true};
-      const response=await fetch(url,{signal:controller.signal});
-      if(!response.ok)throw Error('Basic library unavailable');
-      const length=Number(response.headers.get('Content-Length'));
-      if(length>MAX_ENTRY)throw Error('Basic library too large');
-      const bytes=new Uint8Array(await response.arrayBuffer());
-      if(bytes.byteLength>MAX_ENTRY)throw Error('Basic library too large');
-      return {url,bytes,etag:response.headers.get('ETag')||revision,stored:false};
-    };
-    const manifest=await load('manifest.json'), value=JSON.parse(new TextDecoder().decode(manifest.bytes));
-    if(value.format!=='ergo-basic-library-1'||value.revision!==revision||value.schema!==2 || !Array.isArray(value.constructs))return false;
-    const pack=await load('parts.pack');
-    if(pack.bytes.length!==value.pack_bytes||await hash(pack.bytes)!==value.pack_hash) {
-      await cacheForget(pack.url);return false;
-    }
-    if(!enabled||epoch!==started)return false;
-    libraryPinned.clear();libraryPinned.add(key(manifest.url));libraryPinned.add(key(pack.url));
-    basicLibrary={manifest:value,pack:pack.bytes};
-    const savedManifest=manifest.stored || await cachePut(manifest.url,manifest.etag,manifest.bytes);
-    const savedPack=pack.stored || await cachePut(pack.url,pack.etag,pack.bytes);
-    refreshPins();
-    return savedManifest && savedPack;
-  } catch { return false; } finally { clearTimeout(timer); }
-}
-export async function basicPartBytes(part) {
-  try {
-    if(!enabled||!basicLibrary||!globalThis.DecompressionStream)return null;
-    const entry=Object.values(basicLibrary.manifest.parts.parts).find(entry=>entry.catalogue.id===part || entry.catalogue.aliases.includes(part));
-    const asset=entry?.asset;
-    if(!asset||asset.offset+asset.bytes>basicLibrary.pack.length)return null;
-    const compressed=basicLibrary.pack.slice(asset.offset,asset.offset+asset.bytes);
-    const stream=new Blob([compressed]).stream().pipeThrough(new DecompressionStream('gzip'));
-    const bytes=new Uint8Array(await new Response(stream).arrayBuffer());
-    if(bytes.length>32*1024*1024||await hash(bytes)!==asset.mesh_hash)return null;
+    const cached=enabled?await cacheGet(url):null;
+    if(cached){libraryPinned.clear();libraryPinned.add(key(url));refreshPins();return cached.bytes;}
+    const response=await fetch(url);
+    if(!response.ok)return null;
+    const bytes=new Uint8Array(await response.arrayBuffer());
+    if(bytes.byteLength>MAX_ENTRY)return null;
+    if(enabled){libraryPinned.clear();libraryPinned.add(key(url));await cachePut(url,revision,bytes);refreshPins();}
     return bytes;
   } catch { return null; }
 }

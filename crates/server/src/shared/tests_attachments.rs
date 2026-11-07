@@ -12,11 +12,7 @@ async fn construct(id: &str) -> WorldExport {
         }]}
     }))
     .unwrap();
-    let cache = ergo_assets::PartCache::new(
-        Arc::new(object_store::memory::InMemory::new()),
-        String::new(),
-    )
-    .unwrap();
+    let cache = ergo_assets::PartCache::new(ergo_assets::fixture_store(), String::new()).unwrap();
     let mut result = scene(0.);
     result.bricks.clear();
     result.meshes.clear();

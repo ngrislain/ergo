@@ -48,12 +48,13 @@ struct Bridge {
     hub: Arc<Mutex<Hub>>,
     token: String,
     parts: ergo_assets::PartCache,
-    upstream: Option<String>,
-    http: reqwest::Client,
+    /// Verified JSON of the installed part library, for the local WASM runtime.
+    part_library: Arc<[u8]>,
     publisher: Option<Arc<publish::Publisher>>,
     common: Option<Arc<tokio::sync::Mutex<shared::Binding>>>,
 }
 type HttpError = (StatusCode, Json<Value>);
+const DEFAULT_ORIGIN: &str = "https://ergosandbox.com";
 fn tool_schemas(common: bool) -> Value {
     let mut value = ergo_world::mcp::tools();
     for tool in value["tools"].as_array_mut().unwrap() {
@@ -219,28 +220,6 @@ async fn part(
     Path(name): Path<String>,
 ) -> std::result::Result<Json<Value>, HttpError> {
     authorized(&s, &headers)?;
-    if let Some(base) = &s.upstream {
-        let canonical = ergo_world::catalog::canonical_part(&if name.ends_with(".dat") {
-            name.clone()
-        } else {
-            format!("{name}.dat")
-        });
-        if !ergo_world::catalog::valid_part(&canonical) {
-            return Err(http_error("Unsupported part"));
-        }
-        let response = s
-            .http
-            .get(format!(
-                "{}/api/parts/{canonical}",
-                base.trim_end_matches('/')
-            ))
-            .send()
-            .await
-            .map_err(http_error)?
-            .error_for_status()
-            .map_err(http_error)?;
-        return Ok(Json(response.json().await.map_err(http_error)?));
-    }
     let name = if name.ends_with(".dat") {
         name
     } else {
@@ -250,6 +229,18 @@ async fn part(
         serde_json::to_value(s.parts.resolve(&name).await.map_err(http_error)?)
             .map_err(http_error)?,
     ))
+}
+async fn serve_part_library(
+    State(s): State<Bridge>,
+    headers: HeaderMap,
+) -> std::result::Result<axum::response::Response, HttpError> {
+    authorized(&s, &headers)?;
+    let mut response = s.part_library.to_vec().into_response();
+    response.headers_mut().insert(
+        header::CONTENT_TYPE,
+        HeaderValue::from_static("application/json"),
+    );
+    Ok(response)
 }
 fn persist(path: &FsPath, scene: &WorldExport) -> Result<()> {
     atomic_write(path, &ergo_world::storage::Construction::from(scene))
@@ -583,12 +574,23 @@ fn main() -> Result<()> {
         .map(PathBuf::from)
         .unwrap_or_else(|| parent.join(".ergo-assets"));
     fs::create_dir_all(&assets)?;
-    let parts = ergo_assets::PartCache::new(
-        Arc::new(object_store::local::LocalFileSystem::new_with_prefix(
-            assets,
-        )?),
-        String::new(),
-    )?;
+    // The hosted origin's synthesized library is mirrored and verified
+    // locally; later sessions keep working offline from the mirror.
+    let origin = match &publisher {
+        Some(publisher) => publisher.url("/")?.to_string(),
+        None => std::env::var("ERGO_API_URL").unwrap_or_else(|_| DEFAULT_ORIGIN.into()),
+    };
+    let http = reqwest::Client::builder()
+        .timeout(Duration::from_secs(90))
+        .build()?;
+    let store: Arc<dyn object_store::ObjectStore> = Arc::new(
+        object_store::local::LocalFileSystem::new_with_prefix(assets)?,
+    );
+    let (library, part_library) =
+        runtime.block_on(ergo_assets::library::mirror(&*store, &http, &origin))?;
+    ergo_world::part_library::install(library)?;
+    let parts =
+        ergo_assets::PartCache::new(store, String::new())?.with_origin(http.clone(), &origin);
     let bridge = Bridge {
         hub: Arc::new(Mutex::new(Hub {
             workspace: Workspace {
@@ -606,10 +608,7 @@ fn main() -> Result<()> {
             uuid::Uuid::new_v4().simple()
         ),
         parts,
-        upstream: std::env::var("ERGO_API_URL").ok(),
-        http: reqwest::Client::builder()
-            .timeout(Duration::from_secs(90))
-            .build()?,
+        part_library: part_library.into(),
         publisher: publisher.clone().map(Arc::new),
         common,
     };
@@ -621,6 +620,7 @@ fn main() -> Result<()> {
         .route("/api/local/jobs/next", get(next_job))
         .route("/api/local/jobs/result", post(complete))
         .route("/api/local/parts/{name}", get(part))
+        .route("/api/local/library.json", get(serve_part_library))
         .fallback_service(ServeDir::new(web))
         .layer(DefaultBodyLimit::max(128 * 1024 * 1024))
         .layer(SetResponseHeaderLayer::overriding(

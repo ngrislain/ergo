@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """Actual WASM/WebGL captures: lit transparency and cross-prototype depth order."""
+import pathlib
 import argparse
 import base64
 import io
@@ -14,7 +15,8 @@ parser=argparse.ArgumentParser()
 parser.add_argument('--binary',default=str(ROOT/'target/debug/ergo-mcp'))
 parser.add_argument('--artifacts',type=Path,default=ROOT/'.playwright-mcp/materials')
 args=parser.parse_args();args.artifacts.mkdir(parents=True,exist_ok=True)
-os.environ['ERGO_ASSET_FETCH']='0'
+import library_fixture
+library_fixture.offline_mcp(os.environ,pathlib.Path(tempfile.mkdtemp(prefix='ergo-library-')))
 camera={'position_world':[2,-12,2],'target_world':[2,2,.5],'vertical_fov_degrees':35}
 def capture(client,name,lighting='studio'):
     result=client.call('test_visual_appearance',camera=camera,width=640,height=480,lighting=lighting)

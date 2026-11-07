@@ -36,5 +36,7 @@ base64 = "0.22"
 url = "2"
 
 [dev-dependencies]
+ergo-world = { workspace = true, features = ["test-library"] }
+ergo-assets = { workspace = true, features = ["test-library"] }
 tower = { version = "0.5", features = ["util"] }
 async-trait = "0.1"

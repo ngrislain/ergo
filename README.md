@@ -39,9 +39,9 @@ before reuse. Cache writes do not delay display; stale or stalled navigation can
 be replaced by another construction selection.
 Large region reads have a one-hour client deadline, durable preparation checkpoints,
 and display revision-pinned,
-read-only partial previews while materializing. The complete current basic library
-(138 sourced parts and five common constructs) is proactively cached locally;
-obsolete pre-migration construct versions are rejected. Native saves/exports share
+read-only partial previews while materializing. The verified
+[part library document](docs/loading-and-cache.md#part-library-document) is cached
+locally by revision; obsolete pre-migration construct versions are rejected. Native saves/exports share
 identical reusable definitions while retaining every placed occurrence.
 The basic OSM ground style retains natural features, roads, place names and main
 landmarks while filtering commercial points of interest before rasterization.
@@ -67,11 +67,11 @@ The prebuilt bundle includes native binaries and WASM assets; consumers need
 Node.js 20+ and Chrome/Chromium, not Rust.
 
 ```sh
-npm install --global --ignore-scripts @ngrislain/ergo-mcp@0.5.26
+npm install --global --ignore-scripts @ngrislain/ergo-mcp@0.5.27
 ergo-mcp --login --publish-url https://ergosandbox.com
 ```
 
-The [GitHub Release](https://github.com/ngrislain/ergo/releases/tag/v0.5.26)
+The [GitHub Release](https://github.com/ngrislain/ergo/releases/tag/v0.5.27)
 also provides the verified complete tarball and checksum.
 
 In v0.5.26, `--login` opens browser sign-in, asks the human to approve
@@ -118,13 +118,15 @@ shows supported pieces/colors in 3D. The source also provides an unlisted
 [Ergo construction files](docs/construction-format.md) use reusable definitions,
 typed part/definition/common-construct targets and row-major 4×4 transforms in public east/north/up
 brick units. They retain occurrence identities, colors, groups and physical metadata.
-Imported files are converted at the boundary. Stored assets are
-[Ergo part descriptions](docs/part-catalog.md) and geometry with source attribution.
-One [pinned canonical library](docs/part-library.md), derived from official LDraw
-and BrickLink, supplies 138 parts, reviewed common-part usage counts, hand/wheel/Technic
-interfaces and plate-free minifigure/car references,
-including [Lion Knights guards and supported genuine Castle pennants](docs/part-library.md#pre-assembled-common-constructs).
-Its compact native pack resolves the complete selected geometry offline.
+Imported files are converted at the boundary.
+One [synthesized part library](docs/part-library.md) makes the whole official LDraw
+library buildable, deduplicated against BrickLink numbers via Rebrickable. It
+contains 138 human-reviewed parts, with BrickLink masses and set counts and
+hand/wheel/Technic interfaces. The other ~17,700 parts are
+[automatically derived](docs/part-catalog.md#derived-profiles-auto-v1), with stud
+and socket grids and calibrated estimated masses. Operators publish it with
+`ergo-server parts-sync`. Plate-free minifigure/car references include
+[Lion Knights guards and supported genuine Castle pennants](docs/part-library.md#pre-assembled-common-constructs).
 
 [S3 organization](docs/object-store-layout.md) separates the authoritative world,
 part/terrain caches, private profiles/positions/plans and operational backups.
@@ -161,8 +163,37 @@ From the repository root, with the pinned Rust toolchain:
 rustup target add wasm32-unknown-unknown
 cargo install wasm-bindgen-cli --version 0.2.129 --locked
 cargo xtask build-web
+cargo run --release --bin ergo-server -- parts-sync   # publish the part library once
 cargo run --release -p ergo-server
 ```
+
+The server needs a published [part library](docs/part-library.md); when the store
+has none it runs the first synthesis itself before serving.
+`parts-sync` downloads the official LDraw archive (about 150 MB) and, with
+`REBRICKABLE_API_KEY` set, the Rebrickable catalogue for BrickLink deduplication.
+It synthesizes the library deterministically (about a minute with `--release`) and
+publishes it to the configured store. Options and arguments after `--` go to
+`ergo-server`:
+
+```sh
+cargo run --release --bin ergo-server -- parts-sync --dry-run   # synthesize and report; publish nothing
+cargo run --release --bin ergo-server -- parts-check            # re-synthesize the published library byte for byte
+```
+
+A full publication writes about 4.9 GB of mesh objects. For a lightweight local
+store, publish the committed reviewed-tier fixture instead:
+
+```sh
+cargo run --release --bin ergo-server -- parts-publish \
+  crates/world/tests/fixtures/part-library.json \
+  crates/assets/tests/fixtures/library-objects.cbor.gz
+```
+
+`ergo-server` reads `.env` from its working directory or a parent and logs which
+file it loaded. Variables already set in the shell win. If `.env` sets `S3_*`,
+every command, including `parts-sync` and `parts-publish`, targets that bucket.
+Quote values containing spaces; a line that fails to parse stops loading the
+rest of the file, with a warning.
 
 Open http://127.0.0.1:3000. The server creates one local `data/world` sandbox
 and an explicit development account. Configure storage/authentication using

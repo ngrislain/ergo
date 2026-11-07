@@ -29,7 +29,8 @@ def main():
     assert not manifest.get('dependencies') and not manifest.get('scripts'), 'Consumer installs must not build/download native code'
     environment = {key:value for key,value in os.environ.items()
                    if not key.startswith(('ERGO_', 'GOOGLE_', 'S3_', 'NPM_CONFIG_'))}
-    environment['ERGO_ASSET_FETCH'] = '0'
+    import library_fixture, tempfile as _tempfile
+    library_fixture.offline_mcp(environment, pathlib.Path(_tempfile.mkdtemp(prefix='ergo-library-')))
     with tempfile.TemporaryDirectory(prefix='ergo-npm-install-') as temporary:
         directory = pathlib.Path(temporary)
         config = directory / 'empty.npmrc'

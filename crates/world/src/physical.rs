@@ -311,8 +311,8 @@ mod tests {
             DVec3::new(0.016, 0.0096, 0.032)
         );
         assert!((mass_kg("3001.dat").unwrap() - 0.00232).abs() < 1e-12);
-        for (part, _) in crate::catalog::PARTS.iter() {
-            assert!(mass_kg(part).unwrap() > 0.0);
+        for entry in crate::part_library::all() {
+            assert!(mass_kg(&entry.catalogue.id).unwrap() > 0.0);
         }
     }
     #[test]

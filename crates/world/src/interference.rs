@@ -14,8 +14,8 @@ use glam::DVec3;
 /// shaft's axial range, not arbitrary overlap, retention or joint strength.
 pub fn registered_bar_clearance(a: &Brick, b: &Brick, tolerance: f64) -> bool {
     let lance_pair = match (
-        crate::part_library::profile_id(&a.part),
-        crate::part_library::profile_id(&b.part),
+        crate::catalog::canonical_id(&a.part),
+        crate::catalog::canonical_id(&b.part),
     ) {
         ("3849.dat", "4495a.dat") => Some((a, b)),
         ("4495a.dat", "3849.dat") => Some((b, a)),
@@ -42,8 +42,8 @@ pub fn registered_bar_clearance(a: &Brick, b: &Brick, tolerance: f64) -> bool {
             && flag.position.y + 1. / 6. <= high.y + tolerance;
     }
     let (pole, flag) = match (
-        crate::part_library::profile_id(&a.part),
-        crate::part_library::profile_id(&b.part),
+        crate::catalog::canonical_id(&a.part),
+        crate::catalog::canonical_id(&b.part),
     ) {
         ("3957a.dat", "4495a.dat") => (a, b),
         ("4495a.dat", "3957a.dat") => (b, a),

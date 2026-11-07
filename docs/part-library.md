@@ -1,130 +1,165 @@
-# Canonical parts and common constructs
+# The part library and common constructs
 
-## One reproducible library
+## One synthesized library
 
-`crates/world/library/sources.lock.json` is the canonical catalogue used by Rust
-and Python authoring. It contains 138 selected parts: 44 rectangular brick, plate
-and tile shapes, plus 94 source-only architectural, figure, vehicle and Technic parts.
-Names, dimensions, catalogue masses and aliases are read from this registry;
-there are no independent standard-size or standard-mass tables in the generator.
+Ergo has exactly one part library: a content-addressed document of format
+`ergo-part-library-2`, produced by the operator synthesis
+(`ergo-server parts-sync`, implemented in `crates/assets/src/library.rs`) and
+installed once per process by `ergo_world::part_library`. Every part of the
+**official LDraw library** that can be baked and profiled is buildable. Its
+geometry is deduplicated against **BrickLink** item numbers, using a
+**Rebrickable** catalogue snapshot for the LDraw ↔ BrickLink mapping.
 
-The two authorities are:
+Each entry is one of two tiers:
 
-- **Official LDraw:** part identity, geometry/dimensions, dependency files and identity aliases,
-  from `https://library.ldraw.org/library/official` and its complete official archive.
-- **BrickLink:** the catalogue mass records linked by each entry. Factory-unit
-  component sums retain their individual source URLs and quantities.
+- **Reviewed** (138 parts): human-reviewed physical records committed in
+  `crates/world/library/reviews.json`. These are BrickLink catalogue masses and
+  set counts, rectangular sizes, nominal bodies, stud/socket grids and connectors.
+  44 are rectangular bricks, plates and tiles; 94 are source-only architectural,
+  figure, vehicle and Technic parts. They are the recommended building set.
+- **Derived** (`derivation: "auto-v1"`): every other buildable official part.
+  Its nominal body, top studs and receiving grids are derived automatically from
+  the official geometry (`crates/world/src/derive.rs`). Its mass is a
+  calibrated volume estimate. These are not reviewed records.
 
-Every selected part pins all its source files with SHA-256. Source text is UTF-8
-without a BOM, with CRLF/CR normalized to LF; other text is preserved. A complete
-official archive checksum records the input snapshot. Update builds verify local
-files against these pins and use the same official URLs as remote files.
-Changing a local directory, mirror or upstream file cannot silently replace a
-pinned standard part. The full internal float32 vertex stream is also fingerprinted.
+BrickLink items without official LDraw geometry are kept as **listed** entries.
+They can be searched but not built, and no substitute shape is invented.
 
-Official `~Moved to` chains consolidate identity aliases, including `3023.dat` to
-`3023b.dat`, `970c00.dat` to `3815c01.dat`, and `4073.dat` to `6141.dat`. Each followed
-alias must contain an identity placement; an origin-changing alias requires an
-explicit pose migration. Similar bounding boxes alone are not identity evidence.
-The rectangular selection has one entry per footprint, height and stud condition.
-Aliases resolve to an existing entry rather than creating another mesh resource.
+Each entry pins its geometry by `mesh_hash` (SHA-256 of the native Mesh CBOR
+stored at `objects/<mesh_hash>.cbor`) and `vertex_hash`. The latter covers the
+complete internal float32 stream, with signed zero normalized. A part `revision`
+covers the synthesis version, every source file of its closure with its SHA-256,
+and its catalogue record. The library `revision` is the SHA-256 of the compact
+document serialized with an empty revision. Every reader verifies it before
+installing: the server, the browser, the MCP and the static site.
 
-The library revision covers the source/metadata snapshot, baker format and vertex
-fingerprint. It is distinct from an accepted world revision, mesh-object CID,
-physical-model version or connector calibration.
+## Deterministic synthesis
 
-## Compact native asset pack
+`parts-sync` downloads the official `complete.zip` and, when
+`REBRICKABLE_API_KEY` is set, a Rebrickable snapshot. That snapshot is the paged
+`/api/v3/lego/parts/?inc_part_details=1` listing with external IDs, plus part
+categories, canonicalized and sorted. Every input is stored content-addressed at
+`catalog/inputs/<sha256>`, including the reviews document used. The library
+records their hashes in `inputs`. `synthesize` is a pure function of these input
+bytes, so the same inputs always produce byte-identical library JSON and mesh
+objects. Parts are processed in parallel; the output is ordered by ID.
 
-`crates/assets/library/parts.pack` ships the complete selected geometry in **2,813,617
-bytes**. It concatenates independent deterministic gzip members in canonical part-ID
-order. Each member decodes to one ordinary native Mesh CBOR object; it is not a ZIP
-or a top-level CBOR container. The lock records `asset:{offset,bytes,mesh_hash}` for
-each part. The mesh hash covers decoded CBOR, while `vertex_hash` covers the complete
-internal float32 stream with signed zero normalized, matching deterministic world CBOR.
+1. **Universe.** Classify every top-level `parts/*.dat` by its `!LDRAW_ORG`
+   header:
+   - `Part` and `Shortcut` files are candidates.
+   - `Physical_Colour` and `Flexible_Section` files are excluded.
+   - Obsolete `~`/`_` files are kept only when reviewed or when the Rebrickable
+     catalogue still maps to them.
+   - Source text is UTF-8 without BOM, with CRLF/CR normalized to LF.
+2. **Identity deduplication.** Official `~Moved to` files and `Part Alias` files
+   whose only geometry is one identity placement (colour 16, zero offset,
+   identity matrix) become aliases of their target. Chains are followed. Similar
+   bounding boxes are never identity evidence; an origin-changing alias would
+   need a pose migration.
+3. **BrickLink deduplication.** A Rebrickable part groups its LDraw and
+   BrickLink numbers. Each BrickLink number becomes an alias of the canonical
+   LDraw geometry it maps to (`bricklink` lists them all), with three exceptions:
+   - when the number is ambiguous (claimed by two geometries);
+   - when it is itself the name of an official LDraw file;
+   - when it is a reviewed ID.
 
-Runtime resolution decompresses only the requested entry (at most 32 MiB), verifies
-both hashes and identity, and populates the ordinary asset cache. No complete LDraw
-download or primitive-by-primitive upstream fetching is needed to use these parts.
-The pack and manifest are generated together from the two authorities; their
-byte-for-byte regeneration is checked with `--check --bake`.
+   A Rebrickable part without official geometry becomes a listed entry.
+4. **Bake and profile.**
+   - Each part is baked by the same LDraw baker as everywhere else.
+   - Reviewed parts take their review record.
+   - Derived parts take an `auto-v1` profile; see [part descriptions](part-catalog.md#derived-profiles-auto-v1).
+   - Parts that cannot be baked or have no enclosed volume are excluded and
+     listed in the synthesis report. In the 2026-11 archive these were 2,460
+     stickers, about 70 cloth/sheet/string items and 16 parts with official
+     dependencies missing from the archive.
+5. **Mass calibration.**
+   - The ABS voxel volume estimate (1.05 g/cm³) is fitted to the reviewed
+     BrickLink masses by a single median factor.
+   - The library records the factor, the sample count and the p50/p90 relative
+     errors.
+   - The 2026-11 synthesis measured factor 0.9562 over 138 parts, with p50 8.3%
+     and p90 28.3%. Large outliers remain where official models are solid but
+     mouldings are thin; the 32 × 32 baseplate is estimated at about three
+     times its real mass.
 
-The browser proactively caches the complete current pack and construct manifest
-through public, content-versioned `/api/library/{revision}/…` resources. See
-[local basic-library caching](loading-and-cache.md#complete-current-basic-library).
-Stale asset-cache records are discarded and resolved from the checked pack;
-there is no runtime legacy-geometry upgrade path.
+The 2026-11 official archive (SHA-256 `0230839…610f`, the same snapshot as the
+previous reviewed lock) gives **17,856 buildable parts**: 138 reviewed, 17,718
+derived, and 1,284 official identity aliases. Without a Rebrickable key there are
+no BrickLink aliases or listed items. The library JSON is about 16.8 MB (3.6 MB
+gzip). The mesh objects total about 4.9 GB. A full synthesis takes about one
+minute on a 10-core laptop.
 
-## Source updates
-
-Regenerate and verify an existing official snapshot:
-
-```sh
-python3 scripts/update-part-library.py --source-dir /path/to/ldraw --check --bake
-```
-
-To take a new official snapshot and current linked BrickLink masses:
-
-```sh
-python3 scripts/update-part-library.py \
-  --download-archive /private/operator-cache/complete.zip \
-  --extract-to /private/operator-cache/official-update \
-  --refresh-masses --bake
-```
-
-The archive comes from one fixed official HTTPS endpoint, is size-bounded and ZIP
-checked, and extraction rejects traversal and links. Updates have no generated
-timestamps: the same source files, catalogue values and baker produce identical
-lock bytes. The generator follows identity aliases deterministically and fails on
-conflicting selections or changed source classification. Changed dependencies
-invalidate affected part revisions and asset descriptions. A reviewed baker change
-can use `--bake --rebake` after updating its format identifier.
-
-The output is a source change to test and release. It does not modify accepted
-world geometry, discard historical snapshots or supply new connector measurements.
-Part resolution rejects changed/unavailable canonical sources rather than creating
-another flat-bottomed box variant. Parametric meshes remain internal diagnostics
-and render-detail derivatives, not newly resolved catalogue assets.
-
-To select an additional reviewed source-only part, first implement its nominal
-profile, then use `--add-part LDRAW_ID.dat=BRICKLINK_ID --bake` with `--source-dir`.
-The updater fetches that item's linked catalogue mass and records the complete
-official dependency closure. Existing selections are rejected rather than
-silently overwritten. Subsequent deterministic checks need no `--add-part` flag.
-
-## Common-part selection and coverage
-
-The 2026-11-03 expansion adds **63 parts**, each individually recorded by its linked
-BrickLink item as appearing in **strictly more than seven sets**. The subsequent
-tree/Castle/garrison selection adds 14 more individually sourced common pieces.
-The full library has 137 such individual-item usage records; the original factory torso uses a
-component mass sum and has no inferred whole-unit set count. Counts are metadata
-snapshot values, not live statistics. Repeated colours and quantities are not set
-counts. Existing reviewed selections remain available independently of popularity.
-
-`scripts/common_parts.py` declares the reviewed candidate families: additional
-rectangular plates/tiles, Technic bricks and straight beams, cross axles, friction
-and frictionless pins, bushes, hand-held tools/bars, wheel holders, rims and tyres,
-genuine oval/pine trees, Castle panels, arches, capes, helmets, factory horses and a saddle.
-Its profiles and functional datums use the pinned official geometry. Standalone
-tool/axle envelopes come from source triangles; genuine visual geometry is baked
-normally. No generic box is substituted for a missing part.
+## Commands
 
 ```sh
-python3 scripts/update-part-library.py --source-dir /path/to/ldraw \
-  --add-common-parts --refresh-usage --bake
-python3 scripts/check-common-parts.py
-python3 scripts/check-common-parts.py inventory.csv --require-complete
-python3 scripts/test-common-parts.py
+ergo-server parts-sync              # pull, synthesize, publish and move `current`
+ergo-server parts-sync --dry-run    # pull and synthesize; print the report only
+ergo-server parts-check             # re-synthesize `current` from stored inputs, byte for byte
+ergo-server parts-publish LIBRARY.json OBJECTS.cbor.gz  # publish a prepared, verified bundle
 ```
 
-The optional inventory CSV has `set_num,part` columns with official LDraw IDs.
-The audit unions canonical aliases and counts distinct set IDs, ignores repeated
-rows/colours/quantities in a set, and reports unavailable common IDs. It deliberately
-does not guess mappings from another catalogue's part numbering. `--require-complete`
-fails on gaps in the supplied corpus. The reviewed selection is **not an exhaustive
-claim that every LEGO part used in eight sets is bundled**; a complete external
-inventory is needed to measure that broader target. The default audit's universe
-is explicitly the bundled items with recorded usage.
+- **Publication order:** inputs, then objects (write-once), then the library
+  document, then the `catalog/part-library/current.json` pointer.
+- **Memory:** objects stream to the store while baking, through a bounded
+  channel, and each worker's source cache is capped at 32 MiB. A full synthesis
+  peaks below 2 GB with ten workers.
+- **Startup:** a server whose store has no published library runs the first
+  synthesis before serving. Production publishes beforehand with the CLI,
+  because a 1-vCPU container needs about six minutes, longer than its startup
+  probe allows.
+- **HTTP API:**
+  - `POST /api/admin/parts-sync` (body `{"dry_run": bool}`, optional) starts one
+    background job; a second request while one runs gets `409`.
+  - `GET /api/admin/parts-sync` reports its state (`idle`/`running`/`succeeded`/`failed`),
+    timestamps, report or error.
+  - Only signed-in accounts listed in `ERGO_OPERATOR_IDS` (comma-separated user
+    IDs) may call either, or the development account when Google sign-in is off.
+  - A published revision is installed immediately (hot swap): new requests and
+    `/api/config` see it, and clients pick it up on their next load. Earlier
+    revisions stay valid in memory until restart.
+  - On scale-to-zero hosting an idle instance may stop before a background job
+    finishes; the CLI is the reliable path there.
+- **Development:** `cargo run -p ergo-assets --example synthesize -- complete.zip`
+  synthesizes from a local archive and prints the report.
+- **Fixture:**
+  - `--fixture LIBRARY OBJECTS` writes the committed test fixture: the reviewed
+    tier plus `FIXTURE_DERIVED` sample parts, and their objects.
+  - Its files are `crates/world/tests/fixtures/part-library.json` and
+    `crates/assets/tests/fixtures/library-objects.cbor.gz`.
+  - Tests and isolated stores publish it with `parts-publish`
+    (`scripts/library_fixture.py`).
+- **Verification:** the reviewed tier of the 2026-11 synthesis reproduces the
+  vertex streams pinned by the previous reviewed lock for all 138 parts.
+
+## Distribution
+
+- **Server:**
+  - serves `/api/library/{revision}/library.json` (immutable, gzip transport);
+  - serves `/api/library/{revision}/reviewed.json`, the reviewed tier as its own
+    verified document;
+  - serves `/api/part-objects/{mesh_hash}`, content-addressed and public only
+    for hashes the installed library names.
+- **Browser:** the viewer installs the library from the IndexedDB cache or the
+  network before loading any construction. See
+  [loading and caching](loading-and-cache.md#part-library-document).
+- **MCP:** mirrors the origin's library and objects into `.ergo-assets`, and keeps
+  working offline from that verified mirror.
+- **Static site:** the landing preview installs the reviewed tier shipped with
+  its engine build.
+
+## Reviews
+
+`reviews.json` (`ergo-part-reviews-1`) holds the human-reviewed records.
+Geometry, names, aliases and file pins always come from the official sources
+during synthesis.
+
+- **Adding a reviewed part:**
+  1. Add its record: a sourced BrickLink mass and either a rectangular `size` or
+     a source-LDU `nominal` profile, with optional `connectors`.
+  2. Re-run the synthesis.
+- **Refreshing masses:** `scripts/refresh-part-masses.py` prints current BrickLink
+  masses for rectangular reviewed parts for manual review; it never overwrites them.
+- **What a review does not supply:** new connector measurements or capacities.
 
 ### Scenic and Castle mould datums
 
@@ -219,7 +254,13 @@ groups and joints are preserved. No geometry matching merges physical occurrence
 
 ## Existing constructions
 
-The source-geometry/construct migration is complete; the `retrofit_library` tool
+The synthesized library keeps every reviewed canonical ID and its exact vertex
+stream, so existing constructions need no geometry or ID rewrite. Moved, alias
+and BrickLink numbers remain identity aliases for input normalization. A new
+synthesis replaces the current library for every world; frozen world physics
+models pin measurements and tolerances, not a library revision.
+
+The earlier source-geometry/construct migration is complete; the `retrofit_library` tool
 is retired. Current readers and new saves use the same canonical sourced parts
 and current construct definitions. Save/export compaction is a derived encoding
 change, not a rewrite of accepted history. Ordinary authoring still requires

@@ -9,6 +9,8 @@ import time
 import urllib.error
 import urllib.request
 import uuid
+import tempfile
+import library_fixture
 
 
 def main():
@@ -31,9 +33,16 @@ def main():
     name = "ergo-container-smoke-" + uuid.uuid4().hex[:12]
     created = False
     try:
+        # The server requires a published part library: mount a store seeded
+        # with the synthesized fixture library.
+        store = pathlib.Path(tempfile.mkdtemp(prefix="ergo-container-store-"))
+        library_fixture.seed(store)
+        for path in [store, *store.rglob("*")]:
+            path.chmod(0o777 if path.is_dir() else 0o666)
         engine("run", "--detach", "--pull=never", "--name", name, "--platform", "linux/amd64",
                "--publish", "127.0.0.1::8080", "--env", "ERGO_GROUND_SOURCE=disabled",
-               "--env", "ERGO_ASSET_FETCH=0", *(["--env","ERGO_ISOLATED_FIXTURES=1"] if args.browser else []), args.image)
+               "--volume", f"{store}:/data", "--env", "ERGO_DATA_DIR=/data",
+               *(["--env","ERGO_ISOLATED_FIXTURES=1"] if args.browser else []), args.image)
         created = True
         address = engine("port", name, "8080/tcp").strip().splitlines()[0]
         url = "http://" + address

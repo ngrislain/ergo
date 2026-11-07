@@ -145,7 +145,7 @@ mod tests {
     #[tokio::test]
     async fn private_positions_reject_out_of_order_updates_and_cross_account_reads() {
         let store = Store {
-            backend: Arc::new(object_store::memory::InMemory::new()),
+            backend: ergo_assets::fixture_store(),
             prefix: String::new(),
             kind: "Memory".into(),
             measurements: Arc::new(Default::default()),
@@ -160,7 +160,7 @@ mod tests {
             ground: store.ground_cache().unwrap(),
             store,
             geo: Default::default(),
-            library: None,
+            library: crate::parts::Parts::for_tests(),
             auth,
             shared,
         };

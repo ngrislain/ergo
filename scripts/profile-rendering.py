@@ -3,6 +3,7 @@
 import argparse,json,os,socket,subprocess,tempfile,time,urllib.request
 from pathlib import Path
 from playwright.sync_api import expect,sync_playwright
+import library_fixture
 
 ROOT=Path(__file__).resolve().parents[1]
 
@@ -23,7 +24,8 @@ def main():
     with tempfile.TemporaryDirectory(prefix='ergo-render-profile-') as temporary,tempfile.TemporaryFile(mode='w+t') as log:
         directory=Path(temporary);(directory/'web').symlink_to(ROOT/'web',target_is_directory=True)
         environment.update(ERGO_BIND=f'127.0.0.1:{port}',ERGO_PUBLIC_URL=base,ERGO_DATA_DIR=str(directory/'store'),
-                           ERGO_ISOLATED_FIXTURES='1',ERGO_ASSET_FETCH='0',ERGO_GROUND_SOURCE='disabled')
+                           ERGO_ISOLATED_FIXTURES='1',ERGO_GROUND_SOURCE='disabled')
+        library_fixture.seed(directory/'store',environment=environment)
         server=subprocess.Popen([str(ROOT/'target/debug/ergo-server')],cwd=directory,env=environment,stdout=log,stderr=log)
         try:
             for _ in range(150):

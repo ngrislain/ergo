@@ -209,10 +209,10 @@ pub fn relation_with_tolerance(a: &Brick, b: &Brick, tolerance: f64) -> Option<R
             && (lower.transform.y_axis - DVec3::Y).length() < 1e-5
             && (upper.transform.y_axis - DVec3::Y).length() < 1e-5
         {
-            let lower_part = crate::part_library::profile_id(&lower.part);
-            let upper_part = crate::part_library::profile_id(&upper.part);
+            let lower_part = crate::catalog::canonical_id(&lower.part);
+            let upper_part = crate::catalog::canonical_id(&upper.part);
             let torso = |part: &str| ["76382p00.dat", "76382p4f.dat", "973p4f.dat"].contains(&part);
-            factory_clip = ((lower_part == "970c00.dat" && torso(upper_part))
+            factory_clip = ((lower_part == "3815c01.dat" && torso(upper_part))
                 || (torso(lower_part) && ["3626a.dat", "3626ap01.dat"].contains(&upper_part)))
                 && (lower.position.x - upper.position.x).abs() < eps
                 && (lower.position.z - upper.position.z).abs() < eps;

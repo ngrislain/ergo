@@ -27,14 +27,15 @@ Only current persisted formats are supported by the application.
 
 ## Resource references: parts, constructs and occurrences
 
-The [canonical library](part-library.md) is compiled from checked-in UTF-8 JSON:
-`sources.lock.json` pins official LDraw geometry/dependencies and BrickLink catalogue
-metadata; `constructs.json` defines immutable common models. It is shipped with the
-client/server, not copied into each S3 construction as another set of part meshes.
+The [part library](part-library.md) is one synthesized, content-addressed
+document in the application namespace (below). `crates/world/library/constructs.json`
+defines immutable common models and is compiled in. Neither is copied into each
+S3 construction as another set of part meshes.
 
-- A standard **part ID** such as `3003.dat` selects one canonical description.
-  Official identity aliases resolve to that record. A **library revision** pins
-  its source/metadata, baker and full vertex fingerprint; it is not a world CID.
+- A **part ID** such as `3003.dat` selects one library entry. Official moved/alias
+  files and BrickLink numbers are identity aliases of it. A part **revision**
+  covers its pinned source closure, synthesis version and catalogue record; a
+  library revision covers the whole document. Neither is a world CID.
 - A **common construct ID** such as `classic-car-v2` selects reusable component
   placements. A native model stores `{kind:"construct",id:"classic-car-v2"}` plus
   transform/colour, rather than embedding the car's full definition per copy.
@@ -46,15 +47,10 @@ client/server, not copied into each S3 construction as another set of part meshe
   sharing and per-occurrence identity are separate; incompatible historical
   resources must not be merged just because their filenames or boxes are similar.
 
-The lock uses sorted-key, two-space-indented UTF-8 JSON with one final LF for its
-revision inputs. `source_revision` hashes `{catalogue,files}`; `revision` hashes
-`{baker,source_revision,vertex_hash,mesh_hash}`. Source-file hashes use the documented UTF-8/LF
-normalization. `vertex_hash` hashes every internal float32 component in little-endian
-order, normalizing signed zero before the public-axis wire conversion. Mesh CIDs
-instead hash stored CBOR. Distribution `parts.pack` is a concatenation of per-part
-gzip-CBOR members indexed by `{offset,bytes,mesh_hash}` in the lock; it is not a new
-accepted-world object family. The runtime expands a requested entry into the ordinary
-native part cache described below.
+Source-file hashes use UTF-8 without BOM and LF line endings. `vertex_hash`
+hashes every internal float32 component in little-endian order, normalizing
+signed zero before the public-axis wire conversion. Mesh CIDs instead hash
+stored CBOR.
 
 ## `world/refs/main.cbor`: Head
 
@@ -214,16 +210,22 @@ is at most 512 KiB and the stored envelope at most 1,052,672 bytes. These are
 discardable projections, never world-GC roots or publication input. Current
 authorization precedes reuse, including HTTP 304 responses.
 
-## `assets/parts/<part>.json`: Ergo part description
+## `catalog/part-library/…`: the part library
 
-UTF-8 JSON `{format:"ergo-part-1",schema:2,part,mesh_hash,bounds,body_bounds,
-catalog_mass,credits,library_revision?}`. Catalog mass is optional `{kg,source}`. Credits contain
-`{file,source_url,author,license}`. The hash selects **application-namespace**
-`objects/<mesh_hash>.cbor`, not `world/objects/`.
-Only the canonical part ID gets a current description; aliases select it rather
-than creating another entry. A stale library revision rebuilds the cache from
-the verified native pack before updating the description. Existing accepted world
-meshes remain frozen until an ordinary validated retrofit is accepted.
+- `catalog/part-library/current.json`: `{format:"ergo-part-library-pointer-1",revision}`.
+  This is the only mutable library key, and it is written last.
+- `catalog/part-library/<revision>/library.json.gz`: deterministic gzip of the
+  compact `ergo-part-library-2` JSON document. The fields are
+  `{format,revision,inputs,derivation,mass_calibration,parts,listed?}`.
+  - `parts` maps each canonical ID to `{revision,vertex_hash,mesh_hash,catalogue}`;
+    see [library entries](part-catalog.md#library-entries).
+  - The revision is the SHA-256 of the compact document with an empty revision.
+- `catalog/inputs/<sha256>`: write-once synthesis inputs (the LDraw archive,
+  the Rebrickable snapshot and the reviews document), named in the library's `inputs`.
+
+The mesh hash of each entry selects **application-namespace**
+`objects/<mesh_hash>.cbor`, not `world/objects/`. Existing accepted world meshes
+remain frozen until an ordinary validated edit is accepted.
 
 ## `objects/<mesh_hash>.cbor`: Ergo Mesh
 
@@ -235,9 +237,9 @@ Render bounds include details/studs; nominal collision body bounds exclude
 decorative studs for known parts. Physical metadata is a sourced measurement,
 not an inference from triangle volume.
 
-The description is published after its geometry; cache reads verify hash, schema
-and part identity. Native client LODs and instance lists are derived, not additional
-persisted formats. Source inputs occupy only a bounded transient import cache.
+Objects are published before the library that names them; reads verify hash,
+schema, part identity and vertex fingerprint. Native client LODs and instance
+lists are derived, not additional persisted formats.
 
 ## `ground/rasters/<provider-hash>/<z>/<x>/<y>.cbor`: Ergo raster
 

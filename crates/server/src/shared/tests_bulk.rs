@@ -459,29 +459,8 @@ async fn world_packing_pages_all_cells_preserves_models_and_invalidates_current_
 async fn brick_specifications_use_versioned_http_revalidation() {
     use axum::{body::Body, http::Request};
     use tower::ServiceExt;
+    // The test service store holds the reviewed-tier synthesized objects.
     let service = service();
-    let mut mesh = ergo_world::geometry::fallback_mesh("3003.dat");
-    mesh.quality = "source".into();
-    let mut bytes = Vec::new();
-    ciborium::into_writer(&mesh, &mut bytes).unwrap();
-    use sha2::{Digest, Sha256};
-    let hash = hex::encode(Sha256::digest(&bytes));
-    let description = ergo_assets::PartDescription::from_mesh(&mesh, hash.clone());
-    service
-        .store
-        .backend
-        .put(&Path::from(format!("objects/{hash}.cbor")), bytes.into())
-        .await
-        .unwrap();
-    service
-        .store
-        .backend
-        .put(
-            &Path::from("assets/parts/3003.dat.json"),
-            serde_json::to_vec(&description).unwrap().into(),
-        )
-        .await
-        .unwrap();
     let (app, _) = http(&service);
     let response = app
         .clone()

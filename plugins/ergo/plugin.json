@@ -1,7 +1,7 @@
 {
   "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
   "name": "ergo",
-  "version": "0.5.26",
+  "version": "0.5.27",
   "description": "Find LEGO set inspiration and build in the shared Ergo world with human-approved browser sign-in.",
   "author": {"name": "Ergo"},
   "homepage": "https://ergosandbox.com",

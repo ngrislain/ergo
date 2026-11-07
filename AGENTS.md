@@ -14,3 +14,14 @@
 - Before finishing a change, check the affected documentation for stale names,
   constants, endpoints, assumptions, and links. Code changes are not complete
   until their documentation is accurate.
+
+## Migrate forward; do not maintain legacy systems
+
+- When a format, library, identifier scheme or organization changes, migrate
+  every existing construct, stored construction, fixture and generated asset to
+  the new form in the same change (or with an explicit operator migration step).
+- Do not keep legacy code paths, compatibility shims, parallel old/new systems,
+  fallback readers or duplicate organizations alive "just in case". Remove the
+  old system once its data is migrated.
+- Prefer one authoritative pipeline per concern (for example one part library
+  and one synthesis procedure) over layered special cases.

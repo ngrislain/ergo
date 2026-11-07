@@ -11,6 +11,7 @@ import subprocess
 import tempfile
 import time
 from playwright.sync_api import sync_playwright, expect
+import library_fixture
 
 ROOT=pathlib.Path(__file__).resolve().parents[1]
 spec=importlib.util.spec_from_file_location("publish_test",ROOT/"scripts/test-mcp-publish.py")
@@ -21,7 +22,7 @@ with socket.socket() as sock:
     sock.bind(("127.0.0.1",0));port=sock.getsockname()[1]
 url=f"http://127.0.0.1:{port}"
 env={k:v for k,v in os.environ.items() if not k.startswith(("ERGO_","GOOGLE_","S3_","AWS_"))}
-env.update(ERGO_ASSET_FETCH="0",ERGO_GROUND_SOURCE="disabled",ERGO_ISOLATED_FIXTURES="1")
+env.update(ERGO_GROUND_SOURCE="disabled",ERGO_ISOLATED_FIXTURES="1")
 with tempfile.TemporaryDirectory(prefix="ergo-common-") as directory:
     directory=pathlib.Path(directory)
     (directory/"web").symlink_to(ROOT/"web",target_is_directory=True)
@@ -34,6 +35,7 @@ with tempfile.TemporaryDirectory(prefix="ergo-common-") as directory:
     log=tempfile.TemporaryFile(mode="w+t")
     processes=[]
     def start():
+        library_fixture.seed(directory/"store",environment=server_env)
         server=subprocess.Popen([str(ROOT/"target/debug/ergo-server")],cwd=directory,env=server_env,stdout=log,stderr=log)
         for _ in range(100):
             if server.poll() is not None:

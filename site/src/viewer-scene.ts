@@ -9,13 +9,18 @@ interface Preview {
 }
 interface PreviewModule {
   default(): Promise<unknown>;
+  installPartLibrary(json: Uint8Array): void;
   LandingPreview: new (canvas: HTMLCanvasElement) => Preview;
 }
 
 export async function mountBrickScene(mount: HTMLElement): Promise<() => void> {
-  const url = `${import.meta.env.BASE_URL}engine/v${import.meta.env.VITE_ENGINE_VERSION}/ergo_client.js`;
-  const wasm = (await import(/* @vite-ignore */ url)) as PreviewModule;
+  const engineRoot = `${import.meta.env.BASE_URL}engine/v${import.meta.env.VITE_ENGINE_VERSION}/`;
+  const wasm = (await import(/* @vite-ignore */ `${engineRoot}ergo_client.js`)) as PreviewModule;
   await wasm.default();
+  // The reviewed tier of the synthesized part library, versioned with the engine.
+  const library = await fetch(`${engineRoot}reviewed-library.json`);
+  if (!library.ok) throw new Error("Part library unavailable");
+  wasm.installPartLibrary(new Uint8Array(await library.arrayBuffer()));
   const canvas = document.createElement("canvas");
   canvas.setAttribute("role", "img");
   canvas.setAttribute(

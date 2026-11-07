@@ -255,6 +255,17 @@ pub fn bake_mesh(
     resolver: &impl Fn(&str) -> Option<String>,
     colors: &BTreeMap<u32, u32>,
 ) -> Result<Mesh> {
+    bake_mesh_observed(part, resolver, colors, &mut |_, _, _| {})
+}
+
+/// Bake as [`bake_mesh`], also reporting every nested type-1 reference with
+/// its accumulated source-LDU matrix and position (for primitive detection).
+pub fn bake_mesh_observed(
+    part: &str,
+    resolver: &impl Fn(&str) -> Option<String>,
+    colors: &BTreeMap<u32, u32>,
+    observe: &mut dyn FnMut(&str, DMat3, DVec3),
+) -> Result<Mesh> {
     let mut vertices = Vec::new();
     bake_recursive(
         part,
@@ -265,6 +276,7 @@ pub fn bake_mesh(
         16,
         &mut HashSet::new(),
         &mut vertices,
+        observe,
     )?;
     ensure!(!vertices.is_empty(), "No triangles found for {part}");
     let bounds = vertices
@@ -297,6 +309,7 @@ fn bake_recursive(
     inherited: u32,
     stack: &mut HashSet<String>,
     vertices: &mut Vec<f32>,
+    observe: &mut dyn FnMut(&str, DMat3, DVec3),
 ) -> Result<()> {
     ensure!(
         stack.len() < MAX_DEPTH && stack.insert(name.into()),
@@ -309,15 +322,10 @@ fn bake_recursive(
             Some("1") => {
                 let r = reference(&tokens)?;
                 let color = if r.color == 16 { inherited } else { r.color };
+                let (child, at) = (matrix * r.transform, matrix * r.position + position);
+                observe(&r.name, child, at);
                 bake_recursive(
-                    &r.name,
-                    resolver,
-                    colors,
-                    matrix * r.transform,
-                    matrix * r.position + position,
-                    color,
-                    stack,
-                    vertices,
+                    &r.name, resolver, colors, child, at, color, stack, vertices, observe,
                 )?;
             }
             Some("3") | Some("4") => {

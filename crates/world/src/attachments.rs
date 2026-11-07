@@ -29,7 +29,7 @@ pub enum Kind {
 }
 
 /// Endpoints, radius and optional cross-axle key are in official source LDU.
-#[derive(Debug, Deserialize, Serialize)]
+#[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct Connector {
     pub kind: Kind,
@@ -254,7 +254,7 @@ pub fn connection_with_tolerances(
         rotation_tolerance,
         |male, female, label, rotating| {
             let free_pin = male.source.kind == Kind::Pin
-                && crate::part_library::profile_id(
+                && crate::catalog::canonical_id(
                     if connectors(&a.part)
                         .iter()
                         .any(|c| std::ptr::eq(c, male.source))

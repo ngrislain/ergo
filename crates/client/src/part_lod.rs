@@ -43,10 +43,11 @@ impl RenderPart {
             &mesh.part
         };
         let canonical = ergo_world::catalog::canonical_part(candidate);
-        let id = ergo_world::catalog::PARTS
-            .iter()
-            .find(|(id, _)| *id == canonical)?
-            .0;
+        let id = ergo_world::part_library::get(&canonical)
+            .filter(|entry| entry.catalogue.derivation.is_none())?
+            .catalogue
+            .id
+            .as_str();
         let shape = if let Some(spec) = geometry::part_spec(id) {
             // An alias string, attribution or nominal box alone is not proof of
             // shape. Match complete parametric vertices or a reviewed exact
@@ -56,8 +57,8 @@ impl RenderPart {
                 let known = if mesh.quality == "parametric" {
                     mesh.vertices == expected.vertices
                 } else if mesh.quality == "source" {
-                    let fingerprint = ergo_world::part_library::get(id)
-                        .and_then(|entry| entry.vertex_hash.as_deref());
+                    let fingerprint =
+                        ergo_world::part_library::get(id).map(|entry| entry.vertex_hash.as_str());
                     fingerprint.is_some_and(|expected| vertex_hash(mesh) == expected)
                 } else {
                     false
@@ -86,7 +87,7 @@ impl RenderPart {
             };
             if let Some(length) = technic {
                 let known = ergo_world::part_library::get(id)
-                    .and_then(|entry| entry.vertex_hash.as_deref())
+                    .map(|entry| entry.vertex_hash.as_str())
                     .is_some_and(|expected| vertex_hash(mesh) == expected);
                 let bounds = geometry::nominal_body_bounds(id)?;
                 if !known

@@ -4,6 +4,10 @@ version.workspace = true
 edition.workspace = true
 license.workspace = true
 
+[features]
+# Seed stores with the committed reviewed-tier objects in dependent tests.
+test-library = ["ergo-world/test-library"]
+
 [dependencies]
 ergo-world.workspace = true
 serde.workspace = true
@@ -11,8 +15,9 @@ serde_json.workspace = true
 anyhow.workspace = true
 glam.workspace = true
 object_store = { version = "0.12", features = ["aws"] }
-tokio = { version = "1", features = ["sync"] }
-reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "stream"] }
+tokio = { version = "1", features = ["sync", "time", "rt", "macros"] }
+zip = { version = "2.4", default-features = false, features = ["deflate"] }
+reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "stream", "json"] }
 futures = "0.3"
 ciborium = "0.2"
 sha2 = "0.10"
@@ -26,4 +31,5 @@ tiny-skia = "0.12"
 font8x8 = "0.3"
 
 [dev-dependencies]
+ergo-world = { workspace = true, features = ["test-library"] }
 tokio = {version="1",features=["macros","rt-multi-thread"]}

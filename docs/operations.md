@@ -103,12 +103,12 @@ prove an asset or image was published.
 
 ```sh
 gh run list --repo ngrislain/ergo --workflow release.yml --limit 5
-gh release view v0.5.26 --repo ngrislain/ergo
+gh release view v0.5.27 --repo ngrislain/ergo
 ```
 
 Verify the public tarball version/checksum, consumer install and actual MCP smoke
 before changing the displayed installation source. Promote
-`@ngrislain/ergo-mcp@0.5.26` only after registry and consumer checks; retain the
+`@ngrislain/ergo-mcp@0.5.27` only after registry and consumer checks; retain the
 last verified public setting while building the candidate. GitHub also hosts the
 identical complete tarball and checksum. The package includes all 138 source parts
 and the reviewed wall bearing profile; check an outside-checkout npm installation
@@ -132,7 +132,7 @@ After publication, set the public Pages variable and rebuild:
 
 ```sh
 gh variable set ERGO_MCP_PACKAGE --repo ngrislain/ergo \
-  --body '@ngrislain/ergo-mcp@0.5.26'
+  --body '@ngrislain/ergo-mcp@0.5.27'
 gh workflow run pages.yml --repo ngrislain/ergo --ref main
 ```
 
@@ -154,6 +154,34 @@ tofu -chdir=infra/scaleway apply -input=false -var="image=$IMAGE" deployment.tfp
 values agree; pass the same image override when applying so automatically loaded
 variable files cannot supply a different image. For a new deployment, follow [Scaleway setup](scaleway-deployment.md);
 do not create duplicate resources instead of restoring existing state.
+
+## Part library
+
+The server refuses to start without a published part library. Before the first
+deployment of a release that changes the library format, and whenever the
+official LDraw library or reviews change, run the synthesis against the
+production store:
+
+```sh
+REBRICKABLE_API_KEY=... ergo-server parts-sync --dry-run   # report only
+REBRICKABLE_API_KEY=... ergo-server parts-sync             # publish, then move `current`
+ergo-server parts-check                                     # re-synthesize from stored inputs
+```
+
+- **Rebrickable key:** without it, BrickLink numbers are neither deduplicated nor
+  listed.
+- **Publishing:** writes the inputs, about 4.9 GB of write-once mesh objects and
+  the library before the pointer.
+- **Restart:** running servers keep their installed revision until restarted.
+- **Retired cache:** after the new release is live, the per-part `assets/parts/`
+  prefix is unused and can be deleted.
+- **Store selection:** `ergo-server` loads `.env` from its working directory, so a
+  checkout `.env` with `S3_*` makes every command (including `parts-publish`)
+  target that bucket. Run local and test commands from a directory without one.
+
+Operators listed in `ERGO_OPERATOR_IDS` can also start or watch a synthesis from
+a signed-in browser session: `POST`/`GET /api/admin/parts-sync`. See
+[the part library](part-library.md#commands).
 
 ## Native-format migration
 

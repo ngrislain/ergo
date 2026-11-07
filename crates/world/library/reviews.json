@@ -1,0 +1,6560 @@
+{
+  "format": "ergo-part-reviews-1",
+  "note": "Human-reviewed physical records. Consumed by the part-library synthesis; geometry, names, aliases and pins come from the official sources.",
+  "parts": [
+    {
+      "id": "2039.dat",
+      "mass_kg": 0.002,
+      "mass_source": "https://www.bricklink.com/v2/catalog/catalogitem.page?P=2039",
+      "nominal": {
+        "bounds_ldu": [
+          [
+            -20.0,
+            0.0,
+            -20.0
+          ],
+          [
+            20.0,
+            168.0,
+            20.0
+          ]
+        ],
+        "cavity": {
+          "bottom": 168.0,
+          "depth": 2,
+          "first": [
+            -10.0,
+            -10.0
+          ],
+          "width": 2
+        },
+        "studs_ldu": [
+          [
+            0.0,
+            0.0,
+            0.0
+          ]
+        ]
+      },
+      "set_count": 40
+    },
+    {
+      "id": "2345.dat",
+      "mass_kg": 0.00495,
+      "mass_source": "https://www.bricklink.com/v2/catalog/catalogitem.page?P=2345",
+      "nominal": {
+        "bounds_ldu": [
+          [
+            -30.0,
+            0.0,
+            -30.0
+          ],
+          [
+            30.0,
+            144.0,
+            30.0
+          ]
+        ],
+        "cavity": {
+          "bottom": 144.0,
+          "depth": 2,
+          "first": [
+            -20.0,
+            0.0
+          ],
+          "width": 2
+        },
+        "studs_ldu": [
+          [
+            -20.0,
+            24.0,
+            20.0
+          ],
+          [
+            0.0,
+            24.0,
+            20.0
+          ],
+          [
+            20.0,
+            24.0,
+            20.0
+          ],
+          [
+            -20.0,
+            24.0,
+            0.0
+          ],
+          [
+            -20.0,
+            24.0,
+            -20.0
+          ]
+        ]
+      },
+      "set_count": 45
+    },
+    {
+      "id": "2431.dat",
+      "mass_kg": 0.00054,
+      "mass_source": "https://www.bricklink.com/v2/catalog/catalogitem.page?P=2431",
+      "set_count": 4397,
+      "size": [
+        4,
+        1,
+        1
+      ],
+      "studs": false
+    },
+    {
+      "id": "2445.dat",
+      "mass_kg": 0.0035,
+      "mass_source": "https://www.bricklink.com/v2/catalog/catalogitem.page?P=2445",
+      "set_count": 1606,
+      "size": [
+        12,
+        2,
+        1
+      ],
+      "studs": true
+    },
+    {
+      "id": "2456.dat",
+      "mass_kg": 0.00374,
+      "mass_source": "https://www.bricklink.com/v2/catalog/catalogitem.page?P=2456",
+      "set_count": 1966,
+      "size": [
+        6,
+        2,
+        3
+      ],
+      "studs": true
+    },
+    {
+      "id": "26603.dat",
+      "mass_kg": 0.00068,
+      "mass_source": "https://www.bricklink.com/v2/catalog/catalogitem.page?P=26603",
+      "set_count": 1338,
+      "size": [
+        3,
+        2,
+        1
+      ],
+      "studs": false
+    },
+    {
+      "connectors": [
+        {
+          "end": [
+            -1.0,
+            0.0,
+            0.0
+          ],
+          "kind": "pin",
+          "radius": 6.0,
+          "start": [
+            -20.0,
+            0.0,
+            0.0
+          ]
+        },
+        {
+          "end": [
+            20.0,
+            0.0,
+            0.0
+          ],
+          "kind": "pin",
+          "radius": 6.0,
+          "start": [
+            1.0,
+            0.0,
+            0.0
+          ]
+        }
+      ],
+      "id": "2780.dat",
+      "mass_kg": 0.0002,
+      "mass_source": "https://www.bricklink.com/v2/catalog/catalogitem.page?P=2780",
+      "nominal": {
+        "bounds_ldu": [
+          [
+            -20.0,
+            -7.801,
+            -8.0005308
+          ],
+          [
+            20.0,
+            7.801,
+            8.0005308
+          ]
+        ],
+        "studs_ldu": []
+      },
+      "set_count": 3664
+    },
+    {
+      "id": "3001.dat",
+      "mass_kg": 0.00232,
+      "mass_source": "https://www.bricklink.com/v2/catalog/catalogitem.page?P=3001",
+      "set_count": 4176,
+      "size": [
+        4,
+        2,
+        3
+      ],
+      "studs": true
+    },
+    {
+      "id": "3002.dat",
+      "mass_kg": 0.00192,
+      "mass_source": "https://www.bricklink.com/v2/catalog/catalogitem.page?P=3002",
+      "set_count": 2700,
+      "size": [
+        3,
+        2,
+        3
+      ],
+      "studs": true
+    },
+    {
+      "id": "3003.dat",
+      "mass_kg": 0.00135,
+      "mass_source": "https://www.bricklink.com/v2/catalog/catalogitem.page?P=3003",
+      "set_count": 4582,
+      "size": [
+        2,
+        2,
+        3
+      ],
+      "studs": true
+    },
+    {
+      "id": "3004.dat",
+      "mass_kg": 0.00083,
+      "mass_source": "https://www.bricklink.com/v2/catalog/catalogitem.page?P=3004",
+      "set_count": 6653,
+      "size": [
+        2,
+        1,
+        3
+      ],
+      "studs": true
+    },
+    {
+      "id": "3005.dat",
+      "mass_kg": 0.00044,
+      "mass_source": "https://www.bricklink.com/v2/catalog/catalogitem.page?P=3005",
+      "set_count": 4979,
+      "size": [
+        1,
+        1,
+        3
+      ],
+      "studs": true
+    },
+    {
+      "id": "3007.dat",
+      "mass_kg": 0.00475,
+      "mass_source": "https://www.bricklink.com/v2/catalog/catalogitem.page?P=3007",
+      "set_count": 1263,
+      "size": [
+        8,
+        2,
+        3
+      ],
+      "studs": true
+    },
+    {
+      "id": "3008.dat",
+      "mass_kg": 0.00321,
+      "mass_source": "https://www.bricklink.com/v2/catalog/catalogitem.page?P=3008",
+      "set_count": 2193,
+      "size": [
+        8,
+        1,
+        3
+      ],
+      "studs": true
+    },
+    {
+      "id": "3009.dat",
+      "mass_kg": 0.00242,
+      "mass_source": "https://www.bricklink.com/v2/catalog/catalogitem.page?P=3009",
+      "set_count": 3415,
+      "size": [
+        6,
+        1,
+        3
+      ],
+      "studs": true
+    },
+    {
+      "id": "3010.dat",
+      "mass_kg": 0.00164,
+      "mass_source": "https://www.bricklink.com/v2/catalog/catalogitem.page?P=3010",
+      "set_count": 4933,
+      "size": [
+        4,
+        1,
+        3
+      ],
+      "studs": true
+    },
+    {
+      "id": "3020.dat",
+      "mass_kg": 0.0012,
+      "mass_source": "https://www.bricklink.com/v2/catalog/catalogitem.page?P=3020",
+      "set_count": 7700,
+      "size": [
+        4,
+        2,
+        1
+      ],
+      "studs": true
+    },
+    {
+      "id": "3021.dat",
+      "mass_kg": 0.00093,
+      "mass_source": "https://www.bricklink.com/v2/catalog/catalogitem.page?P=3021",
+      "set_count": 6494,
+      "size": [
+        3,
+        2,
+        1
+      ],
+      "studs": true
+    },
+    {
+      "id": "3022.dat",
+      "mass_kg": 0.00064,
+      "mass_source": "https://www.bricklink.com/v2/catalog/catalogitem.page?P=3022",
+      "set_count": 7556,
+      "size": [
+        2,
+        2,
+        1
+      ],
+      "studs": true
+    },
+    {
+      "id": "3023b.dat",
+      "mass_kg": 0.00035999999999999997,
+      "mass_source": "https://www.bricklink.com/v2/catalog/catalogitem.page?P=3023",
+      "set_count": 8712,
+      "size": [
+        2,
+        1,
+        1
+      ],
+      "studs": true
+    },
+    {
+      "id": "3024.dat",
+      "mass_kg": 0.0002,
+      "mass_source": "https://www.bricklink.com/v2/catalog/catalogitem.page?P=3024",
+      "set_count": 5373,
+      "size": [
+        1,
+        1,
+        1
+      ],
+      "studs": true
+    },
+    {
+      "id": "3026.dat",
+      "mass_kg": 0.01943,
+      "mass_source": "https://www.bricklink.com/v2/catalog/catalogitem.page?P=3026",
+      "set_count": 30,
+      "size": [
+        24,
+        6,
+        1
+      ],
+      "studs": true
+    },
+    {
+      "id": "3027.dat",
+      "mass_kg": 0.01327,
+      "mass_source": "https://www.bricklink.com/v2/catalog/catalogitem.page?P=3027",
+      "set_count": 441,
+      "size": [
+        16,
+        6,
+        1
+      ],
+      "studs": true
+    },
+    {
+      "id": "3031.dat",
+      "mass_kg": 0.00222,
+      "mass_source": "https://www.bricklink.com/v2/catalog/catalogitem.page?P=3031",
+      "set_count": 3414,
+      "size": [
+        4,
+        4,
+        1
+      ],
+      "studs": true
+    },
+    {
+      "id": "3032.dat",
+      "mass_kg": 0.0033,
+      "mass_source": "https://www.bricklink.com/v2/catalog/catalogitem.page?P=3032",
+      "set_count": 3070,
+      "size": [
+        6,
+        4,
+        1
+      ],
+      "studs": true
+    },
+    {
+      "id": "3034.dat",
+      "mass_kg": 0.00227,
+      "mass_source": "https://www.bricklink.com/v2/catalog/catalogitem.page?P=3034",
+      "set_count": 4025,
+      "size": [
+        8,
+        2,
+        1
+      ],
+      "studs": true
+    },
+    {
+      "id": "3035.dat",
+      "mass_kg": 0.0047,
+      "mass_source": "https://www.bricklink.com/v2/catalog/catalogitem.page?P=3035",
+      "set_count": 2286,
+      "size": [
+        8,
+        4,
+        1
+      ],
+      "studs": true
+    },
+    {
+      "id": "3036.dat",
+      "mass_kg": 0.0064,
+      "mass_source": "https://www.bricklink.com/v2/catalog/catalogitem.page?P=3036",
+      "set_count": 1617,
+      "size": [
+        8,
+        6,
+        1
+      ],
+      "studs": true
+    },
+    {
+      "id": "3037.dat",
+      "mass_kg": 0.00197,
+      "mass_source": "https://www.bricklink.com/v2/catalog/catalogitem.page?P=3037",
+      "nominal": {
+        "bounds_ldu": [
+          [
+            -40.0,
+            0.0,
+            -30.0
+          ],
+          [
+            40.0,
+            24.0,
+            10.0
+          ]
+        ],
+        "cavity": {
+          "bottom": 24.0,
+          "depth": 2,
+          "first": [
+            -30.0,
+            -20.0
+          ],
+          "width": 4
+        },
+        "studs_ldu": [
+          [
+            -30.0,
+            0.0,
+            0.0
+          ],
+          [
+            -10.0,
+            0.0,
+            0.0
+          ],
+          [
+            10.0,
+            0.0,
+            0.0
+          ],
+          [
+            30.0,
+            0.0,
+            0.0
+          ]
+        ]
+      },
+      "set_count": 1304
+    },
+    {
+      "connectors": [
+        {
+          "end": [
+            0.0,
+            80.0,
+            0.0
+          ],
+          "kind": "bar",
+          "radius": 4.0,
+          "start": [
+            0.0,
+            0.0,
+            0.0
+          ]
+        }
+      ],
+      "id": "30374.dat",
+      "mass_kg": 0.0003,
+      "mass_source": "https://www.bricklink.com/v2/catalog/catalogitem.page?P=30374",
+      "nominal": {
+        "bounds_ldu": [
+          [
+            -4.0,
+            0.0,
+            -4.0
+          ],
+          [
+            4.0,
+            80.0,
+            4.0
+          ]
+        ],
+        "studs_ldu": []
+      },
+      "set_count": 2304
+    },
+    {
+      "id": "3039.dat",
+      "mass_kg": 0.00115,
+      "mass_source": "https://www.bricklink.com/v2/catalog/catalogitem.page?P=3039",
+      "nominal": {
+        "bounds_ldu": [
+          [
+            -20.0,
+            0.0,
+            -30.0
+          ],
+          [
+            20.0,
+            24.0,
+            10.0
+          ]
+        ],
+        "cavity": {
+          "bottom": 24.0,
+          "depth": 2,
+          "first": [
+            -10.0,
+            -20.0
+          ],
+          "width": 2
+        },
+        "studs_ldu": [
+          [
+            -10.0,
+            0.0,
+            0.0
+          ],
+          [
+            10.0,
+            0.0,
+            0.0
+          ]
+        ]
+      },
+      "set_count": 3604
+    },
+    {
+      "id": "3062b.dat",
+      "mass_kg": 0.00028000000000000003,
+      "mass_source": "https://www.bricklink.com/v2/catalog/catalogitem.page?P=3062",
+      "nominal": {
+        "bounds_ldu": [
+          [
+            -10.0,
+            0.0,
+            -10.0
+          ],
+          [
+            10.0,
+            24.0,
+            10.0
+          ]
+        ],
+        "cavity": {
+          "bottom": 24.0,
+          "depth": 1,
+          "first": [
+            0.0,
+            0.0
+          ],
+          "width": 1
+        },
+        "studs_ldu": [
+          [
+            0.0,
+            0.0,
+            0.0
+          ]
+        ]
+      },
+      "set_count": 4494
+    },
+    {
+      "id": "3068b.dat",
+      "mass_kg": 0.00049,
+      "mass_source": "https://www.bricklink.com/v2/catalog/catalogitem.page?P=3068",
+      "set_count": 4123,
+      "size": [
+        2,
+        2,
+        1
+      ],
+      "studs": false
+    },
+    {
+      "id": "3069b.dat",
+      "mass_kg": 0.00026000000000000003,
+      "mass_source": "https://www.bricklink.com/v2/catalog/catalogitem.page?P=3069",
+      "set_count": 5681,
+      "size": [
+        2,
+        1,
+        1
+      ],
+      "studs": false
+    },
+    {
+      "id": "3070b.dat",
+      "mass_kg": 0.00016,
+      "mass_source": "https://www.bricklink.com/v2/catalog/catalogitem.page?P=3070",
+      "set_count": 3634,
+      "size": [
+        1,
+        1,
+        1
+      ],
+      "studs": false
+    },
+    {
+      "connectors": [
+        {
+          "end": [
+            -10.0,
+            10.0,
+            10.0
+          ],
+          "inset": 2.0,
+          "kind": "round_hole",
+          "radius": 8.0,
+          "start": [
+            -10.0,
+            10.0,
+            -10.0
+          ]
+        },
+        {
+          "end": [
+            10.0,
+            10.0,
+            10.0
+          ],
+          "inset": 2.0,
+          "kind": "round_hole",
+          "radius": 8.0,
+          "start": [
+            10.0,
+            10.0,
+            -10.0
+          ]
+        }
+      ],
+      "id": "32000.dat",
+      "mass_kg": 0.00073,
+      "mass_source": "https://www.bricklink.com/v2/catalog/catalogitem.page?P=32000",
+      "nominal": {
+        "bounds_ldu": [
+          [
+            -20.0,
+            0.0,
+            -10.0
+          ],
+          [
+            20.0,
+            24.0,
+            10.0
+          ]
+        ],
+        "cavity": {
+          "bottom": 24.0,
+          "depth": 1,
+          "first": [
+            -10.0,
+            0.0
+          ],
+          "width": 2
+        },
+        "studs_ldu": [
+          [
+            -10.0,
+            0.0,
+            0.0
+          ],
+          [
+            10.0,
+            0.0,
+            0.0
+          ]
+        ]
+      },
+      "set_count": 1428
+    },
+    {
+      "connectors": [
+        {
+          "end": [
+            20.0,
+            0.0,
+            0.0
+          ],
+          "key": [
+            0.0,
+            1.0,
+            0.0
+          ],
+          "kind": "axle",
+          "radius": 6.0,
+          "start": [
+            -20.0,
+            0.0,
+            0.0
+          ]
+        }
+      ],
+      "id": "32062.dat",
+      "mass_kg": 0.00026000000000000003,
+      "mass_source": "https://www.bricklink.com/v2/catalog/catalogitem.page?P=32062",
+      "nominal": {
+        "bounds_ldu": [
+          [
+            -19.5,
+            -6.0,
+            -6.0
+          ],
+          [
+            19.5,
+            6.0,
+            6.0
+          ]
+        ],
+        "studs_ldu": []
+      },
+      "set_count": 3003
+    },
+    {
+      "connectors": [
+        {
+          "end": [
+            50.0,
+            0.0,
+            0.0
+          ],
+          "key": [
+            0.0,
+            1.0,
+            0.0
+          ],
+          "kind": "axle",
+          "radius": 6.0,
+          "start": [
+            -50.0,
+            0.0,
+            0.0
+          ]
+        }
+      ],
+      "id": "32073.dat",
+      "mass_kg": 0.00066,
+      "mass_source": "https://www.bricklink.com/v2/catalog/catalogitem.page?P=32073",
+      "nominal": {
+        "bounds_ldu": [
+          [
+            -49.5,
+            -6.0,
+            -6.0
+          ],
+          [
+            49.5,
+            6.0,
+            6.0
+          ]
+        ],
+        "studs_ldu": []
+      },
+      "set_count": 1315
+    },
+    {
+      "connectors": [
+        {
+          "end": [
+            0.0,
+            0.0,
+            5.0
+          ],
+          "key": [
+            1.0,
+            0.0,
+            0.0
+          ],
+          "kind": "axle_hole",
+          "radius": 6.0,
+          "start": [
+            0.0,
+            0.0,
+            -5.0
+          ]
+        }
+      ],
+      "id": "32123a.dat",
+      "mass_kg": 0.0001,
+      "mass_source": "https://www.bricklink.com/v2/catalog/catalogitem.page?P=4265c",
+      "nominal": {
+        "bounds_ldu": [
+          [
+            -9.0,
+            -9.0,
+            -5.0
+          ],
+          [
+            9.0,
+            9.0,
+            5.0
+          ]
+        ],
+        "studs_ldu": []
+      },
+      "set_count": 1960
+    },
+    {
+      "connectors": [
+        {
+          "end": [
+            0.0,
+            10.0,
+            -140.0
+          ],
+          "inset": 2.0,
+          "kind": "round_hole",
+          "radius": 8.0,
+          "start": [
+            0.0,
+            -10.0,
+            -140.0
+          ]
+        },
+        {
+          "end": [
+            0.0,
+            10.0,
+            -120.0
+          ],
+          "inset": 2.0,
+          "kind": "round_hole",
+          "radius": 8.0,
+          "start": [
+            0.0,
+            -10.0,
+            -120.0
+          ]
+        },
+        {
+          "end": [
+            0.0,
+            10.0,
+            -100.0
+          ],
+          "inset": 2.0,
+          "kind": "round_hole",
+          "radius": 8.0,
+          "start": [
+            0.0,
+            -10.0,
+            -100.0
+          ]
+        },
+        {
+          "end": [
+            0.0,
+            10.0,
+            -80.0
+          ],
+          "inset": 2.0,
+          "kind": "round_hole",
+          "radius": 8.0,
+          "start": [
+            0.0,
+            -10.0,
+            -80.0
+          ]
+        },
+        {
+          "end": [
+            0.0,
+            10.0,
+            -60.0
+          ],
+          "inset": 2.0,
+          "kind": "round_hole",
+          "radius": 8.0,
+          "start": [
+            0.0,
+            -10.0,
+            -60.0
+          ]
+        },
+        {
+          "end": [
+            0.0,
+            10.0,
+            -40.0
+          ],
+          "inset": 2.0,
+          "kind": "round_hole",
+          "radius": 8.0,
+          "start": [
+            0.0,
+            -10.0,
+            -40.0
+          ]
+        },
+        {
+          "end": [
+            0.0,
+            10.0,
+            -20.0
+          ],
+          "inset": 2.0,
+          "kind": "round_hole",
+          "radius": 8.0,
+          "start": [
+            0.0,
+            -10.0,
+            -20.0
+          ]
+        },
+        {
+          "end": [
+            0.0,
+            10.0,
+            0.0
+          ],
+          "inset": 2.0,
+          "kind": "round_hole",
+          "radius": 8.0,
+          "start": [
+            0.0,
+            -10.0,
+            0.0
+          ]
+        },
+        {
+          "end": [
+            0.0,
+            10.0,
+            20.0
+          ],
+          "inset": 2.0,
+          "kind": "round_hole",
+          "radius": 8.0,
+          "start": [
+            0.0,
+            -10.0,
+            20.0
+          ]
+        },
+        {
+          "end": [
+            0.0,
+            10.0,
+            40.0
+          ],
+          "inset": 2.0,
+          "kind": "round_hole",
+          "radius": 8.0,
+          "start": [
+            0.0,
+            -10.0,
+            40.0
+          ]
+        },
+        {
+          "end": [
+            0.0,
+            10.0,
+            60.0
+          ],
+          "inset": 2.0,
+          "kind": "round_hole",
+          "radius": 8.0,
+          "start": [
+            0.0,
+            -10.0,
+            60.0
+          ]
+        },
+        {
+          "end": [
+            0.0,
+            10.0,
+            80.0
+          ],
+          "inset": 2.0,
+          "kind": "round_hole",
+          "radius": 8.0,
+          "start": [
+            0.0,
+            -10.0,
+            80.0
+          ]
+        },
+        {
+          "end": [
+            0.0,
+            10.0,
+            100.0
+          ],
+          "inset": 2.0,
+          "kind": "round_hole",
+          "radius": 8.0,
+          "start": [
+            0.0,
+            -10.0,
+            100.0
+          ]
+        },
+        {
+          "end": [
+            0.0,
+            10.0,
+            120.0
+          ],
+          "inset": 2.0,
+          "kind": "round_hole",
+          "radius": 8.0,
+          "start": [
+            0.0,
+            -10.0,
+            120.0
+          ]
+        },
+        {
+          "end": [
+            0.0,
+            10.0,
+            140.0
+          ],
+          "inset": 2.0,
+          "kind": "round_hole",
+          "radius": 8.0,
+          "start": [
+            0.0,
+            -10.0,
+            140.0
+          ]
+        }
+      ],
+      "id": "32278.dat",
+      "mass_kg": 0.004,
+      "mass_source": "https://www.bricklink.com/v2/catalog/catalogitem.page?P=32278",
+      "nominal": {
+        "bounds_ldu": [
+          [
+            -9.0,
+            -10.0,
+            -149.0
+          ],
+          [
+            9.0,
+            10.0,
+            149.0
+          ]
+        ],
+        "studs_ldu": []
+      },
+      "set_count": 507
+    },
+    {
+      "connectors": [
+        {
+          "end": [
+            0.0,
+            10.0,
+            -40.0
+          ],
+          "inset": 2.0,
+          "kind": "round_hole",
+          "radius": 8.0,
+          "start": [
+            0.0,
+            -10.0,
+            -40.0
+          ]
+        },
+        {
+          "end": [
+            0.0,
+            10.0,
+            -20.0
+          ],
+          "inset": 2.0,
+          "kind": "round_hole",
+          "radius": 8.0,
+          "start": [
+            0.0,
+            -10.0,
+            -20.0
+          ]
+        },
+        {
+          "end": [
+            0.0,
+            10.0,
+            0.0
+          ],
+          "inset": 2.0,
+          "kind": "round_hole",
+          "radius": 8.0,
+          "start": [
+            0.0,
+            -10.0,
+            0.0
+          ]
+        },
+        {
+          "end": [
+            0.0,
+            10.0,
+            20.0
+          ],
+          "inset": 2.0,
+          "kind": "round_hole",
+          "radius": 8.0,
+          "start": [
+            0.0,
+            -10.0,
+            20.0
+          ]
+        },
+        {
+          "end": [
+            0.0,
+            10.0,
+            40.0
+          ],
+          "inset": 2.0,
+          "kind": "round_hole",
+          "radius": 8.0,
+          "start": [
+            0.0,
+            -10.0,
+            40.0
+          ]
+        }
+      ],
+      "id": "32316.dat",
+      "mass_kg": 0.00125,
+      "mass_source": "https://www.bricklink.com/v2/catalog/catalogitem.page?P=32316",
+      "nominal": {
+        "bounds_ldu": [
+          [
+            -9.0,
+            -10.0,
+            -49.0
+          ],
+          [
+            9.0,
+            10.0,
+            49.0
+          ]
+        ],
+        "studs_ldu": []
+      },
+      "set_count": 923
+    },
+    {
+      "connectors": [
+        {
+          "end": [
+            0.0,
+            10.0,
+            -20.0
+          ],
+          "inset": 2.0,
+          "kind": "round_hole",
+          "radius": 8.0,
+          "start": [
+            0.0,
+            -10.0,
+            -20.0
+          ]
+        },
+        {
+          "end": [
+            0.0,
+            10.0,
+            0.0
+          ],
+          "inset": 2.0,
+          "kind": "round_hole",
+          "radius": 8.0,
+          "start": [
+            0.0,
+            -10.0,
+            0.0
+          ]
+        },
+        {
+          "end": [
+            0.0,
+            10.0,
+            20.0
+          ],
+          "inset": 2.0,
+          "kind": "round_hole",
+          "radius": 8.0,
+          "start": [
+            0.0,
+            -10.0,
+            20.0
+          ]
+        }
+      ],
+      "id": "32523.dat",
+      "mass_kg": 0.0007,
+      "mass_source": "https://www.bricklink.com/v2/catalog/catalogitem.page?P=32523",
+      "nominal": {
+        "bounds_ldu": [
+          [
+            -9.0,
+            -10.0,
+            -29.0
+          ],
+          [
+            9.0,
+            10.0,
+            29.0
+          ]
+        ],
+        "studs_ldu": []
+      },
+      "set_count": 1036
+    },
+    {
+      "connectors": [
+        {
+          "end": [
+            0.0,
+            10.0,
+            -60.0
+          ],
+          "inset": 2.0,
+          "kind": "round_hole",
+          "radius": 8.0,
+          "start": [
+            0.0,
+            -10.0,
+            -60.0
+          ]
+        },
+        {
+          "end": [
+            0.0,
+            10.0,
+            -40.0
+          ],
+          "inset": 2.0,
+          "kind": "round_hole",
+          "radius": 8.0,
+          "start": [
+            0.0,
+            -10.0,
+            -40.0
+          ]
+        },
+        {
+          "end": [
+            0.0,
+            10.0,
+            -20.0
+          ],
+          "inset": 2.0,
+          "kind": "round_hole",
+          "radius": 8.0,
+          "start": [
+            0.0,
+            -10.0,
+            -20.0
+          ]
+        },
+        {
+          "end": [
+            0.0,
+            10.0,
+            0.0
+          ],
+          "inset": 2.0,
+          "kind": "round_hole",
+          "radius": 8.0,
+          "start": [
+            0.0,
+            -10.0,
+            0.0
+          ]
+        },
+        {
+          "end": [
+            0.0,
+            10.0,
+            20.0
+          ],
+          "inset": 2.0,
+          "kind": "round_hole",
+          "radius": 8.0,
+          "start": [
+            0.0,
+            -10.0,
+            20.0
+          ]
+        },
+        {
+          "end": [
+            0.0,
+            10.0,
+            40.0
+          ],
+          "inset": 2.0,
+          "kind": "round_hole",
+          "radius": 8.0,
+          "start": [
+            0.0,
+            -10.0,
+            40.0
+          ]
+        },
+        {
+          "end": [
+            0.0,
+            10.0,
+            60.0
+          ],
+          "inset": 2.0,
+          "kind": "round_hole",
+          "radius": 8.0,
+          "start": [
+            0.0,
+            -10.0,
+            60.0
+          ]
+        }
+      ],
+      "id": "32524.dat",
+      "mass_kg": 0.00174,
+      "mass_source": "https://www.bricklink.com/v2/catalog/catalogitem.page?P=32524",
+      "nominal": {
+        "bounds_ldu": [
+          [
+            -9.0,
+            -10.0,
+            -69.0
+          ],
+          [
+            9.0,
+            10.0,
+            69.0
+          ]
+        ],
+        "studs_ldu": []
+      },
+      "set_count": 777
+    },
+    {
+      "connectors": [
+        {
+          "end": [
+            0.0,
+            10.0,
+            -100.0
+          ],
+          "inset": 2.0,
+          "kind": "round_hole",
+          "radius": 8.0,
+          "start": [
+            0.0,
+            -10.0,
+            -100.0
+          ]
+        },
+        {
+          "end": [
+            0.0,
+            10.0,
+            -80.0
+          ],
+          "inset": 2.0,
+          "kind": "round_hole",
+          "radius": 8.0,
+          "start": [
+            0.0,
+            -10.0,
+            -80.0
+          ]
+        },
+        {
+          "end": [
+            0.0,
+            10.0,
+            -60.0
+          ],
+          "inset": 2.0,
+          "kind": "round_hole",
+          "radius": 8.0,
+          "start": [
+            0.0,
+            -10.0,
+            -60.0
+          ]
+        },
+        {
+          "end": [
+            0.0,
+            10.0,
+            -40.0
+          ],
+          "inset": 2.0,
+          "kind": "round_hole",
+          "radius": 8.0,
+          "start": [
+            0.0,
+            -10.0,
+            -40.0
+          ]
+        },
+        {
+          "end": [
+            0.0,
+            10.0,
+            -20.0
+          ],
+          "inset": 2.0,
+          "kind": "round_hole",
+          "radius": 8.0,
+          "start": [
+            0.0,
+            -10.0,
+            -20.0
+          ]
+        },
+        {
+          "end": [
+            0.0,
+            10.0,
+            0.0
+          ],
+          "inset": 2.0,
+          "kind": "round_hole",
+          "radius": 8.0,
+          "start": [
+            0.0,
+            -10.0,
+            0.0
+          ]
+        },
+        {
+          "end": [
+            0.0,
+            10.0,
+            20.0
+          ],
+          "inset": 2.0,
+          "kind": "round_hole",
+          "radius": 8.0,
+          "start": [
+            0.0,
+            -10.0,
+            20.0
+          ]
+        },
+        {
+          "end": [
+            0.0,
+            10.0,
+            40.0
+          ],
+          "inset": 2.0,
+          "kind": "round_hole",
+          "radius": 8.0,
+          "start": [
+            0.0,
+            -10.0,
+            40.0
+          ]
+        },
+        {
+          "end": [
+            0.0,
+            10.0,
+            60.0
+          ],
+          "inset": 2.0,
+          "kind": "round_hole",
+          "radius": 8.0,
+          "start": [
+            0.0,
+            -10.0,
+            60.0
+          ]
+        },
+        {
+          "end": [
+            0.0,
+            10.0,
+            80.0
+          ],
+          "inset": 2.0,
+          "kind": "round_hole",
+          "radius": 8.0,
+          "start": [
+            0.0,
+            -10.0,
+            80.0
+          ]
+        },
+        {
+          "end": [
+            0.0,
+            10.0,
+            100.0
+          ],
+          "inset": 2.0,
+          "kind": "round_hole",
+          "radius": 8.0,
+          "start": [
+            0.0,
+            -10.0,
+            100.0
+          ]
+        }
+      ],
+      "id": "32525.dat",
+      "mass_kg": 0.0028,
+      "mass_source": "https://www.bricklink.com/v2/catalog/catalogitem.page?P=32525",
+      "nominal": {
+        "bounds_ldu": [
+          [
+            -9.0,
+            -10.0,
+            -109.0
+          ],
+          [
+            9.0,
+            10.0,
+            109.0
+          ]
+        ],
+        "studs_ldu": []
+      },
+      "set_count": 542
+    },
+    {
+      "id": "3307.dat",
+      "mass_kg": 0.00287,
+      "mass_source": "https://www.bricklink.com/v2/catalog/catalogitem.page?P=3307",
+      "nominal": {
+        "additional_cavities": [
+          {
+            "bottom": 48.0,
+            "depth": 1,
+            "first": [
+              50.0,
+              0.0
+            ],
+            "width": 1
+          }
+        ],
+        "bounds_ldu": [
+          [
+            -60.0,
+            0.0,
+            -10.0
+          ],
+          [
+            60.0,
+            48.0,
+            10.0
+          ]
+        ],
+        "cavity": {
+          "bottom": 48.0,
+          "depth": 1,
+          "first": [
+            -50.0,
+            0.0
+          ],
+          "width": 1
+        },
+        "studs_ldu": [
+          [
+            -50.0,
+            0.0,
+            0.0
+          ],
+          [
+            -30.0,
+            0.0,
+            0.0
+          ],
+          [
+            -10.0,
+            0.0,
+            0.0
+          ],
+          [
+            10.0,
+            0.0,
+            0.0
+          ],
+          [
+            30.0,
+            0.0,
+            0.0
+          ],
+          [
+            50.0,
+            0.0,
+            0.0
+          ]
+        ]
+      },
+      "set_count": 243
+    },
+    {
+      "id": "3308a.dat",
+      "mass_kg": 0.00383,
+      "mass_source": "https://www.bricklink.com/v2/catalog/catalogitem.page?P=3308",
+      "nominal": {
+        "additional_cavities": [
+          {
+            "bottom": 48.0,
+            "depth": 1,
+            "first": [
+              70.0,
+              0.0
+            ],
+            "width": 1
+          }
+        ],
+        "bounds_ldu": [
+          [
+            -80.0,
+            0.0,
+            -10.0
+          ],
+          [
+            80.0,
+            48.0,
+            10.0
+          ]
+        ],
+        "cavity": {
+          "bottom": 48.0,
+          "depth": 1,
+          "first": [
+            -70.0,
+            0.0
+          ],
+          "width": 1
+        },
+        "studs_ldu": [
+          [
+            -70.0,
+            0.0,
+            0.0
+          ],
+          [
+            -50.0,
+            0.0,
+            0.0
+          ],
+          [
+            -30.0,
+            0.0,
+            0.0
+          ],
+          [
+            -10.0,
+            0.0,
+            0.0
+          ],
+          [
+            10.0,
+            0.0,
+            0.0
+          ],
+          [
+            30.0,
+            0.0,
+            0.0
+          ],
+          [
+            50.0,
+            0.0,
+            0.0
+          ],
+          [
+            70.0,
+            0.0,
+            0.0
+          ]
+        ]
+      },
+      "set_count": 195
+    },
+    {
+      "id": "3456.dat",
+      "mass_kg": 0.011,
+      "mass_source": "https://www.bricklink.com/v2/catalog/catalogitem.page?P=3456",
+      "set_count": 269,
+      "size": [
+        14,
+        6,
+        1
+      ],
+      "studs": true
+    },
+    {
+      "id": "3470.dat",
+      "mass_kg": 0.0094,
+      "mass_source": "https://www.bricklink.com/v2/catalog/catalogitem.page?P=3470",
+      "nominal": {
+        "bounds_ldu": [
+          [
+            -20.0,
+            -135.88,
+            -20.0
+          ],
+          [
+            20.0,
+            8.0,
+            20.0
+          ]
+        ],
+        "cavity": {
+          "bottom": 8.0,
+          "depth": 2,
+          "first": [
+            -10.0,
+            -10.0
+          ],
+          "width": 2
+        },
+        "studs_ldu": []
+      },
+      "set_count": 70
+    },
+    {
+      "id": "3471.dat",
+      "mass_kg": 0.0067,
+      "mass_source": "https://www.bricklink.com/v2/catalog/catalogitem.page?P=3471",
+      "nominal": {
+        "bounds_ldu": [
+          [
+            -20.0,
+            -151.0,
+            -20.0
+          ],
+          [
+            20.0,
+            8.0,
+            20.0
+          ]
+        ],
+        "cavity": {
+          "bottom": 8.0,
+          "depth": 2,
+          "first": [
+            -10.0,
+            -10.0
+          ],
+          "width": 2
+        },
+        "studs_ldu": []
+      },
+      "set_count": 155
+    },
+    {
+      "connectors": [
+        {
+          "end": [
+            0.0,
+            0.0,
+            10.0
+          ],
+          "key": [
+            1.0,
+            0.0,
+            0.0
+          ],
+          "kind": "axle_hole",
+          "radius": 6.0,
+          "start": [
+            0.0,
+            0.0,
+            -10.0
+          ]
+        },
+        {
+          "end": [
+            0.0,
+            0.0,
+            10.0
+          ],
+          "group": "3482-3483",
+          "kind": "rim",
+          "radius": 21.875,
+          "start": [
+            0.0,
+            0.0,
+            -10.0
+          ]
+        }
+      ],
+      "id": "3482.dat",
+      "mass_kg": 0.00088,
+      "mass_source": "https://www.bricklink.com/v2/catalog/catalogitem.page?P=3482",
+      "nominal": {
+        "bounds_ldu": [
+          [
+            -22.0,
+            -22.0,
+            -10.0
+          ],
+          [
+            22.0,
+            22.0,
+            10.0
+          ]
+        ],
+        "studs_ldu": []
+      },
+      "set_count": 199
+    },
+    {
+      "connectors": [
+        {
+          "end": [
+            0.0,
+            0.0,
+            10.0
+          ],
+          "group": "3482-3483",
+          "kind": "tyre",
+          "radius": 21.875,
+          "start": [
+            0.0,
+            0.0,
+            -10.0
+          ]
+        }
+      ],
+      "id": "3483.dat",
+      "mass_kg": 0.00169,
+      "mass_source": "https://www.bricklink.com/v2/catalog/catalogitem.page?P=3483",
+      "nominal": {
+        "bounds_ldu": [
+          [
+            -31.0,
+            -31.0,
+            -9.0
+          ],
+          [
+            31.0,
+            31.0,
+            9.0
+          ]
+        ],
+        "studs_ldu": []
+      },
+      "set_count": 351
+    },
+    {
+      "id": "3622.dat",
+      "mass_kg": 0.00124,
+      "mass_source": "https://www.bricklink.com/v2/catalog/catalogitem.page?P=3622",
+      "set_count": 3116,
+      "size": [
+        3,
+        1,
+        3
+      ],
+      "studs": true
+    },
+    {
+      "id": "3623.dat",
+      "mass_kg": 0.00053,
+      "mass_source": "https://www.bricklink.com/v2/catalog/catalogitem.page?P=3623",
+      "set_count": 4604,
+      "size": [
+        3,
+        1,
+        1
+      ],
+      "studs": true
+    },
+    {
+      "id": "3626a.dat",
+      "mass_kg": 0.00057,
+      "mass_source": "https://www.bricklink.com/v2/catalog/catalogitem.page?P=3626a",
+      "nominal": {
+        "bounds_ldu": [
+          [
+            -13.0,
+            0.0,
+            -13.0
+          ],
+          [
+            13.0,
+            24.0,
+            13.0
+          ]
+        ],
+        "cavity": {
+          "bottom": 24.0,
+          "depth": 1,
+          "first": [
+            0.0,
+            0.0
+          ],
+          "width": 1
+        },
+        "studs_ldu": [
+          [
+            0.0,
+            0.0,
+            0.0
+          ]
+        ]
+      },
+      "set_count": 66
+    },
+    {
+      "id": "3626ap01.dat",
+      "mass_kg": 0.00057,
+      "mass_source": "https://www.bricklink.com/v2/catalog/catalogitem.page?P=3626ap01",
+      "nominal": {
+        "bounds_ldu": [
+          [
+            -13.0,
+            0.0,
+            -13.0
+          ],
+          [
+            13.0,
+            24.0,
+            13.0
+          ]
+        ],
+        "cavity": {
+          "bottom": 24.0,
+          "depth": 1,
+          "first": [
+            0.0,
+            0.0
+          ],
+          "width": 1
+        },
+        "studs_ldu": [
+          [
+            0.0,
+            0.0,
+            0.0
+          ]
+        ]
+      },
+      "set_count": 384
+    },
+    {
+      "id": "3633.dat",
+      "mass_kg": 0.0008,
+      "mass_source": "https://www.bricklink.com/v2/catalog/catalogitem.page?P=3633",
+      "nominal": {
+        "bounds_ldu": [
+          [
+            -40.0,
+            0.0,
+            -10.0
+          ],
+          [
+            40.0,
+            24.0,
+            10.0
+          ]
+        ],
+        "cavity": {
+          "bottom": 24.0,
+          "depth": 1,
+          "first": [
+            -30.0,
+            0.0
+          ],
+          "width": 4
+        },
+        "studs_ldu": []
+      },
+      "set_count": 632
+    },
+    {
+      "connectors": [
+        {
+          "end": [
+            0.0,
+            0.0,
+            8.0
+          ],
+          "group": "4624-3641",
+          "kind": "tyre",
+          "radius": 10.0,
+          "start": [
+            0.0,
+            0.0,
+            -8.0
+          ]
+        }
+      ],
+      "id": "3641.dat",
+      "mass_kg": 0.00073,
+      "mass_source": "https://www.bricklink.com/v2/catalog/catalogitem.page?P=3641",
+      "nominal": {
+        "bounds_ldu": [
+          [
+            -18.0,
+            -18.0,
+            -8.0
+          ],
+          [
+            18.0,
+            18.0,
+            8.0
+          ]
+        ],
+        "studs_ldu": []
+      },
+      "set_count": 498
+    },
+    {
+      "id": "3659.dat",
+      "mass_kg": 0.00125,
+      "mass_source": "https://www.bricklink.com/v2/catalog/catalogitem.page?P=3659",
+      "nominal": {
+        "additional_cavities": [
+          {
+            "bottom": 24.0,
+            "depth": 1,
+            "first": [
+              30.0,
+              0.0
+            ],
+            "width": 1
+          }
+        ],
+        "bounds_ldu": [
+          [
+            -40.0,
+            0.0,
+            -10.0
+          ],
+          [
+            40.0,
+            24.0,
+            10.0
+          ]
+        ],
+        "cavity": {
+          "bottom": 24.0,
+          "depth": 1,
+          "first": [
+            -30.0,
+            0.0
+          ],
+          "width": 1
+        },
+        "studs_ldu": [
+          [
+            -30.0,
+            0.0,
+            0.0
+          ],
+          [
+            -10.0,
+            0.0,
+            0.0
+          ],
+          [
+            10.0,
+            0.0,
+            0.0
+          ],
+          [
+            30.0,
+            0.0,
+            0.0
+          ]
+        ]
+      },
+      "set_count": 1079
+    },
+    {
+      "id": "3666.dat",
+      "mass_kg": 0.00106,
+      "mass_source": "https://www.bricklink.com/v2/catalog/catalogitem.page?P=3666",
+      "set_count": 4927,
+      "size": [
+        6,
+        1,
+        1
+      ],
+      "studs": true
+    },
+    {
+      "connectors": [
+        {
+          "end": [
+            -1.0,
+            0.0,
+            0.0
+          ],
+          "kind": "pin",
+          "radius": 6.0,
+          "start": [
+            -20.0,
+            0.0,
+            0.0
+          ]
+        },
+        {
+          "end": [
+            20.0,
+            0.0,
+            0.0
+          ],
+          "kind": "pin",
+          "radius": 6.0,
+          "start": [
+            1.0,
+            0.0,
+            0.0
+          ]
+        }
+      ],
+      "id": "3673.dat",
+      "mass_kg": 0.00016,
+      "mass_source": "https://www.bricklink.com/v2/catalog/catalogitem.page?P=3673",
+      "nominal": {
+        "bounds_ldu": [
+          [
+            -20.0,
+            -8.0,
+            -8.0
+          ],
+          [
+            20.0,
+            8.0,
+            8.0
+          ]
+        ],
+        "studs_ldu": []
+      },
+      "set_count": 1897
+    },
+    {
+      "connectors": [
+        {
+          "end": [
+            0.0,
+            10.0,
+            10.0
+          ],
+          "inset": 2.0,
+          "kind": "round_hole",
+          "radius": 8.0,
+          "start": [
+            0.0,
+            10.0,
+            -10.0
+          ]
+        }
+      ],
+      "id": "3700.dat",
+      "mass_kg": 0.00082,
+      "mass_source": "https://www.bricklink.com/v2/catalog/catalogitem.page?P=3700",
+      "nominal": {
+        "bounds_ldu": [
+          [
+            -20.0,
+            0.0,
+            -10.0
+          ],
+          [
+            20.0,
+            24.0,
+            10.0
+          ]
+        ],
+        "cavity": {
+          "bottom": 24.0,
+          "depth": 1,
+          "first": [
+            -10.0,
+            0.0
+          ],
+          "width": 2
+        },
+        "studs_ldu": [
+          [
+            -10.0,
+            0.0,
+            0.0
+          ],
+          [
+            10.0,
+            0.0,
+            0.0
+          ]
+        ]
+      },
+      "set_count": 3122
+    },
+    {
+      "connectors": [
+        {
+          "end": [
+            -20.0,
+            10.0,
+            10.0
+          ],
+          "inset": 2.0,
+          "kind": "round_hole",
+          "radius": 8.0,
+          "start": [
+            -20.0,
+            10.0,
+            -10.0
+          ]
+        },
+        {
+          "end": [
+            0.0,
+            10.0,
+            10.0
+          ],
+          "inset": 2.0,
+          "kind": "round_hole",
+          "radius": 8.0,
+          "start": [
+            0.0,
+            10.0,
+            -10.0
+          ]
+        },
+        {
+          "end": [
+            20.0,
+            10.0,
+            10.0
+          ],
+          "inset": 2.0,
+          "kind": "round_hole",
+          "radius": 8.0,
+          "start": [
+            20.0,
+            10.0,
+            -10.0
+          ]
+        }
+      ],
+      "id": "3701.dat",
+      "mass_kg": 0.00146,
+      "mass_source": "https://www.bricklink.com/v2/catalog/catalogitem.page?P=3701",
+      "nominal": {
+        "bounds_ldu": [
+          [
+            -40.0,
+            0.0,
+            -10.0
+          ],
+          [
+            40.0,
+            24.0,
+            10.0
+          ]
+        ],
+        "cavity": {
+          "bottom": 24.0,
+          "depth": 1,
+          "first": [
+            -30.0,
+            0.0
+          ],
+          "width": 4
+        },
+        "studs_ldu": [
+          [
+            -30.0,
+            0.0,
+            0.0
+          ],
+          [
+            -10.0,
+            0.0,
+            0.0
+          ],
+          [
+            10.0,
+            0.0,
+            0.0
+          ],
+          [
+            30.0,
+            0.0,
+            0.0
+          ]
+        ]
+      },
+      "set_count": 1628
+    },
+    {
+      "connectors": [
+        {
+          "end": [
+            -60.0,
+            10.0,
+            10.0
+          ],
+          "inset": 2.0,
+          "kind": "round_hole",
+          "radius": 8.0,
+          "start": [
+            -60.0,
+            10.0,
+            -10.0
+          ]
+        },
+        {
+          "end": [
+            -40.0,
+            10.0,
+            10.0
+          ],
+          "inset": 2.0,
+          "kind": "round_hole",
+          "radius": 8.0,
+          "start": [
+            -40.0,
+            10.0,
+            -10.0
+          ]
+        },
+        {
+          "end": [
+            -20.0,
+            10.0,
+            10.0
+          ],
+          "inset": 2.0,
+          "kind": "round_hole",
+          "radius": 8.0,
+          "start": [
+            -20.0,
+            10.0,
+            -10.0
+          ]
+        },
+        {
+          "end": [
+            0.0,
+            10.0,
+            10.0
+          ],
+          "inset": 2.0,
+          "kind": "round_hole",
+          "radius": 8.0,
+          "start": [
+            0.0,
+            10.0,
+            -10.0
+          ]
+        },
+        {
+          "end": [
+            20.0,
+            10.0,
+            10.0
+          ],
+          "inset": 2.0,
+          "kind": "round_hole",
+          "radius": 8.0,
+          "start": [
+            20.0,
+            10.0,
+            -10.0
+          ]
+        },
+        {
+          "end": [
+            40.0,
+            10.0,
+            10.0
+          ],
+          "inset": 2.0,
+          "kind": "round_hole",
+          "radius": 8.0,
+          "start": [
+            40.0,
+            10.0,
+            -10.0
+          ]
+        },
+        {
+          "end": [
+            60.0,
+            10.0,
+            10.0
+          ],
+          "inset": 2.0,
+          "kind": "round_hole",
+          "radius": 8.0,
+          "start": [
+            60.0,
+            10.0,
+            -10.0
+          ]
+        }
+      ],
+      "id": "3702.dat",
+      "mass_kg": 0.00285,
+      "mass_source": "https://www.bricklink.com/v2/catalog/catalogitem.page?P=3702",
+      "nominal": {
+        "bounds_ldu": [
+          [
+            -80.0,
+            0.0,
+            -10.0
+          ],
+          [
+            80.0,
+            24.0,
+            10.0
+          ]
+        ],
+        "cavity": {
+          "bottom": 24.0,
+          "depth": 1,
+          "first": [
+            -70.0,
+            0.0
+          ],
+          "width": 8
+        },
+        "studs_ldu": [
+          [
+            -70.0,
+            0.0,
+            0.0
+          ],
+          [
+            -50.0,
+            0.0,
+            0.0
+          ],
+          [
+            -30.0,
+            0.0,
+            0.0
+          ],
+          [
+            -10.0,
+            0.0,
+            0.0
+          ],
+          [
+            10.0,
+            0.0,
+            0.0
+          ],
+          [
+            30.0,
+            0.0,
+            0.0
+          ],
+          [
+            50.0,
+            0.0,
+            0.0
+          ],
+          [
+            70.0,
+            0.0,
+            0.0
+          ]
+        ]
+      },
+      "set_count": 836
+    },
+    {
+      "connectors": [
+        {
+          "end": [
+            -140.0,
+            10.0,
+            10.0
+          ],
+          "inset": 2.0,
+          "kind": "round_hole",
+          "radius": 8.0,
+          "start": [
+            -140.0,
+            10.0,
+            -10.0
+          ]
+        },
+        {
+          "end": [
+            -120.0,
+            10.0,
+            10.0
+          ],
+          "inset": 2.0,
+          "kind": "round_hole",
+          "radius": 8.0,
+          "start": [
+            -120.0,
+            10.0,
+            -10.0
+          ]
+        },
+        {
+          "end": [
+            -100.0,
+            10.0,
+            10.0
+          ],
+          "inset": 2.0,
+          "kind": "round_hole",
+          "radius": 8.0,
+          "start": [
+            -100.0,
+            10.0,
+            -10.0
+          ]
+        },
+        {
+          "end": [
+            -80.0,
+            10.0,
+            10.0
+          ],
+          "inset": 2.0,
+          "kind": "round_hole",
+          "radius": 8.0,
+          "start": [
+            -80.0,
+            10.0,
+            -10.0
+          ]
+        },
+        {
+          "end": [
+            -60.0,
+            10.0,
+            10.0
+          ],
+          "inset": 2.0,
+          "kind": "round_hole",
+          "radius": 8.0,
+          "start": [
+            -60.0,
+            10.0,
+            -10.0
+          ]
+        },
+        {
+          "end": [
+            -40.0,
+            10.0,
+            10.0
+          ],
+          "inset": 2.0,
+          "kind": "round_hole",
+          "radius": 8.0,
+          "start": [
+            -40.0,
+            10.0,
+            -10.0
+          ]
+        },
+        {
+          "end": [
+            -20.0,
+            10.0,
+            10.0
+          ],
+          "inset": 2.0,
+          "kind": "round_hole",
+          "radius": 8.0,
+          "start": [
+            -20.0,
+            10.0,
+            -10.0
+          ]
+        },
+        {
+          "end": [
+            0.0,
+            10.0,
+            10.0
+          ],
+          "inset": 2.0,
+          "kind": "round_hole",
+          "radius": 8.0,
+          "start": [
+            0.0,
+            10.0,
+            -10.0
+          ]
+        },
+        {
+          "end": [
+            20.0,
+            10.0,
+            10.0
+          ],
+          "inset": 2.0,
+          "kind": "round_hole",
+          "radius": 8.0,
+          "start": [
+            20.0,
+            10.0,
+            -10.0
+          ]
+        },
+        {
+          "end": [
+            40.0,
+            10.0,
+            10.0
+          ],
+          "inset": 2.0,
+          "kind": "round_hole",
+          "radius": 8.0,
+          "start": [
+            40.0,
+            10.0,
+            -10.0
+          ]
+        },
+        {
+          "end": [
+            60.0,
+            10.0,
+            10.0
+          ],
+          "inset": 2.0,
+          "kind": "round_hole",
+          "radius": 8.0,
+          "start": [
+            60.0,
+            10.0,
+            -10.0
+          ]
+        },
+        {
+          "end": [
+            80.0,
+            10.0,
+            10.0
+          ],
+          "inset": 2.0,
+          "kind": "round_hole",
+          "radius": 8.0,
+          "start": [
+            80.0,
+            10.0,
+            -10.0
+          ]
+        },
+        {
+          "end": [
+            100.0,
+            10.0,
+            10.0
+          ],
+          "inset": 2.0,
+          "kind": "round_hole",
+          "radius": 8.0,
+          "start": [
+            100.0,
+            10.0,
+            -10.0
+          ]
+        },
+        {
+          "end": [
+            120.0,
+            10.0,
+            10.0
+          ],
+          "inset": 2.0,
+          "kind": "round_hole",
+          "radius": 8.0,
+          "start": [
+            120.0,
+            10.0,
+            -10.0
+          ]
+        },
+        {
+          "end": [
+            140.0,
+            10.0,
+            10.0
+          ],
+          "inset": 2.0,
+          "kind": "round_hole",
+          "radius": 8.0,
+          "start": [
+            140.0,
+            10.0,
+            -10.0
+          ]
+        }
+      ],
+      "id": "3703.dat",
+      "mass_kg": 0.00587,
+      "mass_source": "https://www.bricklink.com/v2/catalog/catalogitem.page?P=3703",
+      "nominal": {
+        "bounds_ldu": [
+          [
+            -160.0,
+            0.0,
+            -10.0
+          ],
+          [
+            160.0,
+            24.0,
+            10.0
+          ]
+        ],
+        "cavity": {
+          "bottom": 24.0,
+          "depth": 1,
+          "first": [
+            -150.0,
+            0.0
+          ],
+          "width": 16
+        },
+        "studs_ldu": [
+          [
+            -150.0,
+            0.0,
+            0.0
+          ],
+          [
+            -130.0,
+            0.0,
+            0.0
+          ],
+          [
+            -110.0,
+            0.0,
+            0.0
+          ],
+          [
+            -90.0,
+            0.0,
+            0.0
+          ],
+          [
+            -70.0,
+            0.0,
+            0.0
+          ],
+          [
+            -50.0,
+            0.0,
+            0.0
+          ],
+          [
+            -30.0,
+            0.0,
+            0.0
+          ],
+          [
+            -10.0,
+            0.0,
+            0.0
+          ],
+          [
+            10.0,
+            0.0,
+            0.0
+          ],
+          [
+            30.0,
+            0.0,
+            0.0
+          ],
+          [
+            50.0,
+            0.0,
+            0.0
+          ],
+          [
+            70.0,
+            0.0,
+            0.0
+          ],
+          [
+            90.0,
+            0.0,
+            0.0
+          ],
+          [
+            110.0,
+            0.0,
+            0.0
+          ],
+          [
+            130.0,
+            0.0,
+            0.0
+          ],
+          [
+            150.0,
+            0.0,
+            0.0
+          ]
+        ]
+      },
+      "set_count": 644
+    },
+    {
+      "connectors": [
+        {
+          "end": [
+            20.0,
+            0.0,
+            0.0
+          ],
+          "key": [
+            0.0,
+            1.0,
+            0.0
+          ],
+          "kind": "axle",
+          "radius": 6.0,
+          "start": [
+            -20.0,
+            0.0,
+            0.0
+          ]
+        }
+      ],
+      "id": "3704.dat",
+      "mass_kg": 0.00027,
+      "mass_source": "https://www.bricklink.com/v2/catalog/catalogitem.page?P=3704",
+      "nominal": {
+        "bounds_ldu": [
+          [
+            -19.5,
+            -6.0,
+            -6.0
+          ],
+          [
+            19.5,
+            6.0,
+            6.0
+          ]
+        ],
+        "studs_ldu": []
+      },
+      "set_count": 118
+    },
+    {
+      "connectors": [
+        {
+          "end": [
+            40.0,
+            0.0,
+            0.0
+          ],
+          "key": [
+            0.0,
+            1.0,
+            0.0
+          ],
+          "kind": "axle",
+          "radius": 6.0,
+          "start": [
+            -40.0,
+            0.0,
+            0.0
+          ]
+        }
+      ],
+      "id": "3705.dat",
+      "mass_kg": 0.0005899999999999999,
+      "mass_source": "https://www.bricklink.com/v2/catalog/catalogitem.page?P=3705",
+      "nominal": {
+        "bounds_ldu": [
+          [
+            -39.5,
+            -6.0,
+            -6.0
+          ],
+          [
+            39.5,
+            6.0,
+            6.0
+          ]
+        ],
+        "studs_ldu": []
+      },
+      "set_count": 2044
+    },
+    {
+      "connectors": [
+        {
+          "end": [
+            60.0,
+            0.0,
+            0.0
+          ],
+          "key": [
+            0.0,
+            1.0,
+            0.0
+          ],
+          "kind": "axle",
+          "radius": 6.0,
+          "start": [
+            -60.0,
+            0.0,
+            0.0
+          ]
+        }
+      ],
+      "id": "3706.dat",
+      "mass_kg": 0.00086,
+      "mass_source": "https://www.bricklink.com/v2/catalog/catalogitem.page?P=3706",
+      "nominal": {
+        "bounds_ldu": [
+          [
+            -59.5,
+            -6.0,
+            -6.0
+          ],
+          [
+            59.5,
+            6.0,
+            6.0
+          ]
+        ],
+        "studs_ldu": []
+      },
+      "set_count": 1493
+    },
+    {
+      "connectors": [
+        {
+          "end": [
+            80.0,
+            0.0,
+            0.0
+          ],
+          "key": [
+            0.0,
+            1.0,
+            0.0
+          ],
+          "kind": "axle",
+          "radius": 6.0,
+          "start": [
+            -80.0,
+            0.0,
+            0.0
+          ]
+        }
+      ],
+      "id": "3707.dat",
+      "mass_kg": 0.0011799999999999998,
+      "mass_source": "https://www.bricklink.com/v2/catalog/catalogitem.page?P=3707",
+      "nominal": {
+        "bounds_ldu": [
+          [
+            -79.5,
+            -6.0,
+            -6.0
+          ],
+          [
+            79.5,
+            6.0,
+            6.0
+          ]
+        ],
+        "studs_ldu": []
+      },
+      "set_count": 976
+    },
+    {
+      "connectors": [
+        {
+          "end": [
+            120.0,
+            0.0,
+            0.0
+          ],
+          "key": [
+            0.0,
+            1.0,
+            0.0
+          ],
+          "kind": "axle",
+          "radius": 6.0,
+          "start": [
+            -120.0,
+            0.0,
+            0.0
+          ]
+        }
+      ],
+      "id": "3708.dat",
+      "mass_kg": 0.00182,
+      "mass_source": "https://www.bricklink.com/v2/catalog/catalogitem.page?P=3708",
+      "nominal": {
+        "bounds_ldu": [
+          [
+            -119.5,
+            -6.0,
+            -6.0
+          ],
+          [
+            119.5,
+            6.0,
+            6.0
+          ]
+        ],
+        "studs_ldu": []
+      },
+      "set_count": 682
+    },
+    {
+      "id": "3710.dat",
+      "mass_kg": 0.0007099999999999999,
+      "mass_source": "https://www.bricklink.com/v2/catalog/catalogitem.page?P=3710",
+      "set_count": 6990,
+      "size": [
+        4,
+        1,
+        1
+      ],
+      "studs": true
+    },
+    {
+      "connectors": [
+        {
+          "end": [
+            0.0,
+            0.0,
+            10.0
+          ],
+          "key": [
+            1.0,
+            0.0,
+            0.0
+          ],
+          "kind": "axle_hole",
+          "radius": 6.0,
+          "start": [
+            0.0,
+            0.0,
+            -10.0
+          ]
+        }
+      ],
+      "id": "3713.dat",
+      "mass_kg": 0.00014,
+      "mass_source": "https://www.bricklink.com/v2/catalog/catalogitem.page?P=3713",
+      "nominal": {
+        "bounds_ldu": [
+          [
+            -9.0,
+            -9.0,
+            -10.0
+          ],
+          [
+            9.0,
+            9.0,
+            10.0
+          ]
+        ],
+        "studs_ldu": []
+      },
+      "set_count": 2010
+    },
+    {
+      "connectors": [
+        {
+          "end": [
+            100.0,
+            0.0,
+            0.0
+          ],
+          "key": [
+            0.0,
+            1.0,
+            0.0
+          ],
+          "kind": "axle",
+          "radius": 6.0,
+          "start": [
+            -100.0,
+            0.0,
+            0.0
+          ]
+        }
+      ],
+      "id": "3737.dat",
+      "mass_kg": 0.00149,
+      "mass_source": "https://www.bricklink.com/v2/catalog/catalogitem.page?P=3737",
+      "nominal": {
+        "bounds_ldu": [
+          [
+            -99.5,
+            -6.0,
+            -6.0
+          ],
+          [
+            99.5,
+            6.0,
+            6.0
+          ]
+        ],
+        "studs_ldu": []
+      },
+      "set_count": 749
+    },
+    {
+      "id": "3788.dat",
+      "mass_kg": 0.00141,
+      "mass_source": "https://www.bricklink.com/v2/catalog/catalogitem.page?P=3788",
+      "nominal": {
+        "bounds_ldu": [
+          [
+            -40.0,
+            8.0,
+            -20.0
+          ],
+          [
+            40.0,
+            16.0,
+            20.0
+          ]
+        ],
+        "cavity": {
+          "bottom": 16.0,
+          "depth": 2,
+          "first": [
+            -30.0,
+            -10.0
+          ],
+          "width": 4
+        },
+        "studs_ldu": [
+          [
+            -30.0,
+            0.0,
+            -10.0
+          ],
+          [
+            -30.0,
+            0.0,
+            10.0
+          ],
+          [
+            30.0,
+            0.0,
+            -10.0
+          ],
+          [
+            30.0,
+            0.0,
+            10.0
+          ],
+          [
+            -10.0,
+            8.0,
+            10.0
+          ],
+          [
+            -10.0,
+            8.0,
+            -10.0
+          ],
+          [
+            10.0,
+            8.0,
+            10.0
+          ],
+          [
+            10.0,
+            8.0,
+            -10.0
+          ]
+        ]
+      },
+      "set_count": 279
+    },
+    {
+      "id": "3795.dat",
+      "mass_kg": 0.00174,
+      "mass_source": "https://www.bricklink.com/v2/catalog/catalogitem.page?P=3795",
+      "set_count": 5552,
+      "size": [
+        6,
+        2,
+        1
+      ],
+      "studs": true
+    },
+    {
+      "id": "3815c01.dat",
+      "mass_kg": 0.0011799999999999998,
+      "mass_source": "https://www.bricklink.com/v2/catalog/catalogitem.page?P=970c00",
+      "nominal": {
+        "bounds_ldu": [
+          [
+            -19.5,
+            0.0,
+            -11.0
+          ],
+          [
+            19.5,
+            40.0,
+            10.0
+          ]
+        ],
+        "cavity": {
+          "bottom": 40.0,
+          "depth": 1,
+          "first": [
+            -10.0,
+            0.0
+          ],
+          "width": 2
+        },
+        "studs_ldu": []
+      },
+      "set_count": 4438
+    },
+    {
+      "connectors": [
+        {
+          "end": [
+            2.0,
+            0.0,
+            0.0
+          ],
+          "kind": "shoulder_peg",
+          "radius": 5.0,
+          "start": [
+            0.0,
+            0.0,
+            0.0
+          ]
+        },
+        {
+          "end": [
+            -5.0,
+            8.293398282201785,
+            0.7066017177982129
+          ],
+          "inset": 2.0,
+          "kind": "wrist_socket",
+          "radius": 2.5,
+          "start": [
+            -5.0,
+            18.9,
+            -9.9
+          ]
+        }
+      ],
+      "id": "3818.dat",
+      "mass_kg": 0.00015,
+      "mass_source": "https://www.bricklink.com/v2/catalog/catalogitem.page?P=982",
+      "nominal": {
+        "bounds_ldu": [
+          [
+            -9.0,
+            -4.0,
+            -9.0
+          ],
+          [
+            -6.0,
+            17.0,
+            5.0
+          ]
+        ],
+        "studs_ldu": []
+      },
+      "set_count": 7424
+    },
+    {
+      "connectors": [
+        {
+          "end": [
+            -2.0,
+            0.0,
+            0.0
+          ],
+          "kind": "shoulder_peg",
+          "radius": 5.0,
+          "start": [
+            0.0,
+            0.0,
+            0.0
+          ]
+        },
+        {
+          "end": [
+            5.0,
+            8.293398282201785,
+            0.7066017177982129
+          ],
+          "inset": 2.0,
+          "kind": "wrist_socket",
+          "radius": 2.5,
+          "start": [
+            5.0,
+            18.9,
+            -9.9
+          ]
+        }
+      ],
+      "id": "3819.dat",
+      "mass_kg": 0.00015,
+      "mass_source": "https://www.bricklink.com/v2/catalog/catalogitem.page?P=981",
+      "nominal": {
+        "bounds_ldu": [
+          [
+            6.0,
+            -4.0,
+            -9.0
+          ],
+          [
+            9.0,
+            17.0,
+            5.0
+          ]
+        ],
+        "studs_ldu": []
+      },
+      "set_count": 7432
+    },
+    {
+      "connectors": [
+        {
+          "end": [
+            0.0,
+            4.501912022079593,
+            -8.517709977700573
+          ],
+          "kind": "grip",
+          "radius": 4.0,
+          "start": [
+            0.0,
+            -6.147712022079593,
+            -11.271890022299427
+          ]
+        },
+        {
+          "end": [
+            0.0,
+            0.0,
+            13.0
+          ],
+          "kind": "wrist_peg",
+          "radius": 2.5,
+          "start": [
+            0.0,
+            0.0,
+            0.0
+          ]
+        }
+      ],
+      "id": "3820.dat",
+      "mass_kg": 0.00008999999999999999,
+      "mass_source": "https://www.bricklink.com/v2/catalog/catalogitem.page?P=983",
+      "nominal": {
+        "bounds_ldu": [
+          [
+            -6.0,
+            -4.0,
+            -14.0
+          ],
+          [
+            6.0,
+            3.0,
+            -5.0
+          ]
+        ],
+        "studs_ldu": []
+      },
+      "set_count": 7865
+    },
+    {
+      "id": "3823.dat",
+      "mass_kg": 0.00219,
+      "mass_source": "https://www.bricklink.com/v2/catalog/catalogitem.page?P=3823",
+      "nominal": {
+        "bounds_ldu": [
+          [
+            -40.0,
+            0.0,
+            -10.0
+          ],
+          [
+            40.0,
+            48.0,
+            30.0
+          ]
+        ],
+        "cavity": {
+          "bottom": 48.0,
+          "depth": 2,
+          "first": [
+            -30.0,
+            0.0
+          ],
+          "width": 4
+        },
+        "studs_ldu": [
+          [
+            -30.0,
+            0.0,
+            0.0
+          ],
+          [
+            30.0,
+            0.0,
+            0.0
+          ]
+        ]
+      },
+      "set_count": 578
+    },
+    {
+      "id": "3829c01.dat",
+      "mass_kg": 0.0006,
+      "mass_source": "https://www.bricklink.com/v2/catalog/catalogitem.page?P=3829c01",
+      "nominal": {
+        "bounds_ldu": [
+          [
+            -20.0,
+            0.0,
+            -10.0
+          ],
+          [
+            20.0,
+            8.0,
+            10.0
+          ]
+        ],
+        "cavity": {
+          "bottom": 8.0,
+          "depth": 1,
+          "first": [
+            -10.0,
+            0.0
+          ],
+          "width": 2
+        },
+        "studs_ldu": []
+      },
+      "set_count": 1897
+    },
+    {
+      "id": "3832.dat",
+      "mass_kg": 0.0029100000000000003,
+      "mass_source": "https://www.bricklink.com/v2/catalog/catalogitem.page?P=3832",
+      "set_count": 2330,
+      "size": [
+        10,
+        2,
+        1
+      ],
+      "studs": true
+    },
+    {
+      "connectors": [
+        {
+          "end": [
+            0.0,
+            32.0,
+            0.0
+          ],
+          "kind": "bar",
+          "radius": 4.0,
+          "start": [
+            0.0,
+            0.0,
+            0.0
+          ]
+        }
+      ],
+      "id": "3835.dat",
+      "mass_kg": 0.00024,
+      "mass_source": "https://www.bricklink.com/v2/catalog/catalogitem.page?P=3835",
+      "nominal": {
+        "bounds_ldu": [
+          [
+            -4.0,
+            -28.0,
+            -17.0
+          ],
+          [
+            4.0,
+            34.0,
+            7.0
+          ]
+        ],
+        "studs_ldu": []
+      },
+      "set_count": 216
+    },
+    {
+      "connectors": [
+        {
+          "end": [
+            0.0,
+            40.0,
+            0.0
+          ],
+          "kind": "bar",
+          "radius": 4.0,
+          "start": [
+            0.0,
+            -12.0,
+            0.0
+          ]
+        }
+      ],
+      "id": "3837.dat",
+      "mass_kg": 0.00033,
+      "mass_source": "https://www.bricklink.com/v2/catalog/catalogitem.page?P=3837",
+      "nominal": {
+        "bounds_ldu": [
+          [
+            -12.0,
+            -47.999,
+            -10.724
+          ],
+          [
+            12.0,
+            44.0,
+            4.0
+          ]
+        ],
+        "studs_ldu": []
+      },
+      "set_count": 504
+    },
+    {
+      "connectors": [
+        {
+          "end": [
+            0.0,
+            40.0,
+            0.0
+          ],
+          "kind": "bar",
+          "radius": 4.0,
+          "start": [
+            0.0,
+            -8.0,
+            0.0
+          ]
+        }
+      ],
+      "id": "3841.dat",
+      "mass_kg": 0.00042,
+      "mass_source": "https://www.bricklink.com/v2/catalog/catalogitem.page?P=3841",
+      "nominal": {
+        "bounds_ldu": [
+          [
+            -4.0,
+            -40.0,
+            -30.0
+          ],
+          [
+            4.0,
+            42.0,
+            30.0
+          ]
+        ],
+        "studs_ldu": []
+      },
+      "set_count": 206
+    },
+    {
+      "id": "3844.dat",
+      "mass_kg": 0.00064,
+      "mass_source": "https://www.bricklink.com/v2/catalog/catalogitem.page?P=3844",
+      "nominal": {
+        "bounds_ldu": [
+          [
+            -13.0,
+            -17.0,
+            -13.0
+          ],
+          [
+            13.0,
+            0.0,
+            13.0
+          ]
+        ],
+        "cavity": {
+          "bottom": 0.0,
+          "depth": 1,
+          "first": [
+            0.0,
+            0.0
+          ],
+          "width": 1
+        },
+        "studs_ldu": []
+      },
+      "set_count": 181
+    },
+    {
+      "connectors": [
+        {
+          "end": [
+            0.0,
+            18.0,
+            0.0
+          ],
+          "kind": "bar",
+          "radius": 4.0,
+          "start": [
+            0.0,
+            0.0,
+            0.0
+          ]
+        },
+        {
+          "end": [
+            0.0,
+            0.0,
+            14.0
+          ],
+          "kind": "bar",
+          "radius": 4.0,
+          "start": [
+            0.0,
+            0.0,
+            -8.0
+          ]
+        }
+      ],
+      "id": "3846.dat",
+      "mass_kg": 0.00042,
+      "mass_source": "https://www.bricklink.com/v2/catalog/catalogitem.page?P=3846",
+      "nominal": {
+        "bounds_ldu": [
+          [
+            -20.0,
+            -14.0,
+            -10.0
+          ],
+          [
+            20.0,
+            32.37,
+            14.0
+          ]
+        ],
+        "studs_ldu": []
+      },
+      "set_count": 45
+    },
+    {
+      "connectors": [
+        {
+          "end": [
+            0.0,
+            18.0,
+            0.0
+          ],
+          "kind": "bar",
+          "radius": 4.0,
+          "start": [
+            0.0,
+            0.0,
+            0.0
+          ]
+        },
+        {
+          "end": [
+            0.0,
+            0.0,
+            14.0
+          ],
+          "kind": "bar",
+          "radius": 4.0,
+          "start": [
+            0.0,
+            0.0,
+            -8.0
+          ]
+        }
+      ],
+      "id": "3846p4h.dat",
+      "mass_kg": 0.00042,
+      "mass_source": "https://www.bricklink.com/v2/catalog/catalogitem.page?P=3846p4h",
+      "nominal": {
+        "bounds_ldu": [
+          [
+            -20.0,
+            -14.0,
+            -10.0
+          ],
+          [
+            20.0,
+            32.37,
+            14.0
+          ]
+        ],
+        "studs_ldu": []
+      },
+      "set_count": 16
+    },
+    {
+      "connectors": [
+        {
+          "end": [
+            0.0,
+            20.0,
+            0.0
+          ],
+          "kind": "bar",
+          "radius": 4.0,
+          "start": [
+            0.0,
+            4.0,
+            0.0
+          ]
+        }
+      ],
+      "id": "3847.dat",
+      "mass_kg": 0.0002,
+      "mass_source": "https://www.bricklink.com/v2/catalog/catalogitem.page?P=3847",
+      "nominal": {
+        "bounds_ldu": [
+          [
+            -4.0,
+            -58.0,
+            -16.0
+          ],
+          [
+            4.0,
+            22.0,
+            16.0
+          ]
+        ],
+        "studs_ldu": []
+      },
+      "set_count": 117
+    },
+    {
+      "connectors": [
+        {
+          "end": [
+            0.0,
+            60.0,
+            0.0
+          ],
+          "kind": "bar",
+          "radius": 4.0,
+          "start": [
+            0.0,
+            -28.0,
+            0.0
+          ]
+        }
+      ],
+      "id": "3848.dat",
+      "mass_kg": 0.0005,
+      "mass_source": "https://www.bricklink.com/v2/catalog/catalogitem.page?P=3848",
+      "nominal": {
+        "bounds_ldu": [
+          [
+            -4.0,
+            -62.0,
+            -4.0
+          ],
+          [
+            4.0,
+            60.0,
+            26.0
+          ]
+        ],
+        "studs_ldu": []
+      },
+      "set_count": 131
+    },
+    {
+      "connectors": [
+        {
+          "end": [
+            0.0,
+            16.0,
+            0.0
+          ],
+          "kind": "bar",
+          "radius": 4.0,
+          "start": [
+            0.0,
+            0.0,
+            0.0
+          ]
+        }
+      ],
+      "id": "3849.dat",
+      "mass_kg": 0.0007099999999999999,
+      "mass_source": "https://www.bricklink.com/v2/catalog/catalogitem.page?P=3849",
+      "nominal": {
+        "bounds_ldu": [
+          [
+            -10.0,
+            -10.0,
+            -150.0
+          ],
+          [
+            10.0,
+            16.0,
+            26.0
+          ]
+        ],
+        "studs_ldu": []
+      },
+      "set_count": 256
+    },
+    {
+      "connectors": [
+        {
+          "end": [
+            -40.0,
+            10.0,
+            10.0
+          ],
+          "inset": 2.0,
+          "kind": "round_hole",
+          "radius": 8.0,
+          "start": [
+            -40.0,
+            10.0,
+            -10.0
+          ]
+        },
+        {
+          "end": [
+            -20.0,
+            10.0,
+            10.0
+          ],
+          "inset": 2.0,
+          "kind": "round_hole",
+          "radius": 8.0,
+          "start": [
+            -20.0,
+            10.0,
+            -10.0
+          ]
+        },
+        {
+          "end": [
+            0.0,
+            10.0,
+            10.0
+          ],
+          "inset": 2.0,
+          "kind": "round_hole",
+          "radius": 8.0,
+          "start": [
+            0.0,
+            10.0,
+            -10.0
+          ]
+        },
+        {
+          "end": [
+            20.0,
+            10.0,
+            10.0
+          ],
+          "inset": 2.0,
+          "kind": "round_hole",
+          "radius": 8.0,
+          "start": [
+            20.0,
+            10.0,
+            -10.0
+          ]
+        },
+        {
+          "end": [
+            40.0,
+            10.0,
+            10.0
+          ],
+          "inset": 2.0,
+          "kind": "round_hole",
+          "radius": 8.0,
+          "start": [
+            40.0,
+            10.0,
+            -10.0
+          ]
+        }
+      ],
+      "id": "3894.dat",
+      "mass_kg": 0.0022,
+      "mass_source": "https://www.bricklink.com/v2/catalog/catalogitem.page?P=3894",
+      "nominal": {
+        "bounds_ldu": [
+          [
+            -60.0,
+            0.0,
+            -10.0
+          ],
+          [
+            60.0,
+            24.0,
+            10.0
+          ]
+        ],
+        "cavity": {
+          "bottom": 24.0,
+          "depth": 1,
+          "first": [
+            -50.0,
+            0.0
+          ],
+          "width": 6
+        },
+        "studs_ldu": [
+          [
+            -50.0,
+            0.0,
+            0.0
+          ],
+          [
+            -30.0,
+            0.0,
+            0.0
+          ],
+          [
+            -10.0,
+            0.0,
+            0.0
+          ],
+          [
+            10.0,
+            0.0,
+            0.0
+          ],
+          [
+            30.0,
+            0.0,
+            0.0
+          ],
+          [
+            50.0,
+            0.0,
+            0.0
+          ]
+        ]
+      },
+      "set_count": 1003
+    },
+    {
+      "connectors": [
+        {
+          "end": [
+            -100.0,
+            10.0,
+            10.0
+          ],
+          "inset": 2.0,
+          "kind": "round_hole",
+          "radius": 8.0,
+          "start": [
+            -100.0,
+            10.0,
+            -10.0
+          ]
+        },
+        {
+          "end": [
+            -80.0,
+            10.0,
+            10.0
+          ],
+          "inset": 2.0,
+          "kind": "round_hole",
+          "radius": 8.0,
+          "start": [
+            -80.0,
+            10.0,
+            -10.0
+          ]
+        },
+        {
+          "end": [
+            -60.0,
+            10.0,
+            10.0
+          ],
+          "inset": 2.0,
+          "kind": "round_hole",
+          "radius": 8.0,
+          "start": [
+            -60.0,
+            10.0,
+            -10.0
+          ]
+        },
+        {
+          "end": [
+            -40.0,
+            10.0,
+            10.0
+          ],
+          "inset": 2.0,
+          "kind": "round_hole",
+          "radius": 8.0,
+          "start": [
+            -40.0,
+            10.0,
+            -10.0
+          ]
+        },
+        {
+          "end": [
+            -20.0,
+            10.0,
+            10.0
+          ],
+          "inset": 2.0,
+          "kind": "round_hole",
+          "radius": 8.0,
+          "start": [
+            -20.0,
+            10.0,
+            -10.0
+          ]
+        },
+        {
+          "end": [
+            0.0,
+            10.0,
+            10.0
+          ],
+          "inset": 2.0,
+          "kind": "round_hole",
+          "radius": 8.0,
+          "start": [
+            0.0,
+            10.0,
+            -10.0
+          ]
+        },
+        {
+          "end": [
+            20.0,
+            10.0,
+            10.0
+          ],
+          "inset": 2.0,
+          "kind": "round_hole",
+          "radius": 8.0,
+          "start": [
+            20.0,
+            10.0,
+            -10.0
+          ]
+        },
+        {
+          "end": [
+            40.0,
+            10.0,
+            10.0
+          ],
+          "inset": 2.0,
+          "kind": "round_hole",
+          "radius": 8.0,
+          "start": [
+            40.0,
+            10.0,
+            -10.0
+          ]
+        },
+        {
+          "end": [
+            60.0,
+            10.0,
+            10.0
+          ],
+          "inset": 2.0,
+          "kind": "round_hole",
+          "radius": 8.0,
+          "start": [
+            60.0,
+            10.0,
+            -10.0
+          ]
+        },
+        {
+          "end": [
+            80.0,
+            10.0,
+            10.0
+          ],
+          "inset": 2.0,
+          "kind": "round_hole",
+          "radius": 8.0,
+          "start": [
+            80.0,
+            10.0,
+            -10.0
+          ]
+        },
+        {
+          "end": [
+            100.0,
+            10.0,
+            10.0
+          ],
+          "inset": 2.0,
+          "kind": "round_hole",
+          "radius": 8.0,
+          "start": [
+            100.0,
+            10.0,
+            -10.0
+          ]
+        }
+      ],
+      "id": "3895.dat",
+      "mass_kg": 0.004200000000000001,
+      "mass_source": "https://www.bricklink.com/v2/catalog/catalogitem.page?P=3895",
+      "nominal": {
+        "bounds_ldu": [
+          [
+            -120.0,
+            0.0,
+            -10.0
+          ],
+          [
+            120.0,
+            24.0,
+            10.0
+          ]
+        ],
+        "cavity": {
+          "bottom": 24.0,
+          "depth": 1,
+          "first": [
+            -110.0,
+            0.0
+          ],
+          "width": 12
+        },
+        "studs_ldu": [
+          [
+            -110.0,
+            0.0,
+            0.0
+          ],
+          [
+            -90.0,
+            0.0,
+            0.0
+          ],
+          [
+            -70.0,
+            0.0,
+            0.0
+          ],
+          [
+            -50.0,
+            0.0,
+            0.0
+          ],
+          [
+            -30.0,
+            0.0,
+            0.0
+          ],
+          [
+            -10.0,
+            0.0,
+            0.0
+          ],
+          [
+            10.0,
+            0.0,
+            0.0
+          ],
+          [
+            30.0,
+            0.0,
+            0.0
+          ],
+          [
+            50.0,
+            0.0,
+            0.0
+          ],
+          [
+            70.0,
+            0.0,
+            0.0
+          ],
+          [
+            90.0,
+            0.0,
+            0.0
+          ],
+          [
+            110.0,
+            0.0,
+            0.0
+          ]
+        ]
+      },
+      "set_count": 580
+    },
+    {
+      "id": "3896.dat",
+      "mass_kg": 0.00057,
+      "mass_source": "https://www.bricklink.com/v2/catalog/catalogitem.page?P=3896",
+      "nominal": {
+        "bounds_ldu": [
+          [
+            -13.0,
+            -17.0,
+            -13.0
+          ],
+          [
+            13.0,
+            0.0,
+            13.0
+          ]
+        ],
+        "cavity": {
+          "bottom": 0.0,
+          "depth": 1,
+          "first": [
+            0.0,
+            0.0
+          ],
+          "width": 1
+        },
+        "studs_ldu": []
+      },
+      "set_count": 56
+    },
+    {
+      "id": "3901.dat",
+      "mass_kg": 0.0003,
+      "mass_source": "https://www.bricklink.com/v2/catalog/catalogitem.page?P=3901",
+      "nominal": {
+        "bounds_ldu": [
+          [
+            -13.0,
+            -6.0,
+            -13.0
+          ],
+          [
+            13.0,
+            0.0,
+            13.0
+          ]
+        ],
+        "cavity": {
+          "bottom": 0.0,
+          "depth": 1,
+          "first": [
+            0.0,
+            0.0
+          ],
+          "width": 1
+        },
+        "studs_ldu": []
+      },
+      "set_count": 510
+    },
+    {
+      "id": "3941.dat",
+      "mass_kg": 0.0012,
+      "mass_source": "https://www.bricklink.com/v2/catalog/catalogitem.page?P=3941",
+      "nominal": {
+        "bounds_ldu": [
+          [
+            -20.0,
+            0.0,
+            -20.0
+          ],
+          [
+            20.0,
+            24.0,
+            20.0
+          ]
+        ],
+        "cavity": {
+          "bottom": 24.0,
+          "depth": 2,
+          "first": [
+            -10.0,
+            -10.0
+          ],
+          "width": 2
+        },
+        "studs_ldu": [
+          [
+            -10.0,
+            0.0,
+            10.0
+          ],
+          [
+            -10.0,
+            0.0,
+            -10.0
+          ],
+          [
+            10.0,
+            0.0,
+            10.0
+          ],
+          [
+            10.0,
+            0.0,
+            -10.0
+          ]
+        ]
+      },
+      "set_count": 3163
+    },
+    {
+      "connectors": [
+        {
+          "end": [
+            0.0,
+            -4.0,
+            0.0
+          ],
+          "kind": "bar",
+          "radius": 4.0,
+          "start": [
+            0.0,
+            -88.0,
+            0.0
+          ]
+        }
+      ],
+      "id": "3957a.dat",
+      "mass_kg": 0.00042,
+      "mass_source": "https://www.bricklink.com/v2/catalog/catalogitem.page?P=3957a",
+      "nominal": {
+        "bounds_ldu": [
+          [
+            -8.0,
+            -88.0,
+            -8.0
+          ],
+          [
+            8.0,
+            8.0,
+            8.0
+          ]
+        ],
+        "cavity": {
+          "bottom": 8.0,
+          "depth": 1,
+          "first": [
+            0.0,
+            0.0
+          ],
+          "width": 1
+        },
+        "studs_ldu": []
+      },
+      "set_count": 940
+    },
+    {
+      "id": "3958.dat",
+      "mass_kg": 0.00471,
+      "mass_source": "https://www.bricklink.com/v2/catalog/catalogitem.page?P=3958",
+      "set_count": 1624,
+      "size": [
+        6,
+        6,
+        1
+      ],
+      "studs": true
+    },
+    {
+      "connectors": [
+        {
+          "end": [
+            0.0,
+            25.0,
+            0.0
+          ],
+          "kind": "bar",
+          "radius": 4.0,
+          "start": [
+            0.0,
+            0.0,
+            0.0
+          ]
+        }
+      ],
+      "id": "4006.dat",
+      "mass_kg": 0.00039,
+      "mass_source": "https://www.bricklink.com/v2/catalog/catalogitem.page?P=4006",
+      "nominal": {
+        "bounds_ldu": [
+          [
+            -4.0,
+            -29.87,
+            -9.056067
+          ],
+          [
+            4.0,
+            42.5,
+            8.8
+          ]
+        ],
+        "studs_ldu": []
+      },
+      "set_count": 633
+    },
+    {
+      "connectors": [
+        {
+          "end": [
+            0.0,
+            10.0,
+            -80.0
+          ],
+          "inset": 2.0,
+          "kind": "round_hole",
+          "radius": 8.0,
+          "start": [
+            0.0,
+            -10.0,
+            -80.0
+          ]
+        },
+        {
+          "end": [
+            0.0,
+            10.0,
+            -60.0
+          ],
+          "inset": 2.0,
+          "kind": "round_hole",
+          "radius": 8.0,
+          "start": [
+            0.0,
+            -10.0,
+            -60.0
+          ]
+        },
+        {
+          "end": [
+            0.0,
+            10.0,
+            -40.0
+          ],
+          "inset": 2.0,
+          "kind": "round_hole",
+          "radius": 8.0,
+          "start": [
+            0.0,
+            -10.0,
+            -40.0
+          ]
+        },
+        {
+          "end": [
+            0.0,
+            10.0,
+            -20.0
+          ],
+          "inset": 2.0,
+          "kind": "round_hole",
+          "radius": 8.0,
+          "start": [
+            0.0,
+            -10.0,
+            -20.0
+          ]
+        },
+        {
+          "end": [
+            0.0,
+            10.0,
+            0.0
+          ],
+          "inset": 2.0,
+          "kind": "round_hole",
+          "radius": 8.0,
+          "start": [
+            0.0,
+            -10.0,
+            0.0
+          ]
+        },
+        {
+          "end": [
+            0.0,
+            10.0,
+            20.0
+          ],
+          "inset": 2.0,
+          "kind": "round_hole",
+          "radius": 8.0,
+          "start": [
+            0.0,
+            -10.0,
+            20.0
+          ]
+        },
+        {
+          "end": [
+            0.0,
+            10.0,
+            40.0
+          ],
+          "inset": 2.0,
+          "kind": "round_hole",
+          "radius": 8.0,
+          "start": [
+            0.0,
+            -10.0,
+            40.0
+          ]
+        },
+        {
+          "end": [
+            0.0,
+            10.0,
+            60.0
+          ],
+          "inset": 2.0,
+          "kind": "round_hole",
+          "radius": 8.0,
+          "start": [
+            0.0,
+            -10.0,
+            60.0
+          ]
+        },
+        {
+          "end": [
+            0.0,
+            10.0,
+            80.0
+          ],
+          "inset": 2.0,
+          "kind": "round_hole",
+          "radius": 8.0,
+          "start": [
+            0.0,
+            -10.0,
+            80.0
+          ]
+        }
+      ],
+      "id": "40490.dat",
+      "mass_kg": 0.00259,
+      "mass_source": "https://www.bricklink.com/v2/catalog/catalogitem.page?P=40490",
+      "nominal": {
+        "bounds_ldu": [
+          [
+            -9.0,
+            -10.0,
+            -89.0
+          ],
+          [
+            9.0,
+            10.0,
+            89.0
+          ]
+        ],
+        "studs_ldu": []
+      },
+      "set_count": 650
+    },
+    {
+      "id": "4083.dat",
+      "mass_kg": 0.00074,
+      "mass_source": "https://www.bricklink.com/v2/catalog/catalogitem.page?P=4083",
+      "nominal": {
+        "bounds_ldu": [
+          [
+            -40.0,
+            0.0,
+            -10.0
+          ],
+          [
+            40.0,
+            48.0,
+            10.0
+          ]
+        ],
+        "cavity": {
+          "bottom": 48.0,
+          "depth": 1,
+          "first": [
+            -30.0,
+            0.0
+          ],
+          "width": 4
+        },
+        "studs_ldu": [
+          [
+            -30.0,
+            0.0,
+            0.0
+          ],
+          [
+            -10.0,
+            0.0,
+            0.0
+          ],
+          [
+            10.0,
+            0.0,
+            0.0
+          ],
+          [
+            30.0,
+            0.0,
+            0.0
+          ]
+        ]
+      },
+      "set_count": 431
+    },
+    {
+      "connectors": [
+        {
+          "end": [
+            0.0,
+            -4.0,
+            0.0
+          ],
+          "kind": "bar",
+          "radius": 4.0,
+          "start": [
+            0.0,
+            -120.0,
+            0.0
+          ]
+        },
+        {
+          "end": [
+            0.0,
+            12.0,
+            0.0
+          ],
+          "kind": "bar",
+          "radius": 4.0,
+          "start": [
+            0.0,
+            0.0,
+            0.0
+          ]
+        }
+      ],
+      "id": "4095.dat",
+      "mass_kg": 0.00043,
+      "mass_source": "https://www.bricklink.com/v2/catalog/catalogitem.page?P=4095",
+      "nominal": {
+        "bounds_ldu": [
+          [
+            -6.0,
+            -120.0,
+            -6.0
+          ],
+          [
+            6.0,
+            12.0,
+            6.0
+          ]
+        ],
+        "studs_ldu": []
+      },
+      "set_count": 235
+    },
+    {
+      "connectors": [
+        {
+          "end": [
+            0.0,
+            10.0,
+            -120.0
+          ],
+          "inset": 2.0,
+          "kind": "round_hole",
+          "radius": 8.0,
+          "start": [
+            0.0,
+            -10.0,
+            -120.0
+          ]
+        },
+        {
+          "end": [
+            0.0,
+            10.0,
+            -100.0
+          ],
+          "inset": 2.0,
+          "kind": "round_hole",
+          "radius": 8.0,
+          "start": [
+            0.0,
+            -10.0,
+            -100.0
+          ]
+        },
+        {
+          "end": [
+            0.0,
+            10.0,
+            -80.0
+          ],
+          "inset": 2.0,
+          "kind": "round_hole",
+          "radius": 8.0,
+          "start": [
+            0.0,
+            -10.0,
+            -80.0
+          ]
+        },
+        {
+          "end": [
+            0.0,
+            10.0,
+            -60.0
+          ],
+          "inset": 2.0,
+          "kind": "round_hole",
+          "radius": 8.0,
+          "start": [
+            0.0,
+            -10.0,
+            -60.0
+          ]
+        },
+        {
+          "end": [
+            0.0,
+            10.0,
+            -40.0
+          ],
+          "inset": 2.0,
+          "kind": "round_hole",
+          "radius": 8.0,
+          "start": [
+            0.0,
+            -10.0,
+            -40.0
+          ]
+        },
+        {
+          "end": [
+            0.0,
+            10.0,
+            -20.0
+          ],
+          "inset": 2.0,
+          "kind": "round_hole",
+          "radius": 8.0,
+          "start": [
+            0.0,
+            -10.0,
+            -20.0
+          ]
+        },
+        {
+          "end": [
+            0.0,
+            10.0,
+            0.0
+          ],
+          "inset": 2.0,
+          "kind": "round_hole",
+          "radius": 8.0,
+          "start": [
+            0.0,
+            -10.0,
+            0.0
+          ]
+        },
+        {
+          "end": [
+            0.0,
+            10.0,
+            20.0
+          ],
+          "inset": 2.0,
+          "kind": "round_hole",
+          "radius": 8.0,
+          "start": [
+            0.0,
+            -10.0,
+            20.0
+          ]
+        },
+        {
+          "end": [
+            0.0,
+            10.0,
+            40.0
+          ],
+          "inset": 2.0,
+          "kind": "round_hole",
+          "radius": 8.0,
+          "start": [
+            0.0,
+            -10.0,
+            40.0
+          ]
+        },
+        {
+          "end": [
+            0.0,
+            10.0,
+            60.0
+          ],
+          "inset": 2.0,
+          "kind": "round_hole",
+          "radius": 8.0,
+          "start": [
+            0.0,
+            -10.0,
+            60.0
+          ]
+        },
+        {
+          "end": [
+            0.0,
+            10.0,
+            80.0
+          ],
+          "inset": 2.0,
+          "kind": "round_hole",
+          "radius": 8.0,
+          "start": [
+            0.0,
+            -10.0,
+            80.0
+          ]
+        },
+        {
+          "end": [
+            0.0,
+            10.0,
+            100.0
+          ],
+          "inset": 2.0,
+          "kind": "round_hole",
+          "radius": 8.0,
+          "start": [
+            0.0,
+            -10.0,
+            100.0
+          ]
+        },
+        {
+          "end": [
+            0.0,
+            10.0,
+            120.0
+          ],
+          "inset": 2.0,
+          "kind": "round_hole",
+          "radius": 8.0,
+          "start": [
+            0.0,
+            -10.0,
+            120.0
+          ]
+        }
+      ],
+      "id": "41239.dat",
+      "mass_kg": 0.0033,
+      "mass_source": "https://www.bricklink.com/v2/catalog/catalogitem.page?P=41239",
+      "nominal": {
+        "bounds_ldu": [
+          [
+            -9.0,
+            -10.0,
+            -129.0
+          ],
+          [
+            9.0,
+            10.0,
+            129.0
+          ]
+        ],
+        "studs_ldu": []
+      },
+      "set_count": 397
+    },
+    {
+      "id": "41539.dat",
+      "mass_kg": 0.0094,
+      "mass_source": "https://www.bricklink.com/v2/catalog/catalogitem.page?P=41539",
+      "set_count": 606,
+      "size": [
+        8,
+        8,
+        1
+      ],
+      "studs": true
+    },
+    {
+      "id": "4162.dat",
+      "mass_kg": 0.00106,
+      "mass_source": "https://www.bricklink.com/v2/catalog/catalogitem.page?P=4162",
+      "set_count": 2261,
+      "size": [
+        8,
+        1,
+        1
+      ],
+      "studs": false
+    },
+    {
+      "id": "4201.dat",
+      "mass_kg": 0.016300000000000002,
+      "mass_source": "https://www.bricklink.com/v2/catalog/catalogitem.page?P=4201",
+      "set_count": 57,
+      "size": [
+        8,
+        8,
+        3
+      ],
+      "studs": true
+    },
+    {
+      "id": "4204.dat",
+      "mass_kg": 0.03066,
+      "mass_source": "https://www.bricklink.com/v2/catalog/catalogitem.page?P=4204",
+      "set_count": 129,
+      "size": [
+        16,
+        8,
+        3
+      ],
+      "studs": true
+    },
+    {
+      "id": "4211.dat",
+      "mass_kg": 0.00271,
+      "mass_source": "https://www.bricklink.com/v2/catalog/catalogitem.page?P=4211",
+      "nominal": {
+        "bounds_ldu": [
+          [
+            -40.0,
+            8.0,
+            -60.0
+          ],
+          [
+            40.0,
+            16.0,
+            40.0
+          ]
+        ],
+        "cavity": {
+          "bottom": 16.0,
+          "depth": 5,
+          "first": [
+            -30.0,
+            -50.0
+          ],
+          "width": 4
+        },
+        "studs_ldu": [
+          [
+            -30.0,
+            8.0,
+            -30.0
+          ],
+          [
+            -30.0,
+            8.0,
+            30.0
+          ],
+          [
+            -30.0,
+            8.0,
+            50.0
+          ],
+          [
+            30.0,
+            8.0,
+            -30.0
+          ],
+          [
+            30.0,
+            8.0,
+            30.0
+          ],
+          [
+            30.0,
+            8.0,
+            50.0
+          ],
+          [
+            -10.0,
+            8.0,
+            50.0
+          ],
+          [
+            10.0,
+            8.0,
+            50.0
+          ],
+          [
+            -30.0,
+            0.0,
+            -10.0
+          ],
+          [
+            -30.0,
+            0.0,
+            10.0
+          ],
+          [
+            30.0,
+            0.0,
+            -10.0
+          ],
+          [
+            30.0,
+            0.0,
+            10.0
+          ]
+        ]
+      },
+      "set_count": 125
+    },
+    {
+      "id": "4282.dat",
+      "mass_kg": 0.0045,
+      "mass_source": "https://www.bricklink.com/v2/catalog/catalogitem.page?P=4282",
+      "set_count": 1105,
+      "size": [
+        16,
+        2,
+        1
+      ],
+      "studs": true
+    },
+    {
+      "connectors": [
+        {
+          "end": [
+            70.0,
+            0.0,
+            0.0
+          ],
+          "key": [
+            0.0,
+            1.0,
+            0.0
+          ],
+          "kind": "axle",
+          "radius": 6.0,
+          "start": [
+            -70.0,
+            0.0,
+            0.0
+          ]
+        }
+      ],
+      "id": "44294.dat",
+      "mass_kg": 0.0010500000000000002,
+      "mass_source": "https://www.bricklink.com/v2/catalog/catalogitem.page?P=44294",
+      "nominal": {
+        "bounds_ldu": [
+          [
+            -69.5,
+            -6.0,
+            -6.0
+          ],
+          [
+            69.5,
+            6.0,
+            6.0
+          ]
+        ],
+        "studs_ldu": []
+      },
+      "set_count": 762
+    },
+    {
+      "id": "4444.dat",
+      "mass_kg": 0.005900000000000001,
+      "mass_source": "https://www.bricklink.com/v2/catalog/catalogitem.page?P=4444",
+      "nominal": {
+        "additional_cavities": [
+          {
+            "bottom": 120.0,
+            "depth": 1,
+            "first": [
+              -40.0,
+              0.0
+            ],
+            "width": 1
+          },
+          {
+            "bottom": 120.0,
+            "depth": 1,
+            "first": [
+              40.0,
+              0.0
+            ],
+            "width": 1
+          }
+        ],
+        "bounds_ldu": [
+          [
+            -30.0,
+            0.0,
+            -10.0
+          ],
+          [
+            30.0,
+            144.0,
+            10.0
+          ]
+        ],
+        "cavity": {
+          "bottom": 144.0,
+          "depth": 1,
+          "first": [
+            -20.0,
+            0.0
+          ],
+          "width": 3
+        },
+        "studs_ldu": [
+          [
+            -20.0,
+            0.0,
+            0.0
+          ],
+          [
+            0.0,
+            0.0,
+            0.0
+          ],
+          [
+            20.0,
+            0.0,
+            0.0
+          ],
+          [
+            -40.0,
+            24.0,
+            0.0
+          ],
+          [
+            40.0,
+            24.0,
+            0.0
+          ],
+          [
+            -20.0,
+            8.0,
+            20.0
+          ],
+          [
+            0.0,
+            8.0,
+            20.0
+          ],
+          [
+            20.0,
+            8.0,
+            20.0
+          ]
+        ]
+      },
+      "set_count": 40
+    },
+    {
+      "id": "4477.dat",
+      "mass_kg": 0.00161,
+      "mass_source": "https://www.bricklink.com/v2/catalog/catalogitem.page?P=4477",
+      "set_count": 2122,
+      "size": [
+        10,
+        1,
+        1
+      ],
+      "studs": true
+    },
+    {
+      "id": "4491a.dat",
+      "mass_kg": 0.00153,
+      "mass_source": "https://www.bricklink.com/v2/catalog/catalogitem.page?P=4491a",
+      "nominal": {
+        "bounds_ldu": [
+          [
+            -20.0,
+            0.0,
+            -10.0
+          ],
+          [
+            20.0,
+            8.0,
+            10.0
+          ]
+        ],
+        "cavity": {
+          "bottom": 8.0,
+          "depth": 1,
+          "first": [
+            -10.0,
+            0.0
+          ],
+          "width": 2
+        },
+        "studs_ldu": [
+          [
+            -10.0,
+            0.0,
+            0.0
+          ],
+          [
+            10.0,
+            0.0,
+            0.0
+          ]
+        ]
+      },
+      "set_count": 25
+    },
+    {
+      "id": "4493c01.dat",
+      "mass_kg": 0.01317,
+      "mass_source": "https://www.bricklink.com/v2/catalog/catalogitem.page?P=4493c01pb02",
+      "nominal": {
+        "additional_cavities": [
+          {
+            "bottom": 57.0,
+            "depth": 1,
+            "first": [
+              10.0,
+              -25.0
+            ],
+            "width": 1
+          },
+          {
+            "bottom": 57.0,
+            "depth": 1,
+            "first": [
+              -10.0,
+              35.0
+            ],
+            "width": 1
+          },
+          {
+            "bottom": 57.0,
+            "depth": 1,
+            "first": [
+              10.0,
+              35.0
+            ],
+            "width": 1
+          }
+        ],
+        "bounds_ldu": [
+          [
+            -20.0,
+            0.0,
+            -35.0
+          ],
+          [
+            20.0,
+            57.0,
+            47.0
+          ]
+        ],
+        "cavity": {
+          "bottom": 57.0,
+          "depth": 1,
+          "first": [
+            -10.0,
+            -25.0
+          ],
+          "width": 1
+        },
+        "collision_boxes_ldu": [
+          [
+            [
+              -20.0,
+              0.0,
+              -35.0
+            ],
+            [
+              20.0,
+              20.0,
+              47.0
+            ]
+          ],
+          [
+            [
+              -20.0,
+              14.5,
+              -35.0
+            ],
+            [
+              0.0,
+              57.0,
+              -15.0
+            ]
+          ],
+          [
+            [
+              0.0,
+              14.5,
+              -35.0
+            ],
+            [
+              20.0,
+              57.0,
+              -15.0
+            ]
+          ],
+          [
+            [
+              -20.0,
+              14.5,
+              25.0
+            ],
+            [
+              0.0,
+              57.0,
+              47.0
+            ]
+          ],
+          [
+            [
+              0.0,
+              14.5,
+              25.0
+            ],
+            [
+              20.0,
+              57.0,
+              47.0
+            ]
+          ]
+        ],
+        "studs_ldu": []
+      },
+      "set_count": 52
+    },
+    {
+      "id": "4493c02.dat",
+      "mass_kg": 0.014,
+      "mass_source": "https://www.bricklink.com/v2/catalog/catalogitem.page?P=4493c01pb04",
+      "nominal": {
+        "additional_cavities": [
+          {
+            "bottom": 57.0,
+            "depth": 1,
+            "first": [
+              10.0,
+              -25.0
+            ],
+            "width": 1
+          },
+          {
+            "bottom": 57.0,
+            "depth": 1,
+            "first": [
+              -10.0,
+              35.0
+            ],
+            "width": 1
+          },
+          {
+            "bottom": 57.0,
+            "depth": 1,
+            "first": [
+              10.0,
+              35.0
+            ],
+            "width": 1
+          }
+        ],
+        "bounds_ldu": [
+          [
+            -20.0,
+            0.0,
+            -35.0
+          ],
+          [
+            20.0,
+            57.0,
+            47.0
+          ]
+        ],
+        "cavity": {
+          "bottom": 57.0,
+          "depth": 1,
+          "first": [
+            -10.0,
+            -25.0
+          ],
+          "width": 1
+        },
+        "collision_boxes_ldu": [
+          [
+            [
+              -20.0,
+              0.0,
+              -35.0
+            ],
+            [
+              20.0,
+              20.0,
+              47.0
+            ]
+          ],
+          [
+            [
+              -20.0,
+              14.5,
+              -35.0
+            ],
+            [
+              0.0,
+              57.0,
+              -15.0
+            ]
+          ],
+          [
+            [
+              0.0,
+              14.5,
+              -35.0
+            ],
+            [
+              20.0,
+              57.0,
+              -15.0
+            ]
+          ],
+          [
+            [
+              -20.0,
+              14.5,
+              25.0
+            ],
+            [
+              0.0,
+              57.0,
+              47.0
+            ]
+          ],
+          [
+            [
+              0.0,
+              14.5,
+              25.0
+            ],
+            [
+              20.0,
+              57.0,
+              47.0
+            ]
+          ]
+        ],
+        "studs_ldu": []
+      },
+      "set_count": 60
+    },
+    {
+      "id": "4495a.dat",
+      "mass_kg": 0.00037,
+      "mass_source": "https://www.bricklink.com/v2/catalog/catalogitem.page?P=4495a",
+      "nominal": {
+        "bounds_ldu": [
+          [
+            -8.0,
+            0.0,
+            -8.0
+          ],
+          [
+            8.0,
+            20.0,
+            71.0
+          ]
+        ],
+        "cavity": {
+          "bottom": 24.0,
+          "depth": 1,
+          "first": [
+            0.0,
+            0.0
+          ],
+          "width": 1
+        },
+        "studs_ldu": [
+          [
+            0.0,
+            0.0,
+            0.0
+          ]
+        ]
+      },
+      "set_count": 291
+    },
+    {
+      "connectors": [
+        {
+          "end": [
+            0.0,
+            94.0,
+            0.0
+          ],
+          "kind": "bar",
+          "radius": 4.0,
+          "start": [
+            0.0,
+            0.0,
+            0.0
+          ]
+        }
+      ],
+      "id": "4497.dat",
+      "mass_kg": 0.0004,
+      "mass_source": "https://www.bricklink.com/v2/catalog/catalogitem.page?P=4497",
+      "nominal": {
+        "bounds_ldu": [
+          [
+            -7.0,
+            -48.0,
+            -4.0
+          ],
+          [
+            7.0,
+            98.0,
+            4.0
+          ]
+        ],
+        "studs_ldu": []
+      },
+      "set_count": 258
+    },
+    {
+      "connectors": [
+        {
+          "end": [
+            0.0,
+            2.0,
+            0.0
+          ],
+          "kind": "bar",
+          "radius": 4.0,
+          "start": [
+            0.0,
+            -10.0,
+            0.0
+          ]
+        },
+        {
+          "end": [
+            0.0,
+            -15.0,
+            0.0
+          ],
+          "kind": "bar",
+          "radius": 4.0,
+          "start": [
+            0.0,
+            -27.0,
+            0.0
+          ]
+        }
+      ],
+      "id": "4499.dat",
+      "mass_kg": 0.00033,
+      "mass_source": "https://www.bricklink.com/v2/catalog/catalogitem.page?P=4499",
+      "nominal": {
+        "bounds_ldu": [
+          [
+            -4.0,
+            -57.3265488,
+            -24.0
+          ],
+          [
+            4.0,
+            32.6265488,
+            44.5
+          ]
+        ],
+        "studs_ldu": []
+      },
+      "set_count": 164
+    },
+    {
+      "connectors": [
+        {
+          "end": [
+            30.0,
+            0.0,
+            0.0
+          ],
+          "key": [
+            0.0,
+            1.0,
+            0.0
+          ],
+          "kind": "axle",
+          "radius": 6.0,
+          "start": [
+            -30.0,
+            0.0,
+            0.0
+          ]
+        }
+      ],
+      "id": "4519.dat",
+      "mass_kg": 0.00043,
+      "mass_source": "https://www.bricklink.com/v2/catalog/catalogitem.page?P=4519",
+      "nominal": {
+        "bounds_ldu": [
+          [
+            -29.5,
+            -6.0,
+            -6.0
+          ],
+          [
+            29.5,
+            6.0,
+            6.0
+          ]
+        ],
+        "studs_ldu": []
+      },
+      "set_count": 2331
+    },
+    {
+      "id": "4524.dat",
+      "mass_kg": 0.00021,
+      "mass_source": "https://www.bricklink.com/v2/catalog/catalogitem.page?P=4524",
+      "nominal": {
+        "bounds_ldu": [
+          [
+            -10.0,
+            0.0,
+            -10.0
+          ],
+          [
+            10.0,
+            2.0,
+            10.0
+          ]
+        ],
+        "cavity": {
+          "bottom": 2.0,
+          "depth": 1,
+          "first": [
+            0.0,
+            0.0
+          ],
+          "width": 1
+        },
+        "studs_ldu": []
+      },
+      "set_count": 30
+    },
+    {
+      "connectors": [
+        {
+          "end": [
+            -33.0,
+            5.0,
+            0.0
+          ],
+          "kind": "wheel_pin",
+          "radius": 4.0,
+          "start": [
+            -22.0,
+            5.0,
+            0.0
+          ]
+        },
+        {
+          "end": [
+            33.0,
+            5.0,
+            0.0
+          ],
+          "kind": "wheel_pin",
+          "radius": 4.0,
+          "start": [
+            22.0,
+            5.0,
+            0.0
+          ]
+        }
+      ],
+      "id": "4600.dat",
+      "mass_kg": 0.00082,
+      "mass_source": "https://www.bricklink.com/v2/catalog/catalogitem.page?P=4600",
+      "nominal": {
+        "bounds_ldu": [
+          [
+            -20.0,
+            0.0,
+            -20.0
+          ],
+          [
+            20.0,
+            8.0,
+            20.0
+          ]
+        ],
+        "cavity": {
+          "bottom": 8.0,
+          "depth": 2,
+          "first": [
+            -10.0,
+            -10.0
+          ],
+          "width": 2
+        },
+        "studs_ldu": [
+          [
+            -10.0,
+            0.0,
+            -10.0
+          ],
+          [
+            -10.0,
+            0.0,
+            10.0
+          ],
+          [
+            10.0,
+            0.0,
+            -10.0
+          ],
+          [
+            10.0,
+            0.0,
+            10.0
+          ]
+        ]
+      },
+      "set_count": 747
+    },
+    {
+      "connectors": [
+        {
+          "end": [
+            0.0,
+            0.0,
+            8.0
+          ],
+          "kind": "wheel_socket",
+          "radius": 4.0,
+          "start": [
+            0.0,
+            0.0,
+            -2.0
+          ]
+        },
+        {
+          "end": [
+            0.0,
+            0.0,
+            8.0
+          ],
+          "group": "4624-3641",
+          "kind": "rim",
+          "radius": 10.0,
+          "start": [
+            0.0,
+            0.0,
+            -8.0
+          ]
+        }
+      ],
+      "id": "4624.dat",
+      "mass_kg": 0.00022,
+      "mass_source": "https://www.bricklink.com/v2/catalog/catalogitem.page?P=4624",
+      "nominal": {
+        "bounds_ldu": [
+          [
+            -10.0,
+            -10.0,
+            -8.0
+          ],
+          [
+            10.0,
+            10.0,
+            8.0
+          ]
+        ],
+        "studs_ldu": []
+      },
+      "set_count": 553
+    },
+    {
+      "connectors": [
+        {
+          "end": [
+            0.0,
+            0.0,
+            8.0
+          ],
+          "kind": "wheel_socket",
+          "radius": 4.0,
+          "start": [
+            0.0,
+            0.0,
+            -2.0
+          ]
+        },
+        {
+          "end": [
+            0.0,
+            0.0,
+            8.0
+          ],
+          "group": "4624-3641",
+          "kind": "rim",
+          "radius": 10.0,
+          "start": [
+            0.0,
+            0.0,
+            -8.0
+          ]
+        }
+      ],
+      "id": "4624c01.dat",
+      "mass_kg": 0.00061,
+      "mass_source": "https://www.bricklink.com/v2/catalog/catalogitem.page?P=4624c01",
+      "nominal": {
+        "bounds_ldu": [
+          [
+            -18.0,
+            -18.0,
+            -8.0
+          ],
+          [
+            18.0,
+            18.0,
+            8.0
+          ]
+        ],
+        "studs_ldu": []
+      },
+      "set_count": 113
+    },
+    {
+      "id": "4740.dat",
+      "mass_kg": 0.00028000000000000003,
+      "mass_source": "https://www.bricklink.com/v2/catalog/catalogitem.page?P=4740",
+      "nominal": {
+        "bounds_ldu": [
+          [
+            -20.0,
+            0.0,
+            -20.0
+          ],
+          [
+            20.0,
+            8.0,
+            20.0
+          ]
+        ],
+        "cavity": {
+          "bottom": 8.0,
+          "depth": 1,
+          "first": [
+            0.0,
+            0.0
+          ],
+          "width": 1
+        },
+        "studs_ldu": [
+          [
+            0.0,
+            0.0,
+            0.0
+          ]
+        ]
+      },
+      "set_count": 2353
+    },
+    {
+      "id": "50231c01.dat",
+      "mass_kg": 0.00017999999999999998,
+      "mass_source": "https://www.bricklink.com/v2/catalog/catalogitem.page?P=522",
+      "nominal": {
+        "bounds_ldu": [
+          [
+            -10.0,
+            -0.6,
+            -10.0
+          ],
+          [
+            10.0,
+            0.0,
+            10.0
+          ]
+        ],
+        "cavity": {
+          "bottom": 0.0,
+          "depth": 1,
+          "first": [
+            0.0,
+            0.0
+          ],
+          "width": 1
+        },
+        "studs_ldu": []
+      },
+      "set_count": 191
+    },
+    {
+      "id": "60592.dat",
+      "mass_kg": 0.001,
+      "mass_source": "https://www.bricklink.com/v2/catalog/catalogitem.page?P=60592",
+      "nominal": {
+        "bounds_ldu": [
+          [
+            -20.0,
+            0.0,
+            -10.0
+          ],
+          [
+            20.0,
+            48.0,
+            10.0
+          ]
+        ],
+        "cavity": {
+          "bottom": 48.0,
+          "depth": 1,
+          "first": [
+            -10.0,
+            0.0
+          ],
+          "width": 2
+        },
+        "studs_ldu": [
+          [
+            -10.0,
+            0.0,
+            0.0
+          ],
+          [
+            10.0,
+            0.0,
+            0.0
+          ]
+        ]
+      },
+      "set_count": 565
+    },
+    {
+      "id": "60594.dat",
+      "mass_kg": 0.00185,
+      "mass_source": "https://www.bricklink.com/v2/catalog/catalogitem.page?P=60594",
+      "nominal": {
+        "bounds_ldu": [
+          [
+            -40.0,
+            0.0,
+            -10.0
+          ],
+          [
+            40.0,
+            72.0,
+            10.0
+          ]
+        ],
+        "cavity": {
+          "bottom": 72.0,
+          "depth": 1,
+          "first": [
+            -30.0,
+            0.0
+          ],
+          "width": 4
+        },
+        "studs_ldu": [
+          [
+            -30.0,
+            0.0,
+            0.0
+          ],
+          [
+            -10.0,
+            0.0,
+            0.0
+          ],
+          [
+            10.0,
+            0.0,
+            0.0
+          ],
+          [
+            30.0,
+            0.0,
+            0.0
+          ]
+        ]
+      },
+      "set_count": 568
+    },
+    {
+      "id": "6141.dat",
+      "mass_kg": 0.00012,
+      "mass_source": "https://www.bricklink.com/v2/catalog/catalogitem.page?P=4073",
+      "nominal": {
+        "bounds_ldu": [
+          [
+            -10.0,
+            0.0,
+            -10.0
+          ],
+          [
+            10.0,
+            8.0,
+            10.0
+          ]
+        ],
+        "cavity": {
+          "bottom": 8.0,
+          "depth": 1,
+          "first": [
+            0.0,
+            0.0
+          ],
+          "width": 1
+        },
+        "studs_ldu": [
+          [
+            0.0,
+            0.0,
+            0.0
+          ]
+        ]
+      },
+      "set_count": 7411
+    },
+    {
+      "connectors": [
+        {
+          "end": [
+            0.0,
+            -7.5,
+            0.0
+          ],
+          "kind": "bar",
+          "radius": 4.0,
+          "start": [
+            0.0,
+            -102.5,
+            0.0
+          ]
+        },
+        {
+          "end": [
+            0.0,
+            18.0,
+            0.0
+          ],
+          "kind": "bar",
+          "radius": 4.0,
+          "start": [
+            0.0,
+            0.0,
+            0.0
+          ]
+        }
+      ],
+      "id": "63965.dat",
+      "mass_kg": 0.00044,
+      "mass_source": "https://www.bricklink.com/v2/catalog/catalogitem.page?P=63965",
+      "nominal": {
+        "bounds_ldu": [
+          [
+            -6.0,
+            -102.5,
+            -6.0
+          ],
+          [
+            6.0,
+            18.0,
+            6.0
+          ]
+        ],
+        "studs_ldu": []
+      },
+      "set_count": 1442
+    },
+    {
+      "connectors": [
+        {
+          "end": [
+            0.0,
+            10.0,
+            10.0
+          ],
+          "inset": 2.0,
+          "kind": "round_hole",
+          "radius": 8.0,
+          "start": [
+            0.0,
+            10.0,
+            -10.0
+          ]
+        }
+      ],
+      "id": "6541.dat",
+      "mass_kg": 0.00038,
+      "mass_source": "https://www.bricklink.com/v2/catalog/catalogitem.page?P=6541",
+      "nominal": {
+        "bounds_ldu": [
+          [
+            -10.0,
+            0.0,
+            -10.0
+          ],
+          [
+            10.0,
+            24.0,
+            10.0
+          ]
+        ],
+        "cavity": {
+          "bottom": 24.0,
+          "depth": 1,
+          "first": [
+            0.0,
+            0.0
+          ],
+          "width": 1
+        },
+        "studs_ldu": [
+          [
+            0.0,
+            0.0,
+            0.0
+          ]
+        ]
+      },
+      "set_count": 1752
+    },
+    {
+      "id": "6636.dat",
+      "mass_kg": 0.00083,
+      "mass_source": "https://www.bricklink.com/v2/catalog/catalogitem.page?P=6636",
+      "set_count": 2899,
+      "size": [
+        6,
+        1,
+        1
+      ],
+      "studs": false
+    },
+    {
+      "connectors": [
+        {
+          "end": [
+            -25.255358564373577,
+            35.84086476064691,
+            -12.737369154624032
+          ],
+          "kind": "grip",
+          "radius": 4.0,
+          "start": [
+            -24.306326195626426,
+            30.342477559353092,
+            -22.213858645375964
+          ]
+        },
+        {
+          "end": [
+            25.255358564373577,
+            35.84086476064691,
+            -12.737369154624032
+          ],
+          "kind": "grip",
+          "radius": 4.0,
+          "start": [
+            24.306326195626426,
+            30.342477559353092,
+            -22.213858645375964
+          ]
+        }
+      ],
+      "id": "76382p00.dat",
+      "mass_kg": 0.0013,
+      "mass_source": "Derived sum of BrickLink catalogue masses for 973, 981, 982 and 2 x 983; https://www.bricklink.com/v2/catalog/catalogitem.page?P=973 ; https://www.bricklink.com/v2/catalog/catalogitem.page?P=981 ; https://www.bricklink.com/v2/catalog/catalogitem.page?P=982 ; https://www.bricklink.com/v2/catalog/catalogitem.page?P=983",
+      "nominal": {
+        "bounds_ldu": [
+          [
+            -19.0,
+            0.0,
+            -10.0
+          ],
+          [
+            19.0,
+            32.0,
+            10.0
+          ]
+        ],
+        "studs_ldu": []
+      }
+    },
+    {
+      "connectors": [
+        {
+          "end": [
+            -25.255358564373577,
+            35.84086476064691,
+            -12.737369154624032
+          ],
+          "kind": "grip",
+          "radius": 4.0,
+          "start": [
+            -24.306326195626426,
+            30.342477559353092,
+            -22.213858645375964
+          ]
+        },
+        {
+          "end": [
+            25.255358564373577,
+            35.84086476064691,
+            -12.737369154624032
+          ],
+          "kind": "grip",
+          "radius": 4.0,
+          "start": [
+            24.306326195626426,
+            30.342477559353092,
+            -22.213858645375964
+          ]
+        }
+      ],
+      "id": "76382p4f.dat",
+      "mass_kg": 0.00125,
+      "mass_source": "https://www.bricklink.com/v2/catalog/catalogitem.page?P=973px138c01",
+      "nominal": {
+        "bounds_ldu": [
+          [
+            -19.0,
+            0.0,
+            -10.0
+          ],
+          [
+            19.0,
+            32.0,
+            10.0
+          ]
+        ],
+        "studs_ldu": []
+      },
+      "set_count": 18
+    },
+    {
+      "id": "87081.dat",
+      "mass_kg": 0.00304,
+      "mass_source": "https://www.bricklink.com/v2/catalog/catalogitem.page?P=87081",
+      "nominal": {
+        "bounds_ldu": [
+          [
+            -40.0,
+            0.0,
+            -40.0
+          ],
+          [
+            40.0,
+            24.0,
+            40.0
+          ]
+        ],
+        "cavity": {
+          "bottom": 24.0,
+          "depth": 4,
+          "first": [
+            -30.0,
+            -30.0
+          ],
+          "width": 4
+        },
+        "studs_ldu": [
+          [
+            -30.0,
+            0.0,
+            10.0
+          ],
+          [
+            -30.0,
+            0.0,
+            -10.0
+          ],
+          [
+            -10.0,
+            0.0,
+            30.0
+          ],
+          [
+            10.0,
+            0.0,
+            30.0
+          ],
+          [
+            30.0,
+            0.0,
+            10.0
+          ],
+          [
+            30.0,
+            0.0,
+            -10.0
+          ],
+          [
+            -10.0,
+            0.0,
+            -30.0
+          ],
+          [
+            10.0,
+            0.0,
+            -30.0
+          ]
+        ]
+      },
+      "set_count": 439
+    },
+    {
+      "id": "87580.dat",
+      "mass_kg": 0.0005200000000000001,
+      "mass_source": "https://www.bricklink.com/v2/catalog/catalogitem.page?P=87580",
+      "nominal": {
+        "bounds_ldu": [
+          [
+            -20.0,
+            0.0,
+            -20.0
+          ],
+          [
+            20.0,
+            8.0,
+            20.0
+          ]
+        ],
+        "cavity": {
+          "bottom": 8.0,
+          "depth": 2,
+          "first": [
+            -10.0,
+            -10.0
+          ],
+          "width": 2
+        },
+        "studs_ldu": [
+          [
+            0.0,
+            0.0,
+            0.0
+          ]
+        ]
+      },
+      "set_count": 2865
+    },
+    {
+      "connectors": [
+        {
+          "end": [
+            0.0,
+            60.0,
+            0.0
+          ],
+          "kind": "bar",
+          "radius": 4.0,
+          "start": [
+            0.0,
+            0.0,
+            0.0
+          ]
+        }
+      ],
+      "id": "87994.dat",
+      "mass_kg": 0.0002,
+      "mass_source": "https://www.bricklink.com/v2/catalog/catalogitem.page?P=87994",
+      "nominal": {
+        "bounds_ldu": [
+          [
+            -4.0,
+            0.0,
+            -4.0
+          ],
+          [
+            4.0,
+            60.0,
+            4.0
+          ]
+        ],
+        "studs_ldu": []
+      },
+      "set_count": 1342
+    },
+    {
+      "id": "89520.dat",
+      "mass_kg": 0.0006,
+      "mass_source": "https://www.bricklink.com/v2/catalog/catalogitem.page?P=89520",
+      "nominal": {
+        "bounds_ldu": [
+          [
+            -13.0,
+            -15.0,
+            -13.0
+          ],
+          [
+            13.0,
+            0.0,
+            13.0
+          ]
+        ],
+        "cavity": {
+          "bottom": 0.0,
+          "depth": 1,
+          "first": [
+            0.0,
+            0.0
+          ],
+          "width": 1
+        },
+        "studs_ldu": []
+      },
+      "set_count": 51
+    },
+    {
+      "id": "92438.dat",
+      "mass_kg": 0.017,
+      "mass_source": "https://www.bricklink.com/v2/catalog/catalogitem.page?P=92438",
+      "set_count": 538,
+      "size": [
+        16,
+        8,
+        1
+      ],
+      "studs": true
+    },
+    {
+      "connectors": [
+        {
+          "end": [
+            -13.581077354508208,
+            9.339799831500311,
+            0.0
+          ],
+          "kind": "shoulder_socket",
+          "radius": 5.0,
+          "start": [
+            -15.552,
+            9.0,
+            0.0
+          ]
+        },
+        {
+          "end": [
+            13.581077354508208,
+            9.339799831500311,
+            0.0
+          ],
+          "kind": "shoulder_socket",
+          "radius": 5.0,
+          "start": [
+            15.552,
+            9.0,
+            0.0
+          ]
+        }
+      ],
+      "id": "973p4f.dat",
+      "mass_kg": 0.00082,
+      "mass_source": "https://www.bricklink.com/v2/catalog/catalogitem.page?P=973px138",
+      "nominal": {
+        "bounds_ldu": [
+          [
+            -19.0,
+            0.0,
+            -10.0
+          ],
+          [
+            19.0,
+            32.0,
+            10.0
+          ]
+        ],
+        "studs_ldu": []
+      },
+      "set_count": 18
+    }
+  ]
+}

@@ -7,7 +7,8 @@ ROOT=pathlib.Path(__file__).resolve().parents[1]
 parser=argparse.ArgumentParser(description=__doc__);parser.add_argument('--binary',type=pathlib.Path,default=ROOT/'target/debug/ergo-mcp')
 parser.add_argument('--artifacts',type=pathlib.Path,help='Optional directory for actual plate-free car/guard WebGL captures')
 args=parser.parse_args();BINARY=str(args.binary.resolve())
-os.environ['ERGO_ASSET_FETCH']='0'
+import library_fixture
+library_fixture.offline_mcp(os.environ,pathlib.Path(tempfile.mkdtemp(prefix='ergo-library-')))
 
 def placed(kind,id,position,color):
     return {'target':{'kind':kind,'id':id},'color':color,

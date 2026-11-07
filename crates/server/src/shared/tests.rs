@@ -13,7 +13,7 @@ mod resize;
 
 fn service() -> SharedWorlds {
     SharedWorlds::new(Store {
-        backend: Arc::new(object_store::memory::InMemory::new()),
+        backend: ergo_assets::fixture_store(),
         prefix: String::new(),
         kind: "test".into(),
         measurements: Arc::new(Default::default()),
@@ -849,11 +849,7 @@ async fn genuine_castle_bore_clearance_keeps_server_support_and_capacity_gates()
         ]}
     }))
     .unwrap();
-    let cache = ergo_assets::PartCache::new(
-        Arc::new(object_store::memory::InMemory::new()),
-        String::new(),
-    )
-    .unwrap();
+    let cache = ergo_assets::PartCache::new(ergo_assets::fixture_store(), String::new()).unwrap();
     let mut candidate = scene(0.);
     candidate.bricks.clear();
     candidate.meshes.clear();
@@ -2522,7 +2518,7 @@ async fn rest_is_authenticated_paged_and_never_exports_whole_world_geometry() {
         store,
         auth,
         geo: Default::default(),
-        library: None,
+        library: crate::parts::Parts::for_tests(),
     });
     let uri = format!("/api/shared-worlds/{}", head.id);
     assert_eq!(
@@ -2647,7 +2643,7 @@ async fn mcp_delegations_publish_and_read_but_cannot_change_grants_or_other_user
             store,
             auth,
             geo: Default::default(),
-            library: None,
+            library: crate::parts::Parts::for_tests(),
         });
     let mut delegated = Vec::new();
     for session in [&alice, &bob] {
@@ -2753,7 +2749,7 @@ fn http(service: &SharedWorlds) -> (Router, HeaderMap) {
                 store,
                 auth,
                 geo: Default::default(),
-                library: None,
+                library: crate::parts::Parts::for_tests(),
             }),
         headers,
     )
@@ -3402,4 +3398,56 @@ async fn noncurrent_shared_layouts_are_rejected() {
     let mut missing = current;
     missing.as_object_mut().unwrap().remove("layout");
     assert!(serde_json::from_value::<Metadata>(missing).is_err());
+}
+
+#[tokio::test]
+async fn part_library_sync_api_is_operator_only() {
+    use axum::{body::Body, http::Request, routing::get};
+    use tower::ServiceExt;
+    let service = service();
+    let store = service.store.clone();
+    let (auth, operator) = crate::auth::Auth::test_session("operator");
+    let (_, bob) = crate::auth::Auth::test_session("bob");
+    let app = axum::Router::new()
+        .route(
+            "/api/admin/parts-sync",
+            get(crate::parts::status).post(crate::parts::start),
+        )
+        .with_state(AppState {
+            shared: service,
+            parts: store.part_cache().unwrap(),
+            ground: store.ground_cache().unwrap(),
+            store,
+            auth,
+            geo: Default::default(),
+            library: crate::parts::Parts::for_tests(),
+        });
+    let request = |headers: &axum::http::HeaderMap, post: bool| {
+        let mut request = Request::builder()
+            .method(if post { "POST" } else { "GET" })
+            .uri("/api/admin/parts-sync")
+            .header("X-Ergo-Request", "1")
+            .body(Body::empty())
+            .unwrap();
+        request.headers_mut().extend(headers.clone());
+        request
+    };
+    // A signed-in user outside ERGO_OPERATOR_IDS can neither read nor start a job.
+    for post in [false, true] {
+        let response = app.clone().oneshot(request(&bob, post)).await.unwrap();
+        assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+    }
+    let response = app
+        .clone()
+        .oneshot(request(&operator, false))
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::OK);
+    let status: serde_json::Value = serde_json::from_slice(
+        &axum::body::to_bytes(response.into_body(), 1 << 16)
+            .await
+            .unwrap(),
+    )
+    .unwrap();
+    assert_eq!(status["state"], "idle");
 }

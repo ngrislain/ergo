@@ -721,7 +721,7 @@ impl Simulation {
 /// noncircular measured bounds as a cylinder, or infer a brake/rotation lock.
 fn rolling_wheel(part: &str, bounds: Aabb) -> bool {
     matches!(
-        crate::part_library::profile_id(part),
+        crate::catalog::canonical_id(part),
         "3641.dat" | "4624.dat" | "4624c01.dat"
     ) && crate::geometry::nominal_body_bounds(part).is_some_and(|nominal| {
         let half = to_meters(bounds.size() * 0.5);

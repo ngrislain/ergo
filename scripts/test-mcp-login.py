@@ -13,6 +13,7 @@ import tempfile
 import time
 import urllib.parse
 from playwright.sync_api import sync_playwright, expect
+import library_fixture
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 parser = argparse.ArgumentParser(description=__doc__)
@@ -37,12 +38,14 @@ with tempfile.TemporaryDirectory(prefix='ergo-login-') as temporary:
         script.write_text('#!/bin/sh\nprintf "%s" "$1" > "$ERGO_TEST_LOGIN_URL"\n')
         script.chmod(0o700)
     env = {key:value for key,value in os.environ.items() if not key.startswith(('ERGO_','GOOGLE_','S3_','AWS_'))}
-    env.update(ERGO_ASSET_FETCH='0', ERGO_GROUND_SOURCE='disabled', ERGO_ISOLATED_FIXTURES='1', ERGO_WEB_DIR=str(ROOT/'web'),
+    env.update(ERGO_GROUND_SOURCE='disabled', ERGO_ISOLATED_FIXTURES='1', ERGO_WEB_DIR=str(ROOT/'web'),
                PATH=str(directory/'bin')+os.pathsep+env['PATH'], ERGO_TEST_LOGIN_URL=str(directory/'login-url'),
                XDG_CONFIG_HOME=str(directory/'config'))
     server_env = {**env,'ERGO_BIND':f'127.0.0.1:{port}','ERGO_PUBLIC_URL':url,'ERGO_DATA_DIR':str(directory/'store'),
                   'GOOGLE_CLIENT_ID':'test','GOOGLE_CLIENT_SECRET':'test','ERGO_SESSION_SECRET':helpers.SECRET.decode()}
     with tempfile.TemporaryFile() as log:
+        library_fixture.seed(directory/'store', environment=server_env)
+        env['ERGO_API_URL'] = url
         server = subprocess.Popen([str(ROOT/'target/debug/ergo-server')], cwd=directory, env=server_env, stdout=log, stderr=log)
         try:
             for _ in range(100):

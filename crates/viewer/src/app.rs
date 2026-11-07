@@ -2021,8 +2021,7 @@ pub fn App() -> impl IntoView {
         spawn_local(async move {
             #[derive(Deserialize)]
             struct Config {
-                #[serde(default)]
-                basic_library: Option<String>,
+                part_library: String,
                 #[serde(default)]
                 common_world: Option<String>,
                 storage: String,
@@ -2046,8 +2045,14 @@ pub fn App() -> impl IntoView {
                 }
             });
             if let Ok(config) = json::<Config>("/api/config").await {
-                if let Some(revision) = &config.basic_library {
-                    crate::read_cache::warm_library(revision);
+                // Every part lookup needs the verified library installed first.
+                let installed = match crate::read_cache::part_library(&config.part_library).await {
+                    Some(bytes) => ergo_world::part_library::install_json(&bytes),
+                    None => Err(anyhow::anyhow!("The part library could not be loaded")),
+                };
+                if let Err(error) = installed {
+                    ui.fail(error);
+                    return;
                 }
                 ui.common_world.set(config.common_world);
                 ui.storage.set(config.storage);
@@ -2794,7 +2799,7 @@ fn ImportDialog() -> impl IntoView {
     let name = RwSignal::new(String::new());
     let lat = RwSignal::new("48.8566".to_owned());
     let lon = RwSignal::new("2.3522".to_owned());
-    view! {<dialog id="import-dialog" class="modal"><form on:submit=move |e|{e.prevent_default();let Some(selected)=file.get().and_then(|e|e.files()).and_then(|f|f.get(0))else{ui.fail("Choose a file first");return;};let data=web_sys::FormData::new().unwrap();data.append_with_blob_and_filename("file",&selected,&selected.name()).unwrap();data.append_with_str("name",&name.get_untracked()).unwrap();if !selected.name().ends_with(".json"){data.append_with_str("latitude",&lat.get_untracked()).unwrap();data.append_with_str("longitude",&lon.get_untracked()).unwrap();}ui.busy.set(true);close_dialog("import-dialog");spawn_local(async move{let result:anyhow::Result<ImportPreview>=async{let response=Request::post("/api/import").header("X-Ergo-Request","1").body(data)?.send().await?;if !response.ok(){let value:serde_json::Value=response.json().await?;anyhow::bail!(value["error"].as_str().unwrap_or("Import failed").to_owned());}Ok(response.json().await?)}.await;match result{Ok(preview)=>{if let Err(e)=open_draft(handle,preview.scene){ui.fail(e);}else if !preview.notes.is_empty(){ui.message.set(format!("Imported with {} geometry notes; catalog parametric meshes used where needed",preview.notes.len()));}},Err(e)=>ui.fail(e)}});}><div class="modal-heading"><h2>"Bring your bricks into the world."</h2><button type="button" class="icon-button" aria-label="Close import dialog" on:click=move |_|close_dialog("import-dialog")>"×"</button></div><p>"Open a BrickLink Studio model or an exported LDraw construction. Imports enter a working copy before validation."</p><label class="file-input" for="model-file"><strong>"Choose a construction"</strong><span>"Studio .io · LDraw .ldr / .mpd · Ergo .json"</span><input node_ref=file id="model-file" type="file" accept=".io,.ldr,.mpd,.json" required/></label><label>"Construction name"<input type="text" placeholder="My Paris construction" on:input=move |e|name.set(event_target_value(&e))/></label><div class="form-columns"><label>"Latitude"<input type="number" step="any" min="-90" max="90" value="48.8566" on:input=move |e|lat.set(event_target_value(&e))/></label><label>"Longitude"<input type="number" step="any" min="-180" max="180" value="2.3522" on:input=move |e|lon.set(event_target_value(&e))/></label></div><details><summary>"Supported parts and colors"</summary><p>"The starter catalog includes 27 common basic bricks, plates, and tiles, and 20 colors. Unsupported pieces and colors stop the import."</p><div class="catalog-parts">{catalog::PARTS.iter().map(|(part,name)|view!{<span>{format!("{} · {}",part.trim_end_matches(".dat"),name)}</span>}).collect_view()}</div></details><div class="modal-footer"><span>"Maximum upload 128 MiB"</span><button class="button primary" type="submit">"Open in workspace"</button></div></form></dialog>}
+    view! {<dialog id="import-dialog" class="modal"><form on:submit=move |e|{e.prevent_default();let Some(selected)=file.get().and_then(|e|e.files()).and_then(|f|f.get(0))else{ui.fail("Choose a file first");return;};let data=web_sys::FormData::new().unwrap();data.append_with_blob_and_filename("file",&selected,&selected.name()).unwrap();data.append_with_str("name",&name.get_untracked()).unwrap();if !selected.name().ends_with(".json"){data.append_with_str("latitude",&lat.get_untracked()).unwrap();data.append_with_str("longitude",&lon.get_untracked()).unwrap();}ui.busy.set(true);close_dialog("import-dialog");spawn_local(async move{let result:anyhow::Result<ImportPreview>=async{let response=Request::post("/api/import").header("X-Ergo-Request","1").body(data)?.send().await?;if !response.ok(){let value:serde_json::Value=response.json().await?;anyhow::bail!(value["error"].as_str().unwrap_or("Import failed").to_owned());}Ok(response.json().await?)}.await;match result{Ok(preview)=>{if let Err(e)=open_draft(handle,preview.scene){ui.fail(e);}else if !preview.notes.is_empty(){ui.message.set(format!("Imported with {} geometry notes; catalog parametric meshes used where needed",preview.notes.len()));}},Err(e)=>ui.fail(e)}});}><div class="modal-heading"><h2>"Bring your bricks into the world."</h2><button type="button" class="icon-button" aria-label="Close import dialog" on:click=move |_|close_dialog("import-dialog")>"×"</button></div><p>"Open a BrickLink Studio model or an exported LDraw construction. Imports enter a working copy before validation."</p><label class="file-input" for="model-file"><strong>"Choose a construction"</strong><span>"Studio .io · LDraw .ldr / .mpd · Ergo .json"</span><input node_ref=file id="model-file" type="file" accept=".io,.ldr,.mpd,.json" required/></label><label>"Construction name"<input type="text" placeholder="My Paris construction" on:input=move |e|name.set(event_target_value(&e))/></label><div class="form-columns"><label>"Latitude"<input type="number" step="any" min="-90" max="90" value="48.8566" on:input=move |e|lat.set(event_target_value(&e))/></label><label>"Longitude"<input type="number" step="any" min="-180" max="180" value="2.3522" on:input=move |e|lon.set(event_target_value(&e))/></label></div><details><summary>"Supported parts and colors"</summary><p>"Every official LDraw part in the Ergo library is supported, with BrickLink numbers accepted as aliases, plus the complete LDraw colour palette. Browse them in the "<a href="/catalogue" target="_blank" rel="noopener">"parts catalogue"</a>"."</p></details><div class="modal-footer"><span>"Maximum upload 128 MiB"</span><button class="button primary" type="submit">"Open in workspace"</button></div></form></dialog>}
 }
 
 #[component]

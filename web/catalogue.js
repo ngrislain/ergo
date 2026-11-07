@@ -1,5 +1,9 @@
 const $ = id => document.getElementById(id);
-const state = {parts: [], colours: [], selected: null, colour: null, yaw: -.8, pitch: .6, zoom: 1, asset: null};
+const state = {results: [], byKey: new Map(), total: 0, cursor: null, library: null, colours: [], selected: null, colour: null, yaw: -.8, pitch: .6, zoom: 1, asset: null};
+let searchController = null, searchTimer = 0;
+const itemKey = item => item.id ?? `bricklink:${item.bricklink}`;
+const buildable = item => item.id !== undefined;
+const tierLabel = item => !buildable(item) ? 'BrickLink only' : item.recommended ? 'Reviewed' : 'Derived';
 const meshes = new Map(), pending = new Map(), thumbnails = new Map();
 let meshBytes = 0, preview, thumbnailRenderer, queue = [], pumping = false;
 const number = value => Number(value).toLocaleString('en', {maximumFractionDigits: 3});
@@ -113,7 +117,7 @@ async function loadAsset(part) {
 const observer = new IntersectionObserver(entries => {
   for (const entry of entries) if (entry.isIntersecting) {
     observer.unobserve(entry.target);
-    queue.push({image: entry.target, part: state.parts.find(p => p.id === entry.target.dataset.part), colour: state.colour});
+    const part = state.byKey.get(entry.target.dataset.part); if (part) queue.push({image: entry.target, part, colour: state.colour});
   }
   void pumpThumbnails();
 }, {rootMargin: '180px'});
@@ -143,48 +147,72 @@ async function pumpThumbnails() {
   } finally { pumping = false; }
 }
 
-function family(part) {
-  if (/^Tile\b/i.test(part.name)) return 'tiles';
-  if (/^Plate\b/i.test(part.name)) return 'plates';
-  if (/^Brick\b/i.test(part.name)) return part.connectors.length ? 'mechanical' : 'bricks';
-  if (/\b(Plant|Tree|Flower)\b/i.test(part.name)) return 'scenery';
-  if (/\bAnimal\b/i.test(part.name)) return 'animals';
-  if (/\bMinifig\b/i.test(part.name)) return 'figures';
-  if (/\b(Arch|Panel|Door|Window|Fence|Column|Slope)\b/i.test(part.name)) return 'architecture';
-  return part.connectors.length ? 'mechanical' : 'specialty';
+function searchURL(cursor) {
+  const params = new URLSearchParams({tier: $('tier').value, limit: '48'});
+  const q = $('search').value.trim(); if (q) params.set('q', q);
+  if ($('category').value) params.set('category', $('category').value);
+  if (cursor) params.set('cursor', cursor);
+  return '/api/catalog/parts?' + params;
 }
 
-function feature(part, filter) {
-  const kinds = part.connectors.map(port => port.kind).join(' ');
-  return filter === 'all' || filter === 'studs' && part.top_studs > 0 || filter === 'receivers' && part.receiving_grids.length > 0 ||
-    filter === 'grip' && /bar|grip/.test(kinds) || filter === 'axle' && /pin|axle|hole/.test(kinds) || filter === 'wheel' && /wheel|rim|tyre/.test(kinds);
+async function search(more = false) {
+  searchController?.abort(); searchController = new AbortController();
+  const signal = searchController.signal;
+  $('part-count').textContent = 'Searching…'; $('load-more').disabled = true;
+  try {
+    const response = await fetch(searchURL(more ? state.cursor : null), {signal});
+    if (!response.ok) throw Error(`Search failed (${response.status}). Try again.`);
+    const page = await response.json();
+    if (!more) { state.results = []; state.byKey.clear(); renderCategories(page.categories); }
+    for (const item of page.results) { state.results.push(item); state.byKey.set(itemKey(item), item); }
+    state.total = page.total; state.cursor = page.next_cursor ?? null;
+    $('catalogue-error').hidden = true;
+    renderResults(more ? page.results : state.results, more);
+  } catch (error) {
+    if (signal.aborted) return;
+    $('catalogue-error').hidden = false; $('catalogue-error').textContent = error.message; $('part-count').textContent = 'Search unavailable';
+  }
 }
 
-function renderResults() {
-  observer.disconnect(); queue = [];
-  const terms = $('search').value.toLowerCase().trim().split(/\s+/).filter(Boolean), selectedFamily = $('family').value;
-  const parts = state.parts.filter(part => {
-    const text = [part.id, part.name, ...part.aliases, ...part.connectors.map(p => words(p.kind)), part.mass_source].join(' ').toLowerCase();
-    return terms.every(term => text.includes(term)) && (selectedFamily === 'all' || family(part) === selectedFamily) && feature(part, $('feature').value);
-  });
-  $('part-count').textContent = `${parts.length} of ${state.parts.length} pieces`;
-  $('empty').hidden = parts.length !== 0;
-  const cards = parts.map(part => {
-    const li = make('li'), card = make('button', undefined, 'part-card'); card.type = 'button'; card.dataset.part = part.id;
-    card.setAttribute('aria-pressed', String(state.selected?.id === part.id)); card.setAttribute('aria-label', `${part.name}, ${part.id}`);
-    const holder = make('span', undefined, 'card-image'), image = make('img'); image.alt = `${part.name}, genuine source geometry`; image.dataset.part = part.id; image.width = 256; image.height = 192;
-    holder.append(image); card.append(holder, make('code', part.id), make('span', part.name, 'piece-name'));
-    const label = part.connectors.length ? [...new Set(part.connectors.map(p => words(p.kind)))].slice(0, 2).join(', ') : part.top_studs ? `${part.top_studs} top studs` : `${part.receiving_grids.length} receiving ${part.receiving_grids.length === 1 ? 'grid' : 'grids'}`;
-    card.append(make('span', label, 'piece-features')); card.addEventListener('click', () => { void selectPart(part, true); }); li.append(card); return li;
-  });
-  $('part-results').replaceChildren(...cards);
-  for (const image of $('part-results').querySelectorAll('img')) observer.observe(image);
+function renderCategories(categories) {
+  const select = $('category'), current = select.value;
+  const options = [make('option', 'Every category')]; options[0].value = '';
+  for (const [name, count] of categories) { const option = make('option', `${name} (${number(count)})`); option.value = name; options.push(option); }
+  select.replaceChildren(...options);
+  select.value = categories.some(([name]) => name === current) ? current : '';
 }
+
+function card(item) {
+  const key = itemKey(item), li = make('li'), button = make('button', undefined, 'part-card'); button.type = 'button'; button.dataset.part = key;
+  button.dataset.tier = tierLabel(item).toLowerCase().replace(/ .*/, '');
+  button.setAttribute('aria-pressed', String(state.selected && itemKey(state.selected) === key));
+  const code = buildable(item) ? item.id : `BrickLink ${item.bricklink}`;
+  button.setAttribute('aria-label', `${item.name}, ${code}, ${tierLabel(item)}`);
+  const holder = make('span', undefined, 'card-image');
+  if (buildable(item)) {
+    const image = make('img'); image.alt = `${item.name}, genuine source geometry`; image.dataset.part = key; image.width = 256; image.height = 192; holder.append(image);
+  } else holder.dataset.empty = 'No official geometry';
+  button.append(holder, make('span', tierLabel(item), 'tier-badge'), make('code', code), make('span', item.name, 'piece-name'));
+  const label = !buildable(item) ? (item.category ?? 'Listed item') : item.connectors.length ? [...new Set(item.connectors.map(p => words(p.kind)))].slice(0, 2).join(', ') : item.top_studs ? `${item.top_studs} top studs` : `${item.receiving_grids.length} receiving ${item.receiving_grids.length === 1 ? 'grid' : 'grids'}`;
+  button.append(make('span', label, 'piece-features')); button.addEventListener('click', () => { void selectPart(item, true); }); li.append(button); return li;
+}
+
+function renderResults(items, append = false) {
+  if (!append) { observer.disconnect(); queue = []; }
+  $('part-count').textContent = `${number(state.results.length)} of ${number(state.total)} pieces`;
+  $('empty').hidden = state.total !== 0;
+  $('load-more').hidden = !state.cursor; $('load-more').disabled = false;
+  const cards = items.map(card);
+  if (append) $('part-results').append(...cards); else $('part-results').replaceChildren(...cards);
+  for (const li of cards) { const image = li.querySelector('img'); if (image) observer.observe(image); }
+}
+
+function scheduleSearch() { clearTimeout(searchTimer); searchTimer = setTimeout(() => { void search(); }, 200); }
 
 function fact(name, value) { $('part-facts').append(make('dt', name), make('dd', value)); }
 function sourceLink(text, url) { const link = make('a', text); if (url.startsWith('https://')) { link.href = url; link.target = '_blank'; link.rel = 'noopener noreferrer'; } return link; }
 function updateURL() {
-  const url = new URL(location.href); if (state.selected) url.searchParams.set('part', state.selected.id); if (state.colour) url.searchParams.set('colour', state.colour.code); history.replaceState(null, '', url);
+  const url = new URL(location.href); if (state.selected) url.searchParams.set('part', buildable(state.selected) ? state.selected.id : state.selected.bricklink); if (state.colour) url.searchParams.set('colour', state.colour.code); history.replaceState(null, '', url);
 }
 function drawPreview() {
   if (!preview || !state.asset || !state.colour) return;
@@ -198,12 +226,26 @@ function setInspector(open) {
   $('detail-toggle').textContent = open ? 'Hide details' : 'Show details';
   if (open) requestAnimationFrame(drawPreview);
 }
+function selectListed(item) {
+  $('part-id').textContent = `BrickLink ${item.bricklink}`; $('part-name').textContent = item.name; $('retry-preview').hidden = true;
+  $('preview-status').textContent = 'No official LDraw geometry exists for this BrickLink item, so it is listed for reference and cannot be built. No substitute shape is invented.';
+  $('part-facts').replaceChildren(); fact('Library tier', 'BrickLink only'); if (item.category) fact('Category', item.category); if (item.rebrickable) fact('Rebrickable', item.rebrickable);
+  $('interface-details').replaceChildren();
+  const url = `https://www.bricklink.com/v2/catalog/catalogitem.page?P=${encodeURIComponent(item.bricklink)}`;
+  $('part-credits').replaceChildren(sourceLink(`BrickLink ${item.bricklink}`, url));
+  preview?.gl.clearColor(.957, .973, .988, 1); preview?.gl.clear(preview.gl.COLOR_BUFFER_BIT);
+}
+
 async function selectPart(part, focus = false) {
   state.selected = part; state.asset = null; state.yaw = -.8; state.pitch = .6; state.zoom = 1;
+  document.querySelectorAll('.part-card').forEach(card => card.setAttribute('aria-pressed', String(card.dataset.part === itemKey(part))));
+  if (!buildable(part)) { selectListed(part); updateURL(); return; }
   $('part-id').textContent = part.id; $('part-name').textContent = part.name; $('preview-status').textContent = 'Loading genuine source geometry…'; $('retry-preview').hidden = true;
-  $('part-facts').replaceChildren(); fact('Catalogue mass', `${number(part.mass_kg * 1000)} g`); fact('Nominal body', part.nominal_dimensions_mm.map(number).join(' × ') + ' mm'); fact('Top studs', part.top_studs); fact('Receiving grids', part.receiving_grids.length);
+  $('part-facts').replaceChildren(); fact('Library tier', part.recommended ? 'Reviewed record' : `Derived profile (${part.derivation})`); if (part.category) fact('Category', part.category);
+  fact(part.recommended ? 'Catalogue mass' : 'Estimated mass', `${number(part.mass_kg * 1000)} g`); fact('Nominal body', part.nominal_dimensions_mm.map(number).join(' × ') + ' mm'); fact('Top studs', part.top_studs); fact('Receiving grids', part.receiving_grids.length);
   if (part.set_count !== undefined) fact('Recorded set usage', number(part.set_count));
-  if (part.aliases.length) fact('Official aliases', part.aliases.join(', '));
+  if (part.aliases.length) fact('Identity aliases', part.aliases.join(', '));
+  if (part.bricklink?.length) fact('BrickLink numbers', part.bricklink.join(', '));
   const interfaces = make('ul');
   for (const grid of part.receiving_grids) interfaces.append(make('li', `Receiving grid ${grid.width} × ${grid.depth}, first centre [${grid.first.map(number).join(', ')}]`));
   for (const port of part.connectors) interfaces.append(make('li', `${words(port.kind)}: ${number(port.radius_m * 1000)} mm radius`));
@@ -211,10 +253,9 @@ async function selectPart(part, focus = false) {
   if (!interfaces.children.length) interfaces.append(make('li', 'No additional interface datums are registered.'));
   const credits = $('part-credits'); credits.replaceChildren();
   const massURLs = [...new Set(part.mass_source.match(/https:\/\/www\.bricklink\.com\/v2\/catalog\/catalogitem\.page\?P=[A-Za-z0-9]+/g) || [])];
-  credits.append(make('p', massURLs.length > 1 ? 'Mass record: sourced component sum.' : 'Mass record: catalogue average.'));
+  credits.append(make('p', !part.recommended ? 'Mass: calibrated ABS volume estimate from the official geometry, not a catalogue measurement.' : massURLs.length > 1 ? 'Mass record: sourced component sum.' : 'Mass record: catalogue average.'));
   for (const url of massURLs) { credits.append(sourceLink(`BrickLink ${new URL(url).searchParams.get('P')}`, url), document.createTextNode(' ')); }
   credits.append(make('p', part.mass_source), make('p', `Library revision ${part.library_revision}`));
-  document.querySelectorAll('.part-card').forEach(card => card.setAttribute('aria-pressed', String(card.dataset.part === part.id)));
   updateURL();
   if (focus && matchMedia('(max-width:760px)').matches) { setInspector(true); $('part-name').focus({preventScroll: true}); document.querySelector('.inspector').scrollIntoView({behavior: matchMedia('(prefers-reduced-motion:reduce)').matches ? 'instant' : 'smooth'}); }
   try {
@@ -235,7 +276,7 @@ function renderColours() {
     button.style.setProperty('--swatch', hex(colour.rgb)); button.style.setProperty('--alpha', colour.alpha / 255);
     const channels = rgb(colour); button.style.setProperty('--check', dot(channels, [.2126, .7152, .0722]) > .5 ? '#183047' : '#ffffff');
     button.append(make('span', colour.code === state.colour.code ? '✓' : ''));
-    button.addEventListener('click', () => { state.colour = colour; renderColours(); renderResults(); drawPreview(); updateURL(); }); return button;
+    button.addEventListener('click', () => { state.colour = colour; renderColours(); renderResults(state.results); drawPreview(); updateURL(); }); return button;
   }));
 }
 
@@ -247,12 +288,14 @@ function installControls() {
   document.querySelector('.back-to-results').addEventListener('click', event => {
     if (!mobile.matches) return;
     event.preventDefault(); setInspector(false);
-    const card = [...document.querySelectorAll('.part-card')].find(node => node.dataset.part === state.selected?.id);
+    const card = [...document.querySelectorAll('.part-card')].find(node => state.selected && node.dataset.part === itemKey(state.selected));
     card?.focus();
   });
   $('filters').addEventListener('submit', event => event.preventDefault());
-  for (const id of ['search', 'family', 'feature']) $(id).addEventListener('input', renderResults);
-  $('clear-filters').addEventListener('click', () => { $('filters').reset(); renderResults(); $('search').focus(); });
+  $('search').addEventListener('input', scheduleSearch);
+  for (const id of ['tier', 'category']) $(id).addEventListener('change', () => { void search(); });
+  $('load-more').addEventListener('click', () => { void search(true); });
+  $('clear-filters').addEventListener('click', () => { $('filters').reset(); void search(); $('search').focus(); });
   $('all-colours').addEventListener('change', renderColours); $('show-interfaces').addEventListener('change', drawPreview);
   $('reset-view').addEventListener('click', () => { state.yaw = -.8; state.pitch = .6; state.zoom = 1; drawPreview(); });
   $('retry-preview').addEventListener('click', () => { void selectPart(state.selected); });
@@ -273,11 +316,19 @@ async function start() {
   } catch (error) { $('preview-status').textContent = error.message; }
   try {
     const response = await fetch('/api/catalog'); if (!response.ok) throw Error(`Catalogue request failed (${response.status}). Reload to try again.`);
-    const catalogue = await response.json(); state.parts = catalogue.parts; state.colours = catalogue.colors;
+    const catalogue = await response.json(); state.colours = catalogue.colors; state.library = catalogue.library;
+    $('library-summary').textContent = `${number(catalogue.library.reviewed)} reviewed and ${number(catalogue.library.derived)} derived buildable parts, ${number(catalogue.library.listed)} BrickLink-only items. Library ${catalogue.library.revision.slice(0, 12)}.`;
     const params = new URLSearchParams(location.search);
     state.colour = state.colours.find(c => c.code === Number(params.get('colour') ?? 71)) || state.colours.find(c => c.code === 71) || state.colours[0];
-    const selected = state.parts.find(p => p.id === params.get('part') || p.aliases.includes(params.get('part'))) || state.parts.find(p => p.id === '3001.dat') || state.parts[0];
-    renderColours(); renderResults(); await selectPart(selected);
+    renderColours(); await search();
+    const wanted = params.get('part');
+    let selected = state.results.find(p => p.id === wanted || p.aliases?.includes(wanted));
+    if (wanted && !selected) {
+      const found = await fetch('/api/catalog/parts?' + new URLSearchParams({q: wanted, tier: 'all', limit: '20'})).then(r => r.ok ? r.json() : {results: []});
+      selected = found.results.find(p => p.id === wanted || p.aliases?.includes(wanted) || p.bricklink === wanted || p.bricklink?.includes?.(wanted));
+      if (selected) state.byKey.set(itemKey(selected), selected);
+    }
+    await selectPart(selected || state.results.find(p => p.id === '3001.dat') || state.results[0]);
     document.body.dataset.catalogueReady = 'true';
   } catch (error) { $('catalogue-error').hidden = false; $('catalogue-error').textContent = error.message; $('part-count').textContent = 'Catalogue unavailable'; }
 }

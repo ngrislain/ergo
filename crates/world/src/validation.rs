@@ -250,7 +250,7 @@ pub fn validate_baseplate_registration(
         if crate::attachments::connectors(&brick.part)
             .iter()
             .any(|c| c.kind == crate::attachments::Kind::Tyre)
-            || crate::part_library::profile_id(&brick.part) == "4624c01.dat"
+            || crate::catalog::canonical_id(&brick.part) == "4624c01.dat"
         {
             continue;
         }

@@ -7,7 +7,7 @@ use std::{
 };
 
 const TARGET: &str = "wasm32-unknown-unknown";
-const USAGE: &str = "Usage: cargo xtask build-web | build-site\n\nBuild-web generates the browser app and minimal MCP WASM client.\nBuild-site generates the public site's shared-renderer preview and logo.\nRequires the wasm32-unknown-unknown target and matching wasm-bindgen CLI from README.md.";
+const USAGE: &str = "Usage: cargo xtask build-web | build-site\n\nBuild-web generates the browser app and minimal MCP WASM client.\nBuild-site generates the public site's shared-renderer preview and logo, with the\nreviewed tier of the part library from ERGO_PART_LIBRARY (a local library.json) or\nfrom ERGO_LIBRARY_ORIGIN (default https://ergosandbox.com).\nRequires the wasm32-unknown-unknown target and matching wasm-bindgen CLI from README.md.";
 
 fn main() -> ExitCode {
     let mut arguments = env::args().skip(1);
@@ -62,12 +62,16 @@ fn build_site() -> Result<(), String> {
         return Err("Invalid site version".into());
     }
     let output = format!("site/public/engine/v{version}");
+    let reviewed = reviewed_library()?;
+    ergo_world::part_library::install_json(&reviewed).map_err(|e| format!("{e:#}"))?;
     build_targets(&[(
         "ergo-client",
         Some("site-entry"),
         "ergo_client.wasm",
         &output,
     )])?;
+    std::fs::write(root.join(&output).join("reviewed-library.json"), &reviewed)
+        .map_err(|e| format!("Cannot write the reviewed part library: {e}"))?;
     std::fs::copy(
         root.join("web/favicon.svg"),
         root.join("site/public/favicon.svg"),
@@ -80,6 +84,49 @@ fn build_site() -> Result<(), String> {
     )
     .map_err(|e| format!("Cannot write catalog illustration: {e}"))?;
     Ok(())
+}
+
+/// The reviewed tier of the synthesized part library, verified.
+fn reviewed_library() -> Result<Vec<u8>, String> {
+    let library = if let Some(path) = env::var_os("ERGO_PART_LIBRARY") {
+        std::fs::read(&path).map_err(|e| format!("Cannot read ERGO_PART_LIBRARY: {e}"))?
+    } else {
+        let origin =
+            env::var("ERGO_LIBRARY_ORIGIN").unwrap_or_else(|_| "https://ergosandbox.com".into());
+        let origin = origin.trim_end_matches('/');
+        let config: serde_json::Value =
+            serde_json::from_slice(&fetch(&format!("{origin}/api/config"))?)
+                .map_err(|e| format!("Invalid origin config: {e}"))?;
+        let revision = config["part_library"]
+            .as_str()
+            .ok_or("The origin does not publish a part library")?;
+        fetch(&format!("{origin}/api/library/{revision}/reviewed.json"))?
+    };
+    let library = ergo_world::part_library::verify(&library).map_err(|e| format!("{e:#}"))?;
+    let tier = ergo_world::part_library::reviewed_tier(&library).map_err(|e| format!("{e:#}"))?;
+    serde_json::to_vec(&tier).map_err(|e| e.to_string())
+}
+
+fn fetch(url: &str) -> Result<Vec<u8>, String> {
+    let output = Command::new("curl")
+        .args([
+            "--fail",
+            "--silent",
+            "--show-error",
+            "--location",
+            "--max-time",
+            "120",
+            url,
+        ])
+        .output()
+        .map_err(|e| format!("Cannot run curl: {e}"))?;
+    if !output.status.success() {
+        return Err(format!(
+            "Cannot fetch {url}: {}",
+            String::from_utf8_lossy(&output.stderr)
+        ));
+    }
+    Ok(output.stdout)
 }
 
 fn build_targets(targets: &[(&str, Option<&str>, &str, &str)]) -> Result<(), String> {

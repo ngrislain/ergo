@@ -1,5 +1,38 @@
 # Changelog
 
+## v0.5.27
+
+- Make the whole official LDraw library buildable as one synthesized part
+  library (`ergo-part-library-2`), deduplicated against BrickLink numbers via
+  Rebrickable.
+  - 138 human-reviewed parts keep their records, now committed as
+    `crates/world/library/reviews.json`.
+  - About 17,700 other parts get automatically derived (`auto-v1`) nominal
+    bodies, stud and socket grids and calibrated ABS volume masses, labelled as
+    estimates.
+  - BrickLink items without official geometry are listed but not buildable.
+- Add `ergo-server parts-sync`, `parts-check` and `parts-publish`.
+  - Inputs are stored content-addressed and synthesis is deterministic.
+  - Objects, then the library, then the `current` pointer are published.
+  - A server with an empty store runs the first synthesis before serving.
+  - Objects stream to the store while baking, so memory stays bounded.
+- Add the operator-only `POST`/`GET /api/admin/parts-sync` (`ERGO_OPERATOR_IDS`).
+  A published revision is hot-swapped into the running server.
+- Remove the compiled `sources.lock.json`, the embedded `parts.pack`, per-part
+  `assets/parts/` descriptions and runtime LDraw fetching (`ERGO_ASSET_FETCH`,
+  `ERGO_ASSET_SOURCE_URL`, `ERGO_ASSET_LIBRARY_DIR`).
+  - Browser, MCP and static site install the verified library document.
+  - The MCP mirrors it, with fetched objects, for offline use.
+- Rework the unlisted parts catalogue around server-side paged search
+  (`/api/catalog/parts`):
+  - library tier and category filters;
+  - Reviewed/Derived/BrickLink-only badges;
+  - alias and BrickLink-number lookup.
+
+  MCP `get_catalog` gains `search`, `category`, `tier` and `cursor`.
+- Use the shared logo mark and wordmark on the catalogue and MCP Inspector pages.
+- Record in AGENTS.md: migrate forward and do not keep legacy systems.
+
 ## v0.5.26
 
 - Fix the shared-world editing handoff link and add explicit, human-approved

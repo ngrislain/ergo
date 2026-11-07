@@ -1,33 +1,51 @@
 # Ergo part descriptions and imports
 
 The shared renderer consumes Ergo geometry and per-instance transforms/colors.
-Parts are stored as **`ergo-part-1`** descriptions, not external model documents.
+Every buildable part is an entry of the single [part library](part-library.md)
+(`ergo-part-library-2`), not an external model document.
 
-## Description fields
+## Library entries
 
-`assets/parts/<part-id>.json` contains:
+A library entry (`ergo_world::part_library::LibraryPart`) contains:
 
-- `format: "ergo-part-1"`, `schema: 2`, and canonical `part` ID.
-- `mesh_hash`: SHA-256 of the geometry object's stored CBOR bytes.
-- `bounds` and nominal `body_bounds` in public part-local coordinates.
-- Optional `catalog_mass: {kg,source}`; this is sourced catalog information,
-  not an invented physical measurement or publication permission.
-- `credits`: source file/URL, author and license metadata.
-- `library_revision`: optional pinned canonical-library revision. A description
-  with an older/missing revision is rebuilt when that part is in the current library.
+- `revision`: SHA-256 over the synthesis version, the part's pinned source
+  closure and its catalogue record.
+- `vertex_hash`: SHA-256 of the complete internal float32 vertex stream.
+- `mesh_hash`: SHA-256 of the native Mesh CBOR at `objects/<mesh_hash>.cbor`.
+- `catalogue`: `id`, `name`, LDraw `category` and `keywords`, deduplicated
+  `bricklink` numbers, `rebrickable` ID, identity `aliases`, `mass_kg` and
+  `mass_source`, then exactly one of:
+  - a reviewed rectangular `size` (+ `studs`);
+  - a source-LDU `nominal` profile, plus optional reviewed `connectors` and
+    `set_count`, and `derivation` for derived parts.
 
-Geometry is `objects/<mesh_hash>.cbor`, using Ergo's schema-2 positions, normals,
-face colors, bounds and physical metadata. Vertices are unindexed triangles with
-nine floats per vertex. Negative face colors inherit the instance color.
-The resolver verifies hash, schema and part identity when reading cached geometry.
+Geometry objects use Ergo's schema-2 positions, normals, face colors, bounds and
+physical metadata, and carry their LDraw file credits (author, licence, source
+URL). Vertices are unindexed triangles with nine floats per vertex. Negative face
+colors inherit the instance color.
 
 ## Resolution
 
-The [canonical library](part-library.md) supplies 44 standard brick/plate/tile geometries, 94 source-only
-architectural/figure/vehicle entries and 20 opaque colors. It exposes the sourced
-complete color palette and resolves other
-part IDs when actual geometry is available. These recommendations help minimize
-piece count; they are not an allowlist or a popularity ranking.
+`ergo_assets::PartCache::resolve(id)` does the following:
+
+1. Maps the ID or alias to its library entry. Unknown IDs are errors.
+2. Reads the immutable `objects/<mesh_hash>.cbor`.
+3. Verifies the CBOR hash, schema, part identity, `source` quality and vertex hash.
+4. Keeps a 64 MiB LRU of decoded meshes.
+
+There is no runtime upstream fetch, local LDraw directory or per-part
+description record. The [synthesis](part-library.md#deterministic-synthesis)
+is the only producer of geometry. A missing object fails rather than introducing
+a box substitute. Resolution is concurrent, with no global lock.
+
+MCP mirrors fetch missing objects from the origin's `/api/part-objects/{hash}`,
+verify them and store them locally. The rendered envelope (`mesh.bounds`)
+includes studs and details. The nominal body comes from the catalogue record.
+
+The reviewed tier recommends 44 standard brick/plate/tile geometries and 94
+architectural, figure, vehicle and Technic entries, with 20 opaque colors. It also
+exposes the complete sourced LDraw palette. These recommendations help minimize
+piece count; they are not an allowlist. Derived parts are buildable too.
 
 The starter plate set includes 3832 (2×10, 2.91g) and 4282 (2×16, 4.50g), with
 nominal dimensions and catalogue masses sourced from their BrickLink records:
@@ -45,20 +63,54 @@ Long pedestrian spans can use genuine **3026 Plate 6×24**, 19.43g, rather than
 scaled smaller plates. Its nominal dimensions and catalogue mass are sourced from
 [BrickLink 3026](https://www.bricklink.com/v2/catalog/catalogitem.page?P=3026).
 
-Resolution is cache-first, then uses the checksum-verified native library pack.
-The complete 138-part pack is 2,813,617 bytes; only a requested part is decoded.
-For additional source assets an import adapter can read a configured local source
-library or retrieve a missing source, bake it into Ergo geometry, and store its
-native description. Source text is transient in a bounded 32 MiB process cache;
-it is not a second persisted asset representation in S3.
+Imports (`/api/import`) take library parts' geometry from the library. Parts that
+are not in the library are baked from geometry embedded in the uploaded
+MPD/Studio document. Without a sourced operator part record they cannot be
+admitted.
 
-`ERGO_ASSET_LIBRARY_DIR` configures the source-library adapter. `ERGO_ASSET_FETCH=0` disables
-upstream requests for the source adapter. Selected parts normally come from their
-pinned native pack; source update builds verify their official dependency pins,
-independent of local paths. Missing/changed source geometry returns an error;
-resolution does not introduce another box substitute. Nominal parametric geometry
-is retained for internal diagnostics and disposable render derivatives.
-The renderer retains arbitrary source silhouettes through medium distance tiers.
+## Derived profiles (auto-v1)
+
+`crates/world/src/derive.rs` profiles every non-reviewed part from its baked
+official geometry in source LDU (LDraw axes, Y down):
+
+- **Top studs:**
+  - upright, unit-scaled placements of the standard stud primitives (`stud`,
+    `stud2`, `stud2a`, `stud6`, `stud6a`, `stud10`, `stud15`, `stud17a`),
+    collected during baking;
+  - sideways studs are not used.
+- **Body envelope:** the mesh bounds, with the 4-LDU stud protrusion removed
+  when studs are the highest geometry.
+- **Receiving grids:** stud-lattice positions (0- or 10-LDU phase, or the top-stud
+  phase) on a downward-facing plane within one plate of the lowest point.
+  1. Each position must leave a stud's height free above the plane.
+  2. It must have a ceiling within the body and nothing below its mouth.
+  3. It must be surrounded by gripping material: 16 horizontal rays 2 LDU above
+     the plane must hit within 11 LDU with no angular gap over 180°. Empty space
+     under an arch opening is therefore not a socket.
+  4. Open positions are grouped into maximal rectangles.
+- **Mass:** a three-axis majority vote of ray-parity voxel fills (≤ 8 M voxels)
+  gives the solid volume. It is multiplied by ABS density 1.05 g/cm³ and the
+  library's calibration factor. `mass_source` states it is an estimate.
+- **Not derived:**
+  - connectors (Technic bores, pins, axles, bars, clips);
+  - compound collision boxes;
+  - bearing regions beyond the body box;
+  - any connector capacity.
+
+On the 138 reviewed parts, auto-v1 reproduces:
+
+- 132/138 stud sets exactly;
+- 115/138 receiving-grid sets exactly;
+- 112/138 body boxes within 0.06 units.
+
+Most differences are deliberate reviewed choices, such as bearing cores for
+minifigure parts, trees and capes. The remaining misses are conservative: no
+socket is derived where the reviewed part has one. Measure with
+`cargo run -p ergo-world --features test-library --example derive_check -- /path/to/ldraw`.
+
+Derived parts therefore rest, stack and connect through studs and sockets.
+Their envelopes are nominal boxes, which are coarser than reviewed cores.
+Joint-dependent publication still requires measured capacities, as for every part.
 
 ## Reviewed display-detail library
 
@@ -111,19 +163,40 @@ can merge distant upright standard bodies without creating new catalogue pieces.
 The server serves `/catalogue` and `/catalogue/` without adding a main-app
 navigation link. The page declares `noindex,nofollow`; it is an unlisted public
 reference for already-public catalogue data, not an authentication boundary.
-It reads `/api/catalog` and the ordinary JSON `/api/parts/{id}` asset route.
 
-`/api/catalog` part records include official aliases, `mass_kg`, `mass_source`,
-`nominal_dimensions_mm` in east/north/up order, `top_studs`, `receiving_grids`
-and `library_revision`, in addition to names, usage counts and mechanical ports.
-Each receiving grid supplies width/depth and its first centre in public part-local
-construction coordinates. Mechanical port radii remain SI metres.
+APIs:
 
-The reference page provides search, family/interface filters, real source-mesh
-thumbnails, an orbit/zoom/keyboard preview and optional interface markers. It
-distinguishes nominal physics envelopes from rendered envelopes including details
-and studs, and links catalogue mass records/component sums and geometry credits.
-Only source-quality meshes are shown; no generic box substitutes for missing geometry.
+- `/api/catalog`: colours, constructs, the reviewed parts and a `library`
+  summary (revision, reviewed/derived/listed counts, mass calibration).
+- `GET /api/catalog/parts?q=&category=&tier=&cursor=&limit=`: paged search over
+  the whole library.
+  - `tier` is one of `all`, `buildable`, `reviewed`, `derived`, `listed`;
+    `limit` is at most 128.
+  - Results are ordered reviewed first, then derived, then listed, each by ID.
+  - Cursors are offsets bound to the immutable library revision.
+  - Matching is case-insensitive over ID, name, aliases, BrickLink numbers,
+    category and keywords. `2x4`, `2 x 4` and `2 × 4` match alike.
+  - Category facets are returned with the results.
+- `/api/parts/{id}`: one verified asset with its library entry.
+
+Part records include identity aliases and BrickLink numbers, `mass_kg`,
+`mass_source`, `derivation` for derived parts, `nominal_dimensions_mm` in
+east/north/up order, `top_studs`, `receiving_grids` and `library_revision`.
+Each receiving grid supplies width/depth and its first centre in public
+part-local construction coordinates. Mechanical port radii remain SI metres.
+
+The reference page provides:
+
+- server-side search with paged results;
+- library tier and category filters;
+- a Reviewed/Derived/BrickLink-only badge per card;
+- real source-mesh thumbnails;
+- an orbit/zoom/keyboard preview and optional interface markers.
+
+It distinguishes nominal physics envelopes from rendered envelopes, labels
+derived masses as estimates, and links mass records and geometry credits.
+BrickLink-only items show their BrickLink link and no preview; no generic box
+substitutes for missing geometry.
 
 Colour controls use the LEGO/LDraw preview palette and retain fixed printed face
 colours. They do not claim every mould was manufactured in every palette colour.
@@ -131,12 +204,14 @@ Swatches use catalogue RGB/alpha; preview lighting and simple transparency are
 illustrative, not metallic/refraction/material qualification.
 
 Verification: `scripts/test-catalogue.py` runs against the isolated real server
-through `scripts/test-web-isolated.py`, checking all canonical entries, filters,
-source geometry, colour changes, keyboard orbit, interfaces and mobile layout.
+through `scripts/test-web-isolated.py`, which publishes the synthesized fixture
+library. It checks reviewed paging, tiers, a derived part and an alias, source
+geometry, colour changes, keyboard orbit, interfaces and mobile layout.
 
 ## Physical and material limits
 
-`crates/world/src/part_profiles.rs` adds reviewed catalogue-average masses and
+Reviewed records in `crates/world/library/reviews.json` (consumed through
+`crates/world/src/part_profiles.rs`) add catalogue-average masses and
 explicit nominal body/connector proxies for frames 60594/60592, slopes 3037/3039,
 fence 3633, round bricks 3062b/3941/87081, lamppost 2039, round plate 4073, dish
 4740, centre-stud plate 87580, minifigure units 970c00/76382p00/3626a/3626ap01,
@@ -223,7 +298,7 @@ refraction and coloured transmission are not implied by a native description.
 
 `crates/world/src/attachments.rs` shares source-local mating rules across relation
 inspection, inferred constraints and finite bore-clearance checks. Port definitions
-are pinned in the canonical catalogue and regenerated by `scripts/common_parts.py`.
+are reviewed records in `crates/world/library/reviews.json`.
 They distinguish 3.2 mm bars/grips, Technic round pins/bores, cross axles/keyed bushes,
 small wheel pins/bearings, and explicitly matched rim/tyre groups.
 

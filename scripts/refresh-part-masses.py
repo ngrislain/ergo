@@ -7,7 +7,7 @@ import re
 import urllib.request
 from pathlib import Path
 
-PARTS = [value['catalogue'] for value in json.loads((Path(__file__).resolve().parents[1]/'crates/world/library/sources.lock.json').read_text())['parts'].values() if value['catalogue']['size'] is not None]
+PARTS = [review for review in json.loads((Path(__file__).resolve().parents[1]/'crates/world/library/reviews.json').read_text())['parts'] if review.get('size') is not None]
 
 
 class Text(html.parser.HTMLParser):

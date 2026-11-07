@@ -1,6 +1,7 @@
 mod auth;
 mod catalog;
 mod import;
+mod parts;
 mod positions;
 mod shared;
 mod store;
@@ -16,7 +17,7 @@ use axum::{
 };
 use ergo_world::{GeoReference, SCHEMA_VERSION, WorldExport, WorldManifest};
 use serde::{Deserialize, Serialize};
-use std::{env, path::PathBuf};
+use std::{collections::BTreeMap, env};
 use store::Store;
 use tower_http::{
     compression::CompressionLayer,
@@ -28,7 +29,8 @@ use tower_http::{
 struct AppState {
     store: Store,
     geo: GeoReference,
-    library: Option<PathBuf>,
+    /// The installed part library's documents and its synthesis job.
+    library: parts::Parts,
     auth: auth::Auth,
     parts: ergo_assets::PartCache,
     ground: ergo_assets::ground::GroundCache,
@@ -64,10 +66,10 @@ impl IntoResponse for ApiError {
 #[derive(Serialize)]
 struct Config {
     version: &'static str,
-    basic_library: &'static str,
+    part_library: &'static str,
+    part_library_format: &'static str,
     construction_format: &'static str,
     model_format: &'static str,
-    part_format: &'static str,
     common_world: Option<String>,
     storage: String,
     geo: GeoReference,
@@ -82,10 +84,10 @@ struct Config {
 async fn config(State(s): State<AppState>) -> Json<Config> {
     Json(Config {
         version: env!("CARGO_PKG_VERSION"),
-        basic_library: &ergo_assets::basic_library().revision,
+        part_library: &ergo_world::part_library::library().revision,
+        part_library_format: ergo_world::part_library::FORMAT,
         construction_format: ergo_world::storage::FORMAT,
         model_format: ergo_world::assembly::FORMAT,
-        part_format: ergo_assets::PART_FORMAT,
         common_world: s.shared.common_world.clone(),
         storage: s.store.kind,
         geo: s.geo,
@@ -148,15 +150,11 @@ async fn part_asset(
         format!("{part}.dat")
     };
     let asset = s.parts.resolve(&part).await?;
-    let etag = asset
-        .description
-        .as_ref()
-        .filter(|_| asset.mesh.quality == "source")
-        .map(|description| {
-            ergo_transactions::canonical_cbor(description)
-                .map(|bytes| format!("W/\"part-{}\"", ergo_transactions::ContentId::of(&bytes)))
-        })
-        .transpose()?;
+    // Immutable mesh plus this library revision's catalogue record.
+    let etag = Some(format!(
+        "W/\"part-{}-{}\"",
+        asset.entry.mesh_hash, asset.entry.revision
+    ));
     let unchanged = etag.as_ref().is_some_and(|etag| {
         headers
             .get("if-none-match")
@@ -185,17 +183,44 @@ async fn part_asset(
     Ok(response)
 }
 
-async fn basic_library(
+async fn search_parts(
+    Query(query): Query<ergo_world::catalog::SearchQuery>,
+) -> Result<Json<ergo_world::catalog::SearchPage>, ApiError> {
+    Ok(Json(ergo_world::catalog::search(&query)?))
+}
+
+/// Immutable content-addressed geometry of one installed library part. Only
+/// hashes named by the library are served; world objects stay authorized.
+async fn part_object(
+    State(s): State<AppState>,
+    Path(hash): Path<String>,
+) -> Result<Response, ApiError> {
+    if ergo_world::part_library::by_mesh_hash(&hash).is_none() {
+        return Ok(StatusCode::NOT_FOUND.into_response());
+    }
+    let mut response = s.parts.object(&hash).await?.into_response();
+    let headers = response.headers_mut();
+    headers.insert(header::CONTENT_TYPE, "application/cbor".parse()?);
+    headers.insert(header::ETAG, format!("\"{hash}\"").parse()?);
+    headers.insert(
+        header::CACHE_CONTROL,
+        "public, max-age=31536000, immutable".parse()?,
+    );
+    Ok(response)
+}
+
+async fn part_library_file(
+    State(s): State<AppState>,
     headers: HeaderMap,
     Path((revision, file)): Path<(String, String)>,
 ) -> Response {
-    let library = ergo_assets::basic_library();
-    if revision != library.revision {
+    let documents = s.library.documents();
+    if revision != documents.revision {
         return StatusCode::NOT_FOUND.into_response();
     }
     let (bytes, mime) = match file.as_str() {
-        "manifest.json" => (library.manifest.as_slice(), "application/json"),
-        "parts.pack" => (library.pack, "application/octet-stream"),
+        "library.json" => (&*documents.library, "application/json"),
+        "reviewed.json" => (&*documents.reviewed, "application/json"),
         _ => return StatusCode::NOT_FOUND.into_response(),
     };
     let etag = format!("\"{revision}-{file}\"");
@@ -392,38 +417,50 @@ async fn upload(
         file.context("Choose a Studio .io, LDraw .ldr/.mpd, or Ergo JSON file")?;
     let is_json = filename.to_lowercase().ends_with(".json");
     let geo = s.geo;
-    let library = s.library.clone();
-    let (mut scene, mut notes) = tokio::task::spawn_blocking(move || -> Result<_> {
+    let (scene, parsed) = tokio::task::spawn_blocking(move || -> Result<_> {
         if is_json {
             let mut scene =
                 ergo_world::storage::decode(&bytes).context("Invalid Ergo scene JSON")?;
             import::validate_export(&mut scene)?;
-            Ok((scene, Vec::new()))
+            Ok((Some(scene), None))
         } else {
-            let import::ImportedLdraw {
-                bricks,
-                meshes,
-                notes,
-                model,
-            } = import::import_ldraw(&bytes, &filename, library)?;
             Ok((
-                WorldExport {
-                    schema: SCHEMA_VERSION,
-                    name: filename.clone(),
-                    geo,
-                    bricks,
-                    meshes,
-                    joints: Vec::new(),
-                    fixed_bricks: Vec::new(),
-                    ground: Vec::new(),
-                    groups: Vec::new(),
-                    model: Some(model),
-                },
-                notes,
+                None,
+                Some((filename.clone(), import::parse_ldraw(&bytes, &filename)?)),
             ))
         }
     })
     .await??;
+    let (mut scene, mut notes) = if let Some(scene) = scene {
+        (scene, Vec::new())
+    } else {
+        let (filename, parsed) = parsed.context("Parsed LDraw document")?;
+        let mut library = BTreeMap::new();
+        for part in parsed.library_parts() {
+            library.insert(part.clone(), s.parts.resolve(&part).await?.mesh);
+        }
+        let import::ImportedLdraw {
+            bricks,
+            meshes,
+            notes,
+            model,
+        } = tokio::task::spawn_blocking(move || import::assemble(parsed, &library)).await??;
+        (
+            WorldExport {
+                schema: SCHEMA_VERSION,
+                name: filename,
+                geo,
+                bricks,
+                meshes,
+                joints: Vec::new(),
+                fixed_bricks: Vec::new(),
+                ground: Vec::new(),
+                groups: Vec::new(),
+                model: Some(model),
+            },
+            notes,
+        )
+    };
     // Exact supplied meshes remain pinned. Missing/parametric catalog parts are
     // resolved once through the persistent local/S3 asset cache before placement.
     for part in scene.meshes.keys().cloned().collect::<Vec<_>>() {
@@ -513,7 +550,9 @@ async fn snapshot(
 
 #[tokio::main]
 async fn main() -> Result<()> {
-    dotenvy::dotenv().ok();
+    // `.env` from the working directory or its parents; variables already set
+    // in the process environment win. Reported once logging is configured.
+    let dotenv = dotenvy::dotenv();
     tracing_subscriber::fmt()
         // Operator subcommands print machine-readable JSON on stdout. Keep
         // progress diagnostics on stderr so profiles remain parseable.
@@ -523,10 +562,51 @@ async fn main() -> Result<()> {
                 .unwrap_or_else(|_| "ergo_server=info,tower_http=info".into()),
         )
         .init();
+    match &dotenv {
+        Ok(path) => tracing::info!(path = %path.display(), "Loaded environment file"),
+        Err(error) if error.not_found() => tracing::info!("No .env file found"),
+        Err(error) => {
+            tracing::warn!(%error, "Could not load .env; continuing with the process environment")
+        }
+    }
     let store = Store::from_env()?;
     let mut warmed_shared = None;
     let mut args = env::args().skip(1);
-    if let Some(command) = args.next() {
+    let command = args.next();
+    if let Some(command @ ("parts-sync" | "parts-check")) = command.as_deref() {
+        let option = args.next();
+        anyhow::ensure!(
+            args.next().is_none() && option.as_deref().is_none_or(|o| o == "--dry-run"),
+            "Usage: ergo-server parts-sync [--dry-run] | ergo-server parts-check"
+        );
+        let report = if command == "parts-check" {
+            let workers = std::thread::available_parallelism().map_or(4, |n| n.get());
+            ergo_assets::library::check(store.backend.clone(), &store.prefix, workers).await?
+        } else {
+            parts::run_sync(&store, option.is_some()).await?.report
+        };
+        println!("{}", serde_json::to_string_pretty(&report)?);
+        return Ok(());
+    }
+    if command.as_deref() == Some("parts-publish") {
+        let (Some(library), Some(objects), None) = (args.next(), args.next(), args.next()) else {
+            anyhow::bail!("Usage: ergo-server parts-publish LIBRARY.json OBJECTS.cbor.gz");
+        };
+        let library = ergo_assets::library::publish_bundle(
+            &*store.backend,
+            &store.prefix,
+            &std::fs::read(library)?,
+            &std::fs::read(objects)?,
+        )
+        .await?;
+        println!(
+            "{}",
+            serde_json::json!({"revision": library.revision, "parts": library.parts.len()})
+        );
+        return Ok(());
+    }
+    let library = parts::Parts::bootstrap(&store).await?;
+    if let Some(command) = command {
         let id = args.next().context("Expected a shared-world UUID")?;
         if command == "user-plan" {
             let plan = args
@@ -887,7 +967,7 @@ async fn main() -> Result<()> {
         shared,
         store,
         geo,
-        library: env::var_os("ERGO_ASSET_LIBRARY_DIR").map(PathBuf::from),
+        library,
         auth,
         parts,
         ground,
@@ -904,8 +984,14 @@ async fn main() -> Result<()> {
             get(|| async { Json(ergo_world::catalog::catalog()) }),
         )
         .route("/api/worlds", get(worlds).post(snapshot))
+        .route("/api/catalog/parts", get(search_parts))
         .route("/api/parts/{part}", get(part_asset))
-        .route("/api/library/{revision}/{file}", get(basic_library))
+        .route("/api/part-objects/{hash}", get(part_object))
+        .route("/api/library/{revision}/{file}", get(part_library_file))
+        .route(
+            "/api/admin/parts-sync",
+            get(parts::status).post(parts::start),
+        )
         .route("/api/ground/{x}/{y}", get(ground_block))
         .route("/api/worlds/{id}", get(manifest))
         .route("/api/worlds/{id}/export", get(export))

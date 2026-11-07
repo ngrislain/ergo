@@ -9,6 +9,8 @@ import subprocess
 import tempfile
 import os
 
+import library_fixture
+
 
 def main():
     parser = argparse.ArgumentParser()
@@ -16,14 +18,12 @@ def main():
     args = parser.parse_args()
     with tempfile.TemporaryDirectory(prefix="ergo-mcp-test-") as directory:
         workspace = pathlib.Path(directory) / "construction.json"
-        library = pathlib.Path(directory) / "ldraw"
-        (library / "parts").mkdir(parents=True)
-        (library / "parts" / "custom-part.dat").write_text("0 Synthetic custom part\n0 Author: Test fixture\n0 !LICENSE Synthetic test fixture\n4 16 -20 0 -20 20 0 -20 20 0 20 -20 0 20\n4 16 -20 24 -20 -20 24 20 20 24 20 20 24 -20\n")
+        environment = library_fixture.offline_mcp(dict(os.environ), pathlib.Path(directory) / "library")
         process = subprocess.Popen(
             [str(pathlib.Path(args.binary).resolve()), "--workspace", str(workspace), "--headless", "--local"],
             stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
             text=True,
-            env={**os.environ,"ERGO_ASSET_FETCH":"0","ERGO_ASSET_LIBRARY_DIR":str(library)},
+            env=environment,
         )
         assert process.stdin is not None and process.stdout is not None and process.stderr is not None
         sequence = 0
@@ -142,11 +142,17 @@ def main():
             assert len(json.loads(workspace.read_text())["groups"]) == 2
             assert len(call("get_catalog")["structuredContent"]["catalog"]["colors"]) == 20
             assert len(call("get_catalog", include_extended=True)["structuredContent"]["catalog"]["colors"]) > 300
-            custom = call("get_catalog", part="custom-part")
-            assert custom["structuredContent"]["requested_part"]["quality"] == "source", custom
-            custom = call("place_brick", part="custom-part", color=47, min_corner=[16, 2, 0])
-            assert custom["isError"] is False and custom["structuredContent"]["publication_ready"] is False, custom
-            assert "sourced" in custom["structuredContent"]["failure"]
+            # A derived (unreviewed) library part is found by search and placed
+            # with an explicit warning; its estimated mass is never a BrickLink record.
+            found = call("get_catalog", search="grille", tier="derived")["structuredContent"]["search"]
+            assert [hit["id"] for hit in found["results"]] == ["2412b.dat"], found
+            assert found["results"][0]["mass_source"].startswith("estimated:voxel-v1"), found
+            derived = call("get_catalog", part="15561")
+            assert derived["structuredContent"]["requested_part"]["part"] == "2412b.dat", derived
+            assert "derived" in derived["content"][0]["text"], derived
+            derived = call("place_brick", part="2412b", color=47, min_corner=[16, 2, 0])
+            assert derived["isError"] is False, derived
+            assert call("get_catalog", part="not-a-library-part")["isError"] is True
             submodel = ("0 FILE pair.ldr\n"
                         "1 16 0 0 0 1 0 0 0 1 0 0 0 1 pillar.ldr\n"
                         "1 16 100 0 0 1 0 0 0 1 0 0 0 1 pillar.ldr\n"

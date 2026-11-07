@@ -7,7 +7,7 @@ shared Sandbox. The bridge never grants itself acceptance or direct agent S3 acc
 ## Install and configure
 
 ```sh
-npm install --global --ignore-scripts @ngrislain/ergo-mcp@0.5.26
+npm install --global --ignore-scripts @ngrislain/ergo-mcp@0.5.27
 ergo-mcp --login --publish-url https://ergosandbox.com
 ```
 
@@ -105,11 +105,20 @@ The dedicated [official Inspector page](mcp-inspector.md) remains unlinked.
   Rendered `view_construction`, `test_visual_appearance` and image-inclusive
   feedback responses also expose their local numeric feedback as
   `structuredContent`, alongside real PNG content and the text fallback.
-- `get_catalog` also lists versioned common-construct IDs. Reference canonical parts
-  and reusable plate-free `minifigure-v2`/`classic-car-v2` models rather than copying definitions.
-  Recorded `set_count` values and hand/wheel/Technic connector endpoints are included
-  where reviewed; endpoint coordinates use public part-local brick units.
-  See [the canonical library and source-update workflow](part-library.md).
+- `get_catalog` lists the reviewed parts and versioned common-construct IDs.
+  Reference library parts and reusable plate-free `minifigure-v2`/`classic-car-v2`
+  models rather than copying definitions.
+  - Recorded `set_count` values and hand/wheel/Technic connector endpoints are
+    included where reviewed; endpoint coordinates use public part-local brick units.
+  - `search` (with `category`, `tier`, `cursor`, `limit`) pages through the whole
+    library.
+  - Derived parts are buildable; their assets carry a warning that the physical
+    profile and mass are derived estimates.
+- The MCP installs the verified [part library](part-library.md#distribution) from
+  its origin and keeps an offline mirror in `.ergo-assets` (or
+  `ERGO_MCP_ASSET_DIR`), including fetched mesh objects. The origin is
+  `--publish-url`, else `ERGO_API_URL`, else `https://ergosandbox.com`. After the
+  first successful run it starts offline from the mirror.
 
 Gravity reports include `unstable_pieces` with exact IDs/parts, initial/current
 positions, displacement/rotation peaks and nearby piece IDs. Use those IDs for

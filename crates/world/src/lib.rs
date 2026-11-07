@@ -5,6 +5,7 @@ pub mod constraints;
 pub mod constructs;
 pub mod coordinates;
 pub mod demo;
+pub mod derive;
 pub mod estimates;
 pub mod exchange;
 pub mod geometry;

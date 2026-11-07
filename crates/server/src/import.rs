@@ -6,9 +6,8 @@ use ergo_world::{
 };
 use sha2::{Digest, Sha256};
 use std::{
-    collections::BTreeMap,
+    collections::{BTreeMap, BTreeSet},
     io::{Cursor, Read},
-    path::PathBuf,
 };
 
 const MAX_UNCOMPRESSED: u64 = 128 * 1024 * 1024;
@@ -20,11 +19,34 @@ pub struct ImportedLdraw {
     pub model: ergo_world::assembly::Model,
 }
 
+/// A parsed LDraw/Studio document whose library parts still need geometry.
+pub struct ParsedLdraw {
+    doc: Document,
+    refs: Vec<ldraw::Reference>,
+}
+
+impl ParsedLdraw {
+    /// Referenced IDs that are parts of the synthesized library.
+    pub fn library_parts(&self) -> BTreeSet<String> {
+        self.refs
+            .iter()
+            .map(|r| r.name.clone())
+            .filter(|name| ergo_world::part_library::get(name).is_some())
+            .collect()
+    }
+}
+
+/// Parse and assemble with library meshes supplied by the caller.
+#[cfg(test)]
 pub fn import_ldraw(
     bytes: &[u8],
     filename: &str,
-    library: Option<PathBuf>,
+    library: &BTreeMap<String, Mesh>,
 ) -> Result<ImportedLdraw> {
+    assemble(parse_ldraw(bytes, filename)?, library)
+}
+
+pub fn parse_ldraw(bytes: &[u8], filename: &str) -> Result<ParsedLdraw> {
     let mut embedded = BTreeMap::new();
     let text = if filename.to_lowercase().ends_with(".io") || bytes.starts_with(b"PK") {
         let mut archive = zip::ZipArchive::new(Cursor::new(bytes)).context("Cannot open Studio archive; export LDraw from Studio if this .io version is unsupported")?;
@@ -87,38 +109,22 @@ pub fn import_ldraw(
             r.color
         );
     }
+    Ok(ParsedLdraw { doc, refs })
+}
+
+/// Library parts use their synthesized geometry; other (custom/embedded)
+/// parts are baked from the uploaded document itself.
+pub fn assemble(parsed: ParsedLdraw, library: &BTreeMap<String, Mesh>) -> Result<ImportedLdraw> {
+    let ParsedLdraw { doc, refs } = parsed;
     let mut meshes = BTreeMap::new();
     let mut notes = Vec::new();
-    let library = library
-        .map(|path| path.canonicalize())
-        .transpose()
-        .context("ERGO_ASSET_LIBRARY_DIR does not exist")?;
-    let resolver = |name: &str| -> Option<String> {
-        if let Some(text) = doc.files.get(name) {
-            return Some(text.clone());
-        }
-        if let Some(root) = &library {
-            for dir in ["parts", "p", "unofficial/parts", "unofficial/p", ""] {
-                let Ok(path) = root.join(dir).join(name).canonicalize() else {
-                    continue;
-                };
-                if !path.starts_with(root) {
-                    continue;
-                }
-                if let Ok(metadata) = path.metadata() {
-                    if metadata.len() > 16 * 1024 * 1024 {
-                        continue;
-                    }
-                    if let Ok(text) = std::fs::read_to_string(path) {
-                        return Some(text);
-                    }
-                }
-            }
-        }
-        None
-    };
+    let resolver = |name: &str| doc.files.get(name).cloned();
     for r in &refs {
         if meshes.contains_key(&r.name) {
+            continue;
+        }
+        if let Some(mesh) = library.get(&r.name) {
+            meshes.insert(r.name.clone(), mesh.clone());
             continue;
         }
         let mesh = match ldraw::bake_mesh(&r.name, &resolver, &doc.colors) {
@@ -175,10 +181,7 @@ pub(crate) fn validate_catalogue_mesh(mesh: &Mesh) -> Result<()> {
     if let Some(entry) = ergo_world::part_library::get(&mesh.part)
         && entry.catalogue.size.is_none()
     {
-        let expected = entry
-            .vertex_hash
-            .as_ref()
-            .context("Catalogue geometry fingerprint is missing")?;
+        let expected = &entry.vertex_hash;
         let mut hash = Sha256::new();
         for value in &mesh.vertices {
             hash.update(ergo_world::geometry::vertex_bytes(*value));
@@ -280,10 +283,24 @@ mod tests {
     use super::*;
     use std::io::Write;
 
+    fn library(parts: &[&str]) -> BTreeMap<String, Mesh> {
+        let cache =
+            ergo_assets::PartCache::new(ergo_assets::fixture_store(), String::new()).unwrap();
+        parts
+            .iter()
+            .map(|part| {
+                let mesh = futures::executor::block_on(cache.resolve(part))
+                    .unwrap()
+                    .mesh;
+                ((*part).to_owned(), mesh)
+            })
+            .collect()
+    }
+
     #[test]
     fn nonstandard_geometry_and_custom_studio_colors_import_without_fabricated_physics() {
         let model = "0 FILE model.ldr\n0 !COLOUR Studio_Custom CODE 100000 VALUE #123456 EDGE #333333\n1 100000 0 -24 0 1 0 0 0 1 0 0 0 1 custom.dat\n0 FILE custom.dat\n4 16 -20 0 -20 20 0 -20 20 0 20 -20 0 20\n4 16 -20 24 -20 -20 24 20 20 24 20 20 24 -20\n";
-        let imported = import_ldraw(model.as_bytes(), "custom.mpd", None).unwrap();
+        let imported = import_ldraw(model.as_bytes(), "custom.mpd", &BTreeMap::new()).unwrap();
         assert_eq!(imported.bricks[0].part, "custom.dat");
         assert_eq!(imported.bricks[0].rgb, 0x123456);
         assert_eq!(imported.meshes["custom.dat"].quality, "source");
@@ -334,7 +351,7 @@ mod tests {
             .unwrap();
         archive.write_all(text.as_bytes()).unwrap();
         let bytes = archive.finish().unwrap().into_inner();
-        let model = import_ldraw(&bytes, "construction.io", None).unwrap();
+        let model = import_ldraw(&bytes, "construction.io", &library(&["3003.dat"])).unwrap();
         assert_eq!(model.bricks.len(), 2);
         assert_eq!(model.meshes.len(), 1);
         assert_eq!(model.bricks[0].color, 4);
@@ -348,7 +365,7 @@ mod tests {
             "1 4 0 0 0 1 0 0 0 1 0 0 0 1 ../unknown.dat",
             "1 9999 0 0 0 1 0 0 0 1 0 0 0 1 3003.dat",
         ] {
-            assert!(import_ldraw(text.as_bytes(), "test.ldr", None).is_err());
+            assert!(import_ldraw(text.as_bytes(), "test.ldr", &library(&["3003.dat"])).is_err());
         }
     }
 
@@ -356,7 +373,8 @@ mod tests {
     fn affine_ldraw_import_preserves_scale_shear_and_remains_nonphysical() {
         for matrix in ["2 0 0 0 2 0 0 0 2", "1 0.25 0 0 1 0 0 0 1"] {
             let text = format!("1 4 0 -48 0 {matrix} 3003.dat");
-            let imported = import_ldraw(text.as_bytes(), "affine.ldr", None).unwrap();
+            let imported =
+                import_ldraw(text.as_bytes(), "affine.ldr", &library(&["3003.dat"])).unwrap();
             assert_eq!(imported.bricks.len(), 1);
             assert!(imported.notes.iter().any(|n| n.contains("scaled/sheared")));
             assert!(ergo_world::physical::validate_pose(&imported.bricks[0]).is_err());

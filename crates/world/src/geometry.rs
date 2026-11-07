@@ -121,17 +121,31 @@ pub fn fallback_mesh(part: &str) -> Mesh {
 
 /// Trusted nominal collision/support box, independent of visual source extrema.
 pub fn nominal_body_bounds(part: &str) -> Option<Aabb> {
-    if let Some(spec) = part_spec(part) {
+    catalogue_body_bounds(&crate::part_library::get(part)?.catalogue)
+}
+
+/// Nominal body box of one catalogue record: the rectangular stud/plate
+/// envelope, else its source-LDU nominal profile in native units.
+pub fn catalogue_body_bounds(part: &crate::part_library::Part) -> Option<Aabb> {
+    if let Some(size) = part.size {
+        let (w, d, h) = (
+            f64::from(size[0]),
+            f64::from(size[1]),
+            f64::from(size[2]) / 3.,
+        );
         return Some(Aabb::new(
-            DVec3::new(
-                -f64::from(spec.width) / 2.,
-                -spec.height,
-                -f64::from(spec.depth) / 2.,
-            ),
-            DVec3::new(f64::from(spec.width) / 2., 0., f64::from(spec.depth) / 2.),
+            DVec3::new(-w / 2., -h, -d / 2.),
+            DVec3::new(w / 2., 0., d / 2.),
         ));
     }
-    crate::part_profiles::profile(part).map(|profile| profile.bounds)
+    let nominal = part.nominal.as_ref()?;
+    Some(
+        Aabb::new(
+            DVec3::from_array(nominal.bounds_ldu[0]),
+            DVec3::from_array(nominal.bounds_ldu[1]),
+        )
+        .transformed(crate::ldraw::conversion(), DVec3::ZERO),
+    )
 }
 
 pub fn ground_mesh() -> Mesh {

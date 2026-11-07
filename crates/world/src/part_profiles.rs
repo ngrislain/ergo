@@ -6,7 +6,7 @@ use glam::DVec3;
 use serde::{Deserialize, Serialize};
 
 /// Reviewed source-local proxy data. Coordinates are LDU, not public axes.
-#[derive(Debug, Deserialize, Serialize)]
+#[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct Nominal {
     pub bounds_ldu: [[f64; 3]; 2],
@@ -18,7 +18,7 @@ pub struct Nominal {
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub collision_boxes_ldu: Vec<[[f64; 3]; 2]>,
 }
-#[derive(Debug, Deserialize, Serialize)]
+#[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct NominalGrid {
     pub width: u32,
@@ -46,7 +46,7 @@ pub struct Profile {
 }
 
 /// Shared interface lookup for collision clearance and inferred connectivity.
-pub(crate) fn stud_centres(part: &str) -> Vec<DVec3> {
+pub fn stud_centres(part: &str) -> Vec<DVec3> {
     if let Some(spec) = crate::geometry::part_spec(part) {
         return if spec.studs {
             centres(
@@ -63,7 +63,7 @@ pub(crate) fn stud_centres(part: &str) -> Vec<DVec3> {
     }
     profile(part).map_or_else(Vec::new, |p| p.studs)
 }
-pub(crate) fn receiving_grids(part: &str) -> Vec<Grid> {
+pub fn receiving_grids(part: &str) -> Vec<Grid> {
     if let Some(spec) = crate::geometry::part_spec(part) {
         return vec![grid(
             spec.width,
@@ -86,7 +86,7 @@ pub(crate) fn receiving_grids(part: &str) -> Vec<Grid> {
 pub(crate) fn upper_bearing_regions(brick: &crate::Brick) -> Vec<Aabb> {
     let b = brick.bounds;
     let mut faces = vec![Aabb::new(DVec3::new(b.min.x, b.max.y, b.min.z), b.max)];
-    if crate::part_library::profile_id(&brick.part) == "4444.dat"
+    if crate::catalog::canonical_id(&brick.part) == "4444.dat"
         && (crate::physical::metric_transform(brick.transform).y_axis - DVec3::Y).length() < 1e-8
     {
         let c = crate::ldraw::conversion();
@@ -168,7 +168,7 @@ pub fn collision_boxes(part: &str) -> Vec<Aabb> {
             })
             .collect();
     }
-    let id = crate::part_library::profile_id(part);
+    let id = crate::catalog::canonical_id(part);
     let boxes = if ["3846.dat", "3846p4h.dat"].contains(&id) {
         vec![
             ([-20., -14., -10.], [20., 32.37, -8.]),
@@ -230,255 +230,53 @@ pub fn collision_boxes(part: &str) -> Vec<Aabb> {
         .collect()
 }
 
-/// Dimensions use BrickLink nominal stud sizes and LDraw's actual local datum;
-/// source meshes/credits are retained separately. Reviewed 2026-10-27.
+/// Native receiving grid of a source-LDU nominal record.
+pub fn nominal_grid(g: &NominalGrid) -> Grid {
+    // LDraw conversion flips source Z into native south. Start at the
+    // opposite end so native grid indices still increase positively.
+    grid(
+        g.width,
+        g.depth,
+        [g.first[0] / 20., -g.first[1] / 20. - f64::from(g.depth - 1)],
+        -g.bottom / 24.,
+    )
+}
+
+/// All native receiving grids of a source-LDU nominal record.
+pub fn nominal_grids(nominal: &Nominal) -> Vec<Grid> {
+    nominal
+        .cavity
+        .iter()
+        .chain(&nominal.additional_cavities)
+        .map(nominal_grid)
+        .collect()
+}
+
+/// Nominal profile of a reviewed or derived library part, in native units.
+/// Source meshes and credits are retained separately.
 pub fn profile(part: &str) -> Option<Profile> {
     let entry = &crate::part_library::get(part)?.catalogue;
-    if let Some(nominal) = &entry.nominal {
-        let c = crate::ldraw::conversion();
-        let receiving = |g: &NominalGrid| {
-            // LDraw conversion flips source Z into native south. Start at the
-            // opposite end so native grid indices still increase positively.
-            grid(
-                g.width,
-                g.depth,
-                [g.first[0] / 20., -g.first[1] / 20. - f64::from(g.depth - 1)],
-                -g.bottom / 24.,
-            )
-        };
-        return Some(Profile {
-            bounds: Aabb::new(
-                DVec3::from_array(nominal.bounds_ldu[0]),
-                DVec3::from_array(nominal.bounds_ldu[1]),
-            )
-            .transformed(c, DVec3::ZERO),
-            grams: entry.mass_kg * 1000.,
-            source: entry.mass_source.clone(),
-            studs: nominal
-                .studs_ldu
-                .iter()
-                .map(|p| c * DVec3::from_array(*p))
-                .collect(),
-            cavity: nominal.cavity.as_ref().map(receiving),
-            additional_cavities: nominal.additional_cavities.iter().map(receiving).collect(),
-        });
-    }
-    let id = entry
-        .profile_id
-        .as_ref()
-        .unwrap_or(&entry.id)
-        .strip_suffix(".dat")?;
-    let (min, max, cavity, studs) = match id {
-        "60594" => (
-            [-2., -3., -0.5],
-            [2., 0., 0.5],
-            Some(grid(4, 1, [-1.5, 0.], -3.)),
-            centres(4, 1, [-1.5, 0.]),
-        ),
-        "60592" => (
-            [-1., -2., -0.5],
-            [1., 0., 0.5],
-            Some(grid(2, 1, [-0.5, 0.], -2.)),
-            centres(2, 1, [-0.5, 0.]),
-        ),
-        // Slopes have an offset footprint and only their rear stud row.
-        "3037" => (
-            [-2., -1., -0.5],
-            [2., 0., 1.5],
-            Some(grid(4, 2, [-1.5, 0.], -1.)),
-            centres(4, 1, [-1.5, 0.]),
-        ),
-        "3039" => (
-            [-1., -1., -0.5],
-            [1., 0., 1.5],
-            Some(grid(2, 2, [-0.5, 0.], -1.)),
-            centres(2, 1, [-0.5, 0.]),
-        ),
-        "3633" => (
-            [-2., -1., -0.5],
-            [2., 0., 0.5],
-            Some(grid(4, 1, [-1.5, 0.], -1.)),
-            vec![],
-        ),
-        "3062b" | "3062" => (
-            [-0.5, -1., -0.5],
-            [0.5, 0., 0.5],
-            Some(grid(1, 1, [0., 0.], -1.)),
-            centres(1, 1, [0., 0.]),
-        ),
-        "3941" => (
-            [-1., -1., -1.],
-            [1., 0., 1.],
-            Some(grid(2, 2, [-0.5, -0.5], -1.)),
-            centres(2, 2, [-0.5, -0.5]),
-        ),
-        "87081" => (
-            [-2., -1., -2.],
-            [2., 0., 2.],
-            Some(grid(4, 4, [-1.5, -1.5], -1.)),
-            [
-                (-1.5, -0.5),
-                (-1.5, 0.5),
-                (-0.5, -1.5),
-                (0.5, -1.5),
-                (1.5, -0.5),
-                (1.5, 0.5),
-                (-0.5, 1.5),
-                (0.5, 1.5),
-            ]
-            .into_iter()
-            .map(|(x, z)| DVec3::new(x, 0., z))
-            .collect(),
-        ),
-        "2039" => (
-            [-1., -7., -1.],
-            [1., 0., 1.],
-            Some(grid(2, 2, [-0.5, -0.5], -7.)),
-            centres(1, 1, [0., 0.]),
-        ),
-        "4073" => (
-            [-0.5, -1. / 3., -0.5],
-            [0.5, 0., 0.5],
-            Some(grid(1, 1, [0., 0.], -1. / 3.)),
-            centres(1, 1, [0., 0.]),
-        ),
-        "4740" => (
-            [-1., -1. / 3., -1.],
-            [1., 0., 1.],
-            Some(grid(1, 1, [0., 0.], -1. / 3.)),
-            centres(1, 1, [0., 0.]),
-        ),
-        "87580" => (
-            [-1., -1. / 3., -1.],
-            [1., 0., 1.],
-            Some(grid(2, 2, [-0.5, -0.5], -1. / 3.)),
-            centres(1, 1, [0., 0.]),
-        ),
-        // Factory minifigure units use nominal load-bearing cores. Connector
-        // pegs and hanging hands are visual geometry, not certified colliders.
-        "970c00" => (
-            [-0.975, -5. / 3., -0.5],
-            [0.975, 0., 0.55],
-            Some(grid(2, 1, [-0.5, 0.], -5. / 3.)),
-            vec![],
-        ),
-        "76382p00" | "76382p4f" => ([-0.95, -4. / 3., -0.5], [0.95, 0., 0.5], None, vec![]),
-        "3626a" | "3626ap01" => (
-            [-0.65, -1., -0.65],
-            [0.65, 0., 0.65],
-            Some(grid(1, 1, [0., 0.], -1.)),
-            centres(1, 1, [0., 0.]),
-        ),
-        // Factory wheel/tyre unit; its axis is horizontal in the source datum.
-        "4624c01" => ([-0.9, -0.75, -0.4], [0.9, 0.75, 0.4], None, vec![]),
-        // Reviewed 2026-10-29: genuine geometry remains source-only. Hair uses
-        // its upper load-bearing cap; strands wrapping the head are visual,
-        // like the arm/hand overhangs of the existing factory torso profile.
-        "3901" => (
-            [-0.65, 0., -0.65],
-            [0.65, 0.25, 0.65],
-            Some(grid(1, 1, [0., 0.], 0.)),
-            vec![],
-        ),
-        // Genuine Castle parts: source datums and moulded geometry remain in
-        // the pinned assets. Helmet neck protection is visual, as for hair;
-        // the upper cap bears on the head without filling its hollow cavity.
-        "3844" => (
-            [-0.65, 0., -0.65],
-            [0.65, 17. / 24., 0.65],
-            Some(grid(1, 1, [0., 0.], 0.)),
-            vec![],
-        ),
-        "4497" => ([-0.35, -49. / 12., -0.2], [0.35, 2., 0.2], None, vec![]),
-        "3846p4h" => ([-1., -1.34875, -0.7], [1., 7. / 12., 0.5], None, vec![]),
-        "3957a" => (
-            [-0.4, -1. / 3., -0.4],
-            [0.4, 11. / 3., 0.4],
-            Some(grid(1, 1, [0., 0.], -1. / 3.)),
-            vec![],
-        ),
-        // The flag's cloth hem is at 20 LDU; its lower hollow stud extends to
-        // 24 LDU. Exclude connector protrusions from the bearing box, retaining
-        // the complete asymmetric pennant footprint and catalogue mass. A flag
-        // needs real bearing under that footprint or measured attachment loads.
-        "4495a" => (
-            [-0.4, -5. / 6., -3.55],
-            [0.4, 0., 0.4],
-            Some(grid(1, 1, [0., 0.], -1.)),
-            centres(1, 1, [0., 0.]),
-        ),
-        // Classic vehicle shells use their lower structural floor as a nominal
-        // bearing core, not filled wheel arches/passenger cavities. Upper
-        // mouldings and their detailed interfaces remain visual, not certified
-        // colliders or assumed connector capacities.
-        "4211" => (
-            [-2., -2. / 3., -2.],
-            [2., -1. / 3., 3.],
-            Some(grid(4, 5, [-1.5, -1.5], -2. / 3.)),
-            [-30., 30.]
-                .into_iter()
-                .flat_map(|x| {
-                    [-30., 30., 50.]
-                        .into_iter()
-                        .map(move |z| DVec3::new(x / 20., -1. / 3., -z / 20.))
-                })
-                .chain(
-                    [-10., 10.]
-                        .into_iter()
-                        .map(|x| DVec3::new(x / 20., -1. / 3., -2.5)),
-                )
-                .chain([-30., 30.].into_iter().flat_map(|x| {
-                    [-10., 10.]
-                        .into_iter()
-                        .map(move |z| DVec3::new(x / 20., 0., -z / 20.))
-                }))
-                .collect(),
-        ),
-        "3788" => (
-            [-2., -2. / 3., -1.],
-            [2., -1. / 3., 1.],
-            Some(grid(4, 2, [-1.5, -0.5], -2. / 3.)),
-            [-30., 30.]
-                .into_iter()
-                .flat_map(|x| {
-                    [-10., 10.]
-                        .into_iter()
-                        .map(move |z| DVec3::new(x / 20., 0., -z / 20.))
-                })
-                .chain(
-                    centres(2, 2, [-0.5, -0.5])
-                        .into_iter()
-                        .map(|p| p - DVec3::Y / 3.),
-                )
-                .collect(),
-        ),
-        "3823" => (
-            [-2., -2., -1.5],
-            [2., 0., 0.5],
-            Some(grid(4, 2, [-1.5, -1.], -2.)),
-            vec![DVec3::new(-1.5, 0., 0.), DVec3::new(1.5, 0., 0.)],
-        ),
-        "4083" => (
-            [-2., -2., -0.5],
-            [2., 0., 0.5],
-            Some(grid(4, 1, [-1.5, 0.], -2.)),
-            centres(4, 1, [-1.5, 0.]),
-        ),
-        "3829c01" => (
-            [-1., -1. / 3., -0.5],
-            [1., 0., 0.5],
-            Some(grid(2, 1, [-0.5, 0.], -1. / 3.)),
-            vec![],
-        ),
-        _ => return None,
-    };
+    let nominal = entry.nominal.as_ref()?;
+    let c = crate::ldraw::conversion();
     Some(Profile {
-        bounds: Aabb::new(DVec3::from_array(min), DVec3::from_array(max)),
+        bounds: Aabb::new(
+            DVec3::from_array(nominal.bounds_ldu[0]),
+            DVec3::from_array(nominal.bounds_ldu[1]),
+        )
+        .transformed(c, DVec3::ZERO),
         grams: entry.mass_kg * 1000.,
         source: entry.mass_source.clone(),
-        cavity,
-        additional_cavities: Vec::new(),
-        studs,
+        studs: nominal
+            .studs_ldu
+            .iter()
+            .map(|p| c * DVec3::from_array(*p))
+            .collect(),
+        cavity: nominal.cavity.as_ref().map(nominal_grid),
+        additional_cavities: nominal
+            .additional_cavities
+            .iter()
+            .map(nominal_grid)
+            .collect(),
     })
 }
 
@@ -501,7 +299,7 @@ mod tests {
     fn factory_figure_interfaces_are_inferred_without_invented_strength() {
         let mut demo = crate::demo::Demo::new();
         for (part, position) in [
-            ("970c00", DVec3::new(0., 5. / 3., 0.)),
+            ("3815c01", DVec3::new(0., 5. / 3., 0.)),
             ("76382p00", DVec3::new(0., 3., 0.)),
             ("3626ap01", DVec3::new(0., 4., 0.)),
         ] {

@@ -252,6 +252,10 @@ impl Auth {
         mac.verify_slice(&B64.decode(signature)?)?;
         Ok(serde_json::from_slice(&B64.decode(text)?)?)
     }
+    /// Local development without Google sign-in (one development account).
+    pub fn development(&self) -> bool {
+        !self.google
+    }
     pub fn principal(&self, headers: &HeaderMap) -> Principal {
         if !self.google {
             return Principal {

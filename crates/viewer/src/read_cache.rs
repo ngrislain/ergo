@@ -19,8 +19,8 @@ extern "C" {
     pub(crate) fn resume();
     #[wasm_bindgen(js_name = requestPersistence)]
     fn persist_storage() -> js_sys::Promise;
-    #[wasm_bindgen(js_name = warmBasicLibrary)]
-    fn warm_basic_library(revision: &str) -> js_sys::Promise;
+    #[wasm_bindgen(js_name = partLibrary)]
+    fn part_library_bytes(revision: &str) -> js_sys::Promise;
     #[wasm_bindgen(js_name = pendingReadGet)]
     fn pending_read_get(url: &str) -> js_sys::Promise;
     #[wasm_bindgen(js_name = pendingReadBegin)]
@@ -43,11 +43,10 @@ pub(super) async fn begin_read(url: &str, revision: &str) -> Option<String> {
 pub(super) async fn finish_read(url: &str, token: &str) {
     let _ = JsFuture::from(pending_read_finish(url, token)).await;
 }
-pub(super) fn warm_library(revision: &str) {
-    let promise = warm_basic_library(revision);
-    wasm_bindgen_futures::spawn_local(async move {
-        let _ = JsFuture::from(promise).await;
-    });
+/// Bytes of the immutable part-library document, from IndexedDB or the network.
+pub(super) async fn part_library(revision: &str) -> Option<Vec<u8>> {
+    let value = JsFuture::from(part_library_bytes(revision)).await.ok()?;
+    (!value.is_null() && !value.is_undefined()).then(|| js_sys::Uint8Array::new(&value).to_vec())
 }
 pub(super) struct Cached {
     pub etag: String,

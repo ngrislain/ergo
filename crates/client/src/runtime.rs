@@ -439,6 +439,24 @@ impl LocalClientRuntime {
                     let source=record.map(|p|p.source.clone()).or_else(||mass.map(|_|ergo_world::physical::mass_source(&m.part)));
                     json!({"part":m.part,"quality":m.quality,"bounds":m.bounds,"body_bounds":record.map(|p|p.body_bounds).unwrap_or_else(||ergo_world::placement::body_bounds(m)),"mass_kg":mass,"mass_source":source,"credits":m.credits,"body_model":if record.is_some(){"operator-provided nominal body box; connector calibration is separate"}else if m.part=="76382p00.dat" {"nominal torso core; rendered arms/hands and connector protrusions are outside this collision proxy"} else {"nominal body box and registered connector-grid proxy; not exact hollow/curved geometry or calibrated clutch strength"}})
                 });
+                if args.get("search").is_some()
+                    || args.get("category").is_some()
+                    || args.get("tier").is_some()
+                    || args.get("cursor").is_some()
+                {
+                    let query = ergo_world::catalog::SearchQuery {
+                        q: args["search"].as_str().map(str::to_owned),
+                        category: args["category"].as_str().map(str::to_owned),
+                        tier: serde_json::from_value(
+                            args.get("tier").cloned().unwrap_or(json!("all")),
+                        )?,
+                        cursor: args["cursor"].as_str().map(str::to_owned),
+                        limit: args["limit"].as_u64().map(|l| l as usize),
+                    };
+                    return Ok(text(
+                        json!({"search":ergo_world::catalog::search(&query)?,"requested_part":asset,"execution":"local-wasm-client"}),
+                    ));
+                }
                 Ok(text(
                     json!({"catalog":catalog,"requested_part":asset,"building_guidance":ergo_world::mcp::BUILDING_GUIDANCE,"units":{"position":"X east, Y north, Z up; X/Y 8 mm, Z 9.6 mm","force":"N","torque":"N m","mass":"kg"},"execution":"local-wasm-client"}),
                 ))

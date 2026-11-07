@@ -13,7 +13,9 @@ s3://ergo/
       refs/main.cbor
       maintenance.cbor
       objects/<sha256>.cbor
-    assets/parts/<part-id>.json
+    catalog/part-library/current.json
+    catalog/part-library/<revision>/library.json.gz
+    catalog/inputs/<sha256>
     objects/<mesh-sha256>.cbor
     ground/rasters/<provider-hash>/<z>/<x>/<y>.cbor
     ground/vectors/<provider-hash>/<z>/<x>/<y>.cbor
@@ -45,11 +47,13 @@ object. Hashes name content; logical octree paths index records inside the root.
 
 ## Assets and ground
 
-`assets/parts` contains native Ergo descriptions, referring to cached geometry in
-**`ergo/objects`**. This geometry namespace is active and separate from
-**`ergo/world/objects`**. A world retains its authoritative mesh blobs independently
-of the reusable cache. Source imports are converted before persistence; source
-text only occupies a bounded transient import cache.
+`catalog/part-library` holds the synthesized [part library](part-library.md) and
+its `current` pointer; `catalog/inputs` holds its write-once inputs. Library
+entries name geometry in **`ergo/objects`**. This geometry namespace is active and
+separate from **`ergo/world/objects`**. A world retains its authoritative mesh
+blobs independently of the library. The previous per-part `assets/parts/` cache
+is retired: nothing reads it once the synthesized library is deployed, and
+operators can delete that prefix.
 
 Ground source tiles and derived per-stud baseplate colour fields are separate cache
 layers. Cached cells are not constructions, alternative worlds or physical anchors.
@@ -80,10 +84,9 @@ These are separate from gzip-CBOR geometry packets and from authoritative state.
 
 ## Canonical resources and reusable models
 
-The [part library](part-library.md) defines canonical part IDs and immutable
-minifigure/car construct IDs. Its checksum-verified native geometry pack is shipped
-with the application. Requested assets populate `assets/parts` and `objects` once
-per canonical resource; models use references, transforms and colours rather than
+The [part library](part-library.md) defines canonical part IDs; `constructs.json`
+defines immutable minifigure/car construct IDs. The synthesis writes each part's
+geometry object once. Models use references, transforms and colours rather than
 repeating mesh vertices or common component definitions for each copy.
 
 Accepted source models in `world/objects` are deterministic CBOR with typed

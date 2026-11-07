@@ -3,7 +3,7 @@
 <style>body{font:14px system-ui;margin:24px;color:#263e50;background:#f5f9fc}canvas{width:640px;height:480px;max-width:100%;background:#dfebf2;border-radius:6px}p{max-width:75ch;color:#6c8395}</style></head>
 <body><h1>Ergo local client</h1><p id="status">Connecting the lightweight WASM runtime…</p><canvas id="canvas" width="640" height="480"></canvas>
 <script type="module">
-import init,{LocalClientRuntime} from '/mcp-pkg/ergo_client.js';
+import init,{LocalClientRuntime,installPartLibrary} from '/mcp-pkg/ergo_client.js';
 const token=new URLSearchParams(location.hash.slice(1)).get('mcp');
 const headers={'X-Ergo-Client':token};
 const status=document.querySelector('#status');
@@ -14,7 +14,10 @@ async function api(url,options={}){
 }
 const sleep=ms=>new Promise(resolve=>setTimeout(resolve,ms));
 try{
-  await init();let initial=await api('/api/local/workspace');
+  await init();
+  const library=await fetch('/api/local/library.json',{headers});if(!library.ok)throw new Error(await library.text());
+  installPartLibrary(new Uint8Array(await library.arrayBuffer()));
+  let initial=await api('/api/local/workspace');
   const runtime=new LocalClientRuntime(document.querySelector('#canvas'),JSON.stringify(initial.scene),JSON.stringify(initial.measurements),initial.revision);
   let revision=initial.revision;
   status.textContent='Attached. The control bridge is idle; simulation and WebGL run locally only when requested.';

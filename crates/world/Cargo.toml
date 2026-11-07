@@ -7,6 +7,8 @@ license.workspace = true
 [features]
 default = []
 simulation = ["dep:rapier3d-f64"]
+# Install the committed reviewed-tier library fixture in dependent crates' tests.
+test-library = []
 
 [[example]]
 name = "check_stability"
@@ -17,6 +19,7 @@ serde.workspace = true
 glam.workspace = true
 anyhow.workspace = true
 serde_json.workspace = true
+sha2 = "0.10"
 rapier3d-f64 = { version = "0.26.1", optional = true, features = ["enhanced-determinism"] }
 
 [dev-dependencies]

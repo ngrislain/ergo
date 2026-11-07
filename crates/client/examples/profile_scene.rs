@@ -89,7 +89,7 @@ fn main() -> Result<()> {
                 "rectangular_lod":ergo_world::geometry::part_spec(part).is_some(),
                 "reviewed_display_lod":ergo_client::part_lod::RenderPart::resolve(mesh).is_some(),
                 "vertex_sha256":ergo_client::part_lod::vertex_hash(mesh),
-                "recommended":ergo_world::catalog::PARTS.iter().any(|(id,_)|*id==part)})
+                "recommended":ergo_world::part_library::reviewed(part)})
             })
             .collect();
         parts.sort_by_key(|part| std::cmp::Reverse(part["source_triangles"].as_u64().unwrap_or(0)));

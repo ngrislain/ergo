@@ -262,29 +262,31 @@ not prevent ordinary network reads.
 The renderer retains its local spatial octree while resident and rebuilds it
 from locally cached records after reload, rather than downloading an index again.
 
-### Complete current basic library
+### Part library document
 
-`/api/config` advertises a `basic_library` content revision. The viewer starts a
-background fetch of `/api/library/{revision}/manifest.json` and `parts.pack` as
-soon as configuration arrives. These public immutable resources contain all
-**138 canonical sourced parts** and the **five current common constructs**, not
-just assets encountered in the current region. The revision covers the complete
-pack, reviewed source/nominal-profile lock and construct definitions. Obsolete
-construct versions are not included or resolved.
+`/api/config` advertises the installed `part_library` content revision. The
+viewer installs the library before loading any construction:
 
-The browser verifies the complete pack SHA-256 and length, stores both resources
-in the same content-addressed IndexedDB, and leases them alongside the active
-region. Identical pack bytes share one blob across manifest revisions. Individual
-part reads decompress only their member and verify its decoded mesh SHA-256.
-The public library can be reused offline after reload; world geometry still
+1. `partLibrary(revision)` returns the immutable
+   `/api/library/{revision}/library.json`, from IndexedDB or the network
+   (gzip transport, about 3.6 MB for the full library).
+2. It leases the entry alongside the active region.
+3. `ergo_world::part_library::install_json` verifies the content revision before
+   installing. An unverifiable document is never used.
+
+The document holds every part's catalogue record and geometry hashes, not the
+meshes. Part meshes stay on their normal routes: `/api/parts/{id}` and the
+content-addressed, immutable `/api/part-objects/{mesh_hash}`.
+
+The library document can be reused offline after reload. World geometry still
 requires its normal authorized revision check. Quota/private-mode failures are
-best-effort cache misses, not a promise of browser-owned persistent storage.
-The native MCP distribution already embeds the complete pack and current
-construct definitions for offline use.
+best-effort cache misses, not a promise of browser-owned persistent storage. The
+native MCP keeps an equivalent verified mirror in its `.ergo-assets` directory;
+see [distribution](part-library.md#distribution).
 
 Public floor colour fields have their own versioned, seven-day local cache;
 see [floor-pattern reuse](ground-and-coordinates.md#lazy-generation). They and the
-public basic library are distinct from permission-checked construction packets.
+public part library are distinct from permission-checked construction packets.
 
 ### Actual capacity and timeout retention
 

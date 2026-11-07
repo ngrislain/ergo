@@ -31,9 +31,9 @@ a support from the simulation. Render LOD is not a physics-body model.
 
 Construction files are `ergo-construction-1`; reusable definitions are
 `ergo-model-1`, with typed targets and public native transforms. Import adapters
-convert external documents before these descriptions are stored. Catalog assets
-are `ergo-part-1` plus Ergo geometry. Native readers accept the current versions
-only. See [formats](construction-format.md) and [parts](part-catalog.md).
+convert external documents before these descriptions are stored. Parts are
+entries of the synthesized `ergo-part-library-2` document plus Ergo geometry
+objects. Native readers accept the current versions only. See [formats](construction-format.md) and [parts](part-catalog.md).
 
 ## Thin native MCP bridge
 
@@ -52,7 +52,9 @@ The Axum service performs I/O, authentication, normalization, bounded dependency
 discovery, static acceptance and conditional publication. It runs no dynamic
 simulation or rendering. Important routes include:
 
-- `/api/config`, `/api/catalog`, `/api/parts/{part}`, `/api/ground/{x}/{y}`.
+- `/api/config`, `/api/catalog`, `/api/catalog/parts`, `/api/parts/{part}`,
+  `/api/part-objects/{mesh_hash}`, `/api/library/{revision}/{library,reviewed}.json`,
+  `/api/ground/{x}/{y}`.
 - `/api/import`: convert an uploaded model to an Ergo preview.
 - `/api/shared-worlds` and `/api/shared-worlds/{id}`: the one hosted world/head.
 - Assembly lists and bounded `/location`, `/workspace`, rules and piece APIs.

@@ -347,7 +347,7 @@ def main():
         expect(page.locator("#world-viewport")).to_have_class(re.compile(r"is-fullscreen"))
         page.keyboard.press("Escape")
         expect(page.get_by_role("button", name="▷ Run gravity", exact=True)).to_have_count(0)
-        expect(page.get_by_role("link", name="Edit with MCP / API", exact=True)).to_have_attribute("href","/#connect")
+        expect(page.get_by_role("link", name="Edit with MCP / API", exact=True)).to_have_attribute("href","/login#connect")
         assert page.request.get(args.url + "/api/shared-worlds/" + head["id"],headers=auth).json()["revision"] == published.json()["accepted"]["revision"]
         page.screenshot(path=str(artifacts / "shared-world.png"))
         assert not errors, errors

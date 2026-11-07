@@ -19,6 +19,7 @@ import tempfile
 import time
 import urllib.error
 import urllib.request
+import library_fixture
 
 
 SECRET = b"synthetic-mcp-publish-test-session-secret-only"
@@ -99,7 +100,7 @@ def main():
     url = f"http://127.0.0.1:{port}"
     environment = {k: v for k, v in os.environ.items()
                    if not k.startswith(("ERGO_", "GOOGLE_", "S3_"))}
-    environment.update(ERGO_ASSET_FETCH="0", ERGO_GROUND_SOURCE="disabled",ERGO_ISOLATED_FIXTURES="1")
+    environment.update(ERGO_GROUND_SOURCE="disabled",ERGO_ISOLATED_FIXTURES="1")
     with tempfile.TemporaryDirectory(prefix="ergo-publish-test-") as temporary:
         directory = pathlib.Path(temporary)
         server_environment = {**environment, "ERGO_BIND": f"127.0.0.1:{port}",
@@ -113,6 +114,7 @@ def main():
         log = tempfile.TemporaryFile(mode="w+t")
 
         def start_server():
+            library_fixture.seed(directory / "store", server_binary, server_environment)
             process = subprocess.Popen([str(server_binary)], env=server_environment,
                                        cwd=directory, stdout=log, stderr=log)
             for _ in range(100):

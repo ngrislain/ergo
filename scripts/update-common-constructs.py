@@ -5,10 +5,15 @@ import copy
 import json
 import math
 import pathlib
-import common_parts
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 PATH = ROOT/'crates/world/library/constructs.json'
+REVIEWS = {review['id']: review for review in json.loads((ROOT/'crates/world/library/reviews.json').read_text())['parts']}
+
+
+def connectors(part):
+    """Reviewed source-LDU connector datums of one part."""
+    return REVIEWS[part if part.endswith('.dat') else part + '.dat']['connectors']
 
 
 def dot(a, b): return sum(x*y for x, y in zip(a, b))
@@ -31,8 +36,8 @@ def rotation(a, b):
 
 
 def held(part, torso, hand, color, along=.5, handle_index=0, reverse=False, roll=0):
-    grip = common_parts.connectors(torso['part'])[hand]
-    handle = common_parts.connectors(part)[handle_index]
+    grip = connectors(torso['part'])[hand]
+    handle = connectors(part)[handle_index]
     direction = metric(sub(grip['end'], grip['start']))
     if reverse: direction = [-x for x in direction]
     r = rotation(metric(sub(handle['end'], handle['start'])), direction)
@@ -96,8 +101,8 @@ def articulated_limbs(torso, relaxed_right=False):
 
 
 def held_by_hand(part, hand, color, handle_index=0, along=.5, roll=0.0):
-    grip = common_parts.connectors('3820')[0]
-    handle = common_parts.connectors(part)[handle_index]
+    grip = connectors('3820')[0]
+    handle = connectors(part)[handle_index]
     scale = [.008, .008, .0096]
     hr = hand['rotation']
     hm = [[hr[i][j]*scale[j]/scale[i] for j in range(3)] for i in range(3)]
@@ -139,10 +144,9 @@ def generate(entries):
         raise ValueError('Only the five current common constructs are supported')
     updated = {entry['id']: entry for entry in articulated_garrison(current)}
     result = [updated.get(entry['id'], copy.deepcopy(entry)) for entry in entries]
-    canonical = json.loads((ROOT/'crates/world/library/sources.lock.json').read_text())['parts']
     for entry in result:
-        if any(part['part'] not in canonical for part in entry['parts']):
-            raise ValueError('Common constructs must reference current canonical source parts')
+        if any(part['part'] not in REVIEWS for part in entry['parts']):
+            raise ValueError('Common constructs must reference reviewed library parts')
     return result
 
 

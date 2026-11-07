@@ -4,7 +4,8 @@ import os,pathlib,tempfile
 from mcp_client import Mcp
 
 ROOT=pathlib.Path(__file__).resolve().parents[1]
-os.environ['ERGO_ASSET_FETCH']='0'
+import library_fixture
+library_fixture.offline_mcp(os.environ,pathlib.Path(tempfile.mkdtemp(prefix='ergo-library-')))
 with tempfile.TemporaryDirectory(prefix='ergo-atomic-replace-') as temporary:
     client=Mcp(str(ROOT/'target/debug/ergo-mcp'),pathlib.Path(temporary)/'construction.ergo.json',None,None)
     try:
