@@ -30,7 +30,7 @@ with tempfile.TemporaryDirectory(prefix="ergo-logout-") as directory:
     env.update(ERGO_BIND=f"127.0.0.1:{port}",ERGO_PUBLIC_URL=url,ERGO_GROUND_SOURCE="disabled",ERGO_ISOLATED_FIXTURES="1",
         GOOGLE_CLIENT_ID="local-test",GOOGLE_CLIENT_SECRET="local-test",ERGO_SESSION_SECRET=KEY.decode())
     with tempfile.TemporaryFile() as log:
-        library_fixture.seed(pathlib.Path(directory)/"data",environment=env)
+        library_fixture.seed(pathlib.Path(directory)/"data")
         server = subprocess.Popen([str(ROOT/"target/debug/ergo-server")],cwd=directory,env=env,stdout=log,stderr=log)
         try:
             for _ in range(100):

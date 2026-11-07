@@ -114,7 +114,7 @@ def main():
         log = tempfile.TemporaryFile(mode="w+t")
 
         def start_server():
-            library_fixture.seed(directory / "store", server_binary, server_environment)
+            library_fixture.seed(directory / "store")
             process = subprocess.Popen([str(server_binary)], env=server_environment,
                                        cwd=directory, stdout=log, stderr=log)
             for _ in range(100):

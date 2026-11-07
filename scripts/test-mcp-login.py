@@ -44,7 +44,7 @@ with tempfile.TemporaryDirectory(prefix='ergo-login-') as temporary:
     server_env = {**env,'ERGO_BIND':f'127.0.0.1:{port}','ERGO_PUBLIC_URL':url,'ERGO_DATA_DIR':str(directory/'store'),
                   'GOOGLE_CLIENT_ID':'test','GOOGLE_CLIENT_SECRET':'test','ERGO_SESSION_SECRET':helpers.SECRET.decode()}
     with tempfile.TemporaryFile() as log:
-        library_fixture.seed(directory/'store', environment=server_env)
+        library_fixture.seed(directory/'store')
         env['ERGO_API_URL'] = url
         server = subprocess.Popen([str(ROOT/'target/debug/ergo-server')], cwd=directory, env=server_env, stdout=log, stderr=log)
         try:

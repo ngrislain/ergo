@@ -35,7 +35,7 @@ with tempfile.TemporaryDirectory(prefix="ergo-common-") as directory:
     log=tempfile.TemporaryFile(mode="w+t")
     processes=[]
     def start():
-        library_fixture.seed(directory/"store",environment=server_env)
+        library_fixture.seed(directory/"store")
         server=subprocess.Popen([str(ROOT/"target/debug/ergo-server")],cwd=directory,env=server_env,stdout=log,stderr=log)
         for _ in range(100):
             if server.poll() is not None:

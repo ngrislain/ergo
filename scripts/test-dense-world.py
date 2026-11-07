@@ -44,6 +44,7 @@ def main():
                            # pacing and the normal 10,000-piece default.
                            ERGO_SHARED_WORKING_PIECES='5000',
                            ERGO_EDIT_BRICKS_PER_PERIOD='10000')
+        library_fixture.seed(directory / 'store')
         with tempfile.TemporaryFile(mode='w+t') as log:
             def start():
                 process = subprocess.Popen([str(ROOT / 'target/debug/ergo-server')], cwd=directory,

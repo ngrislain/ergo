@@ -37,7 +37,7 @@ with tempfile.TemporaryDirectory(prefix='ergo-inspector-') as temporary:
     (directory/'web').symlink_to(ROOT/'web', target_is_directory=True)
     env = {key:value for key,value in os.environ.items() if not key.startswith(('ERGO_','GOOGLE_','S3_','AWS_','MCP_','INSPECTOR_'))}
     env.update(ERGO_GROUND_SOURCE='disabled', ERGO_ISOLATED_FIXTURES='1')
-    library_fixture.seed(directory/'data', environment=env)
+    library_fixture.seed(directory/'data')
     address = f'127.0.0.1:{port()}'
     url = 'http://'+address
     with tempfile.TemporaryFile() as log:
