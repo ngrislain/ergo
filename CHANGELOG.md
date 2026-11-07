@@ -1,5 +1,18 @@
 # Changelog
 
+## v0.5.33
+
+- Saving an edit to a very large shared assembly (Saint-Sulpice, the castle) no
+  longer times out. A replacement finds the assembly's outside neighbours with
+  one spatial query instead of one store round trip per piece, reuses the old
+  dependency closure for the new state, and writes only the rule records that
+  changed. A one-brick edit of a 75,000-piece assembly took about 36 s locally
+  instead of 830 s. The MCP allows a workspace commit the same 3,600 s as a
+  complete construction download.
+- The equilibrium certificate accepts a solution that passes its independent
+  check even when the solver stops short of its own tolerance; a server test
+  that failed one run in three now passes consistently.
+
 ## v0.5.32
 
 - Re-release of v0.5.31, whose npm package and GitHub release were not

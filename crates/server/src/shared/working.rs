@@ -16,6 +16,9 @@ pub struct Working {
     pub model: PhysicalModel,
     pub pieces: BTreeMap<ContentId, Option<Piece>>,
     pub rules: BTreeMap<ContentId, Arc<Rules>>,
+    /// Rules as read from the base revision; `flush_rules` writes only the
+    /// records that differ from them.
+    stored_rules: BTreeMap<ContentId, Arc<Rules>>,
     graphs: BTreeMap<ContentId, BTreeMap<ContentId, BTreeSet<ContentId>>>,
     headers: BTreeMap<ContentId, Arc<super::paged::RulesHeader>>,
     joints: BTreeMap<ContentId, super::paged::BoundJoint>,
@@ -97,6 +100,7 @@ impl Working {
             model,
             pieces: BTreeMap::new(),
             rules: BTreeMap::new(),
+            stored_rules: BTreeMap::new(),
             graphs: BTreeMap::new(),
             headers: BTreeMap::new(),
             joints: BTreeMap::new(),
@@ -260,6 +264,7 @@ impl Working {
         self.graphs.insert(id.clone(), rules.adjacency()?);
         let rules = Arc::new(rules);
         self.rules.insert(id.clone(), rules.clone());
+        self.stored_rules.insert(id.clone(), rules.clone());
         Ok(rules)
     }
     pub fn stage_rules(&mut self, rules: Rules) -> SharedResult<()> {
@@ -438,7 +443,64 @@ impl Working {
         &mut self,
         seeds: &BTreeSet<ContentId>,
     ) -> SharedResult<BTreeSet<ContentId>> {
-        let mut visited = BTreeSet::new();
+        self.discover_from(seeds, BTreeSet::new()).await
+    }
+    /// Dependency closure of every member of whole assemblies, plus `known`
+    /// pieces already in the closure (whose own neighbours are already in it).
+    /// Equivalent to `discover(members ∪ known)` when only the members may have
+    /// changed, but the members' outside neighbours come from one spatial query
+    /// over their combined bounds instead of one store round trip per member,
+    /// so a one-brick edit of a large assembly does not walk the store piece by
+    /// piece. Pieces found outside the members continue the ordinary discovery.
+    pub async fn discover_members(
+        &mut self,
+        members: &BTreeSet<ContentId>,
+        known: BTreeSet<ContentId>,
+    ) -> SharedResult<BTreeSet<ContentId>> {
+        let halo = self
+            .model
+            .tolerances
+            .position_brick_units
+            .max(INFERRED_JOINT_HALO);
+        let mut visited = known;
+        visited.extend(members.iter().cloned());
+        let mut frontier = BTreeSet::new();
+        let mut boxes = Vec::new();
+        for id in members {
+            let Some(piece) = self.piece(id).await? else {
+                continue;
+            };
+            frontier.extend(self.piece_rules(&piece).await?);
+            frontier.extend(self.external(&piece.id).await?);
+            boxes.push(
+                ergo_world::attachments::bounds(&self.brick(&piece, 1).await?)
+                    .expanded(halo + ergo_world::attachments::PORT_OVERHANG),
+            );
+        }
+        if let Some(region) = boxes.iter().copied().reduce(|a, b| a.union(b)) {
+            let index = ergo_world::spatial::Octree::new(boxes);
+            for id in self.spatial_neighbors_excluding(region, members).await? {
+                if visited.contains(&id) {
+                    continue;
+                }
+                let Some(piece) = self.piece(&id).await? else {
+                    continue;
+                };
+                // The region is a union; keep only pieces that touch a member.
+                let bounds = self.brick(&piece, 1).await?.bounds;
+                if !index.query(bounds).is_empty() {
+                    frontier.insert(id);
+                }
+            }
+        }
+        frontier.retain(|id| !visited.contains(id));
+        self.discover_from(&frontier, visited).await
+    }
+    async fn discover_from(
+        &mut self,
+        seeds: &BTreeSet<ContentId>,
+        mut visited: BTreeSet<ContentId>,
+    ) -> SharedResult<BTreeSet<ContentId>> {
         let mut stack = seeds.clone();
         let started = std::time::Instant::now();
         self.discovery = Some(DiscoveryProgress {
@@ -709,7 +771,14 @@ impl Working {
     }
     pub async fn flush_rules(&mut self, assemblies: &BTreeSet<ContentId>) -> SharedResult<()> {
         for id in assemblies {
-            super::paged::write(&mut self.tx, self.rules[id].as_ref()).await?;
+            let rules = self.rules[id].clone();
+            super::paged::write_changes(
+                &mut self.tx,
+                self.stored_rules.get(id).map(Arc::as_ref),
+                &rules,
+            )
+            .await?;
+            self.stored_rules.insert(id.clone(), rules);
         }
         Ok(())
     }

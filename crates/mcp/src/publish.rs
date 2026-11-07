@@ -183,10 +183,13 @@ impl Publisher {
             request = request.timeout(Duration::from_secs(30));
         }
         let endpoint = path.split('?').next().unwrap_or(path);
-        if method == Method::GET
+        // Complete construction transfers, including a workspace commit, which
+        // uploads and validates a whole (possibly very large) assembly.
+        if (method == Method::GET
             && ["/workspace", "/view", "/download", "/export"]
                 .iter()
-                .any(|suffix| endpoint.ends_with(suffix))
+                .any(|suffix| endpoint.ends_with(suffix)))
+            || (method == Method::PUT && endpoint.ends_with("/workspace"))
         {
             request = request.timeout(self.construction_timeout);
         }

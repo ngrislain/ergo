@@ -330,6 +330,44 @@ async fn unusable_source_hierarchy_does_not_hide_canonical_assembly_geometry() {
 }
 
 #[tokio::test]
+async fn replacement_writes_only_changed_rule_records_and_drops_removed_members() {
+    let service = service();
+    let (head, imported) = seeded(&service, scene(10.)).await;
+    let mut fewer = scene(10.);
+    fewer.bricks.truncate(1);
+    let replaced = service
+        .replace_assembly(
+            &head.id,
+            "alice",
+            &imported.assembly,
+            authoring::ReplaceRequest {
+                base: head.revision,
+                scene: fewer,
+            },
+        )
+        .await
+        .unwrap();
+    // The removed member's row is gone: the assembly reloads with one piece.
+    let (app, headers) = http(&service);
+    let path = format!("/api/shared-worlds/{}", head.id);
+    let (status, workspace) = json(
+        &app,
+        "GET",
+        &format!(
+            "{path}/assemblies/{}/workspace?revision={}",
+            imported.assembly, replaced.accepted.revision
+        ),
+        &headers,
+        None,
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "{workspace}");
+    assert_eq!(workspace["scene"]["bricks"].as_array().unwrap().len(), 1);
+    let (_, listing) = json(&app, "GET", &format!("{path}/assemblies"), &headers, None).await;
+    assert_eq!(listing["items"][0]["piece_count"], 1);
+}
+
+#[tokio::test]
 async fn construction_metadata_survives_replacement_and_downloads_export_the_whole_assembly() {
     use axum::{
         body::{Body, to_bytes},

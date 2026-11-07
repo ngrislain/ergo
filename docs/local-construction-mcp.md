@@ -7,7 +7,7 @@ shared Sandbox. The bridge never grants itself acceptance or direct agent S3 acc
 ## Install and configure
 
 ```sh
-npm install --global --ignore-scripts @ngrislain/ergo-mcp@0.5.32
+npm install --global --ignore-scripts @ngrislain/ergo-mcp@0.5.33
 ergo-mcp --login --publish-url https://ergosandbox.com
 ```
 
@@ -298,8 +298,9 @@ HEAD checks allow 30 seconds; they never grant offline access or authorize a com
 Initial workspace downloads are not yet chunk-checkpointed. Browser regions use
 the separate [durable preparation checkpoints](loading-and-cache.md#durable-browser-loading-checkpoints).
 
-Ordinary HTTP requests default to 300 seconds; complete construction GETs
-(`workspace`, `view`, `download`, `export`) default to 3,600 seconds. Explicit
+Ordinary HTTP requests default to 300 seconds; complete construction transfers
+(GET `workspace`, `view`, `download`, `export`, and the workspace PUT that commits
+an assembly edit) default to 3,600 seconds. Explicit
 `ERGO_MCP_HTTP_TIMEOUT_SECONDS` accepts 1–3,600 and overrides both. A queued
 WASM/MCP job allows 3,600 seconds for local work and remote phases together.
 Configure the host MCP execution timeout to at least 3,900,000 ms. A timeout is not

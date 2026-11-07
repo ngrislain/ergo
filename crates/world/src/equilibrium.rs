@@ -409,10 +409,17 @@ fn wrench(x: &[f64], layout: &Layout, j: usize) -> (DVec3, DVec3) {
 /// Find and independently verify a static equilibrium.
 pub fn certify(problem: &Problem) -> Result<Certificate> {
     let (status, x, layout) = solve(problem, false)?;
-    if !matches!(status, SolverStatus::Solved | SolverStatus::AlmostSolved) {
-        return Err(diagnose(problem));
+    // The independent check is the certificate, whatever the solver reports:
+    // an interior-point solver may stop short of its own tolerance on a nearly
+    // degenerate but feasible problem, and its status must not reject (or
+    // admit) a construction on its own.
+    match verify(problem, &x, &layout) {
+        Ok(certificate) => Ok(certificate),
+        Err(error) if matches!(status, SolverStatus::Solved | SolverStatus::AlmostSolved) => {
+            Err(error)
+        }
+        Err(_) => Err(diagnose(problem)),
     }
-    verify(problem, &x, &layout)
 }
 
 /// Re-check balance and every capacity of a candidate solution, with the

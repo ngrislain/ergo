@@ -351,7 +351,7 @@ impl SharedWorlds {
         );
         // Discover every old dependency before staging any replacement. Only
         // the final multi-assembly state is validated and published.
-        let before = ws.discover(&seeds).await?;
+        let before = ws.discover_members(&seeds, BTreeSet::new()).await?;
         tracing::info!(
             world = id,
             affected = before.len(),
@@ -359,6 +359,7 @@ impl SharedWorlds {
             "Staging bounded assembly replacement"
         );
         let mut changed = BTreeSet::new();
+        let mut members = BTreeSet::new();
         let mut results = Vec::new();
         let mut rules_changed = false;
         let author_name = self.actor_name(actor).await?;
@@ -453,7 +454,7 @@ impl SharedWorlds {
             };
             rules_changed |= canonical_cbor(&original)? != canonical_cbor(&rules)?;
             ws.stage_rules(rules)?;
-            seeds.extend(pieces.values().cloned());
+            members.extend(pieces.values().cloned());
             results.push(ReplacedAssembly {
                 assembly_id: assembly,
                 pieces,
@@ -462,9 +463,9 @@ impl SharedWorlds {
         ensure!(!changed.is_empty() || rules_changed, "No shared changes");
         ws.flush_rules(&assemblies).await?;
         ws.reset_dependencies();
-        let mut validation_seeds = seeds;
-        validation_seeds.extend(before);
-        let affected = ws.discover(&validation_seeds).await?;
+        // Only edges touching the new members can differ from the old state,
+        // so the old closure needs no second walk.
+        let affected = ws.discover_members(&members, before).await?;
         tracing::info!(
             world = id,
             affected = affected.len(),

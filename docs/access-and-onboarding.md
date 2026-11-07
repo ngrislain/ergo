@@ -49,7 +49,7 @@ control. Sign-out does not revoke an already-issued delegated token.
 Install the current prebuilt client from npm:
 
 ```sh
-npm install --global --ignore-scripts @ngrislain/ergo-mcp@0.5.32
+npm install --global --ignore-scripts @ngrislain/ergo-mcp@0.5.33
 ergo-mcp --login --publish-url https://ergosandbox.com
 ```
 

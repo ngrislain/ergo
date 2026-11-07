@@ -101,6 +101,50 @@ pub async fn write(tx: &mut ergo_transactions::Transaction, rules: &Rules) -> Sh
     Ok(())
 }
 
+/// Write `rules` over the stored `previous` rules of the same assembly: only
+/// records that differ are put, and records that no longer exist are removed,
+/// so a one-piece edit of a large assembly touches a handful of rows instead
+/// of rewriting every member and adjacency row. Without `previous` (a new
+/// assembly) every record is written.
+pub async fn write_changes(
+    tx: &mut ergo_transactions::Transaction,
+    previous: Option<&Rules>,
+    rules: &Rules,
+) -> SharedResult<()> {
+    use futures::TryStreamExt;
+    let Some(previous) = previous else {
+        return write(tx, rules).await;
+    };
+    ensure!(previous.id == rules.id, "Rules belong to another assembly");
+    let collect = |rules| async move {
+        let stream = record_edits(rules);
+        futures::pin_mut!(stream);
+        let mut records = BTreeMap::new();
+        while let Some(edit) = stream.try_next().await? {
+            records.insert(edit.path, edit.value);
+        }
+        Ok::<_, ergo_transactions::Error>(records)
+    };
+    let mut old = collect(previous).await?;
+    for (path, value) in collect(rules).await? {
+        let before = old.remove(&path);
+        if before.as_ref() == Some(&value) {
+            continue;
+        }
+        if let Some(value) = value {
+            tx.put(&path, &value).await?;
+        } else {
+            tx.remove(&path).await?;
+        }
+    }
+    for (path, value) in old {
+        if value.is_some() {
+            tx.remove(&path).await?;
+        }
+    }
+    Ok(())
+}
+
 fn record_edits(
     rules: &Rules,
 ) -> impl futures::Stream<Item = ergo_transactions::Result<ergo_transactions::RecordEdit>> + '_ {

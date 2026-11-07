@@ -228,7 +228,13 @@ directly. See [MCP setup and outcome handling](local-construction-mcp.md#publica
   `{base, assemblies:[{assembly_id, scene}, ...]}` atomically replaces 1–32 distinct
   existing assemblies. Old dependencies are discovered before staging any member;
   all final scenes/rules and both dependency closures are checked before one
-  publication. Invalid members reject the whole batch, with no intermediate head.
+  publication. Because every member is known, a replaced assembly's outside
+  neighbours come from one spatial query over its members' combined bounds rather
+  than one store round trip per member. The final closure is the old closure plus
+  whatever newly touches the new members (only edges at those members can change).
+  Only rule records that differ from the stored ones are written, so a one-piece
+  edit of a 75,000-piece assembly validates the whole connected structure but
+  rewrites a handful of records (measured locally: about 36 s instead of 830 s). Invalid members reject the whole batch, with no intermediate head.
   The response has one `accepted` receipt/audit and an `assemblies` array of
   `{assembly_id, pieces}` local-to-global mappings. Input pieces and encoded bytes
   share aggregate operation budgets; this is not 32 independent budget allowances.

@@ -179,7 +179,7 @@ equilibrium certificate with the reviewed connector estimates. Its most loaded
 joint uses 46% of its capacity, with 4,680 inferred joints. The two planes are
 joined only through the ground; it is a skeletal truss, not a detailed replica.
 It is not yet published: the production server must first run the equilibrium
-certificate (release 0.5.32 or later). `inspect_mechanism` reports its joint
+certificate (release 0.5.33 or later). `inspect_mechanism` reports its joint
 components.
 
 ```sh
