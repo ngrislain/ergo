@@ -1,5 +1,5 @@
 export const DEFAULT_MCP_PACKAGE =
-  "@ngrislain/ergo-mcp@0.5.25";
+  "@ngrislain/ergo-mcp@0.5.34";
 
 export function packageSource(value = "") {
   const spec = value.trim() || DEFAULT_MCP_PACKAGE;

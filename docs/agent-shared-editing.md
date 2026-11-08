@@ -3,10 +3,12 @@
 There is one **public Ergo Sandbox**. Anyone can view it; signed-in users can
 edit it, subject to pacing and physical validation. Current MCP clients commit
 accepted edits to that same S3-backed world automatically. A working file is a
-cache, not a private world. Use MCP **v0.5.33** for current cells, attachment
+cache, not a private world. Use MCP **v0.5.34** for current cells, attachment
 checks and canonical part/construct references,
 coherent grid snapping, proper-isometry checks, per-piece stability diagnostics,
-explicit estimated connector tests and long shared operations.
+explicit estimated connector tests, long shared operations and component-wise
+stability checks. The matching service release is also required; upgrading the
+client alone does not update server validation or its memory behaviour.
 
 Version 0.5.26 additionally packages [Codex/Claude plugins](mcp-plugins.md),
 feature-first reference discovery and the feedback harness below. Those additions
