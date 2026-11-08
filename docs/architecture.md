@@ -78,6 +78,11 @@ rejects overlap/floor crossings, and validates the complete affected old/new
 contact/constraint/group domain. Loose bodies use nonnegative compression load
 flow; constrained bodies require a valid wrench assignment and measured joint
 capacities. Oversized domains are rejected, never silently truncated.
+Stability checks discover complete independent contact/joint islands and certify
+them sequentially; loops stay together and a shared physical support is not cut.
+Compression retains a pending-load frontier, while general solver matrices are
+built only for the current island. The affected scene/spatial index still reside
+in memory; no partial island result is published.
 
 Audit and model/policy links publish with the accepted head. An uncertain write is
 fenced and not blindly retried. See [validation](validation-gates.md),

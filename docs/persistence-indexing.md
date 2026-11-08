@@ -26,6 +26,13 @@ Unary unfenced runs use Extension records; fenced Branches remain explicit. A le
 points to an immutable typed payload. These logical paths are inside the root,
 not separate S3 directories. See [wire formats](object-store-formats.md).
 
+Decoded immutable read nodes are discardable: each tree keeps an accounted 8 MiB
+FIFO cache instead of retaining every node visited across all pages. Staged nodes
+remain distinct and are never evicted by that cache, and read predicates are still
+retained for serializable publication. Canonical encoding streams arrays and
+buffers only encoded map entries for key sorting; it preserves existing bytes
+and hashes, not a new storage format. See [memory limits](loading-and-cache.md).
+
 ## Boundary-crossing objects
 
 Render bounds, including details, determine intersected storage cells. A piece

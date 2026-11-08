@@ -1,5 +1,23 @@
 # Changelog
 
+## v0.5.34
+
+- Certify independent mechanical islands sequentially, retaining all joint and
+  nominal/reviewed bearing contacts, including castle-panel wings. Try compression
+  per island and build general-equilibrium matrices only when that island needs
+  them. Compression load propagation retains only pending loads and releases each
+  processed body. Reports expose island count and largest general solve; the
+  affected scene/spatial index still materialize, and publication stays atomic.
+
+- Reduce shared-save memory: encode canonical CBOR arrays incrementally instead
+  of constructing a whole generic value tree; cap each tree's decoded immutable
+  read-node cache at an accounted 8 MiB, separate from staged writes. Keep existing
+  canonical bytes/content IDs, validation and publication semantics.
+- Share accepted replacement rules and avoid a duplicate decoded old-piece map
+  and redundant member-by-member spatial warming. The read-only dependency profile
+  now uses the same combined-bounds closure as assembly replacement. Uploads and
+  the affected physical scene still materialize; this is not end-to-end streaming.
+
 ## v0.5.33
 
 - Saving an edit to a very large shared assembly (Saint-Sulpice, the castle) no

@@ -57,14 +57,17 @@ target/release/ergo-server shared-profile-dependencies WORLD_ID ASSEMBLY_ID 120
 
 The optional deadline defaults to 120 seconds and accepts 1–1,800. The command pins
 the accepted starting revision, loads the selected assembly's rule records and
-warms its piece/spatial-reference records, then runs ordinary complete dependency
-discovery with an independent 100,000-piece diagnostic cap and the configured
+warms its piece records, then runs the same combined-member-bounds dependency
+discovery as whole-assembly replacement, with an independent 100,000-piece diagnostic cap and the configured
 working-byte budget. It reports completion/timeout/errors, loaded
 counts, cache statistics and phase times for piece/rule/mesh reads, external joints
 and spatial neighbours. Timeout output contains partial **diagnostic counts**,
 never an authoring scene or a passing validation certificate. The new
 `rules_milliseconds` and `prefetch_milliseconds` fields record completed phases;
-null means that phase had not finished when the deadline expired. Compare a cold
+null means that phase had not finished when the deadline expired. The `discovery`
+phase timings cover the ordinary external frontier; scanning the selected members
+and their combined bounding region happens before that frontier and is included
+in the total elapsed time, not those sub-phase counters. Compare a cold
 run with the same immutable revision and the current release build; packed browser
 regions do not themselves accelerate authoring member rules. It stages no edits,
 does not publish a candidate/head and explicitly closes its snapshot/transaction
@@ -91,6 +94,43 @@ frozen physics and authoring budgets remain the normal server settings; a
 completed profile is not permission to publish. A timeout/error still reports
 incomplete diagnostics. This operator workflow avoids discarding warmed reads
 before a separately journalled ordinary edit; it adds no profiling HTTP endpoint.
+
+To isolate the canonical encoding pass of a large shared replacement without
+accessing storage or publishing, use a native construction cache:
+
+```sh
+cargo build --release --locked -p ergo-server --example profile_encoding
+/usr/bin/time -l target/release/examples/profile_encoding /absolute/path/construction.ergo.json
+```
+
+The example reports piece count, encoded bytes, content ID and encoding time.
+On macOS, `time -l` additionally reports whole-process peak resident memory,
+including JSON decoding and scene materialization; it is not an isolated allocator
+measurement or a complete server-save benchmark. Linux can use `/usr/bin/time -v`.
+Compare the same input and build profile; byte length and content ID must stay
+identical when measuring encoding changes.
+One local release-build comparison on the 27,833-piece castle cache produced
+15,877,389 identical bytes/content ID while whole-process peak RSS fell from
+338,542,592 to 212,746,240 bytes (about 37%). Encoding took 130 ms before and
+97 ms after. This isolates encoding and cache decoding on macOS; it does not
+measure the complete save path or establish that production publication succeeds.
+
+For the actual native static gate, with the target origin's installed part library:
+
+```sh
+cargo build --release --locked -p ergo-world --example validate_native
+/usr/bin/time -l target/release/examples/validate_native --library /absolute/path/part-library.json /absolute/path/construction.ergo.json
+```
+
+Read `stability_report.stability_components` and
+`stability_report.largest_equilibrium_component`. The latter counts bodies in the
+largest general solve, not total bodies retained by the caller. The 27,833-piece
+castle cache passed with 3,626 islands and no general solves. It already passed
+compression before partitioning; a local whole-process comparison did **not** show
+lower peak RSS for this input. Do not present island partitioning as demonstrated
+end-to-end castle memory savings: setup/materialization, the spatial index and
+the caller's scene remain resident. These are read-only local diagnostics, not
+accepted publication receipts.
 
 ## GitHub releases
 

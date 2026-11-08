@@ -74,8 +74,7 @@ impl SharedWorlds {
             let seeds = rules.pieces.values().cloned().collect::<BTreeSet<_>>();
             ws.prefetch_pieces(seeds.iter().cloned().collect()).await;
             prefetch_ms = Some(started.elapsed().as_millis());
-            ws.warm_member_spatial(&seeds).await?;
-            ws.discover(&seeds).await
+            ws.discover_members(&seeds, BTreeSet::new()).await
         })
         .await;
         let (complete, timed_out, error, affected) = match result {

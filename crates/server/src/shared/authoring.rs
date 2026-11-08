@@ -293,7 +293,7 @@ impl SharedWorlds {
             }
             input_bytes += canonical_cbor(scene)?.len();
             input_pieces += scene.bricks.len();
-            let original = ws.rules(&replacement.assembly_id).await?.as_ref().clone();
+            let original = ws.rules(&replacement.assembly_id).await?;
             old_pieces += original.pieces.len();
             if input_bytes > self.limits.bytes
                 || input_pieces > ws.piece_limit()
@@ -340,13 +340,6 @@ impl SharedWorlds {
             world = id,
             pieces = seeds.len(),
             elapsed_s = started.elapsed().as_secs(),
-            "Warming replacement spatial references"
-        );
-        ws.warm_member_spatial(&seeds).await?;
-        tracing::info!(
-            world = id,
-            pieces = seeds.len(),
-            elapsed_s = started.elapsed().as_secs(),
             "Discovering old replacement dependencies"
         );
         // Discover every old dependency before staging any replacement. Only
@@ -368,7 +361,9 @@ impl SharedWorlds {
                 assembly_id: assembly,
                 scene,
             } = replacement;
-            let mut old = BTreeMap::new();
+            // Retain identities, not another copy of every decoded Piece. The
+            // authoritative working set already owns those records.
+            let mut old = original.pieces.clone();
             for (&local, global) in &original.pieces {
                 let piece = ws.piece(global).await?.ok_or_else(SharedError::missing)?;
                 ensure!(
@@ -376,7 +371,6 @@ impl SharedWorlds {
                     "Assembly mapping mismatch"
                 );
                 ws.permit(actor, &piece)?;
-                old.insert(local, piece);
             }
             let mut meshes = BTreeMap::new();
             for (name, mesh) in &scene.meshes {
@@ -393,7 +387,11 @@ impl SharedWorlds {
                     .context("Missing part mesh")?
                     .clone();
                 let geometry = Geometry::of(brick);
-                let previous = old.remove(&brick.id);
+                let previous = if let Some(global) = old.remove(&brick.id) {
+                    Some(ws.piece(&global).await?.ok_or_else(SharedError::missing)?)
+                } else {
+                    None
+                };
                 let mut piece = if let Some(previous) = &previous {
                     previous.clone()
                 } else {
@@ -432,10 +430,11 @@ impl SharedWorlds {
                 changed.insert(piece.id.clone());
                 ws.replace(previous.as_ref(), Some(piece)).await?;
             }
-            for previous in old.values() {
+            for global in old.values() {
+                let previous = ws.piece(global).await?.ok_or_else(SharedError::missing)?;
                 ws.no_external(&previous.id).await?;
                 changed.insert(previous.id.clone());
-                ws.replace(Some(previous), None).await?;
+                ws.replace(Some(&previous), None).await?;
             }
             let source_model = Some(
                 ws.tx
@@ -452,7 +451,7 @@ impl SharedWorlds {
                 groups: scene.groups,
                 source_model,
             };
-            rules_changed |= canonical_cbor(&original)? != canonical_cbor(&rules)?;
+            rules_changed |= canonical_cbor(original.as_ref())? != canonical_cbor(&rules)?;
             ws.stage_rules(rules)?;
             members.extend(pieces.values().cloned());
             results.push(ReplacedAssembly {

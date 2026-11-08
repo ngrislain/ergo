@@ -169,9 +169,10 @@ browser's simulation result or an imported validation report.
    pair of bricks. Give every joint its capacities from the server's measurement
    book, else from the reviewed connector estimates, else none (the joint may then
    carry no load), replacing untrusted client capacity claims.
-4. Solve one general static equilibrium with nonnegative ground and contact
-   reactions and every joint load inside its capacities, and verify the solution
-   independently.
+4. Discover independent mechanical islands using every explicit/inferred joint,
+   nominal bearing contact and reviewed stepped/compound bearing interface.
+   Check each island separately: try constructive compression, then general
+   equilibrium if needed, with independently verified reactions and joint loads.
 5. Reject an uncertified result. The server does not run a time-integrated fallback;
    rendering and all dynamic tests execute in the browser/minimal WASM client.
 
@@ -187,10 +188,24 @@ axes follow the reviewed [connector definitions](part-catalog.md#hand-wheel-and-
 
 ### Lightweight static certificate
 
-[`equilibrium::certify`](../crates/world/src/equilibrium.rs) finds a static
-equilibrium of the whole scene at its submitted pose, as one sparse convex
-second-order cone program solved by the pure-Rust Clarabel solver (the same code
-runs on the server and in the WASM client). Using sourced part masses and
+The per-island execution and pending-load frontier below require v0.5.34 or later
+with matching native/WASM bundles; an older service does not acquire them from
+an MCP client upgrade alone.
+
+The validation gate partitions the complete affected scene into independent
+contact/joint islands using
+[`validation_components.rs`](../crates/world/src/validation_components.rs).
+Ground reactions do not join otherwise separate bodies, but a shared physical
+support brick does. Storage cells, authoring groups and arbitrary geometric
+chunks are never used as mechanical cuts. Reviewed 4444 wing/shelf bearings and
+compound feet remain edges even outside a part's nominal mass envelope. All
+joint edges are retained conservatively, including joints with no known capacity.
+
+Each island is checked in sequence. When its constructive compression proof does
+not suffice, [`equilibrium::certify`](../crates/world/src/equilibrium.rs) finds a
+static equilibrium for that whole island as one sparse convex second-order cone
+program solved by the pure-Rust Clarabel solver (the same code runs on the server
+and in the WASM client). Load-sharing loops are never cut. Using sourced part masses and
 box-center approximations, every body $i$ must balance its weight:
 
 $$
@@ -225,16 +240,23 @@ utilisations, each load component against its own capacity, so a weak capacity
 such as bearing friction is used only where equilibrium needs it.
 
 The solution is then re-checked independently: body balance within the force and
-moment tolerances (scaled to the total weight) and every capacity within its own
-tolerance. The report gives `max_joint_utilisation`. If no equilibrium exists, a
+moment tolerances (scaled to the current island's total weight) and every capacity within its own
+tolerance. The report gives the maximum `max_joint_utilisation` over all islands,
+`stability_components`, and `largest_equilibrium_component` (zero for a fully
+compression-certified scene). Historical/unvalidated reports default the new
+counts to zero, meaning unavailable. If no equilibrium exists, a
 relaxed solve without capacity limits names the joints that would need more
 capacity than measured or estimated, with the force and moment each would need.
 
-For unanchored blocks, a faster constructive path is tried first. It processes
+For unanchored islands, a faster constructive path is tried first. It processes
 bodies from top to bottom: each body's own gravity and loads received from above
 are balanced by nonnegative barycentric reactions inside its horizontal support
 patches, and loads pass to supporting bodies; grounded bodies balance their own
-weight. Its result is a feasible point of the same equilibrium. The certificate is independent of piece ordering and needs no dynamic
+weight and every load received from above. Only the active frontier of pending
+loads is retained: own weight is initialized lazily and a body's accumulated load
+is removed when processed, preserving the original summation order. A tall single
+column therefore needs only one pending-load entry, not one for every storey.
+The result is a feasible point of the same equilibrium. The certificate is independent of piece ordering and needs no dynamic
 simulation or guessed contact tension.
 It can also certify studded assemblies by assigning zero wrench to every joint.
 Reports mark this with `joint_strength_required:false`; no unmeasured clutch
@@ -245,6 +267,17 @@ When the constructive compression path fails, `compression_issue` identifies the
 piece, its accumulated-load projection and bearing polygon. This explains the
 failed sufficient certificate; it does not prove every possible load allocation
 or calibrated joint model would fail.
+
+This is component-wise solver execution and incremental load propagation, not
+out-of-core validation: the caller still retains the affected bricks/joints, and
+island discovery uses a resident spatial index and membership data linear in
+the number of bodies and joints.
+Only the current island's contacts, compression frontier and solver matrices are
+built. `equilibrium::Problem.bricks` uses a borrowed `equilibrium::Bodies` view:
+Rust callers use `Bodies::all(&bricks)` or `Bodies::select(&bricks, &indices)`;
+partitioning does not clone brick geometry or renumber IDs. A single connected
+castle may still be one large island. Island certificates
+are aggregated only after all pass; none publishes a partial shared edit.
 
 These are sufficient constructive certificates; an uncertified arrangement is
 rejected. Mere graph reachability to the floor is not sufficient.

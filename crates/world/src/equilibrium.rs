@@ -1,6 +1,8 @@
 //! General static equilibrium certificate.
 //!
-//! One sparse convex problem per scene: every body balances gravity through
+//! One sparse convex problem per supplied island: static validation first splits
+//! independent contact/joint components and calls this solver only for islands
+//! without a constructive compression proof. Every body balances gravity through
 //! joint wrenches, nonnegative frictionless contact-patch forces, nonnegative
 //! ground reactions and the reactions of anchored bricks. Unlike a spanning
 //! tree, load loops (a chain held at both ends, a pinned truss) share their
@@ -39,8 +41,50 @@ pub struct Contact {
     pub patch: crate::Aabb,
 }
 
+/// Borrowed bodies of a full scene or one island. Indices preserve original
+/// brick identities without cloning the scene's geometry/part strings.
+#[derive(Clone, Copy)]
+pub struct Bodies<'a> {
+    source: &'a [Brick],
+    indices: Option<&'a [usize]>,
+}
+impl<'a> Bodies<'a> {
+    pub fn all(source: &'a [Brick]) -> Self {
+        Self {
+            source,
+            indices: None,
+        }
+    }
+
+    /// Every index must identify a body in `source`.
+    pub fn select(source: &'a [Brick], indices: &'a [usize]) -> Self {
+        Self {
+            source,
+            indices: Some(indices),
+        }
+    }
+
+    pub fn len(&self) -> usize {
+        self.indices.map_or(self.source.len(), <[usize]>::len)
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.len() == 0
+    }
+
+    pub fn iter(self) -> impl ExactSizeIterator<Item = &'a Brick> {
+        (0..self.len()).map(move |i| &self.source[self.indices.map_or(i, |indices| indices[i])])
+    }
+}
+impl std::ops::Index<usize> for Bodies<'_> {
+    type Output = Brick;
+    fn index(&self, i: usize) -> &Brick {
+        &self.source[self.indices.map_or(i, |indices| indices[i])]
+    }
+}
+
 pub struct Problem<'a> {
-    pub bricks: &'a [Brick],
+    pub bricks: Bodies<'a>,
     pub joints: &'a [JointSpec],
     pub contacts: Vec<Contact>,
     /// Ground support points (construction units, y = 0) per body index.
@@ -632,7 +676,7 @@ mod tests {
         anchored: Vec<usize>,
     ) -> Problem<'a> {
         Problem {
-            bricks,
+            bricks: Bodies::all(bricks),
             joints,
             contacts: vec![],
             supports: vec![],

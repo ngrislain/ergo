@@ -2,7 +2,59 @@ use crate::{ContentId, Error, OctreePath, Repository, Result, canonical_cbor, co
 use bytes::Bytes;
 use futures::{StreamExt, TryStreamExt, stream};
 use serde::{Deserialize, Serialize};
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::{BTreeMap, BTreeSet, VecDeque};
+
+const MAX_DECODED_NODE_BYTES: usize = 8 * 1024 * 1024;
+
+/// Discardable decoded *read* nodes, separate from staged nodes which must stay
+/// available until publication. Paging must not accumulate the whole visited trie.
+#[derive(Default)]
+struct ReadNodes {
+    entries: BTreeMap<ContentId, (Node, usize)>,
+    order: VecDeque<ContentId>,
+    bytes: usize,
+}
+impl ReadNodes {
+    fn get(&self, id: &ContentId) -> Option<&Node> {
+        self.entries.get(id).map(|(node, _)| node)
+    }
+
+    fn insert(&mut self, id: ContentId, node: Node) {
+        if self.entries.contains_key(&id) {
+            return;
+        }
+        // Account for decoded strings, path buffers and index/queue overhead,
+        // not just the much smaller encoded CBOR payload.
+        let bytes = 256
+            + std::mem::size_of::<Node>()
+            + match &node {
+                Node::Branch {
+                    generation,
+                    children,
+                } => {
+                    generation.as_ref().map_or(0, String::capacity)
+                        + children
+                            .iter()
+                            .flatten()
+                            .map(|id| id.as_str().len())
+                            .sum::<usize>()
+                }
+                Node::Extension { path, child } => path.capacity() + child.as_str().len(),
+                Node::Leaf { generation, value } => generation.capacity() + value.as_str().len(),
+                Node::Deleted { generation } => generation.capacity(),
+            };
+        if bytes > MAX_DECODED_NODE_BYTES {
+            return;
+        }
+        while self.bytes + bytes > MAX_DECODED_NODE_BYTES {
+            let oldest = self.order.pop_front().unwrap();
+            self.bytes -= self.entries.remove(&oldest).unwrap().1;
+        }
+        self.order.push_back(id.clone());
+        self.entries.insert(id, (node, bytes));
+        self.bytes += bytes;
+    }
+}
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub(crate) enum Node {
@@ -48,6 +100,7 @@ enum Frame {
 pub(crate) struct Tree {
     pub repo: Repository,
     nodes: BTreeMap<ContentId, Node>,
+    read_nodes: ReadNodes,
     pending: BTreeMap<ContentId, Bytes>,
     uploaded: BTreeSet<ContentId>,
     node_read_limit: usize,
@@ -55,6 +108,9 @@ pub(crate) struct Tree {
 impl Tree {
     pub fn absorb(&mut self, other: Tree) {
         self.nodes.extend(other.nodes);
+        for (id, (node, _)) in other.read_nodes.entries {
+            self.read_nodes.insert(id, node);
+        }
         self.pending.extend(other.pending);
         self.uploaded.extend(other.uploaded);
     }
@@ -84,6 +140,7 @@ impl Tree {
         Self {
             repo,
             nodes: BTreeMap::new(),
+            read_nodes: ReadNodes::default(),
             pending: BTreeMap::new(),
             uploaded: BTreeSet::new(),
             node_read_limit: usize::MAX,
@@ -102,7 +159,7 @@ impl Tree {
             let repo = &self.repo;
             let mut next = Vec::new();
             for id in &frontier {
-                if let Some(node) = self.nodes.get(id) {
+                if let Some(node) = self.cached_node(id) {
                     match node {
                         Node::Extension { child, .. } => next.push(child.clone()),
                         Node::Branch { children, .. } => {
@@ -115,7 +172,7 @@ impl Tree {
             let loaded: Vec<_> = stream::iter(
                 frontier
                     .into_iter()
-                    .filter(|id| !self.nodes.contains_key(id)),
+                    .filter(|id| self.cached_node(id).is_none()),
             )
             .map(|id| async move {
                 let bytes = tokio::time::timeout(
@@ -142,7 +199,7 @@ impl Tree {
                     }
                     _ => {}
                 }
-                self.nodes.insert(id, node);
+                self.read_nodes.insert(id, node);
             }
             if frontier.is_empty() {
                 break;
@@ -160,13 +217,16 @@ impl Tree {
         self.nodes.insert(id.clone(), node);
         Ok(id)
     }
+    fn cached_node(&self, id: &ContentId) -> Option<&Node> {
+        self.nodes.get(id).or_else(|| self.read_nodes.get(id))
+    }
     async fn node(&mut self, id: &ContentId) -> Result<Node> {
-        if let Some(n) = self.nodes.get(id) {
+        if let Some(n) = self.cached_node(id) {
             return Ok(n.clone());
         }
         let node: Node = decode(&self.repo.object_limited(id, self.node_read_limit).await?)?;
         Self::validate_node(&node)?;
-        self.nodes.insert(id.clone(), node.clone());
+        self.read_nodes.insert(id.clone(), node.clone());
         Ok(node)
     }
     fn validate_node(node: &Node) -> Result<()> {
@@ -753,5 +813,80 @@ impl Tree {
             .await?;
         self.uploaded.extend(uploaded);
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn churn(cache: &mut ReadNodes) {
+        for i in 0..4096 {
+            let node = Node::Deleted {
+                generation: format!("{i}:{}", "x".repeat(4096)),
+            };
+            let id = ContentId::of(&canonical_cbor(&node).unwrap());
+            cache.insert(id, node);
+            assert!(cache.bytes <= MAX_DECODED_NODE_BYTES);
+        }
+    }
+
+    #[tokio::test]
+    async fn paging_evicts_decoded_reads_but_retains_staged_nodes_and_reloads_immutable_nodes() {
+        let repo = Repository::new(
+            std::sync::Arc::new(object_store::memory::InMemory::new()),
+            "bounded",
+        )
+        .unwrap();
+        let mut writer = Tree::new(repo.clone());
+        let value = writer.stage(&42u32).unwrap();
+        let root = writer
+            .intern(Node::Leaf {
+                generation: "initial".into(),
+                value: value.clone(),
+            })
+            .unwrap();
+        writer.flush(Some(&root), &[], 4).await.unwrap();
+
+        let mut reader = Tree::new(repo.clone());
+        let before = reader.node(&root).await.unwrap();
+        assert!(
+            reader.nodes.is_empty(),
+            "Reads must not become permanently staged nodes"
+        );
+        churn(&mut reader.read_nodes);
+        assert!(reader.read_nodes.get(&root).is_none());
+        assert_eq!(
+            canonical_cbor(&reader.node(&root).await.unwrap()).unwrap(),
+            canonical_cbor(&before).unwrap()
+        );
+
+        // In-flight replacements must survive cache churn/absorption and still
+        // flush all reachable nodes and payloads, including pending children.
+        let next_value = reader.stage(&99u32).unwrap();
+        let leaf = reader
+            .intern(Node::Leaf {
+                generation: "pending".into(),
+                value: next_value.clone(),
+            })
+            .unwrap();
+        let next_root = reader
+            .intern(Node::Extension {
+                path: vec![3, 1],
+                child: leaf.clone(),
+            })
+            .unwrap();
+        churn(&mut reader.read_nodes);
+        let mut combined = Tree::new(repo.clone());
+        combined.absorb(reader);
+        assert!(combined.nodes.contains_key(&next_root));
+        assert!(combined.nodes.contains_key(&leaf));
+        assert!(combined.read_nodes.bytes <= MAX_DECODED_NODE_BYTES);
+        combined.flush(Some(&next_root), &[], 4).await.unwrap();
+        let path = OctreePath::new(vec![3, 1]).unwrap();
+        assert_eq!(
+            Tree::new(repo).get(Some(&next_root), &path).await.unwrap(),
+            Some(next_value)
+        );
     }
 }

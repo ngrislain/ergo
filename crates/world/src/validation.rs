@@ -1,11 +1,15 @@
 //! Persistence gate: no penetrating nominal body boxes, plus a conservative
 //! static support/constraint-wrench certificate. No time integration runs here.
 //! declared simplified model, not real ABS stress, clutch strength, or earthquakes.
+use crate::equilibrium::Bodies;
 use crate::{Brick, WorldExport, constraints, spatial::Octree};
 use anyhow::{Result, ensure};
 use glam::{DVec2, DVec3};
 use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet};
+
+#[path = "validation_components.rs"]
+mod components;
 
 pub const OVERLAP_TOLERANCE: f64 = 0.0001;
 
@@ -59,6 +63,15 @@ pub struct ValidationReport {
     /// Largest joint load / capacity ratio in the certificate.
     #[serde(default)]
     pub max_joint_utilisation: f64,
+    /// Independent islands connected by joints or admissible bearing contacts;
+    /// zero when unavailable on historical or unvalidated reports.
+    #[serde(default)]
+    pub stability_components: usize,
+    /// Largest island that required the general equilibrium solver (zero when
+    /// every island was certified by constructive compression alone, or when
+    /// unavailable on historical/unvalidated reports).
+    #[serde(default)]
+    pub largest_equilibrium_component: usize,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub compression_issue: Option<CompressionIssue>,
     #[serde(default)]
@@ -169,6 +182,7 @@ pub fn validate_static_with_measurements(
             );
         }
     }
+    drop(tree);
     if let Some(error) =
         crate::interference::first_stud_collision(&scene.bricks, tolerances.position_brick_units)
     {
@@ -186,6 +200,7 @@ pub fn validate_static_with_measurements(
             .collect();
     let inferred_count = inferred.len();
     scene.joints.extend(inferred);
+    drop(pairs);
     for brick in scene
         .bricks
         .iter()
@@ -202,33 +217,21 @@ pub fn validate_static_with_measurements(
             brick.part
         );
     }
-    // A constructive contact-only proof is also valid when studs/joints exist:
-    // all joint wrenches can be zero. It assumes no unknown clutch capacity.
-    let compression_issue = if scene.fixed_bricks.is_empty() {
-        compression_issue(&scene.bricks, tolerances, measurements)?
-    } else {
-        None
-    };
-    let contact_only = scene.fixed_bricks.is_empty() && compression_issue.is_none();
     // Capacities: the measurement book, then reviewed estimates. A joint
     // without either may carry no load.
     measurements.apply(&scene.bricks, &mut scene.joints)?;
-    let certificate = if contact_only {
-        crate::equilibrium::Certificate::default()
-    } else {
-        support_certificate(
-            &scene.bricks,
-            &scene.joints,
-            &scene.fixed_bricks,
-            tolerances,
-            measurements,
-        )?
-    };
+    let stability = certify_components(
+        &scene.bricks,
+        &scene.joints,
+        &scene.fixed_bricks,
+        tolerances,
+        measurements,
+    )?;
     let report = ValidationReport {
         collision_model:
             "nominal body boxes with finite registered connector clearance; visual studs excluded"
                 .into(),
-        method: if contact_only {
+        method: if stability.contact_only {
             "static compression certificate (zero joint wrench; no simulation)"
         } else {
             "static equilibrium certificate (joints within measured or reviewed capacities; no simulation)"
@@ -237,14 +240,83 @@ pub fn validate_static_with_measurements(
         inferred_joints: inferred_count,
         checked_bricks: scene.bricks.len(),
         max_displacement: 0.0,
-        joint_strength_required: Some(certificate.loaded_joints > 0),
-        max_joint_utilisation: certificate.max_utilisation,
-        compression_issue,
+        joint_strength_required: Some(stability.certificate.loaded_joints > 0),
+        max_joint_utilisation: stability.certificate.max_utilisation,
+        stability_components: stability.components,
+        largest_equilibrium_component: stability.largest_equilibrium_component,
+        compression_issue: stability.compression_issue,
         physical_calibration:
             "Metric dimensions and catalog masses; joint capacities from the measurement book or reviewed estimates".into(),
         tolerances,
     };
     Ok(report)
+}
+
+struct StabilityCertificate {
+    certificate: crate::equilibrium::Certificate,
+    contact_only: bool,
+    compression_issue: Option<CompressionIssue>,
+    components: usize,
+    largest_equilibrium_component: usize,
+}
+
+/// No island is independently supported at an artificial cut: discovery joins
+/// every joint and every bearing/contact interface before any island is checked.
+/// Only the current island gets a compression frontier or solver matrices.
+fn certify_components(
+    bricks: &[Brick],
+    joints: &[crate::JointSpec],
+    fixed: &[u32],
+    tol: StaticTolerances,
+    measurements: &crate::physical::ConnectionMeasurements,
+) -> Result<StabilityCertificate> {
+    use std::borrow::Cow;
+    let islands = components::partition(bricks, joints, tol)?;
+    let anchored: HashSet<_> = fixed.iter().copied().collect();
+    let mut result = StabilityCertificate {
+        certificate: Default::default(),
+        contact_only: true,
+        compression_issue: None,
+        components: islands.len(),
+        largest_equilibrium_component: 0,
+    };
+    for island in islands {
+        let bodies = Bodies::select(bricks, &island.bodies);
+        let fixed: Vec<_> = bodies
+            .iter()
+            .filter(|b| anchored.contains(&b.id))
+            .map(|b| b.id)
+            .collect();
+        // A constructive contact-only proof remains valid even with joints:
+        // all their wrenches can be zero, without assuming unknown clutch loads.
+        let issue = if fixed.is_empty() {
+            compression_issue_for(bodies, tol, measurements)?
+        } else {
+            None
+        };
+        if fixed.is_empty() && issue.is_none() {
+            continue;
+        }
+        result.contact_only = false;
+        if result.compression_issue.is_none() {
+            result.compression_issue = issue;
+        }
+        result.largest_equilibrium_component =
+            result.largest_equilibrium_component.max(bodies.len());
+        // Compression-only islands never need a copied joint list, either.
+        let constraints: Cow<'_, [crate::JointSpec]> = if result.components == 1 {
+            Cow::Borrowed(joints)
+        } else {
+            Cow::Owned(island.joints.iter().map(|&i| joints[i].clone()).collect())
+        };
+        let certificate = support_certificate(bodies, &constraints, &fixed, tol, measurements)?;
+        result.certificate.loaded_joints += certificate.loaded_joints;
+        result.certificate.max_utilisation = result
+            .certificate
+            .max_utilisation
+            .max(certificate.max_utilisation);
+    }
+    Ok(result)
 }
 
 pub fn validate_baseplate_registration(
@@ -424,12 +496,47 @@ mod registration_tests {
     }
 }
 
-/// Certify static equilibrium of every body with the general solver
+/// One nominal horizontal contact, shared by island discovery and the general
+/// solver so a load-bearing edge cannot disappear at a partition boundary.
+fn nominal_contact(
+    bricks: Bodies<'_>,
+    a: usize,
+    b: usize,
+    tol: StaticTolerances,
+) -> Option<crate::equilibrium::Contact> {
+    let (brick, other) = (&bricks[a], &bricks[b]);
+    let overlap = brick.bounds.max.min(other.bounds.max) - brick.bounds.min.max(other.bounds.min);
+    if !crate::interference::axis_aligned(brick)
+        || !crate::interference::axis_aligned(other)
+        || overlap.y.abs() > tol.position_brick_units
+        || overlap.x <= tol.position_brick_units
+        || overlap.z <= tol.position_brick_units
+    {
+        return None;
+    }
+    let min = brick.bounds.min.max(other.bounds.min);
+    let max = brick.bounds.max.min(other.bounds.max);
+    let (lower, upper) = if brick.bounds.center().y < other.bounds.center().y {
+        (a, b)
+    } else {
+        (b, a)
+    };
+    Some(crate::equilibrium::Contact {
+        lower,
+        upper,
+        patch: crate::Aabb::new(
+            DVec3::new(min.x, (min.y + max.y) * 0.5, min.z),
+            DVec3::new(max.x, (min.y + max.y) * 0.5, max.z),
+        ),
+    })
+}
+
+/// Certify static equilibrium of one island with the general solver
 /// ([`crate::equilibrium`]): joints within their capacities, frictionless
 /// unilateral contact patches between axis-aligned bodies, ground supports
 /// and anchored bricks.
 fn support_certificate(
-    bricks: &[Brick],
+    bricks: Bodies<'_>,
     joints: &[crate::JointSpec],
     fixed: &[u32],
     tol: StaticTolerances,
@@ -437,20 +544,10 @@ fn support_certificate(
 ) -> Result<crate::equilibrium::Certificate> {
     let n = bricks.len();
     let index: HashMap<_, _> = bricks.iter().enumerate().map(|(i, b)| (b.id, i)).collect();
-    let mut parent: Vec<usize> = (0..n).collect();
-    fn root(p: &mut [usize], i: usize) -> usize {
-        if p[i] != i {
-            p[i] = root(p, p[i]);
-        }
-        p[i]
-    }
-    let union = |p: &mut Vec<usize>, a: usize, b: usize| {
-        let (a, b) = (root(p, a), root(p, b));
-        p[a] = b;
-    };
+    let mut parent = components::Partition::new(n);
     for joint in joints {
         let (a, b) = (index[&joint.a], index[&joint.b]);
-        union(&mut parent, a, b);
+        parent.join(a, b);
     }
     let mut contacts = Vec::new();
     let tree = Octree::new(bricks.iter().map(|b| b.bounds).collect());
@@ -461,31 +558,9 @@ fn support_certificate(
             if b <= a {
                 continue;
             }
-            let other = &bricks[b];
-            let overlap =
-                brick.bounds.max.min(other.bounds.max) - brick.bounds.min.max(other.bounds.min);
-            if crate::interference::axis_aligned(brick)
-                && crate::interference::axis_aligned(other)
-                && overlap.y.abs() <= tol.position_brick_units
-                && overlap.x > tol.position_brick_units
-                && overlap.z > tol.position_brick_units
-            {
-                let min = brick.bounds.min.max(other.bounds.min);
-                let max = brick.bounds.max.min(other.bounds.max);
-                let (lower, upper) = if brick.bounds.center().y < other.bounds.center().y {
-                    (a, b)
-                } else {
-                    (b, a)
-                };
-                contacts.push(crate::equilibrium::Contact {
-                    lower,
-                    upper,
-                    patch: crate::Aabb::new(
-                        DVec3::new(min.x, (min.y + max.y) * 0.5, min.z),
-                        DVec3::new(max.x, (min.y + max.y) * 0.5, max.z),
-                    ),
-                });
-                union(&mut parent, a, b);
+            if let Some(contact) = nominal_contact(bricks, a, b, tol) {
+                contacts.push(contact);
+                parent.join(a, b);
             }
         }
     }
@@ -496,7 +571,7 @@ fn support_certificate(
             for point in ground_support_points(brick) {
                 supports.push((i, point));
             }
-            let r = root(&mut parent, i);
+            let r = parent.root(i);
             supported[r] = true;
         }
     }
@@ -507,11 +582,11 @@ fn support_certificate(
         .map(|(i, _)| i)
         .collect();
     for &i in &anchored {
-        let r = root(&mut parent, i);
+        let r = parent.root(i);
         supported[r] = true;
     }
     for (i, brick) in bricks.iter().enumerate() {
-        let r = root(&mut parent, i);
+        let r = parent.root(i);
         ensure!(
             supported[r],
             "Construction is not static: component containing brick {} has no ground support",
@@ -539,6 +614,14 @@ pub fn compression_issue(
     tol: StaticTolerances,
     measurements: &crate::physical::ConnectionMeasurements,
 ) -> Result<Option<CompressionIssue>> {
+    compression_issue_for(Bodies::all(bricks), tol, measurements)
+}
+
+fn compression_issue_for(
+    bricks: Bodies<'_>,
+    tol: StaticTolerances,
+    measurements: &crate::physical::ConnectionMeasurements,
+) -> Result<Option<CompressionIssue>> {
     // Both paths construct nonnegative reactions and check the same force/moment
     // tolerances. Prefer a direct centred reaction on a real bearing patch;
     // corner-only triangulation can needlessly tip the next supporting piece.
@@ -553,8 +636,55 @@ pub fn compression_issue(
     }
 }
 
+/// Only bodies awaiting an accumulated load are resident here. A body's own
+/// weight is initialized on first use; a processed body's load is removed.
+/// This preserves the existing addition order (own weight, then reactions) while
+/// avoiding a load record for every body in a tall structure.
+struct CompressionLoads<'a> {
+    entries: HashMap<usize, (f64, DVec2)>,
+    bricks: Bodies<'a>,
+    origin: DVec3,
+    measurements: &'a crate::physical::ConnectionMeasurements,
+}
+impl<'a> CompressionLoads<'a> {
+    fn new(
+        bricks: Bodies<'a>,
+        origin: DVec3,
+        measurements: &'a crate::physical::ConnectionMeasurements,
+    ) -> Self {
+        Self {
+            entries: HashMap::new(),
+            bricks,
+            origin,
+            measurements,
+        }
+    }
+
+    fn initial(&self, i: usize) -> Result<(f64, DVec2)> {
+        let brick = &self.bricks[i];
+        let mass = self.measurements.mass_kg(&brick.part)?;
+        let center = crate::physical::to_meters(brick.bounds.center() - self.origin);
+        Ok((mass, DVec2::new(center.x, center.z) * mass))
+    }
+
+    fn take(&mut self, i: usize) -> Result<(f64, DVec2)> {
+        self.entries.remove(&i).map_or_else(|| self.initial(i), Ok)
+    }
+
+    fn add(&mut self, i: usize, mass: f64, moment: DVec2) -> Result<()> {
+        if !self.entries.contains_key(&i) {
+            let initial = self.initial(i)?;
+            self.entries.insert(i, initial);
+        }
+        let load = self.entries.get_mut(&i).unwrap();
+        load.0 += mass;
+        load.1 += moment;
+        Ok(())
+    }
+}
+
 fn compression_issue_with_strategy(
-    bricks: &[Brick],
+    bricks: Bodies<'_>,
     tol: StaticTolerances,
     measurements: &crate::physical::ConnectionMeasurements,
     centered: bool,
@@ -581,17 +711,12 @@ fn compression_issue_with_strategy(
             .map(crate::part_profiles::bearing_bounds)
             .collect(),
     );
-    let mut loads = Vec::with_capacity(bricks.len());
-    for brick in bricks {
-        let mass = measurements.mass_kg(&brick.part)?;
-        let center = to_meters(brick.bounds.center() - origin);
-        loads.push((mass, DVec2::new(center.x, center.z) * mass));
-    }
+    let mut loads = CompressionLoads::new(bricks, origin, measurements);
     let mut order: Vec<_> = (0..bricks.len()).collect();
     order.sort_by(|&a, &b| bricks[b].bounds.min.y.total_cmp(&bricks[a].bounds.min.y));
     for i in order {
         let brick = &bricks[i];
-        let (mass, moment) = loads[i];
+        let (mass, moment) = loads.take(i)?;
         let center = moment / mass;
         let mut supports = Vec::new();
         let mut patches = Vec::new();
@@ -719,11 +844,11 @@ fn compression_issue_with_strategy(
         };
         for (point, weight, lower) in reactions {
             if let Some(j) = lower {
-                loads[j].0 += mass * weight;
-                loads[j].1 += point * (mass * weight);
+                loads.add(j, mass * weight, point * (mass * weight))?;
             }
         }
     }
+    debug_assert!(loads.entries.is_empty());
     Ok(None)
 }
 
@@ -818,9 +943,14 @@ mod tests {
         }
         let measurements = crate::physical::ConnectionMeasurements::default();
         assert!(
-            compression_issue_with_strategy(&demo.bricks, Default::default(), &measurements, false)
-                .unwrap()
-                .is_some()
+            compression_issue_with_strategy(
+                Bodies::all(&demo.bricks),
+                Default::default(),
+                &measurements,
+                false
+            )
+            .unwrap()
+            .is_some()
         );
         assert!(
             compression_issue(&demo.bricks, Default::default(), &measurements)
@@ -897,5 +1027,183 @@ mod tests {
             ..Default::default()
         };
         validate_static_with_measurements(&mut s, StaticTolerances::default(), &idealized).unwrap();
+    }
+
+    #[test]
+    fn independent_stacks_are_certified_separately_but_a_shared_roof_keeps_one_island() {
+        let mut demo = Demo::new();
+        for x in [-128., 128.] {
+            for h in 0..9 {
+                demo.add("3005", 4, x, h as f64, 0.);
+            }
+        }
+        let mut model = scene(demo);
+        let report = validate_static(&mut model).unwrap();
+        assert_eq!(report.stability_components, 2);
+        assert_eq!(report.largest_equilibrium_component, 0);
+        assert_eq!(report.joint_strength_required, Some(false));
+        model.bricks.reverse();
+        let order: Vec<_> = model.bricks.iter().map(|b| b.id).collect();
+        assert_eq!(validate_static(&mut model).unwrap().stability_components, 2);
+        assert_eq!(model.bricks.iter().map(|b| b.id).collect::<Vec<_>>(), order);
+
+        // No explicit joints are needed to couple the two pillars through a
+        // loose roof. Storage boundaries and separate ground points are not cuts.
+        let mut demo = Demo::new();
+        demo.add("3005", 4, 127., 0., 0.);
+        demo.add("3005", 4, 130., 0., 0.);
+        demo.add("3001", 4, 127., 1., 0.);
+        let islands = components::partition(&demo.bricks, &[], Default::default()).unwrap();
+        assert_eq!(islands.len(), 1);
+        let report = validate_static(&mut scene(demo)).unwrap();
+        assert_eq!(report.stability_components, 1);
+    }
+
+    #[test]
+    fn reviewed_wing_bearings_are_not_cut_at_the_mass_envelope() {
+        let mut demo = Demo::new();
+        demo.add("4444", 71, 0., 0., 0.);
+        let wing = crate::part_profiles::upper_bearing_regions(&demo.bricks[0])[1];
+        demo.add("3005", 71, wing.min.x, wing.min.y, wing.min.z);
+        assert!(nominal_contact(Bodies::all(&demo.bricks), 0, 1, Default::default()).is_none());
+        let islands = components::partition(&demo.bricks, &[], Default::default()).unwrap();
+        assert_eq!(
+            islands.len(),
+            1,
+            "The real wing still transmits the upper brick's weight"
+        );
+    }
+
+    #[test]
+    fn only_the_loaded_island_needs_equilibrium_and_aggregate_results_match_a_whole_solve() {
+        // This internal solver fixture supplies test capacities directly; it
+        // does not bypass catalogue-attachment checks in the public save gate.
+        let mut demo = Demo::new();
+        demo.add("3005", 4, 4., 0., 4.);
+        demo.add("3001", 4, 4., 1., 1.);
+        let joint = crate::JointSpec {
+            a: 1,
+            b: 2,
+            anchor: DVec3::new(4.5, 1., 4.5),
+            kind: crate::JointKind::Fixed,
+            break_force: Some(10.),
+            break_torque: Some(0.1),
+            axial_force: None,
+            friction_torque: None,
+            strength_source: Some("test fixture".into()),
+        };
+        for i in 0..20 {
+            demo.add("3005", 4, 20. + i as f64 * 4., 0., 0.);
+        }
+        let measurements = crate::physical::ConnectionMeasurements::default();
+        let tol = StaticTolerances::default();
+        let joints = [joint];
+        let result = certify_components(&demo.bricks, &joints, &[1], tol, &measurements).unwrap();
+        let whole =
+            support_certificate(Bodies::all(&demo.bricks), &joints, &[1], tol, &measurements)
+                .unwrap();
+        assert_eq!(result.components, 21);
+        assert_eq!(result.largest_equilibrium_component, 2);
+        assert!(!result.contact_only);
+        assert_eq!(result.certificate.loaded_joints, whole.loaded_joints);
+        assert!(result.certificate.loaded_joints > 0);
+        assert!((result.certificate.max_utilisation - whole.max_utilisation).abs() < 1e-3);
+        // A far-away good island cannot supply fictitious support to a floater.
+        demo.add("3005", 4, 200., 10., 0.);
+        assert!(certify_components(&demo.bricks, &joints, &[1], tol, &measurements).is_err());
+        // Nor can partitioning hide an insufficient joint capacity.
+        let weak = [crate::JointSpec {
+            break_torque: Some(0.),
+            ..joints[0].clone()
+        }];
+        assert!(certify_components(&demo.bricks[..22], &weak, &[1], tol, &measurements).is_err());
+    }
+
+    #[test]
+    fn compression_frontier_releases_processed_loads_and_keeps_accumulated_weight() {
+        let mut demo = Demo::new();
+        for h in 0..2048 {
+            demo.add("3005", 4, 0., h as f64, 0.);
+        }
+        let measurements = crate::physical::ConnectionMeasurements::default();
+        let mut loads = CompressionLoads::new(
+            Bodies::all(&demo.bricks),
+            demo.bricks[0].bounds.center(),
+            &measurements,
+        );
+        let mass = measurements.mass_kg("3005.dat").unwrap();
+        for i in (0..demo.bricks.len()).rev() {
+            let (weight, moment) = loads.take(i).unwrap();
+            assert!(loads.entries.is_empty());
+            assert!((weight - mass * (demo.bricks.len() - i) as f64).abs() < 1e-10);
+            if i > 0 {
+                loads.add(i - 1, weight, moment).unwrap();
+            }
+            assert!(
+                loads.entries.len() <= 1,
+                "Frontier size must not scale with stack height"
+            );
+        }
+        assert!(loads.entries.is_empty());
+        assert!(
+            compression_issue(&demo.bricks, Default::default(), &measurements)
+                .unwrap()
+                .is_none()
+        );
+    }
+
+    #[test]
+    fn a_load_sharing_truss_is_one_island_and_losing_a_member_still_fails() {
+        // Low-level force fixture, as in equilibrium::tests: the two paths to
+        // the apex must share its weight, not receive invented boundary anchors.
+        let mut demo = Demo::new();
+        for (x, y) in [(0., 0.), (4., 0.), (1., 2.), (3., 2.), (2., 4.)] {
+            demo.add("3005", 4, x, y, 0.);
+        }
+        let joints: Vec<_> = [
+            (1, 3, 0.5, 1.),
+            (3, 5, 1.5, 3.),
+            (2, 4, 4.5, 1.),
+            (4, 5, 3.5, 3.),
+        ]
+        .into_iter()
+        .map(|(a, b, x, y)| crate::JointSpec {
+            a,
+            b,
+            anchor: DVec3::new(x, y, 0.5),
+            kind: crate::JointKind::Revolute {
+                axis: DVec3::Z,
+                limits: None,
+            },
+            break_force: Some(150.),
+            break_torque: Some(0.3),
+            axial_force: Some(0.2),
+            friction_torque: Some(0.),
+            strength_source: Some("test fixture".into()),
+        })
+        .collect();
+        demo.add("3005", 4, -128., 0., 0.);
+        let measurements = crate::physical::ConnectionMeasurements::default();
+        let result = certify_components(
+            &demo.bricks,
+            &joints,
+            &[1, 2],
+            Default::default(),
+            &measurements,
+        )
+        .unwrap();
+        assert_eq!(result.components, 2);
+        assert_eq!(result.largest_equilibrium_component, 5);
+        assert!(result.certificate.loaded_joints > 0);
+        assert!(
+            certify_components(
+                &demo.bricks,
+                &joints[..3],
+                &[1, 2],
+                Default::default(),
+                &measurements
+            )
+            .is_err()
+        );
     }
 }

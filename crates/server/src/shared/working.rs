@@ -199,26 +199,6 @@ impl Working {
             .collect();
         self.tx.prefetch_read_records(paths, self.remaining()).await;
     }
-    pub(super) async fn warm_member_spatial(
-        &mut self,
-        ids: &BTreeSet<ContentId>,
-    ) -> SharedResult<()> {
-        let ids: Vec<_> = ids.iter().collect();
-        for wave in ids.chunks(READ_CONCURRENCY) {
-            let mut paths = BTreeSet::new();
-            for id in wave {
-                let piece = self.piece(id).await?.ok_or_else(SharedError::missing)?;
-                let bounds = self.brick(&piece, 1).await?.render_bounds;
-                for &coord in &piece.replicas {
-                    paths.insert(super::spatial::record(&piece, coord, bounds).0);
-                }
-            }
-            self.tx
-                .prefetch_read_records(paths.into_iter().collect(), self.remaining())
-                .await;
-        }
-        Ok(())
-    }
     pub async fn rules(&mut self, id: &ContentId) -> SharedResult<Arc<Rules>> {
         if let Some(rules) = self.rules.get(id) {
             return Ok(rules.clone());
@@ -504,7 +484,7 @@ impl Working {
         let mut stack = seeds.clone();
         let started = std::time::Instant::now();
         self.discovery = Some(DiscoveryProgress {
-            visited: 0,
+            visited: visited.len(),
             pending: stack.len(),
             phase: "warming",
             since: started,

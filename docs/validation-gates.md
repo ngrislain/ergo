@@ -150,7 +150,11 @@ be one connected assembly.
 
 ## 3. Gravity must be balanced by admissible reactions
 
-[`support_certificate`](../crates/world/src/validation.rs) builds one static
+[`certify_components`](../crates/world/src/validation.rs) first discovers complete
+independent contact/joint islands with
+[`validation_components.rs`](../crates/world/src/validation_components.rs).
+For each island requiring the general solver,
+[`support_certificate`](../crates/world/src/validation.rs) builds a static
 equilibrium problem at the submitted pose and
 [`equilibrium::certify`](../crates/world/src/equilibrium.rs) solves it:
 
@@ -169,19 +173,29 @@ The important parts are:
 - Keep every joint load inside its capacities: force, axial force, bending, and
   for a revolute joint the moment about its axis within its friction torque (a
   free bearing's friction is tiny). A joint without capacity carries no load.
-- Solve all bodies at once (a sparse second-order cone program), so load loops
-  such as hanging chains and pinned trusses share their loads.
-- Re-check the solution independently and report `max_joint_utilisation`.
+- Solve all bodies in the current island at once (a sparse second-order cone
+  program), so load loops such as hanging chains and pinned trusses share their
+  loads. Every joint and admissible contact crosses no island boundary; spatial
+  chunks, cells and authoring groups are not artificial supports.
+- Re-check each solution independently and aggregate `max_joint_utilisation` by
+  maximum. Report island count as `stability_components` and the largest general
+  solve as `largest_equilibrium_component`; compression-only scenes report zero
+  for the latter. Historical/unvalidated reports use zero when these counts are
+  unavailable.
 - On failure, name the joints that would need more capacity than measured or
   estimated, or report that no equilibrium respects contact unilaterality.
 
-A faster constructive path is tried first for unanchored blocks: it balances
+A faster constructive path is tried first for each unanchored island: it balances
 loads top-to-bottom through nonnegative reactions inside horizontal support
 patches with zero joint wrench, and its result is a feasible point of the same
-problem.
+problem. Own weights are initialized on demand; processed accumulated loads are
+discarded, retaining only the pending-load frontier rather than a whole-scene
+load vector. The affected scene and spatial membership index still materialize;
+this does not claim constant-memory or arbitrary-chunk validation. All islands
+must pass before the single atomic publication.
 
 The default residual tolerances are `1e-6 N` and `1e-8 N·m` (raised in proportion
-to the total weight for large scenes); comparisons are not exact floating-point
+to the current island's weight for large islands); comparisons are not exact floating-point
 equality. Capacities come from the frozen server-owned measurement book or the
 reviewed estimates; a zero-joint-wrench compression proof consumes no capacity.
 

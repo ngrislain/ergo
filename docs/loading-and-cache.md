@@ -198,8 +198,12 @@ Speculation does not register dependencies, authorize an edit or replace pending
 values. Required reads still enforce all byte charges, absent/present predicates,
 permissions, external-joint closure and spatial-conflict protection. Failures of
 optional warming are cache misses, not permission to skip required records.
-Selected replacement members additionally warm their exact current spatial-key
-paths and reference records in 64-member groups. Discovery waves with at least
+Whole-assembly replacements share the accepted rule records rather than cloning
+them, and retain old piece identities rather than a second decoded piece inventory.
+They discover outside neighbours with one combined-bounds query, without first
+warming every member's spatial-reference path. This removes redundant speculative
+traversal; required membership, permissions and old/new dependency checks remain.
+Ordinary discovery waves with at least
 16 planned IDs can look
 ahead at up to 2,048 spatial paths through six cell-subdivision levels, skipping
 individual bounds spanning more than eight cells. First-page lookahead examines
@@ -220,6 +224,23 @@ see [the operations workflow](operations.md).
 The encoded read budget is enforced on the final operation, including the
 additional membership headers. It is not a complete allocator-RSS bound; bounded
 parallel readers, decoding and response encodings also consume memory.
+Each transaction/snapshot tree now keeps a separate, FIFO-evicted decoded-read
+node cache with an 8 MiB accounted budget; walking further pages no longer retains
+every visited decoded index node until the operation ends. The shared verified
+encoded-object LRU remains separate. Staged nodes, payloads and transaction
+predicates are not evicted by this cache: they still survive until publication or
+discard, so this is not a constant-memory guarantee for a whole edit.
+Canonical encoding in `crates/transactions/src/encoding.rs` writes array elements
+incrementally rather than building a second `ciborium::Value` tree. Maps buffer
+encoded key/value bytes for deterministic sorting and duplicate-key checks.
+The resulting CBOR bytes, normalized floats and content IDs are unchanged.
+The HTTP request and affected physical scene still materialize. Stability now
+discovers independent contact/joint islands and checks one at a time, constructing
+contacts and solver matrices only for the current island; the compression path
+keeps an active pending-load frontier rather than every body's accumulated load.
+The resident spatial index/membership metadata remain linear in affected pieces and joints,
+and one connected island can still be large. See [the static certificate](rigid-body-physics.md#lightweight-static-certificate).
+This does not implement streaming uploads, out-of-core validation or partial acceptance.
 Transport CBOR is serialized directly from the typed packet to avoid a second
 complete generic value tree at the dense-view encoding peak. It is ordinary CBOR,
 not a new canonical world-record encoding; authoritative record hashes and cache
