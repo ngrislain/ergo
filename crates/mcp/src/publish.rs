@@ -22,8 +22,6 @@ pub struct Publisher {
 pub(crate) struct ConditionalRead {
     pub status: u16,
     pub body: Value,
-    pub etag: Option<String>,
-    pub revision: Option<String>,
 }
 
 #[derive(Deserialize)]
@@ -189,7 +187,7 @@ impl Publisher {
             && ["/workspace", "/view", "/download", "/export"]
                 .iter()
                 .any(|suffix| endpoint.ends_with(suffix)))
-            || (method == Method::PUT && endpoint.ends_with("/workspace"))
+            || (method == Method::PATCH && endpoint.ends_with("/workspace"))
         {
             request = request.timeout(self.construction_timeout);
         }
@@ -217,24 +215,12 @@ impl Publisher {
             ))
         })?;
         let status = response.status();
-        let etag = response
-            .headers()
-            .get("etag")
-            .and_then(|v| v.to_str().ok())
-            .map(str::to_owned);
-        let revision = response
-            .headers()
-            .get("x-ergo-revision")
-            .and_then(|v| v.to_str().ok())
-            .map(str::to_owned);
         if status == reqwest::StatusCode::NOT_MODIFIED
             || method == Method::HEAD && status.is_success()
         {
             return Ok(ConditionalRead {
                 status: status.as_u16(),
                 body: Value::Null,
-                etag,
-                revision,
             });
         }
         ensure!(
@@ -263,8 +249,6 @@ impl Publisher {
         Ok(ConditionalRead {
             status: status.as_u16(),
             body,
-            etag,
-            revision,
         })
     }
 
@@ -491,13 +475,13 @@ mod tests {
 
     const WORLD: &str = "12345678-1234-4234-8234-123456789abc";
     #[test]
-    fn complete_workspace_reads_allow_large_scenes_but_remain_byte_bounded() {
+    fn explicit_full_exports_allow_large_scenes_but_remain_byte_bounded() {
         tokio::runtime::Runtime::new().unwrap().block_on(async {
             let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
             let address = listener.local_addr().unwrap();
             let app = Router::new()
                 .route(
-                    "/workspace",
+                    "/export",
                     axum::routing::get(|| async {
                         Json(json!({"scene_payload":"x".repeat(9 * 1024 * 1024)}))
                     }),
@@ -511,7 +495,7 @@ mod tests {
             });
             let publisher = Publisher::new(&format!("http://{address}"), None).unwrap();
             let read = publisher
-                .request(Method::GET, "/workspace", None)
+                .request(Method::GET, "/export", None)
                 .await
                 .unwrap();
             assert_eq!(
@@ -601,7 +585,7 @@ mod tests {
         }
     }
     #[test]
-    fn a_verified_workspace_uses_a_fresh_merkle_head_without_redownloading_geometry() {
+    fn opening_a_paged_workspace_reads_only_the_manifest_and_rechecks_permission() {
         tokio::runtime::Runtime::new().unwrap().block_on(async {
             use std::sync::atomic::{AtomicBool,AtomicUsize,Ordering};
             #[derive(Clone)]
@@ -615,7 +599,7 @@ mod tests {
                     StatusCode::NOT_MODIFIED.into_response()
                 }else{
                     state.gets.fetch_add(1,Ordering::SeqCst);
-                    Json(json!({"world_id":WORLD,"assembly_id":"2".repeat(64),"base_revision":"1".repeat(64),"scene":scene(),"external_dependencies":false})).into_response()
+                    Json(json!({"format":"ergo-workspace-2","world_id":WORLD,"assembly_id":"2".repeat(64),"base_revision":"1".repeat(64),"name":"Paged model","geo":ergo_world::GeoReference::default(),"piece_count":75000,"next_local_id":75001,"next_group_id":501,"external_dependencies":true})).into_response()
                 };
                 response.headers_mut().insert("etag","W/\"test-merkle\"".parse().unwrap());
                 response.headers_mut().insert("x-ergo-revision","1".repeat(64).parse().unwrap());response
@@ -624,17 +608,17 @@ mod tests {
             let listener=tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();let address=listener.local_addr().unwrap();
             let app=Router::new().fallback(endpoint).with_state(state.clone());let server=tokio::spawn(async move{axum::serve(listener,app).await.unwrap();});
             let publisher=Publisher::new(&format!("http://{address}"),Some("test-token".into())).unwrap();
-            let mut binding=crate::shared::Binding{origin:format!("http://{address}/"),world_id:WORLD.into(),assembly_id:None,base_revision:"0".repeat(64),pending:false,external_dependencies:false,receipt:None,cache:None,cache_reused:false};
+            let mut binding=crate::shared::Binding{format:"ergo-workspace-binding-2".into(),origin:format!("http://{address}/"),world_id:WORLD.into(),assembly_id:None,base_revision:"0".repeat(64),pending:false,external_dependencies:true,receipt:None,versions:Default::default(),next:None,total_pieces:None,next_local_id:1,next_group_id:1,blocked_transform_groups:Default::default()};
             let directory=tempfile::tempdir().unwrap();let path=directory.path().join("model.json");let assembly="2".repeat(64);
             let first=publisher.load_shared_file(&mut binding,&assembly,Some(&path)).await.unwrap();crate::persist(&path,&first).unwrap();
             let cached=publisher.load_shared_file(&mut binding,&assembly,Some(&path)).await.unwrap();
-            assert_eq!(cached.bricks.len(),first.bricks.len());assert_eq!(state.gets.load(Ordering::SeqCst),1);assert_eq!(state.heads.load(Ordering::SeqCst),1);
+            assert!(cached.bricks.is_empty());assert!(first.bricks.is_empty());assert_eq!(binding.total_pieces,Some(75000));assert_eq!(binding.next_local_id,75001);assert_eq!(state.gets.load(Ordering::SeqCst),2);assert_eq!(state.heads.load(Ordering::SeqCst),0);
             std::fs::write(&path,b"corrupted local cache").unwrap();
             let repaired=publisher.load_shared_file(&mut binding,&assembly,Some(&path)).await.unwrap();crate::persist(&path,&repaired).unwrap();
-            assert_eq!(state.gets.load(Ordering::SeqCst),2);
+            assert_eq!(state.gets.load(Ordering::SeqCst),3);
             state.denied.store(true,Ordering::SeqCst);
             assert!(publisher.load_shared_file(&mut binding,&assembly,Some(&path)).await.is_err(),"Revocation cannot fall back to local bytes");
-            assert_eq!(state.gets.load(Ordering::SeqCst),2);server.abort();
+            assert_eq!(state.gets.load(Ordering::SeqCst),3);server.abort();
         });
     }
     async fn exercise(mode: &'static str, args: Value) -> (Value, Vec<(String, Value)>) {

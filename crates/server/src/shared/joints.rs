@@ -56,7 +56,7 @@ impl Working {
                     b: joint.b,
                     spec: joint.spec,
                 },
-            );
+            )?;
         }
         Ok(peers)
     }

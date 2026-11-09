@@ -81,24 +81,37 @@ pub struct BoundJoint {
 }
 #[derive(Clone, Serialize, Deserialize)]
 pub struct GroupHeader {
-    id: u32,
-    name: String,
+    pub(super) id: u32,
+    pub(super) name: String,
     #[serde(with = "ergo_world::coordinates::vec3")]
-    pivot_world: glam::DVec3,
+    pub(super) pivot_world: glam::DVec3,
 }
 
 pub async fn write(tx: &mut ergo_transactions::Transaction, rules: &Rules) -> SharedResult<()> {
-    use futures::TryStreamExt;
-    let stream = record_edits(rules);
-    futures::pin_mut!(stream);
-    while let Some(edit) = stream.try_next().await? {
-        if let Some(value) = edit.value {
-            tx.put(&edit.path, &value).await?;
+    let records = collect_records(tx, rules).await?;
+    for row in records.iter() {
+        let (path, value) = row?;
+        if let Some(value) = value {
+            tx.put(&path, &value).await?;
         } else {
-            tx.remove(&edit.path).await?;
+            tx.remove(&path).await?;
         }
     }
     Ok(())
+}
+
+async fn collect_records(
+    tx: &ergo_transactions::Transaction,
+    rules: &Rules,
+) -> SharedResult<ergo_transactions::spill::SpillMap<OctreePath, Option<ciborium::value::Value>>> {
+    use futures::TryStreamExt;
+    let mut records = tx.local_map()?;
+    let stream = record_edits(rules);
+    futures::pin_mut!(stream);
+    while let Some(edit) = stream.try_next().await? {
+        records.insert(edit.path, edit.value)?;
+    }
+    Ok(records)
 }
 
 /// Write `rules` over the stored `previous` rules of the same assembly: only
@@ -111,23 +124,15 @@ pub async fn write_changes(
     previous: Option<&Rules>,
     rules: &Rules,
 ) -> SharedResult<()> {
-    use futures::TryStreamExt;
     let Some(previous) = previous else {
         return write(tx, rules).await;
     };
     ensure!(previous.id == rules.id, "Rules belong to another assembly");
-    let collect = |rules| async move {
-        let stream = record_edits(rules);
-        futures::pin_mut!(stream);
-        let mut records = BTreeMap::new();
-        while let Some(edit) = stream.try_next().await? {
-            records.insert(edit.path, edit.value);
-        }
-        Ok::<_, ergo_transactions::Error>(records)
-    };
-    let mut old = collect(previous).await?;
-    for (path, value) in collect(rules).await? {
-        let before = old.remove(&path);
+    let mut old = collect_records(tx, previous).await?;
+    let current = collect_records(tx, rules).await?;
+    for row in current.iter() {
+        let (path, value) = row?;
+        let before = old.remove(&path)?;
         if before.as_ref() == Some(&value) {
             continue;
         }
@@ -137,7 +142,16 @@ pub async fn write_changes(
             tx.remove(&path).await?;
         }
     }
-    for (path, value) in old {
+    let retained: BTreeSet<_> = rules.groups.iter().map(|g| g.id).collect();
+    for group in previous.groups.iter().filter(|g| !retained.contains(&g.id)) {
+        let base = row(&rules.id, 5, u64::from(group.id));
+        // One directory tombstone keeps the removal generation fence without
+        // retaining a headerless structural prefix in bounded directory scans.
+        tx.remove(&base).await?;
+        old.remove_prefix(base.octants())?;
+    }
+    for row in old.iter() {
+        let (path, value) = row?;
         if value.is_some() {
             tx.remove(&path).await?;
         }
@@ -152,8 +166,7 @@ fn record_edits(
         use ergo_transactions::RecordEdit as Edit;
         yield Edit::remove(entity_path(4,&rules.id));yield Edit::put(rule_path(&rules.id,0),&RulesHeader::of(rules))?;
         for(&local,id)in &rules.pieces{yield Edit::put(row(&rules.id,1,u64::from(local)),&MemberRow{local_id:local,piece:id.clone()})?;}
-        let adjacency=rules.adjacency().map_err(|e|ergo_transactions::Error::Encoding(e.to_string()))?;
-        for(&local,id)in &rules.pieces{for peer in adjacency.get(id).into_iter().flatten(){yield Edit::put(append(&row(&rules.id,2,u64::from(local)),&entity_path(0,peer).octants()[1..]),peer)?;}}
+        for edge in rules.dependency_edges(){let(local,peer)=edge.map_err(|e|ergo_transactions::Error::Encoding(e.to_string()))?;let peer=&rules.pieces[&peer];yield Edit::put(append(&row(&rules.id,2,u64::from(local)),&entity_path(0,peer).octants()[1..]),peer)?;}
         for(i,spec)in rules.joints.iter().enumerate(){yield Edit::put(row(&rules.id,6,i as u64),spec)?;let joint=BoundJoint{a:rules.pieces[&spec.a].clone(),b:rules.pieces[&spec.b].clone(),spec:spec.clone()};for endpoint in[spec.a,spec.b]{yield Edit::put(append(&row(&rules.id,3,u64::from(endpoint)),&number(i as u64)),&joint)?;}}
         for &local in &rules.fixed_bricks{yield Edit::put(row(&rules.id,4,u64::from(local)),&true)?;}
         for g in &rules.groups{let base=row(&rules.id,5,u64::from(g.id));yield Edit::put(base.child(0)?,&GroupHeader{id:g.id,name:g.name.clone(),pivot_world:g.pivot_world})?;for member in &g.members{let(kind,id)=match member{Member::Piece{id}=>(0,*id),Member::Group{id}=>(1,*id)};yield Edit::put(append(&base.child(1)?.child(kind)?,&number(u64::from(id))),member)?;}}
@@ -225,10 +238,17 @@ pub(super) async fn reconstruct(
             .scan_level(&prefix, prefix.octants().len() + 11, after.as_ref(), 128)
             .await?;
         for (base, _) in page.leaves {
-            let h: GroupHeader = ws
-                .read(&base.child(0)?)
-                .await?
-                .context("Missing group header")?;
+            let header: Option<GroupHeader> = ws.read(&base.child(0)?).await?;
+            let Some(h) = header else {
+                // Record-level tombstones can retain an empty directory. It is
+                // absent only when no live record remains; orphaned membership
+                // is corruption, not an excuse to truncate the group inventory.
+                ensure!(
+                    ws.tx.scan_page(&base, None, 1).await?.leaves.is_empty(),
+                    "Missing group header"
+                );
+                continue;
+            };
             let members = rows(ws, &base.child(1)?).await?;
             groups.push(Group {
                 id: h.id,

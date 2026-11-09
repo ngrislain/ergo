@@ -326,9 +326,9 @@ def run_model(binary,output,name,model:Model|Callable[[],Model],origin,token_fil
             readback=mcp.call('open_shared_construction',assembly_id=receipt['assembly_id'])['structuredContent']
             report['readback']=readback
             (output/'report.json').write_text(json.dumps(report,indent=2)+'\n')
-            if not readback['external_dependencies']:
-                assert readback['brick_count']==validation['brick_count'],'Accepted piece count differs'
-            accepted=mcp.call('test_visual_appearance',camera=camera,width=1024,height=768,lighting='studio')
+            assert readback['total_pieces']==validation['brick_count'],'Accepted piece count differs'
+            with mcp.inspection_copy() as inspector:
+                accepted=inspector.call('test_visual_appearance',camera=camera,width=1024,height=768,lighting='studio')
             picture=next(c for c in accepted['content'] if c['type']=='image')
             (output/'accepted-preview.png').write_bytes(base64.b64decode(picture['data']))
         finally:mcp.close()

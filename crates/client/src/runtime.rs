@@ -20,6 +20,8 @@ pub struct LocalClientRuntime {
     undo: Option<WorldExport>,
     revision: u32,
     dirty: bool,
+    id_floor: u32,
+    group_floor: u32,
     canvas: HtmlCanvasElement,
     renderer: Option<Renderer>,
 }
@@ -40,6 +42,8 @@ impl LocalClientRuntime {
             undo: None,
             revision,
             dirty: false,
+            id_floor: 1,
+            group_floor: 1,
             canvas,
             renderer: None,
         })
@@ -50,6 +54,12 @@ impl LocalClientRuntime {
             .meshes
             .get(&p)
             .is_none_or(|m| m.quality != "source")
+    }
+    pub fn set_id_floor(&mut self, next_id: u32) {
+        self.id_floor = next_id.max(1);
+    }
+    pub fn set_group_floor(&mut self, next_id: u32) {
+        self.group_floor = next_id.max(1);
     }
     pub fn required_parts(&self, name: &str, arguments: &str) -> Result<String, JsValue> {
         let args: Value = serde_json::from_str(arguments).map_err(js_error)?;
@@ -230,6 +240,11 @@ impl LocalClientRuntime {
             &self.measurements,
         );
         let valid = validation.is_ok();
+        let inconclusive = validation.as_ref().err().is_some_and(|error| {
+            error
+                .downcast_ref::<ergo_world::equilibrium::Inconclusive>()
+                .is_some()
+        });
         let connector_issue = if validation
             .as_ref()
             .is_ok_and(|report| report.joint_strength_required == Some(false))
@@ -248,7 +263,7 @@ impl LocalClientRuntime {
         } else {
             issue
         };
-        json!({"revision":self.revision,"brick_count":scene.bricks.len(),"overlap_free":overlap_free(&scene).is_ok(),"static_under_current_joint_model":valid,"publication_ready":valid&&issue.is_none(),"stability_report":validation.as_ref().ok(),"failure":validation.err().map(|e|e.to_string()),"calibration_issue":issue,"connector_calibration_issue":connector_issue,"global_commit_available":false,"execution":"local-wasm-client","next_action":if valid{"Review actual rendered views against the brief and inspect the shared receipt. Local static success is not a visual-quality or publication verdict."}else{"Add support or fix the reported constraint/contact. A client gravity test can provide additional diagnostics but cannot override the server certificate."}})
+        json!({"revision":self.revision,"brick_count":scene.bricks.len(),"overlap_free":overlap_free(&scene).is_ok(),"static_under_current_joint_model":if inconclusive{Value::Null}else{json!(valid)},"validation_state":if inconclusive{"inconclusive"}else if valid{"certified"}else{"rejected"},"publication_ready":valid&&issue.is_none(),"stability_report":validation.as_ref().ok(),"failure":validation.err().map(|e|e.to_string()),"calibration_issue":issue,"connector_calibration_issue":connector_issue,"global_commit_available":false,"execution":"local-wasm-client","next_action":if inconclusive{"No physical instability was proved. Inspect solver/workspace limits and interface conditioning; do not change the structure solely because the numerical solve was inconclusive."}else if valid{"Review actual rendered views against the brief and inspect the shared receipt. Local static success is not a visual-quality or publication verdict."}else{"Add support or fix the reported constraint/contact. A client gravity test can provide additional diagnostics but cannot override the server certificate."}})
     }
     fn build_feedback(&self, args: &Value) -> Result<Value> {
         let goal = args["goal"].as_str().unwrap_or_default();
@@ -277,7 +292,9 @@ impl LocalClientRuntime {
         if self.scene.bricks.is_empty() {
             suggestions.push(json!({"kind":"next_step","action":"Search existing sets and building techniques, then place a small self-supporting first section.","next_tools":["get_lego_models","get_building_techniques","get_catalog"]}));
         }
-        if feedback["failure"].is_string() {
+        if feedback["validation_state"] == "inconclusive" {
+            suggestions.push(json!({"kind":"numerical_diagnostic","evidence":feedback["failure"],"action":"No stability verdict: inspect solver limits, cut size and interface conditioning. Do not assume a physical support defect or replay an unchanged publication."}));
+        } else if feedback["failure"].is_string() {
             suggestions.push(json!({"kind":"structural","evidence":feedback["failure"],"action":"Inspect the reported pieces and contacts. Repair the specific support/constraint issue in a small atomic edit; do not repeat an unchanged failing edit.","next_tools":["inspect_brick","place_submodel"]}));
         }
         if feedback["calibration_issue"].is_string()
@@ -505,6 +522,7 @@ impl LocalClientRuntime {
                 ensure!(requested.is_finite(), "Invalid placement corner");
                 let corner = ergo_world::placement::snap_point(requested);
                 let part = canonical(&a.part);
+                let id_floor = self.id_floor;
                 let mut feedback = self.update(|scene| {
                     let mesh = scene
                         .meshes
@@ -531,7 +549,8 @@ impl LocalClientRuntime {
                         .max()
                         .unwrap_or(0)
                         .checked_add(1)
-                        .context("ID overflow")?;
+                        .context("ID overflow")?
+                        .max(id_floor);
                     scene.bricks.push(ergo_world::ldraw::brick_from_reference(
                         id,
                         &reference,
@@ -568,8 +587,15 @@ impl LocalClientRuntime {
                     .transpose()?
                     .unwrap_or(71);
                 let mut snap_delta = DVec3::ZERO;
+                let id_floor = self.id_floor;
                 let mut feedback = self.update(|scene| {
-                    let high_water = scene.bricks.iter().map(|brick| brick.id).max().unwrap_or(0);
+                    let high_water = scene
+                        .bricks
+                        .iter()
+                        .map(|brick| brick.id)
+                        .max()
+                        .unwrap_or(0)
+                        .max(id_floor - 1);
                     ensure!(
                         replace_ids
                             .iter()
@@ -750,9 +776,15 @@ impl LocalClientRuntime {
                 })?))
             }
             "validate_construction" => Ok(text(self.feedback())),
-            "list_groups" => Ok(text(
-                json!({"groups":self.scene.groups.iter().map(|g|json!({"group":g,"piece_count":ergo_world::groups::descendants(&self.scene.groups,g.id).map(|(p,_)|p.len()).unwrap_or(0),"bounds":ergo_world::groups::bounds(&self.scene,g.id).ok().flatten()})).collect::<Vec<_>>()}),
-            )),
+            "list_groups" => {
+                ensure!(
+                    args.get("cursor").is_none() && args.get("limit").is_none(),
+                    "Group paging arguments apply to shared mode; local mode lists the resident groups"
+                );
+                Ok(text(
+                    json!({"groups":self.scene.groups.iter().map(|g|json!({"group":g,"piece_count":ergo_world::groups::descendants(&self.scene.groups,g.id).map(|(p,_)|p.len()).unwrap_or(0),"bounds":ergo_world::groups::bounds(&self.scene,g.id).ok().flatten()})).collect::<Vec<_>>()}),
+                ))
+            }
             "create_group" => {
                 let name = args
                     .get("name")
@@ -766,8 +798,10 @@ impl LocalClientRuntime {
                     None
                 };
                 let mut created = 0;
+                let floor = self.group_floor;
                 let mut feedback = self.update_metadata(|scene| {
-                    created = ergo_world::groups::create(scene, name, members, pivot)?;
+                    created =
+                        ergo_world::groups::create_at_least(scene, name, members, pivot, floor)?;
                     Ok(())
                 })?;
                 feedback["group_id"] = json!(created);

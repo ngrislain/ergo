@@ -95,6 +95,22 @@ use `open_shared_construction` with its ID or a specified position. Accepted
 mutations update the same shared assembly automatically; the working file is a
 cache. Read the confirmed `shared_commit` receipt.
 
+Unreleased source after v0.5.34 uses [paged authoring](docs/paged-authoring.md):
+opening a construction loads its manifest; `read_construction_page` loads spatial
+bounds or selected IDs. Sparse edits preserve unloaded members. Upgrade matching
+server/native/WASM together and explicitly migrate bound caches. Group headers
+and complete bounded descendant-group reads are available separately.
+[Coupled equilibrium](docs/partitioned-stability.md) bounds local solver work and
+checks one assembled force/moment witness, including any matrix-free balance
+correction. [Native working state](docs/native-working-state.md) spills staged
+objects, predicates, edit journals and dependency indexes to bounded local disk
+stores. This is not yet an out-of-core physical-validation guarantee.
+Commit histories use verified file-backed iteration without retaining whole
+decoded edit lists; conditional upload still uses one capped encoded buffer.
+Shared-native equilibrium now pages partition/interface and reaction state through
+the same physical algorithm, while the complete physical input/indexes remain
+resident. See [workspace limits](docs/partitioned-stability.md#paged-coordinator-state).
+
 Call `get_building_techniques` to propose sourced wall, junction, opening, floor
 and roof patterns before building. Placements snap complete models coherently to
 the stud/plate grid. The server independently checks ground registration and

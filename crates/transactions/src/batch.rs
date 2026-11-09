@@ -52,7 +52,7 @@ impl Repository {
             tree.absorb(std::mem::replace(
                 &mut s.transaction.tree,
                 Tree::new(self.clone()),
-            ));
+            ))?;
         }
         for attempt in 0..options.max_attempts {
             let (tip, version) = self.head(&branch).await?;
@@ -64,17 +64,20 @@ impl Repository {
             let mut sequence = tip.commit.sequence;
             let mut errors: Vec<Option<Error>> = (0..submissions.len()).map(|_| None).collect();
             let mut accepted = Vec::new();
-            let mut uploads = Vec::new();
+            let mut uploads = tree.spool.map::<ContentId, ()>()?;
+            let mut commit_bytes = 0u64;
             for (i, s) in submissions.iter().enumerate() {
                 let tx = &s.transaction;
                 let mut conflicts = Vec::new();
-                for (path, expected) in &tx.observed {
-                    if tree.region(root.as_ref(), path).await? != *expected {
+                for row in tx.observed.iter() {
+                    let (path, expected) = row?;
+                    if tree.region(root.as_ref(), &path).await? != expected {
                         conflicts.push(path.clone());
                     }
                 }
-                for (path, expected) in &tx.directories {
-                    if tree.presence(root.as_ref(), path).await? != *expected {
+                for row in tx.directories.iter() {
+                    let (path, expected) = row?;
+                    if tree.presence(root.as_ref(), &path).await? != expected {
                         conflicts.push(path.clone());
                     }
                 }
@@ -82,7 +85,8 @@ impl Repository {
                     errors[i] = Some(Error::Conflict { paths: conflicts });
                     continue;
                 }
-                for edit in &tx.edits {
+                for row in tx.edits.iter() {
+                    let (_, edit) = row?;
                     root = tree
                         .replace(
                             root.as_ref(),
@@ -95,26 +99,48 @@ impl Repository {
                 sequence = sequence
                     .checked_add(1)
                     .ok_or_else(|| Error::Corrupt("sequence overflow".into()))?;
-                let commit = Commit {
-                    format: FORMAT,
-                    transaction_id: tx.transaction_id.to_string(),
-                    sequence,
-                    parent: Some(parent.clone()),
-                    base: Some(tx.base.id.clone()),
-                    root: root.clone(),
-                    edits: tx.edits.clone(),
-                    actor: s.actor.clone(),
-                    message: s.message.clone(),
-                    metadata: tx.metadata.clone(),
-                    blobs: tx.attachments.iter().cloned().collect(),
-                };
-                let id = tree.stage(&commit)?;
+                let commit = Commit::from_records(
+                    CommitHeader {
+                        format: FORMAT,
+                        transaction_id: tx.transaction_id.to_string(),
+                        sequence,
+                        parent: Some(parent.clone()),
+                        base: Some(tx.base.id.clone()),
+                        root: root.clone(),
+                        actor: s.actor.clone(),
+                        message: s.message.clone(),
+                        metadata: tx.metadata.clone(),
+                    },
+                    tx.edits.len(),
+                    tx.edits.iter().map(|row| row.map(|(_, edit)| edit)),
+                    tx.attachments.len(),
+                    tx.attachments.iter().map(|row| row.map(|(id, _)| id)),
+                    self.commit_limits,
+                )?;
+                commit_bytes = commit_bytes
+                    .checked_add(commit.encoded_len())
+                    .ok_or_else(|| Error::Scratch("batch commit size overflow".into()))?;
+                if commit_bytes > self.commit_limits.bytes as u64 {
+                    return Err(Error::Scratch(
+                        "batch commit records exceed encoded-byte budget".into(),
+                    ));
+                }
+                let id = commit.content_id().clone();
                 parent = id.clone();
-                uploads.push(id.clone());
-                uploads.extend(root.clone());
-                uploads.extend(tx.edits.iter().filter_map(|e| e.value.clone()));
-                uploads.extend(tx.metadata.clone());
-                uploads.extend(tx.attachments.iter().cloned());
+                if let Some(root) = &root {
+                    uploads.insert(root.clone(), ())?;
+                }
+                for row in tx.edits.iter() {
+                    if let Some(id) = row?.1.value {
+                        uploads.insert(id, ())?;
+                    }
+                }
+                if let Some(id) = &tx.metadata {
+                    uploads.insert(id.clone(), ())?;
+                }
+                for row in tx.attachments.iter() {
+                    uploads.insert(row?.0, ())?;
+                }
                 accepted.push((i, id, commit));
             }
             if accepted.is_empty() {
@@ -123,8 +149,17 @@ impl Repository {
                     .map(|e| Err(e.unwrap_or(Error::InvalidOptions)))
                     .collect());
             }
-            tree.flush(None, &uploads, options.upload_concurrency)
-                .await?;
+            tree.flush(
+                None,
+                uploads.iter().map(|row| row.map(|(id, _)| id)),
+                options.upload_concurrency,
+            )
+            .await?;
+            // The SDK's conditional create consumes one bounded encoded buffer;
+            // do not buffer every batch member's commit or bypass PutMode::Create.
+            for (_, _, commit) in &accepted {
+                self.store_commit(commit).await?;
+            }
             let entries: Vec<_> = accepted
                 .iter()
                 .map(|(_, id, c)| RevisionEntry {
@@ -196,7 +231,7 @@ impl Repository {
                         snapshot: Snapshot {
                             repo: self.clone(),
                             id,
-                            commit,
+                            commit: self.published_commit(commit),
                             pin: submissions[i].transaction.base.pin.clone(),
                             history: history.clone(),
                         },

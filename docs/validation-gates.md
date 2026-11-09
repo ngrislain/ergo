@@ -173,10 +173,11 @@ The important parts are:
 - Keep every joint load inside its capacities: force, axial force, bending, and
   for a revolute joint the moment about its axis within its friction torque (a
   free bearing's friction is tiny). A joint without capacity carries no load.
-- Solve all bodies in the current island at once (a sparse second-order cone
-  program), so load loops such as hanging chains and pinned trusses share their
-  loads. Every joint and admissible contact crosses no island boundary; spatial
-  chunks, cells and authoring groups are not artificial supports.
+- Solve the physical island with one or more coupled local sparse SOCPs, so
+  load loops such as hanging chains and pinned trusses share their loads. A
+  computational cut copies actual interface reactions, never an anchor. Final
+  admission requires a globally reconciled witness, checked body-by-body against
+  canonical input independently of partition plans. See [partitioned stability](partitioned-stability.md).
 - Re-check each solution independently and aggregate `max_joint_utilisation` by
   maximum. Report island count as `stability_components` and the largest general
   solve as `largest_equilibrium_component`; compression-only scenes report zero
@@ -184,6 +185,9 @@ The important parts are:
   unavailable.
 - On failure, name the joints that would need more capacity than measured or
   estimated, or report that no equilibrium respects contact unilaterality.
+  A partition budget/numerical/convergence failure instead reports
+  `validation_state:"inconclusive"`; it proves no physical instability and never
+  falls back to an unbounded full-island factorization.
 
 A faster constructive path is tried first for each unanchored island: it balances
 loads top-to-bottom through nonnegative reactions inside horizontal support

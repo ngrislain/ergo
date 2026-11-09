@@ -373,28 +373,29 @@ async fn streaming_collect(
         }
     }
     while let Some((id, kind)) = marks.next()? {
-        let bytes = repo.download(&id, options.max_object_bytes).await?;
-        match kind {
-            5 => {
-                let c: Commit = decode(&bytes)?;
-                if !crate::supported_format(c.format) {
-                    return Err(Error::Corrupt(
-                        "unsupported commit during collection".into(),
-                    ));
-                }
-                if let Some(id) = c.root {
-                    marks.enqueue(id, 1)?;
-                }
-                for id in c
-                    .edits
-                    .into_iter()
-                    .filter_map(|e| e.value)
-                    .chain(c.metadata)
-                    .chain(c.blobs)
-                {
+        if kind == 5 {
+            let mut limits = repo.commit_limits;
+            limits.bytes = limits.bytes.min(options.max_object_bytes);
+            limits.item_bytes = limits.item_bytes.min(limits.bytes);
+            let c = repo.load_commit(&id, false, limits).await?;
+            if let Some(id) = &c.root {
+                marks.enqueue(id.clone(), 1)?;
+            }
+            for edit in c.edits.iter()? {
+                if let Some(id) = edit?.value {
                     marks.enqueue(id, 2)?;
                 }
             }
+            if let Some(id) = &c.metadata {
+                marks.enqueue(id.clone(), 2)?;
+            }
+            for id in c.blobs.iter()? {
+                marks.enqueue(id?, 2)?;
+            }
+            continue;
+        }
+        let bytes = repo.download(&id, options.max_object_bytes).await?;
+        match kind {
             1 | 3 => match decode::<Node>(&bytes)? {
                 Node::Branch { children, .. } => {
                     for id in children.into_iter().flatten() {
@@ -607,29 +608,34 @@ impl Maintenance {
                 .ok_or_else(|| Error::Corrupt("migration counter overflow".into()))?;
             batch += 1;
             if batch == 128 {
-                tree.flush(root.as_ref(), &[], 32).await?;
+                tree.flush(root.as_ref(), [], 32).await?;
                 tree = Tree::new(self.repo.clone());
                 batch = 0;
             }
         }
-        tree.flush(root.as_ref(), &[], 32).await?;
-        let commit = Commit {
-            format: FORMAT,
-            transaction_id: uuid::Uuid::new_v4().to_string(),
-            sequence: parent
-                .commit
-                .sequence
-                .checked_add(1)
-                .ok_or_else(|| Error::Corrupt("sequence overflow".into()))?,
-            parent: Some(parent.id.clone()),
-            base: Some(parent.id.clone()),
-            root,
-            edits: Vec::new(),
-            actor: "maintenance".into(),
-            message: "Streamed derived-index migration".into(),
-            metadata: None,
-            blobs: Vec::new(),
-        };
+        tree.flush(root.as_ref(), [], 32).await?;
+        let commit = Commit::from_records(
+            crate::CommitHeader {
+                format: FORMAT,
+                transaction_id: uuid::Uuid::new_v4().to_string(),
+                sequence: parent
+                    .commit
+                    .sequence
+                    .checked_add(1)
+                    .ok_or_else(|| Error::Corrupt("sequence overflow".into()))?,
+                parent: Some(parent.id.clone()),
+                base: Some(parent.id.clone()),
+                root,
+                actor: "maintenance".into(),
+                message: "Streamed derived-index migration".into(),
+                metadata: None,
+            },
+            0,
+            [],
+            0,
+            [],
+            self.repo.commit_limits,
+        )?;
         let id = self.repo.store_commit(&commit).await?;
         let history =
             crate::history::append(&self.repo, parent.history.as_ref(), &id, commit.sequence)
@@ -694,24 +700,29 @@ impl Maintenance {
         if root == parent.commit.root {
             return Ok(parent.id);
         }
-        tree.flush(root.as_ref(), &[], 32).await?;
-        let commit = Commit {
-            format: FORMAT,
-            transaction_id: uuid::Uuid::new_v4().to_string(),
-            sequence: parent
-                .commit
-                .sequence
-                .checked_add(1)
-                .ok_or_else(|| Error::Corrupt("sequence overflow".into()))?,
-            parent: Some(parent.id.clone()),
-            base: Some(parent.id),
-            root,
-            edits: Vec::new(),
-            actor: "maintenance".into(),
-            message: "Compact current tombstones and replacement fences".into(),
-            metadata: None,
-            blobs: Vec::new(),
-        };
+        tree.flush(root.as_ref(), [], 32).await?;
+        let commit = Commit::from_records(
+            crate::CommitHeader {
+                format: FORMAT,
+                transaction_id: uuid::Uuid::new_v4().to_string(),
+                sequence: parent
+                    .commit
+                    .sequence
+                    .checked_add(1)
+                    .ok_or_else(|| Error::Corrupt("sequence overflow".into()))?,
+                parent: Some(parent.id.clone()),
+                base: Some(parent.id),
+                root,
+                actor: "maintenance".into(),
+                message: "Compact current tombstones and replacement fences".into(),
+                metadata: None,
+            },
+            0,
+            [],
+            0,
+            [],
+            self.repo.commit_limits,
+        )?;
         let id = self.repo.store_commit(&commit).await?;
         let history =
             crate::history::append(&self.repo, parent.history.as_ref(), &id, commit.sequence)

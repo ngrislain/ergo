@@ -57,7 +57,8 @@ simulation or rendering. Important routes include:
   `/api/ground/{x}/{y}`.
 - `/api/import`: convert an uploaded model to an Ergo preview.
 - `/api/shared-worlds` and `/api/shared-worlds/{id}`: the one hosted world/head.
-- Assembly lists and bounded `/location`, `/workspace`, rules and piece APIs.
+- Assembly lists, bounded `/location`, metadata-only `/workspace`, authoring
+  `/workspace/pages`, shared mesh, rules and piece APIs.
 - `/view`, block pages, accepted history, events, grants and retention controls.
 - `/api/user-position`: private own-user last camera/target context.
 - `/api/auth/me`, `/api/auth/mcp-token`, `/api/auth/logout` and Google callbacks.
@@ -70,6 +71,14 @@ Shared-region loading uses typed CBOR/gzip and discardable revision-keyed encode
 read packets. Current authorization is checked before cached responses or 304s;
 authoritative validation never consumes these packets. See
 [loading and caching](loading-and-cache.md).
+Native transactions spill staged bytes, predicate/edit journals and upload
+frontiers to [disposable local working stores](native-working-state.md).
+Authoring dependency indexes, traversal state and rule-diff rows share that store;
+they are not another source of accepted geometry or publication authority.
+Native commit histories use verified private files and fallible ordered record
+lists. Snapshot/file caches keep bounded headers, not decoded edit vectors.
+Conditional immutable upload still needs one capped encoded buffer; canonical
+commit bytes and the head CAS are unchanged. See [commit records](commit-history.md#bounded-native-commit-records).
 
 ## Acceptance
 
@@ -81,8 +90,13 @@ capacities. Oversized domains are rejected, never silently truncated.
 Stability checks discover complete independent contact/joint islands and certify
 them sequentially; loops stay together and a shared physical support is not cut.
 Compression retains a pending-load frontier, while general solver matrices are
-built only for the current island. The affected scene/spatial index still reside
-in memory; no partial island result is published.
+built only for bounded local partitions, with explicit coupled interfaces and
+bounded matrix-free balance correction. One independent assembled witness must
+pass. Shared-native solver plan/interface records and scalar reaction state use
+the [paged workspace](partitioned-stability.md#paged-coordinator-state). The physical
+scene, contact/joint inputs and planner/verifier indexes still reside in memory;
+no partial island result is published. Shared validation infers joints once, after
+frozen-model normalization, through this same gate rather than a preliminary copy.
 
 Audit and model/policy links publish with the accepted head. An uncertain write is
 fenced and not blindly retried. See [validation](validation-gates.md),

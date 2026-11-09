@@ -69,10 +69,70 @@ requires replaying a nondeterministic dynamics simulation.
 
 `GET /api/shared-worlds/{id}/history` returns bounded commit/audit pages after
 checking current access. Format-3 heads atomically publish a Merkle acceptance
-index with CID and sequence lookup, avoiding ancestry scans. Legacy heads can be
-explicitly upgraded. SSE coalesces revision notifications and reports resets; it
+index with CID and sequence lookup, avoiding ancestry scans. Current-format heads
+missing their acceptance index require explicit fenced history installation. SSE coalesces revision notifications and reports resets; it
 does not retain an unbounded queue or pin every old snapshot. See
 [storage operations](storage-operations.md).
+
+## Bounded native commit records
+
+Implemented in **unreleased source after v0.5.34**. Canonical format-3 bytes,
+commit IDs, list order, roots, base/parent relationships and acceptance semantics
+are unchanged. A byte-for-byte reference test compares the streamed envelope to
+the ordinary canonical encoder. No accepted-world data rewrite is required.
+
+Native commit assembly consumes the disk edit/attachment journals one record at
+a time into a private sealed file, with definite array lengths and the same
+canonical map-key order. Snapshots retain small headers and file-range list views,
+not complete decoded arrays. Downloads stream to disk, verify remote size/hash,
+then verify the file and validate its typed records before exposing a snapshot.
+A bounded CBOR size/depth scan precedes typed decoding, so malicious length hints
+cannot cause a history-sized allocation. Defaults are a 128 MiB encoded record,
+1 MiB per scalar header/list item, 64 header fields/bytes per field name, and
+nesting depth 64. See [resource configuration](native-working-state.md).
+
+List iterators have independent file cursors, preserve exact order, and return
+I/O/decode/length/checksum errors rather than silently ending early. GC consumes
+these same fallible lists during its complete marking pass; any error stops before
+sweeping. Snapshot clones and namespace-qualified metadata cache hits share the
+verified file. With repository caching enabled, a separate file cache retains at
+most 32 records, at most the lesser of the ordinary cache capacity and 128 MiB of
+encoded files, and approximately 1 MiB of retained-header accounting. This avoids
+downloading a large edit log again for every sequential piece page. Up to 1,024
+weak entries support active concurrent readers; disabling ordinary caching also
+disables strong file retention. This cache never caches mutable heads, pins remote
+history, supplies publication proof or bypasses tighter read budgets. Active
+snapshots/iterators can retain files outside the cache's own limits.
+
+Rust API migration in this unreleased source:
+
+- `Commit.edits` and `Commit.blobs` are `CommitList<T>`, with `len`, `is_empty`,
+  and fallible `iter`/items. Handle both iterator creation and each item error.
+- Use `Repository::read_commit` or `snapshot`, not generic `download::<Commit>` or
+  standalone `Deserialize`. `read_commit` is metadata access, not acceptance or
+  retention proof; use a pinned snapshot for retained geometry reads.
+- Construct metadata with `CommitHeader` and `Commit::from_records`, supplying
+  exact counts and fallible record iterators. Constructor count/resource errors
+  perform no publication. `encoded_len` and `content_id` describe the original
+  sealed bytes, not a commit receipt.
+
+All repository publication, batching, maintenance and GC callers use this one
+reader/writer pipeline. Existing public JSON history arrays remain arrays; their
+bounded JSON response buffer is not an out-of-core transport guarantee.
+
+The object-store SDK has no conditional multipart-create API. Publication therefore
+retains **one capped encoded buffer** for `PutMode::Create`, instead of switching
+to unconditional overwrite. A batch uploads its commit files sequentially and
+limits their aggregate encoded size. Commit bytes are not retained in the ordinary
+verified byte LRU. Immutable-upload existence/content reconciliation now hashes
+uncached remote streams without collecting another complete proof buffer. All
+referenced objects and per-member commits still upload before the existing single
+head CAS; cancellation/lost-acknowledgement handling and durable pins are unchanged.
+
+Temporary files follow `TMPDIR`, are private/disposable, and live until the final
+metadata/list-iterator handle drops. They are not durable authoring checkpoints,
+and file existence never proves publication. Sources:
+`crates/transactions/src/{commit,lib,batch,maintenance,encoding}.rs`.
 
 ## Publication and uncertain outcomes
 

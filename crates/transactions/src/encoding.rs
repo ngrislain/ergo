@@ -21,29 +21,46 @@ fn error(message: impl std::fmt::Display) -> Error {
     ser::Error::custom(message)
 }
 
+pub(crate) fn header_bytes(major: u8, value: u64) -> ([u8; 9], usize) {
+    let mut bytes = [0; 9];
+    let prefix = major << 5;
+    let size = match value {
+        0..=23 => {
+            bytes[0] = prefix | value as u8;
+            1
+        }
+        24..=0xff => {
+            bytes[0] = prefix | 24;
+            bytes[1] = value as u8;
+            2
+        }
+        0x100..=0xffff => {
+            bytes[0] = prefix | 25;
+            bytes[1..3].copy_from_slice(&(value as u16).to_be_bytes());
+            3
+        }
+        0x10000..=0xffffffff => {
+            bytes[0] = prefix | 26;
+            bytes[1..5].copy_from_slice(&(value as u32).to_be_bytes());
+            5
+        }
+        _ => {
+            bytes[0] = prefix | 27;
+            bytes[1..9].copy_from_slice(&value.to_be_bytes());
+            9
+        }
+    };
+    (bytes, size)
+}
+
 impl Encoder {
     fn scalar<T: ?Sized + Serialize>(&mut self, value: &T) -> Result {
         ciborium::into_writer(value, &mut self.bytes).map_err(error)
     }
 
     fn header(&mut self, major: u8, value: u64) {
-        let prefix = major << 5;
-        match value {
-            0..=23 => self.bytes.push(prefix | value as u8),
-            24..=0xff => self.bytes.extend_from_slice(&[prefix | 24, value as u8]),
-            0x100..=0xffff => {
-                self.bytes.push(prefix | 25);
-                self.bytes.extend_from_slice(&(value as u16).to_be_bytes());
-            }
-            0x10000..=0xffffffff => {
-                self.bytes.push(prefix | 26);
-                self.bytes.extend_from_slice(&(value as u32).to_be_bytes());
-            }
-            _ => {
-                self.bytes.push(prefix | 27);
-                self.bytes.extend_from_slice(&value.to_be_bytes());
-            }
-        }
+        let (bytes, size) = header_bytes(major, value);
+        self.bytes.extend_from_slice(&bytes[..size]);
     }
 
     fn sequence(&mut self, length: Option<usize>) -> Sequence<'_> {

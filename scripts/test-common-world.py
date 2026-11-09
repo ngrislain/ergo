@@ -14,6 +14,7 @@ from playwright.sync_api import sync_playwright, expect
 import library_fixture
 
 ROOT=pathlib.Path(__file__).resolve().parents[1]
+BIN=pathlib.Path(os.environ.get("ERGO_TEST_BIN_DIR",ROOT/"target/debug")).resolve()
 spec=importlib.util.spec_from_file_location("publish_test",ROOT/"scripts/test-mcp-publish.py")
 assert spec is not None and spec.loader is not None
 helpers=importlib.util.module_from_spec(spec)
@@ -36,14 +37,18 @@ with tempfile.TemporaryDirectory(prefix="ergo-common-") as directory:
     processes=[]
     def start():
         library_fixture.seed(directory/"store")
-        server=subprocess.Popen([str(ROOT/"target/debug/ergo-server")],cwd=directory,env=server_env,stdout=log,stderr=log)
-        for _ in range(100):
+        server=subprocess.Popen([str(BIN/"ergo-server")],cwd=directory,env=server_env,stdout=log,stderr=log)
+        # A fresh isolated store certifies the large read-only pavilion before
+        # listening. Debug numerical kernels are deliberately memory-bounded.
+        for _ in range(1800):
             if server.poll() is not None:
                 log.seek(0);raise AssertionError(log.read())
             try:
                 if helpers.http(url+"/api/config")[0]==200:return server
             except OSError:time.sleep(.1)
-        raise AssertionError("Server did not start")
+        server.terminate();server.wait(timeout=10)
+        log.seek(0)
+        raise AssertionError("Server did not start within 180 seconds:\n"+log.read())
     server=start()
     try:
         status,head=helpers.http(url+"/api/shared-worlds",session=helpers.signed_session("alice"),
@@ -52,13 +57,13 @@ with tempfile.TemporaryDirectory(prefix="ergo-common-") as directory:
         # A completed HTTP response can precede asynchronous snapshot-pin cleanup.
         # Quiesce the disposable source before stopping its runtime for migration.
         for _ in range(100):
-            settled=subprocess.run([str(ROOT/'target/debug/ergo-server'),'shared-maintenance-status',head['id']],
+            settled=subprocess.run([str(BIN/'ergo-server'),'shared-maintenance-status',head['id']],
                 cwd=directory,env=server_env,capture_output=True,text=True,check=True)
             if not json.loads(settled.stdout)['pins']:break
             time.sleep(.02)
         else:raise AssertionError('Source readers did not quiesce before migration')
         server.terminate();server.wait(timeout=10)
-        migration=subprocess.run([str(ROOT/"target/debug/ergo-server"),"shared-migrate",head["id"],"world"],
+        migration=subprocess.run([str(BIN/"ergo-server"),"shared-migrate",head["id"],"world"],
             cwd=directory,env=server_env,capture_output=True,text=True)
         assert migration.returncode==0,migration.stdout+ migration.stderr
         server_env["ERGO_COMMON_WORLD_ID"]=head["id"]
@@ -67,7 +72,7 @@ with tempfile.TemporaryDirectory(prefix="ergo-common-") as directory:
         assert helpers.http(url+"/api/shared-worlds")[0]==200,"The one sandbox must be publicly readable"
         assert helpers.http(url+"/api/shared-worlds/allowance")[0]==401,"Account ledgers are not public sandbox geometry"
         tokens={actor:helpers.http(url+"/api/auth/mcp-token",session=helpers.signed_session(actor),body={"expires_in_seconds":600})[1]["token"] for actor in ["alice","bob"]}
-        mcp=helpers.Mcp(ROOT/"target/debug/ergo-mcp",directory/"alice.ergo.json",url,tokens["alice"],directory,env)
+        mcp=helpers.Mcp(BIN/"ergo-mcp",directory/"alice.ergo.json",url,tokens["alice"],directory,env)
         print("Connected common-world MCP; testing immediate commits",flush=True)
         processes.append(mcp)
         schemas={tool["name"]:tool for tool in mcp.rpc("tools/list")["tools"]}
@@ -82,7 +87,8 @@ with tempfile.TemporaryDirectory(prefix="ergo-common-") as directory:
         assembly=receipt["assembly_id"];birth=receipt["pieces"]["1"]
         second=mcp.call("place_brick",part="3003",color=1,min_corner=[12,8,0])
         receipt=second["structuredContent"]["shared_commit"]
-        assert receipt["assembly_id"]==assembly and receipt["pieces"]["1"]==birth
+        assert receipt["assembly_id"]==assembly and "2" in receipt["pieces"]
+        assert helpers.http(url+f"/api/shared-worlds/{head['id']}/pieces/{birth}",token=tokens["alice"])[1]["id"]==birth
         revision=receipt["accepted_revision"]
         assert mcp.call("place_brick",part="3003",color=4,min_corner=[8,8,0])["isError"]
         assert mcp.call("place_brick",part="3003",color=4,min_corner=[20,8,10])["isError"],"Floating edits must roll back instead of becoming shared"
@@ -91,18 +97,42 @@ with tempfile.TemporaryDirectory(prefix="ergo-common-") as directory:
         group=mcp.call("create_group",name="Pair",piece_ids=[1,2])["structuredContent"]["group_id"]
         moved=mcp.call("transform_group",group_id=group,translation=[0,4,0])
         assert moved["structuredContent"]["shared_commit"]["published"]
-        bob=helpers.Mcp(ROOT/"target/debug/ergo-mcp",directory/"bob.ergo.json",url,tokens["bob"],directory,env)
+        bob=helpers.Mcp(BIN/"ergo-mcp",directory/"bob.ergo.json",url,tokens["bob"],directory,env)
         processes.append(bob)
         opened=bob.call("open_shared_construction",position_world=[10,12,0])
         assert opened["structuredContent"]["assembly_id"]==assembly,opened
+        assert opened["structuredContent"]["brick_count"]==0 and opened["structuredContent"]["partial"]
+        selected=bob.call("read_construction_page",ids=[1],limit=128)["structuredContent"]
+        assert selected["loaded_pieces"]==1 and selected["total_pieces"]==2
+        empty_group=bob.call("create_group",name="Temporary empty group",piece_ids=[])["structuredContent"]["group_id"]
+        assert empty_group>group,"Group IDs must not collide with unseen definitions"
+        removed=bob.call("ungroup",group_id=empty_group)
+        assert not removed.get("isError"),removed
+        assert bob.call("validate_construction")["isError"],"A clipped view is not a whole-construction certificate"
+        assert bob.call("move_brick",id=1,delta=[1,0,0])["isError"],"Implicit connected-side moves cannot omit unloaded neighbours"
+        exported=bob.call("export_construction")
+        assert not exported.get("isError"),exported
+        exported=exported["structuredContent"]
+        assert pathlib.Path(exported["path"])!=directory/"bob.ergo.json"
+        assert len(json.loads(pathlib.Path(exported["path"]).read_text())["pieces"])==2
+        assert bob.call("list_bricks")["structuredContent"]["total"]==1,"Export must not replace the resident page"
+        bob.call("read_construction_page",ids=[2],append=True)
         assert bob.call("list_bricks")["structuredContent"]["total"]==2,"Opening shared state must restore the existing browser runtime"
+        headers=bob.call("list_groups",limit=1)["structuredContent"]
+        assert headers["groups"][0]["id"]==group and not headers["groups"][0]["members_loaded"]
+        loaded_group=bob.call("read_construction_group",group_id=group)["structuredContent"]
+        assert loaded_group["group_complete"] and not loaded_group["physical_domain_complete"]
+        assert loaded_group["loaded_pieces"]==2
+        assert bob.call("transform_group",group_id=group,translation=[0,1,0])["structuredContent"]["shared_commit"]["published"]
+        assert bob.call("transform_group",group_id=group,translation=[0,-1,0])["structuredContent"]["shared_commit"]["published"]
         added=bob.call("place_brick",part="3003",color=14,min_corner=[30,30,0])
         assert added["structuredContent"]["shared_commit"]["audit"]["actor_name"]=="Bob Builder"
         assert mcp.call("transform_group",group_id=group,translation=[1,0,0])["isError"],"A stale assembly replacement must not erase another user's edit"
         refreshed=mcp.call("open_shared_construction",assembly_id=assembly)
-        assert refreshed["structuredContent"]["brick_count"]==3
+        assert refreshed["structuredContent"]["total_pieces"]==3
+        mcp.call("read_construction_page",limit=128)
         assert mcp.call("list_bricks")["structuredContent"]["total"]==3
-        neighbor=helpers.Mcp(ROOT/"target/debug/ergo-mcp",directory/"neighbor.ergo.json",url,tokens["alice"],directory,env)
+        neighbor=helpers.Mcp(BIN/"ergo-mcp",directory/"neighbor.ergo.json",url,tokens["alice"],directory,env)
         processes.append(neighbor)
         # Six current cells away: the old fixed 3x3x3 view loses this neighbour
         # despite it being comfortably inside the default viewing distance.
@@ -238,7 +268,7 @@ with tempfile.TemporaryDirectory(prefix="ergo-common-") as directory:
         opened=mcp.call("open_shared_construction",assembly_id=assembly)["structuredContent"]
         renamed=mcp.call("publish_construction",name="Shared façade",expected_local_revision=opened["local_revision"])
         assert renamed["structuredContent"]["published"],renamed
-        assert renamed["structuredContent"]["pieces"]["1"]==birth
+        assert helpers.http(url+f"/api/shared-worlds/{head['id']}/pieces/{birth}",token=tokens["alice"])[1]["id"]==birth
         assert helpers.http(url+f"/api/shared-worlds/{head['id']}")[0]==200
     finally:
         for process in processes:process.close()

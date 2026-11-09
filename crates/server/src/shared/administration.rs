@@ -99,6 +99,8 @@ impl SharedWorlds {
             format!("{}/{}", self.store.prefix, relative.trim_matches('/'))
         };
         Ok(Repository::new(self.store.backend.clone(), &prefix)?
+            .with_spill_limits(self.root.spill_limits())?
+            .with_commit_limits(self.root.commit_limits())?
             .with_cache_capacity(VERIFIED_CACHE_BYTES)
             .with_coordinated_gc())
     }

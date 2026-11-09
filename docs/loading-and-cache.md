@@ -388,20 +388,22 @@ counts (cells checkpointed during discovery, bricks and cells afterwards), and
 
 ### Fast Merkle-backed freshness checks
 
-`HEAD /api/shared-worlds/{id}/view?...` and the assembly `/workspace` endpoint compare
-small ETags before any geometry build. The accepted revision commits the immutable
-Merkle root; view tokens include that root, coverage, format and budgets. Workspace
-tokens also bind the assembly header CID, actor, effective authoring limits and
-reader version. `X-Ergo-Merkle-Root` and `X-Ergo-Revision` identify the checked basis.
+`HEAD /api/shared-worlds/{id}/view?...` and the assembly `/workspace` manifest compare
+small ETags before any geometry build. View tokens include the accepted root,
+coverage, format and budgets. Workspace tokens bind manifest data, actor,
+configured budgets and reader version. Views expose `X-Ergo-Merkle-Root`; both
+expose `X-Ergo-Revision`.
 Matching `If-None-Match` returns 304; an unmatched HEAD returns headers only and
 never starts/checkpoints a load. Native HEAD checks have a 30-second client deadline.
 
 Current permission and historical acceptance are rechecked first. A changed root,
 actor, reader version or applicable budget conservatively invalidates the token;
-this is not yet fine-grained reuse across unrelated world edits. Native sidecars
-bind the ETag to the exact saved pretty-native-file SHA-256. Missing, changed,
-oversized or corrupt files take the normal read path; no cached data authorizes a
-write, avoids server normalization or bypasses complete-domain validation.
+this is not yet fine-grained reuse across unrelated world edits. Paged MCP sidecars
+store the binding, loaded posed-record versions and read continuation; opening
+reloads the manifest rather than trusting an old full-file geometry cache.
+No cached data authorizes a write, avoids server normalization or bypasses
+complete-domain validation. See [paged authoring](paged-authoring.md) for bounded
+region reads, sparse updates and the explicit forward cache migration.
 
 ### Construction-list metadata
 

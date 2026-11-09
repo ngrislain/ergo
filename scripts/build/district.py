@@ -92,7 +92,7 @@ def reconcile(args, binary, spec, journal, journal_path):
     mcp = transport.Mcp(binary, workspace, args.url, args.token_file)
     try:
         accepted = mcp.call('open_shared_construction', assembly_id=progress['assembly_id'])['structuredContent']
-        actual = json.loads(workspace.read_text())
+        actual = json.loads(mcp.export_path().read_text())
         before = Counter()
         for name, recorded in progress['stages'].items():
             if name not in group and recorded.get('state') == 'accepted':
@@ -131,7 +131,7 @@ def main():
     selection.add_argument('--stage', choices=stage_choices)
     selection.add_argument('--through', choices=[*stage_choices,'finished'], help='Publish missing applicable stages in order, preserving each assembly')
     parser.add_argument('--only', help='One exact building key; omitted selects all eleven')
-    parser.add_argument('--batch-floors', type=int, choices=[1, 2, 3], default=3, help='At most three self-supporting storeys per published edit')
+    parser.add_argument('--batch-floors', type=int, choices=[1, 2, 3], default=1, help='Self-supporting storeys per edit; every batch must fit the paged resident budget')
     parser.add_argument('--reconcile', choices=[*stage_choices, 'roads', 'roof-bearing'], help='Read-only MCP reopen and exact geometry comparison for an uncertain stage; requires --only')
     parser.add_argument('--publish', action='store_true')
     args = parser.parse_args()
@@ -225,6 +225,8 @@ def main():
                     individual[stage] = recipes.stage(spec, stage).export(recipes.origin(spec))
                     write(args.output / (spec['key'] + '-' + stage + '.model.json'), individual[stage])
                 model = combine(individual)
+                if sum(fingerprints(model).values()) > 2048:
+                    raise RuntimeError('Reduce --batch-floors: this edit exceeds the paged resident budget')
                 if len(json.dumps({'name': 'place_submodel', 'arguments': {'model': model}}).encode()) > 1_000_000:
                     raise RuntimeError('Reduce --batch-floors to stay within the MCP input budget')
                 parts = {instance['target']['id'] for definition in model['definitions'].values()
@@ -262,7 +264,10 @@ def main():
                         progress['published_storeys'] = int(stage.removeprefix('floor-'))
                 write(journal_path, journal)
                 print(json.dumps({'key': spec['key'], 'stages': group, 'state': 'accepted', 'pieces': len(receipt['pieces']),
-                                  'assembly_id': receipt['assembly_id'], 'revision': receipt['accepted_revision']}), flush=True)
+                                   'assembly_id': receipt['assembly_id'], 'revision': receipt['accepted_revision']}), flush=True)
+                # Release the preceding resident stage. Later supported additions
+                # are checked against the authoritative domain, not an ever-growing cache.
+                mcp.call('open_shared_construction', assembly_id=progress['assembly_id'])
         finally:
             mcp.close()
 

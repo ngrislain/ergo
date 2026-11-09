@@ -114,7 +114,7 @@ pub(crate) async fn append_many(
             )
             .await?;
     }
-    tree.flush(root.as_ref(), &[], 32).await?;
+    tree.flush(root.as_ref(), [], 32).await?;
     Ok(Some(HistoryIndex {
         root,
         retained_from: index.retained_from,
@@ -314,7 +314,7 @@ impl Maintenance {
                     .await?;
                 removed += 1;
             }
-            tree.flush(index.root.as_ref(), &[], 32).await?;
+            tree.flush(index.root.as_ref(), [], 32).await?;
             after = page.next;
             if finished {
                 break;

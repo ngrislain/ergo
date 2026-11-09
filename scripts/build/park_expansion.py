@@ -225,6 +225,7 @@ def main():
                 binding = client.call('open_shared_construction', assembly_id=ASSEMBLY)['structuredContent']
             assert binding['base_revision'] == source['base_revision'], 'Accepted head changed; inspect/rebase the proposal instead of overwriting work'
             assert not binding.get('pending'), 'Reconcile the pending authoring outcome before continuing'
+            client.load_piece_ids(removed)
         for part in sorted({leaf['part'] for leaf in model_leaves(delta)}):
             description = client.call('get_catalog', part=part)['structuredContent']['requested_part']
             assert description['quality'] == 'source' and description.get('mass_kg'), part
@@ -233,8 +234,7 @@ def main():
         feedback = client.call('place_submodel', model=delta, replace_ids=removed)['structuredContent']
         write(args.output/'placement.json', feedback)
         if args.publish and not feedback.get('shared_commit'):raise ValueError('No confirmed accepted publication receipt')
-        client.call('export_construction')
-        exported = json.loads(workspace.read_text())
+        exported = json.loads(client.export_path().read_text())
         before = {brick['id']: brick_key(brick) for brick in source['scene']['bricks'] if brick['id'] not in removed}
         leaves = list(model_leaves(exported['model']))
         assert len(leaves) == len(exported['pieces'])

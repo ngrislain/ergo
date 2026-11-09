@@ -140,6 +140,15 @@ pub fn create(
     members: Vec<Member>,
     pivot: Option<DVec3>,
 ) -> Result<u32> {
+    create_at_least(scene, name, members, pivot, 1)
+}
+pub fn create_at_least(
+    scene: &mut WorldExport,
+    name: String,
+    members: Vec<Member>,
+    pivot: Option<DVec3>,
+    floor: u32,
+) -> Result<u32> {
     let id = scene
         .groups
         .iter()
@@ -147,7 +156,8 @@ pub fn create(
         .max()
         .unwrap_or(0)
         .checked_add(1)
-        .context("Group ID overflow")?;
+        .context("Group ID overflow")?
+        .max(floor.max(1));
     let mut groups = scene.groups.clone();
     groups.push(Group {
         id,

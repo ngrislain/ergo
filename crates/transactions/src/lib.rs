@@ -27,15 +27,18 @@
 mod batch;
 mod cache;
 mod codec;
+mod commit;
 mod history;
 pub mod local;
 mod maintenance;
 mod path;
+pub mod spill;
 mod tree;
 
 pub use batch::Submission;
 pub use cache::CacheStats;
 pub use codec::canonical_cbor;
+pub use commit::{Commit, CommitHeader, CommitIter, CommitLimits, CommitList};
 pub use history::{PruneReport, RevisionEntry, RevisionPage};
 pub use maintenance::{
     GcOptions, GcReport, Maintenance, MaintenanceStatus, MigrationReport, RecordEdit,
@@ -46,6 +49,7 @@ use bytes::Bytes;
 use object_store::{ObjectStore, PutMode, UpdateVersion, path::Path};
 use serde::{Deserialize, Serialize, de::DeserializeOwned};
 use sha2::{Digest, Sha256};
+use spill::{SpillLimits, SpillMap};
 use std::{
     collections::{BTreeMap, BTreeSet},
     fmt,
@@ -63,6 +67,8 @@ fn supported_format(format: u32) -> bool {
 
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
+    #[error("local working-state spill failed; no safe continuation: {0}")]
+    Scratch(String),
     #[error(transparent)]
     Store(#[from] object_store::Error),
     #[error("CBOR encoding/decoding: {0}")]
@@ -144,6 +150,9 @@ impl ContentId {
     pub fn as_str(&self) -> &str {
         &self.0
     }
+    pub(crate) fn of_digest(digest: [u8; 32]) -> Self {
+        Self(hex::encode(digest))
+    }
 }
 
 impl fmt::Display for ContentId {
@@ -190,26 +199,6 @@ pub struct Edit {
     pub value: Option<ContentId>,
 }
 
-/// Immutable history record. Actor/message are caller-supplied metadata, not authentication.
-#[derive(Clone, Debug, Serialize, Deserialize)]
-pub struct Commit {
-    pub format: u32,
-    pub transaction_id: String,
-    pub sequence: u64,
-    pub parent: Option<ContentId>,
-    /// Snapshot on which execution began; parent may be newer after rebase.
-    pub base: Option<ContentId>,
-    pub root: Option<ContentId>,
-    pub edits: Vec<Edit>,
-    pub actor: String,
-    pub message: String,
-    /// Optional immutable application audit/certificate payload.
-    #[serde(default)]
-    pub metadata: Option<ContentId>,
-    #[serde(default)]
-    pub blobs: Vec<ContentId>,
-}
-
 #[derive(Serialize, Deserialize)]
 struct Head {
     format: u32,
@@ -226,6 +215,9 @@ pub struct Repository {
     downloads:
         Arc<Mutex<std::collections::HashMap<String, std::sync::Weak<tokio::sync::Mutex<()>>>>>,
     managed: bool,
+    spill_limits: SpillLimits,
+    commit_limits: CommitLimits,
+    commits: Arc<Mutex<commit::CommitCache>>,
 }
 
 impl Repository {
@@ -246,6 +238,9 @@ impl Repository {
             prefix: prefix.to_owned(),
             cache: Arc::new(Mutex::new(cache::Cache::default())),
             managed: false,
+            spill_limits: SpillLimits::default(),
+            commit_limits: CommitLimits::default(),
+            commits: Arc::new(Mutex::new(commit::CommitCache::default())),
             downloads: Arc::new(Mutex::new(std::collections::HashMap::new())),
         })
     }
@@ -253,7 +248,30 @@ impl Repository {
     /// A byte-budgeted verified-object LRU, shared by clones; mutable heads are never cached.
     pub fn with_cache_capacity(mut self, bytes: usize) -> Self {
         self.cache = Arc::new(Mutex::new(cache::Cache::new(bytes)));
+        self.commits = Arc::new(Mutex::new(commit::CommitCache::new(bytes)));
         self
+    }
+    /// Disposable disk working-state limits; canonical repository bytes do not change.
+    pub fn with_spill_limits(mut self, limits: SpillLimits) -> Result<Self> {
+        if limits.database_bytes < 64 * 1024
+            || limits.database_bytes / 4096 > i32::MAX as usize
+            || !(4..=8192).contains(&limits.cache_kib)
+        {
+            return Err(Error::InvalidOptions);
+        }
+        self.spill_limits = limits;
+        Ok(self)
+    }
+    pub fn spill_limits(&self) -> SpillLimits {
+        self.spill_limits
+    }
+    pub fn with_commit_limits(mut self, limits: CommitLimits) -> Result<Self> {
+        limits.validate()?;
+        self.commit_limits = limits;
+        Ok(self)
+    }
+    pub fn commit_limits(&self) -> CommitLimits {
+        self.commit_limits
     }
 
     pub fn cache_stats(&self) -> CacheStats {
@@ -306,22 +324,7 @@ impl Repository {
             }
             return Ok(bytes);
         }
-        let gate = {
-            let mut downloads = self.downloads.lock().unwrap();
-            if downloads.len() >= 1024 {
-                downloads.retain(|_, gate| gate.strong_count() > 0);
-            }
-            if let Some(gate) = downloads
-                .get(location.as_ref())
-                .and_then(std::sync::Weak::upgrade)
-            {
-                gate
-            } else {
-                let gate = Arc::new(tokio::sync::Mutex::new(()));
-                downloads.insert(location.to_string(), Arc::downgrade(&gate));
-                gate
-            }
-        };
+        let gate = self.download_gate(&location);
         let _guard = gate.lock().await;
         // Parallel tree traversals share verified immutable downloads. Heads
         // and explicit uncached verification never pass through this gate.
@@ -336,9 +339,21 @@ impl Repository {
         }
         self.download(id, limit).await
     }
-
-    async fn uncached_object(&self, id: &ContentId) -> Result<Bytes> {
-        self.download(id, usize::MAX).await
+    fn download_gate(&self, location: &Path) -> Arc<tokio::sync::Mutex<()>> {
+        let mut downloads = self.downloads.lock().unwrap();
+        if downloads.len() >= 1024 {
+            downloads.retain(|_, gate| gate.strong_count() > 0);
+        }
+        if let Some(gate) = downloads
+            .get(location.as_ref())
+            .and_then(std::sync::Weak::upgrade)
+        {
+            gate
+        } else {
+            let gate = Arc::new(tokio::sync::Mutex::new(()));
+            downloads.insert(location.to_string(), Arc::downgrade(&gate));
+            gate
+        }
     }
 
     async fn download(&self, id: &ContentId, limit: usize) -> Result<Bytes> {
@@ -362,6 +377,9 @@ impl Repository {
     }
 
     async fn put_object(&self, id: &ContentId, bytes: Bytes) -> Result<()> {
+        self.put_object_cached(id, bytes, true).await
+    }
+    async fn put_object_cached(&self, id: &ContentId, bytes: Bytes, cache: bool) -> Result<()> {
         let location = self.path(&format!("objects/{id}.cbor"));
         for attempt in 0..3 {
             match self
@@ -373,10 +391,12 @@ impl Repository {
                     // Only an acknowledged immutable upload may populate the LRU.
                     // Never elide the upload based on a cache hit: GC may have
                     // collected an unreferenced object since it was downloaded.
-                    self.cache
-                        .lock()
-                        .unwrap()
-                        .insert(location.to_string(), bytes);
+                    if cache {
+                        self.cache
+                            .lock()
+                            .unwrap()
+                            .insert(location.to_string(), bytes);
+                    }
                     return Ok(());
                 }
                 // A 409 may represent a concurrent conditional request, not an existing
@@ -385,14 +405,14 @@ impl Repository {
                     object_store::Error::AlreadyExists { .. }
                     | object_store::Error::Precondition { .. },
                 ) => {
-                    self.uncached_object(id).await?;
+                    self.verify_object(id).await?;
                     return Ok(());
                 }
                 Err(error) => {
                     // A transport error can hide a successful immutable upload.
                     // Prove remote existence/content while the writer pin is held;
                     // never accept a cache hit, repeat a head CAS, or guess success.
-                    match self.uncached_object(id).await {
+                    match self.verify_object(id).await {
                         Ok(_) => return Ok(()),
                         Err(Error::Store(object_store::Error::NotFound { .. })) if attempt < 2 => {
                             // The object is absent at the strong read. Repeating
@@ -413,10 +433,25 @@ impl Repository {
     }
 
     async fn store_commit(&self, commit: &Commit) -> Result<ContentId> {
-        let bytes = canonical_cbor(commit)?;
-        let id = ContentId::of(&bytes);
-        self.put_object(&id, bytes.into()).await?;
+        let file = commit.file();
+        let id = file.id.clone();
+        let bytes = tokio::task::spawn_blocking(move || file.upload_bytes())
+            .await
+            .map_err(|e| Error::Scratch(e.to_string()))??;
+        self.put_object_cached(&id, bytes, false).await?;
         Ok(id)
+    }
+    fn remember_commit(&self, commit: &Arc<Commit>) {
+        let key = self
+            .path(&format!("objects/{}.cbor", commit.content_id()))
+            .to_string();
+        let mut cache = self.commits.lock().unwrap();
+        cache.insert(key, commit);
+    }
+    fn published_commit(&self, commit: Commit) -> Arc<Commit> {
+        let commit = Arc::new(commit);
+        self.remember_commit(&commit);
+        commit
     }
 
     /// Upload shared geometry/mesh data before referencing its ID from a block.
@@ -463,19 +498,24 @@ impl Repository {
     pub async fn create(&self, branch: &str) -> Result<Snapshot> {
         let pin = self.enter().await?;
         let path = self.head_path(branch)?;
-        let commit = Commit {
-            format: FORMAT,
-            transaction_id: uuid::Uuid::new_v4().to_string(),
-            sequence: 0,
-            parent: None,
-            base: None,
-            root: None,
-            edits: Vec::new(),
-            actor: String::new(),
-            message: "Initialize branch".into(),
-            metadata: None,
-            blobs: Vec::new(),
-        };
+        let commit = Commit::from_records(
+            CommitHeader {
+                format: FORMAT,
+                transaction_id: uuid::Uuid::new_v4().to_string(),
+                sequence: 0,
+                parent: None,
+                base: None,
+                root: None,
+                actor: String::new(),
+                message: "Initialize branch".into(),
+                metadata: None,
+            },
+            0,
+            [],
+            0,
+            [],
+            self.commit_limits,
+        )?;
         let id = self.store_commit(&commit).await?;
         let history =
             history::append(self, Some(&history::HistoryIndex::default()), &id, 0).await?;
@@ -499,7 +539,7 @@ impl Repository {
                 Ok(Snapshot {
                     repo: self.clone(),
                     id,
-                    commit,
+                    commit: self.published_commit(commit),
                     pin,
                     history,
                 })
@@ -525,7 +565,7 @@ impl Repository {
                     Ok(Snapshot {
                         repo: self.clone(),
                         id,
-                        commit,
+                        commit: self.published_commit(commit),
                         pin,
                         history,
                     })
@@ -576,10 +616,7 @@ impl Repository {
     }
 
     async fn load_snapshot(&self, id: &ContentId) -> Result<Snapshot> {
-        let commit: Commit = codec::decode(&self.object(id).await?)?;
-        if !supported_format(commit.format) {
-            return Err(Error::Corrupt("unsupported commit format".into()));
-        }
+        let commit = self.load_commit(id, true, self.commit_limits).await?;
         Ok(Snapshot {
             repo: self.clone(),
             id: id.clone(),
@@ -593,7 +630,7 @@ impl Repository {
         let pin = self.enter().await?;
         let (mut base, version) = self.head(branch).await?;
         base.pin = pin;
-        Ok(self.transaction(branch, base.clone(), base, version))
+        self.transaction(branch, base.clone(), base, version)
     }
 
     /// Execute against an accepted older revision, preserving its preconditions.
@@ -603,7 +640,11 @@ impl Repository {
         if !self.contains(tip.clone(), base, 0).await? {
             return Err(Error::RevisionUnavailable);
         }
-        let mut base = self.load_snapshot(base).await?;
+        let mut base = if tip.id == *base {
+            tip.clone()
+        } else {
+            self.load_snapshot(base).await?
+        };
         tip.pin = pin.clone();
         base.pin = pin;
         if !self
@@ -612,7 +653,7 @@ impl Repository {
         {
             return Err(Error::InvalidBase);
         }
-        Ok(self.transaction(branch, base, tip, version))
+        self.transaction(branch, base, tip, version)
     }
 
     fn transaction(
@@ -621,24 +662,29 @@ impl Repository {
         base: Snapshot,
         tip: Snapshot,
         version: UpdateVersion,
-    ) -> Transaction {
-        Transaction {
-            tree: Tree::new(self.clone()),
+    ) -> Result<Transaction> {
+        let tree = Tree::new(self.clone());
+        let observed = tree.spool.map()?;
+        let directories = tree.spool.map()?;
+        let edits = tree.spool.map()?;
+        let attachments = tree.spool.map()?;
+        Ok(Transaction {
+            tree,
             branch: branch.into(),
             working_root: base.commit.root.clone(),
             read_snapshot: base.clone(),
             base,
             tip,
             version,
-            observed: BTreeMap::new(),
-            directories: BTreeMap::new(),
-            edits: Vec::new(),
+            observed,
+            directories,
+            edits,
             transaction_id: uuid::Uuid::new_v4(),
             metadata: None,
             refreshed: false,
-            attachments: BTreeSet::new(),
+            attachments,
             page_cache: TransactionPages::default(),
-        }
+        })
     }
 
     /// Resolve a possibly lost publication acknowledgement, including when later
@@ -657,7 +703,7 @@ impl Repository {
 pub struct Snapshot {
     repo: Repository,
     id: ContentId,
-    commit: Commit,
+    commit: Arc<Commit>,
     pin: Option<Arc<maintenance::Pin>>,
     history: Option<history::HistoryIndex>,
 }
@@ -758,6 +804,19 @@ impl Snapshot {
             .scan_page(self.commit.root.as_ref(), path, after, limit)
             .await
     }
+    pub async fn last(&self, path: &OctreePath) -> Result<Option<(OctreePath, ContentId)>> {
+        Tree::new(self.repo.clone())
+            .last(self.commit.root.as_ref(), path)
+            .await
+    }
+    /// Read-only directory-presence probe on this pinned snapshot. Writers
+    /// must use Transaction::directory_exists to retain conflict predicates.
+    pub async fn directory_exists(&self, path: &OctreePath) -> Result<bool> {
+        Ok(Tree::new(self.repo.clone())
+            .presence(self.commit.root.as_ref(), path)
+            .await?
+            .present)
+    }
     /// Ordered pinned-snapshot paging with bounded immutable-node lookahead.
     /// Values are not prefetched; mutable heads and transaction predicates are unchanged.
     pub async fn scan_page_prefetched(
@@ -780,13 +839,13 @@ pub struct Transaction {
     read_snapshot: Snapshot,
     version: UpdateVersion,
     working_root: Option<ContentId>,
-    observed: BTreeMap<OctreePath, RegionVersion>,
-    directories: BTreeMap<OctreePath, PresenceVersion>,
-    edits: Vec<Edit>,
+    observed: SpillMap<OctreePath, RegionVersion>,
+    directories: SpillMap<OctreePath, PresenceVersion>,
+    edits: SpillMap<u64, Edit>,
     transaction_id: uuid::Uuid,
     metadata: Option<ContentId>,
     refreshed: bool,
-    attachments: BTreeSet<ContentId>,
+    attachments: SpillMap<ContentId, ()>,
     page_cache: TransactionPages,
 }
 
@@ -850,15 +909,25 @@ impl TransactionPages {
 }
 
 impl Transaction {
+    /// A typed disk map sharing this transaction's scratch cache and disk quota.
+    /// Local-only state: never included in accepted snapshots or resumable sessions.
+    pub fn local_map<K: spill::SpillKey, V: Serialize + DeserializeOwned>(
+        &self,
+    ) -> Result<SpillMap<K, V>> {
+        self.tree.spool.map()
+    }
+    pub fn spill_database_bytes(&self) -> Result<u64> {
+        self.tree.spool.database_bytes()
+    }
     /// Track structural directory presence, not every descendant version. A true
     /// directory can contain tombstones; inspect its actual rows separately.
     pub async fn directory_exists(&mut self, path: &OctreePath) -> Result<bool> {
-        if !self.directories.contains_key(path) {
+        if !self.directories.contains_key(path)? {
             let v = self
                 .tree
                 .presence(self.read_snapshot.commit.root.as_ref(), path)
                 .await?;
-            self.directories.insert(path.clone(), v);
+            self.directories.insert(path.clone(), v)?;
         }
         Ok(self
             .tree
@@ -883,12 +952,12 @@ impl Transaction {
         self.tree.get(self.working_root.as_ref(), path).await
     }
     async fn observe(&mut self, path: &OctreePath) -> Result<()> {
-        if !self.observed.contains_key(path) {
+        if !self.observed.contains_key(path)? {
             let version = self
                 .tree
                 .region(self.read_snapshot.commit.root.as_ref(), path)
                 .await?;
-            self.observed.insert(path.clone(), version);
+            self.observed.insert(path.clone(), version)?;
         }
         Ok(())
     }
@@ -1030,15 +1099,15 @@ impl Transaction {
     /// commit records this attachment explicitly for retention.
     pub fn stage_blob<T: Serialize>(&mut self, value: &T) -> Result<ContentId> {
         let id = self.tree.stage(value)?;
-        self.attachments.insert(id.clone());
+        self.attachments.insert(id.clone(), ())?;
         Ok(id)
     }
 
     /// Reusing an older standalone blob must verify remote existence while the
     /// writer pin is held; a stale cache entry cannot resurrect swept garbage.
     pub async fn retain_blob(&mut self, id: &ContentId) -> Result<()> {
-        self.tree.repo.uncached_object(id).await?;
-        self.attachments.insert(id.clone());
+        self.tree.repo.verify_object(id).await?;
+        self.attachments.insert(id.clone(), ())?;
         Ok(())
     }
 
@@ -1050,13 +1119,15 @@ impl Transaction {
 
     async fn validate_and_replay(&mut self, tip: Snapshot, version: UpdateVersion) -> Result<()> {
         let mut conflicts = Vec::new();
-        for (path, expected) in &self.observed {
-            if self.tree.region(tip.commit.root.as_ref(), path).await? != *expected {
+        for row in self.observed.iter() {
+            let (path, expected) = row?;
+            if self.tree.region(tip.commit.root.as_ref(), &path).await? != expected {
                 conflicts.push(path.clone());
             }
         }
-        for (path, expected) in &self.directories {
-            if self.tree.presence(tip.commit.root.as_ref(), path).await? != *expected {
+        for row in self.directories.iter() {
+            let (path, expected) = row?;
+            if self.tree.presence(tip.commit.root.as_ref(), &path).await? != expected {
                 conflicts.push(path.clone());
             }
         }
@@ -1064,7 +1135,8 @@ impl Transaction {
             return Err(Error::Conflict { paths: conflicts });
         }
         self.working_root = tip.commit.root.clone();
-        for edit in &self.edits {
+        for row in self.edits.iter() {
+            let (_, edit) = row?;
             self.working_root = self
                 .tree
                 .replace(
@@ -1180,11 +1252,14 @@ impl Transaction {
             .tree
             .replace(self.working_root.as_ref(), path, Some(&id), &generation)
             .await?;
-        self.edits.push(Edit {
-            path: path.clone(),
-            generation,
-            value: Some(id.clone()),
-        });
+        self.edits.insert(
+            self.edits.len() as u64,
+            Edit {
+                path: path.clone(),
+                generation,
+                value: Some(id.clone()),
+            },
+        )?;
         Ok(id)
     }
 
@@ -1196,11 +1271,14 @@ impl Transaction {
             .tree
             .replace(self.working_root.as_ref(), path, None, &generation)
             .await?;
-        self.edits.push(Edit {
-            path: path.clone(),
-            generation,
-            value: None,
-        });
+        self.edits.insert(
+            self.edits.len() as u64,
+            Edit {
+                path: path.clone(),
+                generation,
+                value: None,
+            },
+        )?;
         Ok(())
     }
 
@@ -1232,37 +1310,44 @@ impl Transaction {
             if version.e_tag.is_none() && version.version.is_none() {
                 return Err(Error::MissingVersion);
             }
-            let history_payloads: Vec<_> = self
+            let commit = Commit::from_records(
+                CommitHeader {
+                    format: FORMAT,
+                    transaction_id: self.transaction_id.to_string(),
+                    sequence: parent
+                        .commit
+                        .sequence
+                        .checked_add(1)
+                        .ok_or_else(|| Error::Corrupt("sequence overflow".into()))?,
+                    parent: Some(parent.id.clone()),
+                    base: Some(self.base.id.clone()),
+                    root: self.working_root.clone(),
+                    actor: actor.into(),
+                    message: message.into(),
+                    metadata: self.metadata.clone(),
+                },
+                self.edits.len(),
+                self.edits.iter().map(|row| row.map(|(_, edit)| edit)),
+                self.attachments.len(),
+                self.attachments.iter().map(|row| row.map(|(id, _)| id)),
+                self.tree.repo.commit_limits,
+            )?;
+            let references = self
                 .edits
                 .iter()
-                .filter_map(|e| e.value.clone())
-                .chain(self.metadata.clone())
-                .chain(self.attachments.iter().cloned())
-                .collect();
+                .filter_map(|row| match row {
+                    Ok((_, edit)) => edit.value.map(Ok),
+                    Err(error) => Some(Err(error)),
+                })
+                .chain(self.metadata.clone().map(Ok))
+                .chain(self.attachments.iter().map(|row| row.map(|(id, _)| id)));
             self.tree
                 .flush(
                     self.working_root.as_ref(),
-                    &history_payloads,
+                    references,
                     options.upload_concurrency,
                 )
                 .await?;
-            let commit = Commit {
-                format: FORMAT,
-                transaction_id: self.transaction_id.to_string(),
-                sequence: parent
-                    .commit
-                    .sequence
-                    .checked_add(1)
-                    .ok_or_else(|| Error::Corrupt("sequence overflow".into()))?,
-                parent: Some(parent.id.clone()),
-                base: Some(self.base.id.clone()),
-                root: self.working_root.clone(),
-                edits: self.edits.clone(),
-                actor: actor.into(),
-                message: message.into(),
-                metadata: self.metadata.clone(),
-                blobs: self.attachments.iter().cloned().collect(),
-            };
             let id = self.tree.repo.store_commit(&commit).await?;
             let history = history::append(
                 &self.tree.repo,
@@ -1296,7 +1381,7 @@ impl Transaction {
                         snapshot: Snapshot {
                             repo: self.tree.repo.clone(),
                             id,
-                            commit,
+                            commit: self.tree.repo.published_commit(commit),
                             pin: self.base.pin.clone(),
                             history,
                         },
@@ -1335,7 +1420,7 @@ impl Transaction {
                     snapshot: Snapshot {
                         repo: self.tree.repo.clone(),
                         id,
-                        commit,
+                        commit: self.tree.repo.published_commit(commit),
                         pin: self.base.pin.clone(),
                         history,
                     },
@@ -1357,17 +1442,19 @@ impl Transaction {
                 ));
             }
             let mut conflicts = Vec::new();
-            for (path, expected) in &self.observed {
-                if self.tree.region(parent.commit.root.as_ref(), path).await? != *expected {
+            for row in self.observed.iter() {
+                let (path, expected) = row?;
+                if self.tree.region(parent.commit.root.as_ref(), &path).await? != expected {
                     conflicts.push(path.clone());
                 }
             }
-            for (path, expected) in &self.directories {
+            for row in self.directories.iter() {
+                let (path, expected) = row?;
                 if self
                     .tree
-                    .presence(parent.commit.root.as_ref(), path)
+                    .presence(parent.commit.root.as_ref(), &path)
                     .await?
-                    != *expected
+                    != expected
                 {
                     conflicts.push(path.clone());
                 }
@@ -1379,7 +1466,8 @@ impl Transaction {
                 break;
             }
             self.working_root = parent.commit.root.clone();
-            for edit in &self.edits {
+            for row in self.edits.iter() {
+                let (_, edit) = row?;
                 self.working_root = self
                     .tree
                     .replace(

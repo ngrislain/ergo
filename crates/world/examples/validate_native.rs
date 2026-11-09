@@ -31,7 +31,7 @@ fn main() -> Result<()> {
     let value = match result {
         Ok(report) => {
             serde_json::json!({"execution":"native-ergo-world-static","brick_count":scene.bricks.len(),
-                "overlap_free":true,"static_under_current_joint_model":true,"publication_ready":true,
+                "overlap_free":true,"static_under_current_joint_model":true,"validation_state":"certified","publication_ready":true,
                 "stability_report":report,"published":false})
         }
         Err(error) => {
@@ -43,7 +43,7 @@ fn main() -> Result<()> {
             .ok()
             .flatten();
             serde_json::json!({"execution":"native-ergo-world-static","brick_count":scene.bricks.len(),
-                "failure":error.to_string(),"publication_ready":false,"compression_issue":issue,"published":false})
+                "failure":error.to_string(),"validation_state":if error.downcast_ref::<ergo_world::equilibrium::Inconclusive>().is_some(){"inconclusive"}else{"rejected"},"publication_ready":false,"compression_issue":issue,"published":false})
         }
     };
     println!("{}", value);

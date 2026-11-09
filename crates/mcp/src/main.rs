@@ -98,9 +98,15 @@ async fn workspace(
     headers: HeaderMap,
 ) -> std::result::Result<Json<Value>, HttpError> {
     authorized(&s, &headers)?;
+    let (floor, group_floor) = if let Some(common) = &s.common {
+        let b = common.lock().await;
+        (b.next_local_id, b.next_group_id)
+    } else {
+        (1, 1)
+    };
     let h = s.hub.lock().unwrap();
     Ok(Json(
-        json!({"scene":h.workspace.scene,"revision":h.workspace.revision,"measurements":h.workspace.measurements}),
+        json!({"scene":h.workspace.scene,"revision":h.workspace.revision,"measurements":h.workspace.measurements,"next_local_id":floor,"next_group_id":group_floor}),
     ))
 }
 #[derive(Deserialize)]
@@ -134,6 +140,16 @@ async fn update(
         let mut binding = common.lock().await;
         ensure_update_revision(&s, &update)?;
         let path = s.hub.lock().unwrap().workspace.path.clone();
+        let before = s.hub.lock().unwrap().workspace.scene.clone();
+        if update.scene.bricks.len() > ergo_world::authoring::RESIDENT_PIECES {
+            return Err(http_error(
+                "Shared working view exceeds its resident piece limit",
+            ));
+        }
+        if binding.assembly_id.is_some() {
+            ergo_world::authoring::Delta::between(&before, &update.scene, &binding.versions)
+                .map_err(http_error)?;
+        }
         let mut journal = binding.clone();
         journal.pending = true;
         atomic_write(&shared::state_path(&path), &journal).map_err(http_error)?;
@@ -143,6 +159,7 @@ async fn update(
             .unwrap()
             .commit_shared(
                 &mut binding,
+                &before,
                 update.scene.clone(),
                 update.expected_revision + 1,
             )
@@ -162,7 +179,12 @@ async fn update(
             Json(json!({"error":"Job expired or working-copy revision changed"})),
         ));
     }
-    if let Err(error) = persist(&h.workspace.path, &update.scene) {
+    let saved = if s.common.is_some() {
+        persist_page(&h.workspace.path, &update.scene)
+    } else {
+        persist(&h.workspace.path, &update.scene)
+    };
+    if let Err(error) = saved {
         if remote.is_none() {
             return Err(http_error(error));
         }
@@ -244,6 +266,12 @@ async fn serve_part_library(
 }
 fn persist(path: &FsPath, scene: &WorldExport) -> Result<()> {
     atomic_write(path, &ergo_world::storage::Construction::from(scene))
+}
+fn persist_page(path: &FsPath, scene: &WorldExport) -> Result<()> {
+    atomic_write(
+        path,
+        &json!({"format":"ergo-authoring-cache-1","schema":ergo_world::SCHEMA_VERSION,"partial":true,"construction":ergo_world::storage::Construction::from(scene)}),
+    )
 }
 fn atomic_write(path: &FsPath, value: &impl Serialize) -> Result<()> {
     let parent = path
@@ -468,7 +496,7 @@ fn main() -> Result<()> {
     fs2::FileExt::try_lock_exclusive(&lock).context("Working copy is already open")?;
     let bound = publisher.is_some()
         && shared::state_path(&path).exists()
-        && serde_json::from_slice::<shared::Binding>(&fs::read(shared::state_path(&path))?)?
+        && shared::load_binding(&shared::state_path(&path))?
             .assembly_id
             .is_some();
     let mut scene = if path.exists() && !bound {
@@ -476,7 +504,25 @@ fn main() -> Result<()> {
             path.metadata()?.len() <= 128 * 1024 * 1024,
             "Working copy exceeds 128 MiB"
         );
-        let mut scene = ergo_world::storage::decode(&fs::read(&path)?)?;
+        let bytes = fs::read(&path)?;
+        let raw: Value = serde_json::from_slice(&bytes)?;
+        let mut scene = if raw["format"] == "ergo-authoring-cache-1" {
+            ensure!(
+                publisher.is_some() && shared::state_path(&path).exists(),
+                "A partial authoring cache is not a standalone construction; use export_construction"
+            );
+            ensure!(
+                raw["partial"] == true
+                    && raw["schema"] == ergo_world::SCHEMA_VERSION
+                    && raw["construction"]["pieces"]
+                        .as_array()
+                        .is_some_and(Vec::is_empty),
+                "Unbound nonempty partial cache requires explicit recovery; no geometry was discarded"
+            );
+            ergo_world::storage::decode(&serde_json::to_vec(&raw["construction"])?)?
+        } else {
+            ergo_world::storage::decode(&bytes)?
+        };
         normalize(&mut scene, &measurements)?;
         scene
     } else {
@@ -497,7 +543,7 @@ fn main() -> Result<()> {
         if let Some(world) = runtime.block_on(publisher.common_world())? {
             let sidecar = shared::state_path(&path);
             let mut binding = if sidecar.exists() {
-                let binding: shared::Binding = serde_json::from_slice(&fs::read(&sidecar)?)?;
+                let binding = shared::load_binding(&sidecar)?;
                 ensure!(
                     binding.world_id == world && binding.origin == publisher.url("/")?.as_str(),
                     "Shared cache belongs to another world/origin"
@@ -522,12 +568,10 @@ fn main() -> Result<()> {
                     &assembly,
                     Some(&path),
                 ))?;
-                if !binding.cache_reused {
-                    persist(&path, &scene)?;
-                }
+                persist_page(&path, &scene)?;
             } else if let Ok(assembly) = std::env::var("ERGO_SHARED_ASSEMBLY_ID") {
                 ensure!(
-                    !path.exists(),
+                    scene.bricks.is_empty(),
                     "Use a new cache path for this shared assembly"
                 );
                 scene = runtime.block_on(publisher.load_shared_file(
@@ -535,12 +579,10 @@ fn main() -> Result<()> {
                     &assembly,
                     Some(&path),
                 ))?;
-                if !binding.cache_reused {
-                    persist(&path, &scene)?;
-                }
+                persist_page(&path, &scene)?;
             } else if let Ok(position) = std::env::var("ERGO_POSITION_WORLD") {
                 ensure!(
-                    !path.exists(),
+                    scene.bricks.is_empty(),
                     "Use a new cache path for a position-based shared workspace, or call open_shared_construction explicitly"
                 );
                 let position: [f64; 3] = serde_json::from_str(&position)?;
@@ -554,9 +596,7 @@ fn main() -> Result<()> {
                 } else {
                     scene.geo = serde_json::from_value(located["geo"].clone())?;
                 }
-                if !binding.cache_reused {
-                    persist(&path, &scene)?;
-                }
+                persist_page(&path, &scene)?;
             }
             atomic_write(&sidecar, &binding)?;
             Some(Arc::new(tokio::sync::Mutex::new(binding)))
@@ -735,13 +775,96 @@ fn main() -> Result<()> {
                                 let path=bridge.hub.lock().unwrap().workspace.path.clone();
                                 let scene = publisher.load_shared_file(&mut binding,&assembly,Some(&path)).await?;
                                 let mut h = bridge.hub.lock().unwrap();
-                                if !binding.cache_reused {persist(&h.workspace.path,&scene)?;}
+                                 persist_page(&h.workspace.path,&scene)?;
                                 atomic_write(&shared::state_path(&h.workspace.path),&*binding)?;
                                 h.workspace.scene=scene; h.workspace.revision+=1;
                                 let value=json!({"world_id":binding.world_id,"assembly_id":assembly,"base_revision":binding.base_revision,
                                     "brick_count":h.workspace.scene.bricks.len(),"external_dependencies":binding.external_dependencies,
-                                    "shared_editing":true,"local_revision":h.workspace.revision});
+                                    "shared_editing":true,"local_revision":h.workspace.revision,"total_pieces":binding.total_pieces,"partial":true,"next_local_id":binding.next_local_id,"next_tool":"read_construction_page"});
                                 Ok(json!({"content":[{"type":"text","text":value.to_string()}],"structuredContent":value,"isError":false}))
+                            });
+                        }
+                        if name == "read_construction_page" {
+                            let publisher = publisher
+                                .as_ref()
+                                .context("Paged reads require a shared server")?;
+                            let common = bridge
+                                .common
+                                .as_ref()
+                                .context("Open a shared construction first")?;
+                            return runtime.block_on(async{
+                                let mut binding=common.lock().await;
+                                ensure!(!binding.pending,"Reconcile the preceding uncertain edit before changing the working view");
+                                let mut next_binding=binding.clone();
+                                let (mut scene,mut details)=publisher.load_page(&mut next_binding,&arguments).await?;
+                                let mut h=bridge.hub.lock().unwrap();
+                                if arguments["append"]==true{
+                                    let mut old=h.workspace.scene.clone();
+                                    for brick in scene.bricks{old.bricks.retain(|b|b.id!=brick.id);old.bricks.push(brick);}
+                                    for (part,mesh) in scene.meshes{
+                                        if let Some(previous)=old.meshes.get(&part){ensure!(ergo_world::authoring::version(previous)?==ergo_world::authoring::version(&mesh)?,"Cannot append incompatible meshes for one part name; replace the working view");}
+                                        old.meshes.insert(part,mesh);
+                                    }
+                                    old.model=None;scene=old;
+                                     let mut versions=binding.versions.clone();versions.extend(next_binding.versions);next_binding.versions=versions;
+                                     next_binding.blocked_transform_groups=binding.blocked_transform_groups.clone();
+                                }
+                                ensure!(scene.bricks.len()<=ergo_world::authoring::RESIDENT_PIECES,"Resident limit exceeded; replace the view instead of appending");
+                                ensure!(serde_json::to_vec(&scene)?.len()<=32*1024*1024,"Resident geometry exceeds 32 MiB; request a smaller page");
+                                persist_page(&h.workspace.path,&scene)?;atomic_write(&shared::state_path(&h.workspace.path),&next_binding)?;
+                                *binding=next_binding;h.workspace.scene=scene;h.workspace.revision+=1;
+                                details["loaded_pieces"]=json!(h.workspace.scene.bricks.len());details["local_revision"]=json!(h.workspace.revision);
+                                Ok(json!({"content":[{"type":"text","text":details.to_string()}],"structuredContent":details,"isError":false}))
+                            });
+                        }
+                        if name == "list_groups"
+                            && let Some(common) = &bridge.common
+                        {
+                            let value: Result<Option<Value>> = runtime.block_on(async {
+                                let b = common.lock().await;
+                                if b.assembly_id.is_none() {
+                                    return Ok(None);
+                                }
+                                Ok(Some(
+                                    publisher
+                                        .as_ref()
+                                        .context("Publishing is not configured")?
+                                        .list_group_headers(&b, &arguments)
+                                        .await?,
+                                ))
+                            });
+                            if let Some(value) = value? {
+                                return Ok(
+                                    json!({"content":[{"type":"text","text":value.to_string()}],"structuredContent":value,"isError":false}),
+                                );
+                            }
+                        }
+                        if name == "read_construction_group" {
+                            let common = bridge
+                                .common
+                                .as_ref()
+                                .context("Group closure reads require shared mode")?;
+                            return runtime.block_on(async{
+                                let mut binding=common.lock().await;ensure!(!binding.pending,"Reconcile the preceding edit first");
+                                let mut next=binding.clone();let group=u32::try_from(arguments["group_id"].as_u64().context("Missing group ID")?)?;
+                                let(scene,mut details)=publisher.as_ref().context("Publishing is not configured")?.load_group(&mut next,group).await?;
+                                let mut h=bridge.hub.lock().unwrap();persist_page(&h.workspace.path,&scene)?;atomic_write(&shared::state_path(&h.workspace.path),&next)?;
+                                *binding=next;h.workspace.scene=scene;h.workspace.revision+=1;details["local_revision"]=json!(h.workspace.revision);
+                                Ok(json!({"content":[{"type":"text","text":details.to_string()}],"structuredContent":details,"isError":false}))
+                            });
+                        }
+                        if name == "export_construction"
+                            && let Some(common) = &bridge.common
+                        {
+                            return runtime.block_on(async{
+                                let binding=common.lock().await;
+                                if let Some(assembly)=&binding.assembly_id{
+                                    let value=publisher.as_ref().context("Publishing is not configured")?.request(reqwest::Method::GET,&format!("/api/shared-worlds/{}/assemblies/{assembly}/export?format=ergo&revision={}",binding.world_id,binding.base_revision),None).await?;
+                                    let path=bridge.hub.lock().unwrap().workspace.path.with_extension("export.ergo.json");atomic_write(&path,&value)?;
+                                    let details=json!({"path":path,"assembly_id":assembly,"base_revision":binding.base_revision,"partial":false,"published":false,"purpose":"explicit_full_export"});
+                                    return Ok(json!({"content":[{"type":"text","text":details.to_string()}],"structuredContent":details,"isError":false}));
+                                }
+                                anyhow::bail!("No shared assembly is open; export the local proposal in --local mode")
                             });
                         }
                         if name == "publish_construction"
@@ -763,6 +886,7 @@ fn main() -> Result<()> {
                                     ensure!(arguments["expected_local_revision"].as_u64().is_none_or(|expected|expected==u64::from(revision)),"Local cache changed");
                                     ensure!(arguments["base_revision"].as_str().is_none_or(|base|base==binding.base_revision),"Shared base differs; reopen the construction");
                                     let renamed=arguments["name"].as_str().is_some_and(|name|name!=scene.name);
+                                    let before=scene.clone();
                                     if let Some(name)=arguments["name"].as_str(){scene.name=name.into();}
                                     let value=if !renamed && binding.assembly_id.is_some() {
                                         let assembly=binding.assembly_id.as_ref().unwrap();
@@ -772,12 +896,12 @@ fn main() -> Result<()> {
                                     } else {
                                         let mut journal=binding.clone();journal.pending=true;
                                         atomic_write(&shared::state_path(&path),&journal)?;
-                                        let result=publisher.commit_shared(&mut binding,scene.clone(),revision).await;
+                                        let result=publisher.commit_shared(&mut binding,&before,scene.clone(),revision).await;
                                         let flushed=atomic_write(&shared::state_path(&path),&*binding);
                                         let mut value=result?;
                                         if let Err(error)=flushed {value["cache_warning"]=json!(error.to_string());}
                                         let mut h=bridge.hub.lock().unwrap();h.workspace.scene=scene;h.workspace.revision+=1;
-                                        if let Err(error)=persist(&path,&h.workspace.scene){value["cache_warning"]=json!(error.to_string());}
+                                        if let Err(error)=persist_page(&path,&h.workspace.scene){value["cache_warning"]=json!(error.to_string());}
                                         value
                                     };
                                     Ok(json!({"content":[{"type":"text","text":value.to_string()}],"structuredContent":value,"isError":false}))
@@ -792,11 +916,29 @@ fn main() -> Result<()> {
                             );
                         }
                         if let Some(common) = &bridge.common {
+                            {
+                                let b = runtime.block_on(common.lock());
+                                ensure!(
+                                    name != "transform_group"
+                                        || arguments["group_id"].as_u64().is_none_or(|id| !b
+                                            .blocked_transform_groups
+                                            .contains(&(id as u32))),
+                                    "This group has unloaded or globally managed constraints; use a complete joint-aware domain operation before transforming it"
+                                );
+                                ensure!(
+                                    name != "create_group"
+                                        || b.next_group_id <= u64::from(u32::MAX),
+                                    "Assembly group ID space exhausted"
+                                );
+                            }
                             let external = runtime
                                 .block_on(async { common.lock().await.external_dependencies });
                             ensure!(
                                 !external
                                     || ![
+                                        "validate_construction",
+                                        "move_brick",
+                                        "rotate_about_pivot",
                                         "simulate_gravity",
                                         "test_solidity",
                                         "test_stability_by_gravity",
@@ -805,7 +947,7 @@ fn main() -> Result<()> {
                                         "test_moderate_earthquake_stability"
                                     ]
                                     .contains(&name),
-                                "This assembly has external mechanical dependencies; a clipped local simulation would be incomplete. Shared commits still validate the full affected domain."
+                                "This is a partial shared working view. Whole-construction validation/simulation and implicit connected-component moves require a complete authoritative closure. Use explicit loaded groups for deliberate group edits; shared commits still validate the full affected domain."
                             );
                         }
                         let job = Job {
@@ -848,6 +990,20 @@ fn main() -> Result<()> {
                             };
                             if feedback.get("global_commit_available").is_some() {
                                 feedback["global_commit_available"] = json!(publisher.is_some());
+                            }
+                        }
+                        if let Some(common) = &bridge.common {
+                            let binding = runtime.block_on(common.lock());
+                            let loaded = bridge.hub.lock().unwrap().workspace.scene.bricks.len();
+                            let scope = json!({"partial":binding.assembly_id.is_some(),"loaded_pieces":loaded,"total_pieces":binding.total_pieces,"base_revision":binding.base_revision,"next":binding.next,"local_diagnostics":"loaded_view_only; no complete boundary-load certificate"});
+                            if let Some(content) = value
+                                .get_mut("structuredContent")
+                                .and_then(Value::as_object_mut)
+                            {
+                                content.insert("working_view".into(), scope.clone());
+                            }
+                            if let Some(items) = value["content"].as_array_mut() {
+                                items.insert(0,json!({"type":"text","text":json!({"working_view":scope}).to_string()}));
                             }
                         }
                         // Keep the text fallback consistent for MCP hosts that

@@ -203,9 +203,11 @@ joint edges are retained conservatively, including joints with no known capacity
 
 Each island is checked in sequence. When its constructive compression proof does
 not suffice, [`equilibrium::certify`](../crates/world/src/equilibrium.rs) finds a
-static equilibrium for that whole island as one sparse convex second-order cone
-program solved by the pure-Rust Clarabel solver (the same code runs on the server
-and in the WASM client). Load-sharing loops are never cut. Using sourced part masses and
+static equilibrium with the pure-Rust Clarabel local SOCP kernel (the same code
+runs on the server and in WASM). Small problems use one partition; larger/dense
+problems use [coupled local partitions](partitioned-stability.md) with explicit
+interface reactions, no artificial cut anchors and one independently checked
+assembled witness. Load-sharing loops stay physically coupled. Using sourced part masses and
 box-center approximations, every body $i$ must balance its weight:
 
 $$
@@ -236,17 +238,22 @@ A fixed joint needs $\|\mathbf{F}_j\|\le F_{cap}$ and $\|\mathbf{M}_j\|\le M_{ca
 A joint without capacity carries no load. Unlike a spanning tree, load loops share
 their loads: a chain hung between two supports, a pinned truss, or a minifigure
 holding a spear with both hands. The objective minimises the sum of squared
-utilisations, each load component against its own capacity, so a weak capacity
-such as bearing friction is used only where equilibrium needs it.
+utilisations plus dimensionless quadratic reaction regularization, each joint
+load component against its own capacity. The regularization stabilizes nearly
+free internal load loops. Bounded matrix-free balance correction may produce a
+different feasible load allocation; acceptance does not claim a minimum-load or
+unique solution. Every capacity, including weak bearing friction, is still checked.
 
 The solution is then re-checked independently: body balance within the force and
 moment tolerances (scaled to the current island's total weight) and every capacity within its own
 tolerance. The report gives the maximum `max_joint_utilisation` over all islands,
 `stability_components`, and `largest_equilibrium_component` (zero for a fully
 compression-certified scene). Historical/unvalidated reports default the new
-counts to zero, meaning unavailable. If no equilibrium exists, a
-relaxed solve without capacity limits names the joints that would need more
-capacity than measured or estimated, with the force and moment each would need.
+counts to zero, meaning unavailable. Small infeasible SOCPs use a relaxed
+capacity-free solve to explain required joint loads. Larger partitioned problems
+do not fall back to a whole-island diagnostic factorization. Work, conditioning
+or convergence failures are explicitly inconclusive, with the last witness-check
+failure, rather than a physical instability verdict.
 
 For unanchored islands, a faster constructive path is tried first. It processes
 bodies from top to bottom: each body's own gravity and loads received from above
@@ -272,11 +279,18 @@ This is component-wise solver execution and incremental load propagation, not
 out-of-core validation: the caller still retains the affected bricks/joints, and
 island discovery uses a resident spatial index and membership data linear in
 the number of bodies and joints.
-Only the current island's contacts, compression frontier and solver matrices are
-built. `equilibrium::Problem.bricks` uses a borrowed `equilibrium::Bodies` view:
+Only the current island's contact problem/compression frontier is built, and
+general solver matrices/factors are partition-local under KKT dimension limits.
+The independent verifier checks bodies one at a time with compensated sums;
+its incidence metadata still resides in memory. Shared-native validation reads
+the canonical reaction witness from a paged disk workspace; local/WASM defaults
+use resident records and the same checker. Numerical
+limits return **inconclusive**, never a claimed physical instability or a partial
+publication. See [the coupled solver and its limits](partitioned-stability.md).
+`equilibrium::Problem.bricks` uses a borrowed `equilibrium::Bodies` view:
 Rust callers use `Bodies::all(&bricks)` or `Bodies::select(&bricks, &indices)`;
 partitioning does not clone brick geometry or renumber IDs. A single connected
-castle may still be one large island. Island certificates
+castle may still be one large island requiring several coupled solves. Island certificates
 are aggregated only after all pass; none publishes a partial shared edit.
 
 These are sufficient constructive certificates; an uncertified arrangement is

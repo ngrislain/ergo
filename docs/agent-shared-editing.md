@@ -170,6 +170,14 @@ authoritative; uncertain writes are not automatically repeated.
 
 ## Acceptance, conflicts, and cache recovery
 
+Unreleased source after v0.5.34 opens only a manifest. Use
+`read_construction_page` to load spatial bounds or exact IDs, and its cursor for
+bounded continuation. All local feedback is scoped to the resident view; never
+infer whole-model stability or absence of groups from a partial page. Existing
+pieces outside the view are preserved by sparse edits. See the coordinated
+[paged-authoring/cache migration](paged-authoring.md); do not attach an old client
+to the new authoring protocol or delete a pending journal to force migration.
+
 Native publication HTTP requests default to 300 seconds. Bridges in v0.5.23 and
 later support `ERGO_MCP_HTTP_TIMEOUT_SECONDS` from 1–3600 for a diagnosed long
 operation; the server/proxy deadline
@@ -177,12 +185,12 @@ and the enclosing MCP job deadline still apply. Increasing a timeout never retri
 a mutation. Transport errors include the HTTP method and preserve their cause;
 an unconfirmed result still requires authoritative reconciliation.
 
-Cold whole-assembly reads warm member and piece records from the accepted snapshot
+Explicit full-assembly exports/materialization diagnostics warm member and piece records from the accepted snapshot
 in bounded 512-member pages with at most 64 reads in flight. The ordinary working
 read still charges every record and verifies identities/dependencies; this is not
 a trusted client cache or an alternative authoring path.
 
-For compact whole-assembly reads, the external-dependency guard uses one
+For compact full-materialization diagnostics, the external-dependency guard uses one
 conservative bounding query plus explicit peer/joint checks, rather than one
 spatial query per member. Its own members are excluded using their full IDs in
 validated spatial keys, avoiding unused self-reference payloads.
@@ -218,8 +226,8 @@ usernames or a personal cryptographic signature.
   accepted history/assembly read-back before another mutation.
 - The `.shared.json` sidecar records origin, sandbox ID, assembly, accepted base
   revision and pending state. It contains no token. Do not delete a pending journal
-  merely to repeat an unconfirmed import. On restart, a bound cache reloads the
-  authoritative shared assembly.
+  merely to repeat an unconfirmed import. With paged authoring, restart reloads
+  the authoritative manifest and geometry is explicitly paged in afterward.
 - A bounded authoring assembly is limited to the configured working-set budget
   (normally 10,000 pieces/128 MiB; god-mode authoring has no piece-count cap).
   Assemblies with external mechanical dependencies

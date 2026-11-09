@@ -4,10 +4,14 @@ import os
 import select
 import subprocess
 import tempfile
+from pathlib import Path
+from contextlib import contextmanager
 
 
 class Mcp:
     def __init__(self, binary, workspace, url, token_file):
+        self.binary = binary
+        self.workspace = Path(workspace)
         command = [binary, '--workspace', str(workspace), '--headless']
         environment = os.environ.copy()
         if token_file:
@@ -51,3 +55,35 @@ class Mcp:
         self.process.stdin.close()
         self.process.wait(timeout=15)
         self.log.close()
+
+    def load_piece_ids(self, ids):
+        """Explicitly load the mutation's existing members, never the model."""
+        ids = sorted(set(ids))
+        if not ids or len(ids) > 2048:
+            raise ValueError('A working view must select 1–2048 existing piece IDs')
+        for offset in range(0, len(ids), 128):
+            page = self.call('read_construction_page', ids=ids[offset:offset+128], limit=128,
+                             append=offset > 0)['structuredContent']
+            if page.get('next'):
+                raise RuntimeError('Explicit ID page unexpectedly incomplete')
+        return page
+
+    def export_path(self):
+        """A full export is separate from the bounded authoring cache."""
+        return Path(self.call('export_construction')['structuredContent']['path'])
+
+    @contextmanager
+    def inspection_copy(self, path=None):
+        """Explicit complete exported geometry for read-only render/route review.
+
+        This is not the shared authoring cache or another publication pipeline.
+        """
+        path = self.export_path() if path is None else Path(path)
+        if path.resolve() == self.workspace.resolve():
+            yield self
+            return
+        client = Mcp(self.binary, path, None, None)
+        try:
+            yield client
+        finally:
+            client.close()

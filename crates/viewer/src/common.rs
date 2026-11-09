@@ -12,6 +12,10 @@ pub(super) struct Binding {
     pub base_revision: String,
     #[serde(default)]
     pub external_dependencies: bool,
+    #[serde(skip)]
+    pub versions: std::collections::BTreeMap<u32, String>,
+    #[serde(skip)]
+    pub baseline: Option<ergo_world::WorldExport>,
 }
 #[derive(Deserialize)]
 struct Workspace {
@@ -347,15 +351,25 @@ pub(super) fn pump(handle: Handle) {
             } else {
                 format!("/api/shared-worlds/{world}/assemblies")
             };
+            let body = if let Some(binding) = &binding {
+                let before = binding.baseline.as_ref().ok_or_else(|| {
+                    anyhow::anyhow!("Reload the paged authoring workspace before editing")
+                })?;
+                let delta =
+                    ergo_world::authoring::Delta::between(before, &scene, &binding.versions)?;
+                json!({"base":base,"delta":delta})
+            } else {
+                json!({"base":base,"scene":scene})
+            };
             let request = if binding.is_some() {
-                Request::put(&url)
+                Request::patch(&url)
             } else {
                 Request::post(&url)
             };
             uncertain = true;
             let response = request
                 .header("X-Ergo-Request", "1")
-                .json(&json!({"base":base,"scene":scene}))?
+                .json(&body)?
                 .send()
                 .await?;
             if !response.ok() {
@@ -369,7 +383,7 @@ pub(super) fn pump(handle: Handle) {
             let revision = accepted["accepted"]["revision"]
                 .as_str()
                 .ok_or_else(|| anyhow::anyhow!("Missing accepted revision"))?;
-            let read = json::<Workspace>(&format!(
+            let mut read = json::<Workspace>(&format!(
                 "/api/shared-worlds/{world}/assemblies/{assembly}/workspace?revision={revision}"
             ))
             .await?;
@@ -379,6 +393,27 @@ pub(super) fn pump(handle: Handle) {
                     && read.binding.assembly_id == assembly,
                 "Shared edit could not be read back"
             );
+            let mut versions = binding
+                .as_ref()
+                .map(|b| b.versions.clone())
+                .unwrap_or_default();
+            versions.retain(|id, _| scene.bricks.iter().any(|b| b.id == *id));
+            for (local, global) in accepted["pieces"]
+                .as_object()
+                .ok_or_else(|| anyhow::anyhow!("Missing accepted piece identities"))?
+            {
+                let local = local.parse::<u32>()?;
+                let global = global
+                    .as_str()
+                    .ok_or_else(|| anyhow::anyhow!("Invalid piece identity"))?;
+                let piece = json::<serde_json::Value>(&format!(
+                    "/api/shared-worlds/{world}/pieces/{global}?revision={revision}"
+                ))
+                .await?;
+                versions.insert(local, ergo_world::authoring::version(&piece)?);
+            }
+            read.binding.versions = versions;
+            read.binding.baseline = Some(scene.clone());
             uncertain = false;
             Ok(read.binding)
         }

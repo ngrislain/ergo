@@ -264,12 +264,15 @@ def main():
                                   failure=result.get('failure'))), flush=True)
             if not result['overlap_free']:
                 raise RuntimeError('Landscape overlap: inspect the placement feedback')
+            if args.publish:
+                client.call('open_shared_construction', assembly_id=result['shared_commit']['assembly_id'])
         assert result is not None
         journal['state'] = 'accepted' if args.publish else 'local-preview'
         write(journal_path, journal)
-        client.call('export_construction')
-        capture(client, args.output, args.origin)
-        passed = check_walk(workspace, args.output, args.origin)
+        exported = client.export_path()
+        with client.inspection_copy(exported) as inspector:
+            capture(inspector, args.output, args.origin)
+        passed = check_walk(exported, args.output, args.origin)
         print(json.dumps(dict(published=bool(result.get('shared_commit')), pieces=result['brick_count'],
                               overlap_free=result['overlap_free'],
                               static=result['static_under_current_joint_model'],

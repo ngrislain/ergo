@@ -133,6 +133,14 @@ overlapping neighbor queries revisit them. Whole-rule replacements remain subjec
 to the byte budget. Only current paged records are supported. There is no global
 counter coupling unrelated imports.
 
+Native staged objects, transaction predicates/journals, authoring dependency
+indexes, generic discovery frontiers and rule-diff rows use
+[disk-backed working state](native-working-state.md). Scratch has its own disk/cache
+limits (`ERGO_SHARED_SPILL_BYTES`, `ERGO_SHARED_SPILL_CACHE_KIB`); exhaustion is
+explicitly inconclusive and never publishes a partial root. The affected physical
+scene, assembly rules and final audit ID set still materialize; this is not a
+whole-process RSS bound or fully out-of-core physics.
+
 ### Frozen physical model
 
 At world creation, the server captures its measurement book, tolerances, and
@@ -214,34 +222,26 @@ directly. See [MCP setup and outcome handling](local-construction-mcp.md#publica
   native JSON retains Ergo-specific metadata. Optional `revision` selects an
   accepted revision, also returned in `X-Ergo-Revision`.
 - `GET /api/shared-worlds/{id}/assemblies/{assembly}/workspace?revision=CID`:
-  bounded complete authoring scene, with `external_dependencies` and
-  `external_dependency_check` disclosed. `verified` means a compact assembly's
-  external spatial and explicit peers were checked; `conservative_large_span`
-  means external dependencies are **possible**, not confirmed. This disables
-  incomplete isolated local simulation for broad assemblies without skipping the
-  authoritative affected-domain validation on subsequent writes. `HEAD` and
-  conditional `304` still recheck permissions and limits before any cache hit.
-- `PUT /api/shared-worlds/{id}/assemblies/{assembly}/workspace`: `{base, scene}`
-  replaces one assembly, retaining its identity and the birth IDs of retained
-  local piece numbers. Added occurrences receive new birth identities.
-- `PUT /api/shared-worlds/{id}/assemblies/workspaces`:
-  `{base, assemblies:[{assembly_id, scene}, ...]}` atomically replaces 1–32 distinct
-  existing assemblies. Old dependencies are discovered before staging any member;
-  all final scenes/rules and both dependency closures are checked before one
-  publication. Because every member is known, a replaced assembly's outside
-  neighbours come from one spatial query over its members' combined bounds rather
-  than one store round trip per member. The final closure is the old closure plus
-  whatever newly touches the new members (only edges at those members can change).
-  Only rule records that differ from the stored ones are written, so a one-piece
-  edit of a 75,000-piece assembly validates the whole connected structure but
-  rewrites a handful of records (measured locally: about 36 s instead of 830 s). Invalid members reject the whole batch, with no intermediate head.
-  The response has one `accepted` receipt/audit and an `assemblies` array of
-  `{assembly_id, pieces}` local-to-global mappings. Input pieces and encoded bytes
-  share aggregate operation budgets; this is not 32 independent budget allowances.
-  Permissions, pacing, frozen measurements, ground registration and proper
-  isometry checks still apply. Existing cross-assembly joint references cannot be
-  left dangling. MCP still edits one opened assembly at a time; the batch route
-  is an authenticated REST workflow for interdependent replacements.
+  `ergo-workspace-2` metadata-only manifest, not a full scene. `HEAD`/conditional
+  `304` recheck current permissions and budgets before returning a token.
+- `GET .../workspace/pages`: bounded posed-piece pages selected by membership,
+  explicit `ids` or spatial-octree `bounds`, pinned to one accepted revision.
+  Return shared mesh IDs separately from visual geometry, transport versions,
+  `next`, and explicit partial-view scope; see [paged authoring](paged-authoring.md).
+- `GET .../workspace/meshes/{mesh}?revision=CID&piece=LOCAL_ID`: separately resolve an assembly
+  mesh after current permission/historical membership checks.
+- `PATCH /api/shared-worlds/{id}/assemblies/{assembly}/workspace`:
+  `{base,delta}` with `delta.format:"ergo-edit-1"`. Existing piece changes require
+  their returned versions. Only explicit removals delete pieces; unloaded members
+  remain. Unchanged identities are retained; additions receive new births.
+- `PATCH /api/shared-worlds/{id}/assemblies/workspaces`:
+  `{base,assemblies:[{assembly_id,delta},...]}` edits 1–32 distinct assemblies in
+  one final state. Old/new complete mechanical closures, swept collision regions,
+  permissions, pacing and frozen physics are checked before one publication.
+  Budgets are aggregate. The receipt has one accepted revision/audit and per-assembly
+  **upserted** ID mappings. The previous full-scene `PUT` protocol is removed;
+  migrate all consumers and bound caches together. These changes are unreleased
+  source after v0.5.34, not an out-of-core validation guarantee.
 - `POST /api/shared-worlds/{id}/commits`: `{base, pieces, rules, joints, message}`. Each
   piece edit contains `{id, geometry, mesh}`; null geometry deletes the piece.
   A new geometry preserves the birth ID; optional mesh selects an uploaded,

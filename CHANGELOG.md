@@ -1,5 +1,65 @@
 # Changelog
 
+## Unreleased
+
+- Page shared-native coupled-equilibrium plan/interface records and global
+  reaction state into transaction-local storage. Use bounded, checksummed scalar
+  pages and the same independent body-wise verifier/correction through fallible
+  reaction accessors; storage errors remain inconclusive with no RAM fallback.
+  Keep local/WASM storage adapters on the same coordinator and expose spill-work
+  diagnostics. Physical input and planner/verifier indexes still materialize.
+- Spill per-operation piece-cache entries without changing unique loading charges
+  or cached absence semantics. Infer shared-native joints once after frozen-model
+  normalization instead of building a preliminary duplicate inference list.
+
+- Construct and load native format-3 commit histories through verified private
+  files and fallible ordered edit/blob iterators, preserving canonical bytes and
+  IDs. Migrate batching, GC and maintenance to the same path; bound CBOR length
+  hints before decoding and retain immutable create-if-absent/head-CAS guarantees.
+  Cap grouped commit-file totals, avoid caching their encoded bodies, and stream
+  uncached immutable-upload proofs. The SDK still needs one capped conditional
+  upload buffer; physical-input/planner/verifier-index streaming remains unfinished.
+
+- Spill native staged objects, transaction predicates, ordered edit journals,
+  attachments and upload frontiers to bounded disposable SQLite working stores.
+  Share immutable snapshot commit metadata, bound decoded-node caches and staged
+  upload batches, retain complete retry reachability after partial uploads, and
+  refuse scratch failures without RAM fallback or partial publication.
+- Externalize authoring dependency edges, incident constraints, traversal queues
+  and rule-diff records to the same transaction-local store. Configure scratch
+  disk/cache budgets separately from authoring CBOR limits; report scratch
+  exhaustion as inconclusive. Physical scenes remain resident; commit records
+  now use verified file-backed lists. Accepted formats and the atomic head CAS
+  are unchanged.
+
+- Couple bounded local equilibrium SOCPs with explicit joint/contact interface
+  consensus, without cut anchors. Refine oversized partitions under KKT dimension
+  limits and independently verify a single force witness body-by-body with
+  compensated summation. Report solver-work diagnostics; numerical/budget limits
+  are explicitly inconclusive, never a physical instability claim or publication.
+  Nondimensionalize force/torque solves, use workload-aware Morton-ordered cores
+  and bounded matrix-free balance correction; independently check every corrected
+  candidate against the original capacities and contact signs.
+- Add authoritative paged group headers and complete descendant-group loading
+  through MCP/API, including internal joints/anchors and outside/global transform
+  fences. Use manifest group-ID floors and order-independent group preconditions;
+  ungrouping preserves unloaded parents. Private assembly-metadata edits retain
+  full permission checks. Fully out-of-core physical input/index handling remains open.
+  Tombstoned empty groups no longer break full export or paged group discovery;
+  missing headers with live orphan membership still fail closed.
+
+- Replace full-workspace authoring transport with revision-pinned manifests and
+  bounded posed-piece pages, using the existing canonical spatial octree for
+  region selection. MCP opens metadata first and loads geometry explicitly with
+  `read_construction_page`; residency is limited to 2,048 pieces / 32 MiB.
+- Submit sparse `ergo-edit-1` PATCH deltas with posed-record version preconditions;
+  preserve unloaded members and stable IDs. Remove the full-scene PUT handlers;
+  migrate native/browser callers, tests and recipe export paths. Full exports are
+  explicit and separate from the page cache.
+- Provide a locked, dry-run-by-default operator migration for old accepted MCP
+  caches. World geometry and native proposal formats are unchanged; fully
+  out-of-core server validation is not yet implemented.
+
 ## v0.5.34
 
 - Certify independent mechanical islands sequentially, retaining all joint and

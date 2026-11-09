@@ -1,4 +1,4 @@
-use anyhow::Result;
+use anyhow::{Context, Result};
 use ergo_transactions::{ContentId, OctreePath};
 use ergo_world::{
     BlockCoord, Brick, GeoReference, JointSpec, SCHEMA_VERSION,
@@ -229,26 +229,33 @@ impl Rules {
         )?;
         ergo_world::groups::validate_ids(self.pieces.keys().copied(), &self.groups)
     }
-    pub fn adjacency(&self) -> Result<BTreeMap<ContentId, BTreeSet<ContentId>>> {
-        let mut graph: BTreeMap<ContentId, BTreeSet<ContentId>> = BTreeMap::new();
-        let mut edge = |a: u32, b: u32| {
-            let a = &self.pieces[&a];
-            let b = &self.pieces[&b];
-            graph.entry(a.clone()).or_default().insert(b.clone());
-            graph.entry(b.clone()).or_default().insert(a.clone());
-        };
-        for j in &self.joints {
-            edge(j.a, j.b);
-        }
-        for group in &self.groups {
-            let (ids, _) = ergo_world::groups::descendants(&self.groups, group.id)?;
-            if let Some(&first) = ids.iter().next() {
-                for id in ids {
-                    edge(first, id);
-                }
-            }
-        }
-        Ok(graph)
+    /// Directed dependency edges, streamed one group's descendant set at a time.
+    /// Consumers deduplicate in their disk index, not a scene-sized RAM graph.
+    pub fn dependency_edges(&self) -> impl Iterator<Item = Result<(u32, u32)>> + '_ {
+        let joints = self
+            .joints
+            .iter()
+            .flat_map(|j| [(j.a, j.b), (j.b, j.a)].map(Ok));
+        let groups = self.groups.iter().flat_map(|group| {
+            let iter: Box<dyn Iterator<Item = Result<(u32, u32)>> + Send + '_> =
+                match ergo_world::groups::descendants(&self.groups, group.id) {
+                    Err(error) => Box::new(std::iter::once(Err(error))),
+                    Ok((ids, _)) => {
+                        let first = ids.iter().next().copied();
+                        Box::new(ids.into_iter().flat_map(move |id| {
+                            let a = first.expect("a nonempty descendant set has a first member");
+                            std::iter::once(Ok((a, id))).chain((a != id).then_some(Ok((id, a))))
+                        }))
+                    }
+                };
+            iter
+        });
+        joints.chain(groups).map(|edge| {
+            let (a, b) = edge?;
+            self.pieces.get(&a).context("Missing dependency member")?;
+            self.pieces.get(&b).context("Missing dependency member")?;
+            Ok((a, b))
+        })
     }
 }
 

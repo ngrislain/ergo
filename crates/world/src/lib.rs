@@ -1,6 +1,7 @@
 pub mod articulation;
 pub mod assembly;
 pub mod attachments;
+pub mod authoring;
 pub mod catalog;
 pub mod constraints;
 pub mod constructs;

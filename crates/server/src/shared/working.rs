@@ -1,8 +1,11 @@
 use super::{READ_CONCURRENCY, SharedError, SharedResult, address::entity_path, model::*};
 use anyhow::Context;
+use ergo_transactions::spill::SpillMap;
 use ergo_transactions::{ContentId, OctreePath, Transaction, canonical_cbor};
 use ergo_world::{Aabb, BlockCoord, WorldExport, constraints::INFERRED_JOINT_HALO, geometry::Mesh};
 use serde::{Serialize, de::DeserializeOwned};
+#[path = "working_graph.rs"]
+mod graph;
 use std::{
     collections::{BTreeMap, BTreeSet},
     sync::Arc,
@@ -14,15 +17,15 @@ pub struct Working {
     pub policy: Policy,
     pub policy_cid: ContentId,
     pub model: PhysicalModel,
-    pub pieces: BTreeMap<ContentId, Option<Piece>>,
+    pub pieces: SpillMap<ContentId, Option<Piece>>,
     pub rules: BTreeMap<ContentId, Arc<Rules>>,
     /// Rules as read from the base revision; `flush_rules` writes only the
     /// records that differ from them.
     stored_rules: BTreeMap<ContentId, Arc<Rules>>,
-    graphs: BTreeMap<ContentId, BTreeMap<ContentId, BTreeSet<ContentId>>>,
+    graphs: SpillMap<Vec<u8>, graph::GraphRow>,
     headers: BTreeMap<ContentId, Arc<super::paged::RulesHeader>>,
-    joints: BTreeMap<ContentId, super::paged::BoundJoint>,
-    fixed: BTreeSet<ContentId>,
+    joints: SpillMap<ContentId, super::paged::BoundJoint>,
+    fixed: SpillMap<ContentId, ()>,
     meshes: BTreeMap<ContentId, Arc<Mesh>>,
     spatial_refs: BTreeMap<ContentId, Arc<super::spatial::SpatialRef>>,
     bulk: super::bulk::Updates,
@@ -64,12 +67,18 @@ impl Working {
             progress.phase(phase);
         }
     }
-    pub(super) fn add_joint(&mut self, id: ContentId, joint: super::paged::BoundJoint) {
-        self.joints.insert(id, joint);
+    pub(super) fn add_joint(
+        &mut self,
+        id: ContentId,
+        joint: super::paged::BoundJoint,
+    ) -> SharedResult<()> {
+        self.joints.insert(id, joint)?;
+        Ok(())
     }
-    pub fn reset_dependencies(&mut self) {
-        self.joints.clear();
-        self.fixed.clear();
+    pub fn reset_dependencies(&mut self) -> SharedResult<()> {
+        self.joints.clear()?;
+        self.fixed.clear()?;
+        Ok(())
     }
     pub async fn new(mut tx: Transaction, limits: Limits) -> SharedResult<Self> {
         let policy: Policy = tx
@@ -92,19 +101,23 @@ impl Working {
         );
         model.measurements.validate()?;
         model.tolerances.validate()?;
+        let graphs = tx.local_map()?;
+        let joints = tx.local_map()?;
+        let fixed = tx.local_map()?;
+        let pieces = tx.local_map()?;
         let mut result = Self {
             tx,
             metadata,
             policy,
             policy_cid,
             model,
-            pieces: BTreeMap::new(),
+            pieces,
             rules: BTreeMap::new(),
             stored_rules: BTreeMap::new(),
-            graphs: BTreeMap::new(),
+            graphs,
             headers: BTreeMap::new(),
-            joints: BTreeMap::new(),
-            fixed: BTreeSet::new(),
+            joints,
+            fixed,
             meshes: BTreeMap::new(),
             spatial_refs: BTreeMap::new(),
             bulk: Default::default(),
@@ -178,8 +191,8 @@ impl Working {
         Ok(value)
     }
     pub async fn piece(&mut self, id: &ContentId) -> SharedResult<Option<Piece>> {
-        if let Some(piece) = self.pieces.get(id) {
-            return Ok(piece.clone());
+        if let Some(piece) = self.pieces.get(id)? {
+            return Ok(piece);
         }
         if self.pieces.len() >= self.limits.pieces {
             return Err(SharedError::working_limit("piece/dependency budget"));
@@ -188,13 +201,13 @@ impl Working {
         if let Some(piece) = &piece {
             ensure!(piece.id == *id, "Stored piece identity mismatch");
         }
-        self.pieces.insert(id.clone(), piece.clone());
+        self.pieces.insert(id.clone(), piece.clone())?;
         Ok(piece)
     }
     pub(super) async fn prefetch_pieces(&self, ids: Vec<ContentId>) {
         let paths = ids
             .into_iter()
-            .filter(|id| !self.pieces.contains_key(id))
+            .filter(|id| !self.pieces.contains_key(id).unwrap_or(true))
             .map(|id| entity_path(3, &id))
             .collect();
         self.tx.prefetch_read_records(paths, self.remaining()).await;
@@ -241,7 +254,7 @@ impl Working {
         let rules = super::paged::reconstruct(self, &header).await?;
         ensure!(rules.id == *id, "Stored assembly identity mismatch");
         rules.validate()?;
-        self.graphs.insert(id.clone(), rules.adjacency()?);
+        self.stage_graph(&rules)?;
         let rules = Arc::new(rules);
         self.rules.insert(id.clone(), rules.clone());
         self.stored_rules.insert(id.clone(), rules.clone());
@@ -250,7 +263,7 @@ impl Working {
     pub fn stage_rules(&mut self, rules: Rules) -> SharedResult<()> {
         self.charge(&rules)?;
         rules.validate()?;
-        self.graphs.insert(rules.id.clone(), rules.adjacency()?);
+        self.stage_graph(&rules)?;
         self.headers.insert(
             rules.id.clone(),
             Arc::new(super::paged::RulesHeader::of(&rules)),
@@ -284,24 +297,7 @@ impl Working {
                 rules.pieces.get(&piece.local_id) == Some(&piece.id),
                 "Piece mapping mismatch"
             );
-            for spec in &rules.joints {
-                if spec.a == piece.local_id || spec.b == piece.local_id {
-                    let joint = super::paged::BoundJoint {
-                        a: rules.pieces[&spec.a].clone(),
-                        b: rules.pieces[&spec.b].clone(),
-                        spec: spec.clone(),
-                    };
-                    self.joints
-                        .insert(ContentId::of(&canonical_cbor(&joint)?), joint);
-                }
-            }
-            if rules.fixed_bricks.contains(&piece.local_id) {
-                self.fixed.insert(piece.id.clone());
-            }
-            return Ok(self.graphs[&piece.assembly]
-                .get(&piece.id)
-                .cloned()
-                .unwrap_or_default());
+            return self.graph_peers(piece);
         }
         self.assembly(&piece.assembly).await?;
         let member: super::paged::MemberRow = self
@@ -328,7 +324,7 @@ impl Working {
         .await?;
         for joint in joints {
             self.joints
-                .insert(ContentId::of(&canonical_cbor(&joint)?), joint);
+                .insert(ContentId::of(&canonical_cbor(&joint)?), joint)?;
         }
         if self
             .read::<bool>(&super::paged::row(
@@ -339,14 +335,14 @@ impl Working {
             .await?
             .unwrap_or(false)
         {
-            self.fixed.insert(piece.id.clone());
+            self.fixed.insert(piece.id.clone(), ())?;
         }
         Ok(peers.into_iter().collect())
     }
     pub async fn remove_member(&mut self, piece: &Piece) -> SharedResult<()> {
         let peers = self.piece_rules(piece).await?;
         ensure!(
-            peers.is_empty() && !self.fixed.contains(&piece.id),
+            peers.is_empty() && !self.fixed.contains_key(&piece.id)?,
             "Remove group/constraint/anchor references before deleting this piece"
         );
         self.tx
@@ -407,10 +403,10 @@ impl Working {
         } else {
             self.tx.remove(&entity_path(3, &id)).await?;
         }
-        if !self.pieces.contains_key(&id) && self.pieces.len() >= self.limits.pieces {
+        if !self.pieces.contains_key(&id)? && self.pieces.len() >= self.limits.pieces {
             return Err(SharedError::working_limit("piece/dependency budget"));
         }
-        self.pieces.insert(id, new);
+        self.pieces.insert(id, new)?;
         Ok(())
     }
     pub async fn neighbors(&mut self, bounds: Aabb) -> SharedResult<BTreeSet<ContentId>> {
@@ -479,9 +475,16 @@ impl Working {
     async fn discover_from(
         &mut self,
         seeds: &BTreeSet<ContentId>,
-        mut visited: BTreeSet<ContentId>,
+        known: BTreeSet<ContentId>,
     ) -> SharedResult<BTreeSet<ContentId>> {
-        let mut stack = seeds.clone();
+        let mut visited = self.tx.local_map::<ContentId, ()>()?;
+        let mut stack = self.tx.local_map::<ContentId, ()>()?;
+        for id in known {
+            visited.insert(id, ())?;
+        }
+        for id in seeds {
+            stack.insert(id.clone(), ())?;
+        }
         let started = std::time::Instant::now();
         self.discovery = Some(DiscoveryProgress {
             visited: visited.len(),
@@ -497,16 +500,19 @@ impl Working {
             .position_brick_units
             .max(INFERRED_JOINT_HALO);
         while !stack.is_empty() {
-            let wave = (0..READ_CONCURRENCY)
-                .filter_map(|_| stack.pop_last())
-                .collect::<Vec<_>>();
-            let warm = wave
-                .iter()
-                .filter(|id| !visited.contains(*id) && !self.pieces.contains_key(*id))
-                .map(|id| entity_path(3, id))
-                .collect::<BTreeSet<_>>()
-                .into_iter()
-                .collect();
+            let mut wave = Vec::with_capacity(READ_CONCURRENCY);
+            for _ in 0..READ_CONCURRENCY {
+                let Some((id, _)) = stack.pop_last()? else {
+                    break;
+                };
+                wave.push(id);
+            }
+            let mut warm = Vec::new();
+            for id in &wave {
+                if !visited.contains_key(id)? && !self.pieces.contains_key(id)? {
+                    warm.push(entity_path(3, id));
+                }
+            }
             self.discovery_phase("warming");
             self.tx.prefetch_read_records(warm, self.remaining()).await;
             // Broad optional lookahead pays off on large closures; small edits
@@ -515,7 +521,7 @@ impl Working {
                 self.discovery_phase("spatial_warming");
                 let mut neighbor_bounds = Vec::new();
                 for id in &wave {
-                    if !visited.contains(id)
+                    if !visited.contains_key(id)?
                         && let Some(piece) = self.piece(id).await?
                     {
                         neighbor_bounds.push(
@@ -551,38 +557,36 @@ impl Working {
                 self.prefetch_pieces(pieces.into_iter().collect()).await;
             }
             for id in wave {
-                if !visited.insert(id.clone()) {
+                if visited.contains_key(&id)? {
                     continue;
                 }
+                visited.insert(id.clone(), ())?;
                 self.discovery.as_mut().unwrap().visited = visited.len();
                 self.discovery_phase("pieces");
                 let Some(piece) = self.piece(&id).await? else {
                     continue;
                 };
                 self.discovery_phase("rules");
-                stack.extend(
-                    self.piece_rules(&piece)
-                        .await?
-                        .into_iter()
-                        .filter(|id| !visited.contains(id)),
-                );
+                for peer in self.piece_rules(&piece).await? {
+                    if !visited.contains_key(&peer)? {
+                        stack.insert(peer, ())?;
+                    }
+                }
                 self.discovery_phase("external_joints");
-                stack.extend(
-                    self.external(&piece.id)
-                        .await?
-                        .into_iter()
-                        .filter(|id| !visited.contains(id)),
-                );
+                for peer in self.external(&piece.id).await? {
+                    if !visited.contains_key(&peer)? {
+                        stack.insert(peer, ())?;
+                    }
+                }
                 self.discovery_phase("meshes");
                 let bounds = ergo_world::attachments::bounds(&self.brick(&piece, 1).await?)
                     .expanded(halo + ergo_world::attachments::PORT_OVERHANG);
                 self.discovery_phase("spatial_neighbors");
-                stack.extend(
-                    self.neighbors(bounds)
-                        .await?
-                        .into_iter()
-                        .filter(|id| !visited.contains(id)),
-                );
+                for peer in self.neighbors(bounds).await? {
+                    if !visited.contains_key(&peer)? {
+                        stack.insert(peer, ())?;
+                    }
+                }
                 self.discovery.as_mut().unwrap().pending = stack.len();
             }
             if visited.len() >= next_progress {
@@ -596,7 +600,12 @@ impl Working {
             }
         }
         self.discovery_phase("complete");
-        Ok(visited)
+        // The public validation/audit boundary still consumes the full ID set;
+        // only active traversal state is externalized in this phase.
+        Ok(visited
+            .iter()
+            .map(|row| row.map(|(id, _)| id))
+            .collect::<ergo_transactions::Result<_>>()?)
     }
     /// Conservative read-only dependency guard. Complete assembly reads already
     /// have every member, so one compact spatial query replaces one per brick.
@@ -705,7 +714,8 @@ impl Working {
         }
         let mut joints = Vec::new();
         let mut fixed = Vec::new();
-        for joint in self.joints.values() {
+        for row in self.joints.iter() {
+            let (_, joint) = row?;
             let a = &joint.a;
             let b = &joint.b;
             let mut joint = joint.spec.clone();
@@ -719,8 +729,9 @@ impl Working {
                 joints.push(joint);
             }
         }
-        for id in &self.fixed {
-            if let Some(id) = local.get(id) {
+        for row in self.fixed.iter() {
+            let (id, _) = row?;
+            if let Some(id) = local.get(&id) {
                 fixed.push(*id);
             }
         }
@@ -737,12 +748,11 @@ impl Working {
             ground: Vec::new(),
         };
         let model = self.model.clone();
+        let mut workspace = super::equilibrium_workspace::NativeSolverWorkspace::new(&self.tx)?;
         Ok(Some(tokio::task::spawn_blocking(move || -> anyhow::Result<_> {
-            let pairs: BTreeSet<_> = scene.joints.iter().map(|j| (j.a.min(j.b), j.a.max(j.b))).collect();
-            scene.joints.extend(ergo_world::constraints::inferred_joints_with_tolerance(&scene.bricks, model.tolerances.position_brick_units).into_iter().filter(|j| !pairs.contains(&(j.a.min(j.b), j.a.max(j.b)))));
             // Validation assigns every capacity from the frozen measurement
             // book and the reviewed connector estimates; uploads claim none.
-            let mut report = ergo_world::validation::validate_static_with_measurements(&mut scene, model.tolerances,&model.measurements)?;
+            let mut report = ergo_world::validation::validate_static_with_workspace(&mut scene, model.tolerances,&model.measurements,&mut workspace)?;
             report.physical_calibration = if report.joint_strength_required == Some(false) {
                 "Frozen model, sourced masses and nominal bounds; complete gravity-contact proof with zero joint wrench; no clutch capacity assumed; no simulation"
             } else { "Frozen server-owned measurement/model version; complete affected dependency domain; equilibrium with measured or reviewed-estimate connector capacities; no simulation" }.into();

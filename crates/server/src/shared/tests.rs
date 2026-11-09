@@ -4,12 +4,18 @@ use std::sync::Arc;
 
 #[path = "tests_attachments.rs"]
 mod attachments;
+#[path = "tests_authoring_groups.rs"]
+mod authoring_groups;
+#[path = "tests_authoring_pages.rs"]
+mod authoring_pages;
 #[path = "tests_loading.rs"]
 mod loading;
 #[path = "tests_bulk.rs"]
 mod packed;
 #[path = "tests_resize.rs"]
 mod resize;
+#[path = "tests_spilling.rs"]
+mod spilling;
 
 fn service() -> SharedWorlds {
     SharedWorlds::new(Store {
@@ -131,13 +137,13 @@ async fn commit_integrity_rejects_off_grid_and_non_isometric_geometry_without_ad
     let (app, headers) = http(&service);
     let (status, _) = json(
         &app,
-        "PUT",
+        "PATCH",
         &format!(
             "/api/shared-worlds/{}/assemblies/{}/workspace",
             head.id, imported.assembly
         ),
         &headers,
-        Some(serde_json::json!({"base":head.revision,"scene":candidate})),
+        Some(serde_json::json!({"base":head.revision,"delta":full_edit(&service,&head.id,&imported.assembly,&head.revision,&candidate).await})),
     )
     .await;
     assert!(!status.is_success());
@@ -354,7 +360,7 @@ async fn replacement_writes_only_changed_rule_records_and_drops_removed_members(
         &app,
         "GET",
         &format!(
-            "{path}/assemblies/{}/workspace?revision={}",
+            "{path}/assemblies/{}/workspace/pages?revision={}",
             imported.assembly, replaced.accepted.revision
         ),
         &headers,
@@ -362,7 +368,7 @@ async fn replacement_writes_only_changed_rule_records_and_drops_removed_members(
     )
     .await;
     assert_eq!(status, StatusCode::OK, "{workspace}");
-    assert_eq!(workspace["scene"]["bricks"].as_array().unwrap().len(), 1);
+    assert_eq!(workspace["bricks"].as_array().unwrap().len(), 1);
     let (_, listing) = json(&app, "GET", &format!("{path}/assemblies"), &headers, None).await;
     assert_eq!(listing["items"][0]["piece_count"], 1);
 }
@@ -425,8 +431,8 @@ async fn construction_metadata_survives_replacement_and_downloads_export_the_who
     .await;
     assert_eq!(
         status,
-        StatusCode::PAYLOAD_TOO_LARGE,
-        "Authoring must retain its own count limit"
+        StatusCode::OK,
+        "Opening a manifest does not materialize an oversized assembly"
     );
     for format in ["ldraw", "ergo"] {
         let mut request = Request::get(format!(
@@ -938,10 +944,10 @@ async fn genuine_castle_bore_clearance_keeps_server_support_and_capacity_gates()
         }
         let (status, response) = json(
             &app,
-            "PUT",
+            "PATCH",
             &path,
             &headers,
-            Some(serde_json::json!({"base":head.revision,"scene":invalid})),
+            Some(serde_json::json!({"base":head.revision,"delta":full_edit(&service,&head.id,&accepted.assembly,&head.revision,&invalid).await})),
         )
         .await;
         assert_eq!(
@@ -1264,13 +1270,13 @@ async fn batch_replacement_swaps_assemblies_and_adds_pieces_in_one_validated_com
     // An invalid final member must not publish even the valid first member.
     let (status, _) = json(
         &app,
-        "PUT",
+        "PATCH",
         &path,
         &headers,
         Some(serde_json::json!({
             "base":base,"assemblies":[
-                {"assembly_id":first.assembly,"scene":larger},
-                {"assembly_id":second.assembly,"scene":scene(0.2)}
+                {"assembly_id":first.assembly,"delta":full_edit(&service,&head.id,&first.assembly,&base,&larger).await},
+                {"assembly_id":second.assembly,"delta":full_edit(&service,&head.id,&second.assembly,&base,&scene(0.2)).await}
             ]
         })),
     )
@@ -1292,13 +1298,13 @@ async fn batch_replacement_swaps_assemblies_and_adds_pieces_in_one_validated_com
     );
     let (status, response) = json(
         &app,
-        "PUT",
+        "PATCH",
         &path,
         &headers,
         Some(serde_json::json!({
             "base":base,"assemblies":[
-                {"assembly_id":first.assembly,"scene":larger},
-                {"assembly_id":second.assembly,"scene":scene(0.)}
+                {"assembly_id":first.assembly,"delta":full_edit(&service,&head.id,&first.assembly,&base,&larger).await},
+                {"assembly_id":second.assembly,"delta":full_edit(&service,&head.id,&second.assembly,&base,&scene(0.)).await}
             ]
         })),
     )
@@ -1332,7 +1338,10 @@ async fn batch_replacement_swaps_assemblies_and_adds_pieces_in_one_validated_com
         for (actual, expected) in actual.bricks.iter().zip(&expected.bricks) {
             assert_eq!(actual.position, expected.position);
         }
-        assert!(actual.model.as_ref().unwrap().matches(&actual.bricks));
+        assert!(
+            actual.model.is_none(),
+            "Sparse edits discard stale optional full-scene hints"
+        );
     }
     // The batch is one history transition, with one combined audit.
     assert_eq!(
@@ -2820,7 +2829,48 @@ async fn json(
     let bytes = to_bytes(response.into_body(), 16 * 1024 * 1024)
         .await
         .unwrap();
-    (status, serde_json::from_slice(&bytes).unwrap())
+    (
+        status,
+        serde_json::from_slice(&bytes)
+            .unwrap_or_else(|_| serde_json::json!({"error":String::from_utf8_lossy(&bytes)})),
+    )
+}
+
+/// Fixture conversion only. Production accepts sparse edits, never a full
+/// workspace replacement. Force all desired leaves into the test delta so mesh
+/// forgery and unchanged-pose validation regressions still exercise admission.
+async fn full_edit(
+    service: &SharedWorlds,
+    id: &str,
+    assembly: &ContentId,
+    base: &ContentId,
+    after: &WorldExport,
+) -> ergo_world::authoring::Delta {
+    let old = service
+        .authoring_scene(id, "alice", assembly, base)
+        .await
+        .unwrap();
+    let before: WorldExport = serde_json::from_value(old["scene"].clone()).unwrap();
+    let mut ws = service.working(id, "alice", base).await.unwrap();
+    let rules = ws.rules(assembly).await.unwrap();
+    let mut versions = BTreeMap::new();
+    for (&local, global) in &rules.pieces {
+        versions.insert(
+            local,
+            ergo_world::authoring::version(&ws.piece(global).await.unwrap().unwrap()).unwrap(),
+        );
+    }
+    ws.tx.close().await.unwrap();
+    let mut delta = ergo_world::authoring::Delta::between(&before, after, &versions).unwrap();
+    delta.upsert = after.bricks.clone();
+    delta.meshes = after.meshes.clone();
+    delta.joints = after.joints.clone();
+    for b in &delta.upsert {
+        if let Some(v) = versions.get(&b.id) {
+            delta.expected.insert(b.id, v.clone());
+        }
+    }
+    delta
 }
 async fn unpinned(repo: &Repository) {
     for _ in 0..1024 {

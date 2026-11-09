@@ -91,8 +91,8 @@ def main():
             world=configuration["common_world"]
             with request("/api/shared-worlds/"+world) as response:head=json.load(response)
             with request("/api/shared-worlds/"+world+"/assemblies",json.dumps({"base":head["revision"],"scene":scene}).encode()) as response:saved=json.load(response)
-            with request("/api/shared-worlds/"+world+"/assemblies/"+saved["assembly"]+"/workspace") as response:
-                assert len(json.load(response)["scene"]["bricks"])==1
+            with request("/api/shared-worlds/"+world+"/assemblies/"+saved["assembly"]+"/workspace/pages") as response:
+                assert len(json.load(response)["bricks"])==1
         else:
             with request("/api/worlds", json.dumps(scene).encode()) as response:
                 saved = json.load(response)

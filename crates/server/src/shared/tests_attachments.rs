@@ -139,10 +139,10 @@ async fn server_rejects_forged_spear_shield_and_bow_joints_before_publication() 
                 }
                 let (status, response) = json(
                     &app,
-                    "PUT",
+                    "PATCH",
                     &path,
                     &headers,
-                    Some(serde_json::json!({"base":head.revision,"scene":invalid})),
+                    Some(serde_json::json!({"base":head.revision,"delta":full_edit(&service,&head.id,&accepted.assembly,&head.revision,&invalid).await})),
                 )
                 .await;
                 assert_eq!(
@@ -152,7 +152,10 @@ async fn server_rejects_forged_spear_shield_and_bow_joints_before_publication() 
                 );
                 let error = response["error"].as_str().unwrap();
                 assert!(
-                    error.contains("attachment") || error.contains("Catalogue geometry mismatch"),
+                    error.contains("attachment")
+                        || error.contains("Catalogue geometry mismatch")
+                        || (attack == "duplicate"
+                            && error.contains("Duplicate/invalid joint edit")),
                     "{part} / {attack}: {response}"
                 );
                 assert_eq!(
@@ -226,10 +229,10 @@ async fn server_rejects_wrong_wheel_axis_fixed_bearing_and_invented_stops() {
         }
         let (status, response) = json(
             &app,
-            "PUT",
+            "PATCH",
             &path,
             &headers,
-            Some(serde_json::json!({"base":head.revision,"scene":invalid})),
+            Some(serde_json::json!({"base":head.revision,"delta":full_edit(&service,&head.id,&accepted.assembly,&head.revision,&invalid).await})),
         )
         .await;
         assert_eq!(

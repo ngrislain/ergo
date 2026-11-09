@@ -6,8 +6,8 @@ use std::collections::{BTreeMap, BTreeSet, VecDeque};
 
 const MAX_DECODED_NODE_BYTES: usize = 8 * 1024 * 1024;
 
-/// Discardable decoded *read* nodes, separate from staged nodes which must stay
-/// available until publication. Paging must not accumulate the whole visited trie.
+/// Discardable decoded nodes. Staged canonical bytes remain in the disk spool,
+/// so reads and edits share one bounded decoded cache rather than growing it.
 #[derive(Default)]
 struct ReadNodes {
     entries: BTreeMap<ContentId, (Node, usize)>,
@@ -75,18 +75,18 @@ pub(crate) enum Node {
         generation: String,
     },
 }
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub(crate) struct RegionVersion {
     fences: Vec<(usize, String)>,
     target: RegionTarget,
 }
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub(crate) struct PresenceVersion {
     fences: Vec<(usize, String)>,
     generation: Option<String>,
     pub present: bool,
 }
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 enum RegionTarget {
     Empty,
     Subtree(ContentId),
@@ -99,20 +99,20 @@ enum Frame {
 
 pub(crate) struct Tree {
     pub repo: Repository,
-    nodes: BTreeMap<ContentId, Node>,
     read_nodes: ReadNodes,
-    pending: BTreeMap<ContentId, Bytes>,
-    uploaded: BTreeSet<ContentId>,
+    /// At most one derived packed-edge suffix is active in a read traversal.
+    /// It need not exist remotely and must not create disk state on snapshots.
+    virtual_node: Option<(ContentId, Node)>,
+    pub(crate) spool: crate::spill::SpillStore,
     node_read_limit: usize,
 }
 impl Tree {
-    pub fn absorb(&mut self, other: Tree) {
-        self.nodes.extend(other.nodes);
+    pub fn absorb(&mut self, other: Tree) -> Result<()> {
+        self.spool.absorb(&other.spool)?;
         for (id, (node, _)) in other.read_nodes.entries {
             self.read_nodes.insert(id, node);
         }
-        self.pending.extend(other.pending);
-        self.uploaded.extend(other.uploaded);
+        Ok(())
     }
     pub async fn presence(
         &mut self,
@@ -137,12 +137,12 @@ impl Tree {
         })
     }
     pub fn new(repo: Repository) -> Self {
+        let spool = crate::spill::SpillStore::new(repo.spill_limits);
         Self {
             repo,
-            nodes: BTreeMap::new(),
             read_nodes: ReadNodes::default(),
-            pending: BTreeMap::new(),
-            uploaded: BTreeSet::new(),
+            virtual_node: None,
+            spool,
             node_read_limit: usize::MAX,
         }
     }
@@ -169,11 +169,9 @@ impl Tree {
                     }
                 }
             }
-            let loaded: Vec<_> = stream::iter(
-                frontier
-                    .into_iter()
-                    .filter(|id| self.cached_node(id).is_none()),
-            )
+            let loaded: Vec<_> = stream::iter(frontier.into_iter().filter(|id| {
+                self.cached_node(id).is_none() && !self.spool.contains_object(id).unwrap_or(true)
+            }))
             .map(|id| async move {
                 let bytes = tokio::time::timeout(
                     std::time::Duration::from_secs(2),
@@ -208,23 +206,35 @@ impl Tree {
     }
     pub fn stage<T: Serialize>(&mut self, value: &T) -> Result<ContentId> {
         let bytes = canonical_cbor(value)?;
-        let id = ContentId::of(&bytes);
-        self.pending.entry(id.clone()).or_insert(bytes.into());
-        Ok(id)
+        self.spool.stage(bytes, false)
     }
     fn intern(&mut self, node: Node) -> Result<ContentId> {
-        let id = self.stage(&node)?;
-        self.nodes.insert(id.clone(), node);
+        let id = self.spool.stage(canonical_cbor(&node)?, true)?;
+        self.read_nodes.insert(id.clone(), node);
         Ok(id)
     }
     fn cached_node(&self, id: &ContentId) -> Option<&Node> {
-        self.nodes.get(id).or_else(|| self.read_nodes.get(id))
+        self.virtual_node
+            .as_ref()
+            .filter(|(key, _)| key == id)
+            .map(|(_, node)| node)
+            .or_else(|| self.read_nodes.get(id))
+    }
+    fn virtual_suffix(&mut self, path: Vec<u8>, child: ContentId) -> Result<ContentId> {
+        let node = Node::Extension { path, child };
+        let id = ContentId::of(&canonical_cbor(&node)?);
+        self.virtual_node = Some((id.clone(), node));
+        Ok(id)
     }
     async fn node(&mut self, id: &ContentId) -> Result<Node> {
         if let Some(n) = self.cached_node(id) {
             return Ok(n.clone());
         }
-        let node: Node = decode(&self.repo.object_limited(id, self.node_read_limit).await?)?;
+        let bytes = match self.spool.object(id, self.node_read_limit)? {
+            Some(bytes) => bytes,
+            None => self.repo.object_limited(id, self.node_read_limit).await?,
+        };
+        let node: Node = decode(&bytes)?;
         Self::validate_node(&node)?;
         self.read_nodes.insert(id.clone(), node.clone());
         Ok(node)
@@ -320,10 +330,8 @@ impl Tree {
                         // A dependency can end at a virtual node inside a packed
                         // edge. Its canonical suffix hash is independent of how
                         // ancestors/sibling paths are physically represented.
-                        current = Some(self.intern(Node::Extension {
-                            path: segment[remaining.len()..].to_vec(),
-                            child,
-                        })?);
+                        current =
+                            Some(self.virtual_suffix(segment[remaining.len()..].to_vec(), child)?);
                         depth = path.octants().len();
                     } else {
                         return Ok(RegionVersion {
@@ -370,12 +378,8 @@ impl Tree {
         }
     }
     pub async fn payload_limited(&self, id: &ContentId, limit: usize) -> Result<Bytes> {
-        match self.pending.get(id) {
-            Some(bytes) if bytes.len() <= limit => Ok(bytes.clone()),
-            Some(bytes) => Err(Error::ObjectTooLarge {
-                size: bytes.len() as u64,
-                limit,
-            }),
+        match self.spool.object(id, limit)? {
+            Some(bytes) => Ok(bytes),
             None => self.repo.object_limited(id, limit).await,
         }
     }
@@ -408,6 +412,42 @@ impl Tree {
         limit: usize,
     ) -> Result<crate::ScanPage> {
         self.scan_page_inner(root, path, after, limit, false).await
+    }
+    /// Greatest live leaf under a prefix. Tombstones are skipped, without
+    /// collecting all preceding pages (used for assembly-local ID allocation).
+    pub async fn last(
+        &mut self,
+        root: Option<&ContentId>,
+        path: &OctreePath,
+    ) -> Result<Option<(OctreePath, ContentId)>> {
+        let mut stack = match self.region(root, path).await?.target {
+            RegionTarget::Empty => return Ok(None),
+            RegionTarget::Covered { .. } => return Err(Error::CoveredByLeaf(path.clone())),
+            RegionTarget::Subtree(id) => vec![(path.clone(), id)],
+        };
+        let mut visited = 0;
+        while let Some((path, id)) = stack.pop() {
+            visited += 1;
+            if visited > 100_000 {
+                return Err(Error::TraversalLimit { max_nodes: 100_000 });
+            }
+            match self.node(&id).await? {
+                Node::Leaf { value, .. } => return Ok(Some((path, value))),
+                Node::Deleted { .. } => {}
+                Node::Extension {
+                    path: suffix,
+                    child,
+                } => stack.push((Self::descend(&path, &suffix)?, child)),
+                Node::Branch { children, .. } => {
+                    for (q, child) in children.into_iter().enumerate() {
+                        if let Some(child) = child {
+                            stack.push((path.child(q as u8)?, child));
+                        }
+                    }
+                }
+            }
+        }
+        Ok(None)
     }
     pub async fn scan_page_prefetched(
         &mut self,
@@ -576,10 +616,7 @@ impl Tree {
                     let node = if take == suffix.len() {
                         child
                     } else {
-                        self.intern(Node::Extension {
-                            path: suffix[take..].to_vec(),
-                            child,
-                        })?
+                        self.virtual_suffix(suffix[take..].to_vec(), child)?
                     };
                     stack.push((prefix, node));
                 }
@@ -774,44 +811,75 @@ impl Tree {
     pub async fn flush(
         &mut self,
         root: Option<&ContentId>,
-        history_payloads: &[ContentId],
+        history_payloads: impl IntoIterator<Item = Result<ContentId>>,
         concurrency: usize,
     ) -> Result<()> {
-        let mut stack: Vec<_> = root
-            .cloned()
-            .into_iter()
-            .chain(history_payloads.iter().cloned())
-            .collect();
-        let mut objects = BTreeMap::new();
-        while let Some(id) = stack.pop() {
-            if self.uploaded.contains(&id) || objects.contains_key(&id) {
-                continue;
-            }
-            let Some(bytes) = self.pending.get(&id) else {
-                continue;
-            };
-            objects.insert(id.clone(), bytes.clone());
-            match self.nodes.get(&id) {
-                Some(Node::Branch { children, .. }) => {
-                    stack.extend(children.iter().flatten().cloned())
+        self.spool.start_work(root, &[])?;
+        let mut references = Vec::with_capacity(128);
+        for id in history_payloads {
+            let id = match id {
+                Ok(id) => id,
+                Err(error) => {
+                    self.spool
+                        .abort(format!("incomplete history references: {error}"));
+                    return Err(error);
                 }
-                Some(Node::Extension { child, .. }) => stack.push(child.clone()),
-                Some(Node::Leaf { value, .. }) => stack.push(value.clone()),
-                Some(Node::Deleted { .. }) | None => {}
+            };
+            references.push(id);
+            if references.len() == 128 {
+                self.spool.enqueue(references.drain(..))?;
             }
         }
-        let uploaded: Vec<_> = stream::iter(objects)
-            .map(|(id, bytes)| {
-                let repo = self.repo.clone();
-                async move {
-                    repo.put_object(&id, bytes).await?;
-                    Ok::<_, Error>(id)
+        self.spool.enqueue(references)?;
+        loop {
+            let page = self.spool.next_work(concurrency.max(1))?;
+            if page.is_empty() {
+                break;
+            }
+            let mut uploads = Vec::new();
+            for item in page {
+                if !item.local {
+                    continue;
                 }
-            })
-            .buffer_unordered(concurrency)
-            .try_collect()
-            .await?;
-        self.uploaded.extend(uploaded);
+                // Already-uploaded parents are still traversed: a previous
+                // parallel upload can fail after only that parent succeeded.
+                let bytes =
+                    if item.node || item.upload {
+                        Some(self.spool.object(&item.id, usize::MAX)?.ok_or_else(|| {
+                            Error::Scratch("queued staged object is absent".into())
+                        })?)
+                    } else {
+                        None
+                    };
+                if item.node {
+                    let node: Node = decode(bytes.as_ref().unwrap())?;
+                    let children = match node {
+                        Node::Branch { children, .. } => {
+                            children.into_iter().flatten().collect::<Vec<_>>()
+                        }
+                        Node::Extension { child, .. } => vec![child],
+                        Node::Leaf { value, .. } => vec![value],
+                        Node::Deleted { .. } => vec![],
+                    };
+                    self.spool.enqueue(children)?;
+                }
+                if item.upload {
+                    uploads.push((item.id, bytes.unwrap()));
+                }
+            }
+            stream::iter(uploads)
+                .map(|(id, bytes)| {
+                    let repo = self.repo.clone();
+                    let spool = self.spool.clone();
+                    async move {
+                        repo.put_object(&id, bytes).await?;
+                        spool.mark_uploaded(&id)
+                    }
+                })
+                .buffer_unordered(concurrency.max(1))
+                .try_for_each(|_| async { Ok(()) })
+                .await?;
+        }
         Ok(())
     }
 }
@@ -819,6 +887,52 @@ impl Tree {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[tokio::test]
+    async fn last_live_leaf_skips_tombstones_and_respects_the_prefix() {
+        let repo = Repository::new(
+            std::sync::Arc::new(object_store::memory::InMemory::new()),
+            "last",
+        )
+        .unwrap();
+        let mut tree = Tree::new(repo);
+        let value = tree.stage(&42u32).unwrap();
+        let mut root = None;
+        for path in [vec![1, 0], vec![1, 7], vec![2, 7]] {
+            root = tree
+                .replace(
+                    root.as_ref(),
+                    &OctreePath::new(path).unwrap(),
+                    Some(&value),
+                    "birth",
+                )
+                .await
+                .unwrap();
+        }
+        root = tree
+            .replace(
+                root.as_ref(),
+                &OctreePath::new(vec![1, 7]).unwrap(),
+                None,
+                "delete",
+            )
+            .await
+            .unwrap();
+        assert_eq!(
+            tree.last(root.as_ref(), &OctreePath::new(vec![1]).unwrap())
+                .await
+                .unwrap()
+                .unwrap()
+                .0,
+            OctreePath::new(vec![1, 0]).unwrap()
+        );
+        assert!(
+            tree.last(root.as_ref(), &OctreePath::new(vec![3]).unwrap())
+                .await
+                .unwrap()
+                .is_none()
+        );
+    }
 
     fn churn(cache: &mut ReadNodes) {
         for i in 0..4096 {
@@ -832,7 +946,54 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn paging_evicts_decoded_reads_but_retains_staged_nodes_and_reloads_immutable_nodes() {
+    async fn read_only_virtual_packed_suffixes_do_not_create_a_working_database() {
+        let repo = Repository::new(
+            std::sync::Arc::new(object_store::memory::InMemory::new()),
+            "virtual-read",
+        )
+        .unwrap();
+        let mut writer = Tree::new(repo.clone());
+        let value = writer.stage(&42u32).unwrap();
+        let path = OctreePath::new(vec![1; 86]).unwrap();
+        let root = writer
+            .replace(None, &path, Some(&value), "birth")
+            .await
+            .unwrap();
+        writer.flush(root.as_ref(), [], 4).await.unwrap();
+        let mut reader = Tree::new(repo);
+        let prefix = OctreePath::new(vec![1; 20]).unwrap();
+        assert_eq!(
+            reader
+                .scan_page(root.as_ref(), &prefix, None, 1)
+                .await
+                .unwrap()
+                .leaves
+                .len(),
+            1
+        );
+        assert_eq!(
+            reader
+                .scan_level(root.as_ref(), &prefix, 40, None, 1)
+                .await
+                .unwrap()
+                .leaves
+                .len(),
+            1
+        );
+        assert_eq!(
+            reader
+                .last(root.as_ref(), &prefix)
+                .await
+                .unwrap()
+                .unwrap()
+                .0,
+            path
+        );
+        assert_eq!(reader.spool.database_bytes().unwrap(), 0);
+    }
+
+    #[tokio::test]
+    async fn paging_evicts_decoded_nodes_and_reloads_both_spilled_and_remote_objects() {
         let repo = Repository::new(
             std::sync::Arc::new(object_store::memory::InMemory::new()),
             "bounded",
@@ -846,13 +1007,13 @@ mod tests {
                 value: value.clone(),
             })
             .unwrap();
-        writer.flush(Some(&root), &[], 4).await.unwrap();
+        writer.flush(Some(&root), [], 4).await.unwrap();
 
         let mut reader = Tree::new(repo.clone());
         let before = reader.node(&root).await.unwrap();
         assert!(
-            reader.nodes.is_empty(),
-            "Reads must not become permanently staged nodes"
+            !reader.spool.contains_object(&root).unwrap(),
+            "Reads must not become staged objects"
         );
         churn(&mut reader.read_nodes);
         assert!(reader.read_nodes.get(&root).is_none());
@@ -878,11 +1039,19 @@ mod tests {
             .unwrap();
         churn(&mut reader.read_nodes);
         let mut combined = Tree::new(repo.clone());
-        combined.absorb(reader);
-        assert!(combined.nodes.contains_key(&next_root));
-        assert!(combined.nodes.contains_key(&leaf));
+        combined.absorb(reader).unwrap();
+        assert!(combined.spool.contains_object(&next_root).unwrap());
+        assert!(combined.spool.contains_object(&leaf).unwrap());
         assert!(combined.read_nodes.bytes <= MAX_DECODED_NODE_BYTES);
-        combined.flush(Some(&next_root), &[], 4).await.unwrap();
+        let root_bytes = combined
+            .spool
+            .object(&next_root, usize::MAX)
+            .unwrap()
+            .unwrap();
+        repo.put_object(&next_root, root_bytes).await.unwrap();
+        combined.spool.mark_uploaded(&next_root).unwrap();
+        // A retry must still walk this uploaded parent to its pending children.
+        combined.flush(Some(&next_root), [], 4).await.unwrap();
         let path = OctreePath::new(vec![3, 1]).unwrap();
         assert_eq!(
             Tree::new(repo).get(Some(&next_root), &path).await.unwrap(),

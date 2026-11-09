@@ -7,6 +7,7 @@ designs live in `todo/` and are indexed by [TODO.md](../TODO.md).
 
 - [Agent editing and placement](agent-shared-editing.md)
 - [MCP tools and installation](local-construction-mcp.md)
+- [Paged authoring, sparse edits and forward cache migration](paged-authoring.md)
 - [Codex and Claude Code plugin](mcp-plugins.md)
 - [Official MCP Inspector and unlisted 3D catalogue](mcp-inspector.md)
 - [Official/custom model search and reuse](model-library.md)
@@ -33,6 +34,7 @@ designs live in `todo/` and are indexed by [TODO.md](../TODO.md).
 - [128-stud cells, atomic migration and incompatible-cache deletion](cells-and-migration.md)
 - [Shared-world protocol](concurrent-global-editing.md)
 - [Transactional CBOR library](transactional-storage.md)
+- [Native disk-backed transaction and authoring working state](native-working-state.md)
 - [Paging, history and maintenance](storage-operations.md)
   includes whole-world packed-read migration and Merkle-based cache invalidation.
 - [Commit history](commit-history.md)
@@ -46,6 +48,7 @@ designs live in `todo/` and are indexed by [TODO.md](../TODO.md).
 - [Stud-specific LOD](stud-lod.md)
 - [Clean OSM ground, cached floor patterns and coordinate/placement rules](ground-and-coordinates.md)
 - [Rigid-body and static physics](rigid-body-physics.md)
+- [Coupled partitioned equilibrium and independent witness checking](partitioned-stability.md)
 - [Server acceptance gates](validation-gates.md)
 - [Sourced mass and connector calibration](physical-calibration.md)
   includes a read-only construction measurement-requirements inventory helper.

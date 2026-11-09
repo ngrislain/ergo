@@ -153,6 +153,26 @@ Existing construction edits preserve their absolute accepted positions.
 
 ## Native construction and editing
 
+Unreleased source after v0.5.34 uses [paged shared authoring](paged-authoring.md).
+`open_shared_construction` loads a manifest, not geometry. Explicitly call
+`read_construction_page` with spatial `bounds`, piece `ids`, or a continuation
+`cursor`; `append:true` keeps previous pages within the 2,048-piece/32 MiB resident
+budget. Replies scope local inspection/rendering to the loaded view. Local full
+validation/dynamics are refused on partial bound views; server commits still
+validate complete affected domains. New and changed pieces use sparse `PATCH`
+deltas. `export_construction` returns a separate full accepted export path; do
+not read the resident workspace cache as a full model. The old full-workspace
+protocol/sidecars require the explicit coordinated migration in that guide.
+
+In shared mode `list_groups(cursor,limit)` pages authoritative group headers,
+without geometry. `read_construction_group` (`group_id`) replaces the view with a
+complete bounded descendant closure: nested definitions, pieces, internal
+explicit joints and anchors. This is not a physical-domain certificate. Unloaded
+or globally managed constraints fence transforms, and the manifest's group-ID
+floor prevents collisions with unseen groups. Dissolving a loaded child preserves
+its authoritative unloaded parent. See [group loading](paged-authoring.md#mcp-workflow)
+and [coupled partitioned equilibrium](partitioned-stability.md).
+
 Constructions already use the migrated canonical source library. Only current
 common-construct versions are supported; the completed migration's
 `retrofit_library` tool is retired. Native saves/exports intern identical local
@@ -162,7 +182,8 @@ establish publication.
 
 `place_submodel` optionally accepts `replace_ids`: remove those local piece IDs
 and place the replacement in **one WASM update / one accepted shared edit**.
-Unchanged pieces retain their IDs; new IDs exceed the previous high-water mark.
+Unchanged pieces retain their IDs; new IDs exceed the opened manifest's highest
+live member ID, not merely the loaded page's highest ID.
 Incident joints, anchors and group references are removed consistently. Invalid
 overlap/geometry leaves the original scene intact. Replacements use the exact
 supplied catalogue poses rather than snapping a hair/socket datum to a new
@@ -289,17 +310,16 @@ it cannot create another hosted world.
 Rejected edits restore the preceding accepted cache. Concurrent same-assembly
 changes require reopening/reapplying. Unknown outcomes are fenced and never
 automatically repeated. The `.shared.json` journal stores origin, world, assembly,
-base revision and pending state, not a credential. It can additionally retain a
-workspace ETag, its accepted revision and the exact pretty-native-file SHA-256.
-An unchanged authorized Merkle-revision HEAD allows that verified file to reopen
-without a geometry download. Pending outcomes, stale role/budget/version tokens,
-changed/oversized/corrupt files or missing metadata take the complete read path.
-HEAD checks allow 30 seconds; they never grant offline access or authorize a commit.
-Initial workspace downloads are not yet chunk-checkpointed. Browser regions use
+base revision and pending state, not a credential. Paged bindings use
+`format:"ergo-workspace-binding-2"`, loaded posed-record versions, a read cursor,
+count summary and ID allocation floor. Old ETag/full-file sidecars are explicitly
+migrated, not read through a compatibility path. Opening loads the current
+manifest; pages are loaded on demand at that revision. HEAD checks allow 30 seconds;
+they never grant offline access or authorize a commit. Browser regions use
 the separate [durable preparation checkpoints](loading-and-cache.md#durable-browser-loading-checkpoints).
 
 Ordinary HTTP requests default to 300 seconds; complete construction transfers
-(GET `workspace`, `view`, `download`, `export`, and the workspace PUT that commits
+(GET `workspace`, `view`, `download`, `export`, and the workspace PATCH that commits
 an assembly edit) default to 3,600 seconds. Explicit
 `ERGO_MCP_HTTP_TIMEOUT_SECONDS` accepts 1–3,600 and overrides both. A queued
 WASM/MCP job allows 3,600 seconds for local work and remote phases together.
@@ -310,7 +330,7 @@ attempt. No publication request is automatically retried.
 Native models are limited to 768KiB inline, imported text to128KiB. Local editing
 has no 5,000-piece cap; dynamics simulations remain limited to5,000 bodies.
 Shared operations normally budget10,000 identities/128MiB; god-mode authoring
-removes the identity-count cap. External dependencies prevent pretending a clipped local
+removes the identity-count cap, not the paged MCP residency limit. External dependencies prevent pretending a clipped local
 simulation is complete. Explicit ballpark diagnostics never acquire measured
 calibration status or override the server's measurement requirements.
 

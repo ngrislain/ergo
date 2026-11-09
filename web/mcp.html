@@ -19,7 +19,9 @@ try{
   installPartLibrary(new Uint8Array(await library.arrayBuffer()));
   let initial=await api('/api/local/workspace');
   const runtime=new LocalClientRuntime(document.querySelector('#canvas'),JSON.stringify(initial.scene),JSON.stringify(initial.measurements),initial.revision);
-  let revision=initial.revision;
+   let revision=initial.revision;
+   runtime.set_id_floor(initial.next_local_id||1);
+   runtime.set_group_floor(initial.next_group_id||1);
   status.textContent='Attached. The control bridge is idle; simulation and WebGL run locally only when requested.';
   for(;;){
     let job;try{job=await api('/api/local/jobs/next');}catch(error){status.textContent=`Disconnected: ${error.message}`;break;}
@@ -27,7 +29,7 @@ try{
     status.textContent=`Running locally: ${job.name}`;
      let result,assetWarning;
      try{
-      if(job.revision!==revision){const fresh=await api('/api/local/workspace');runtime.restore(JSON.stringify(fresh.scene),fresh.revision);revision=fresh.revision;}
+      if(job.revision!==revision){const fresh=await api('/api/local/workspace');runtime.restore(JSON.stringify(fresh.scene),fresh.revision);runtime.set_id_floor(fresh.next_local_id||1);runtime.set_group_floor(fresh.next_group_id||1);revision=fresh.revision;}
        if(job.name==='place_brick'||job.name==='get_catalog'&&job.arguments.part){
         const part=await api(`/api/local/parts/${encodeURIComponent(job.arguments.part)}`);runtime.insert_part(JSON.stringify(part));assetWarning=part.warning;
        }
@@ -48,7 +50,7 @@ try{
       }
     }catch(error){
       result={content:[{type:'text',text:`Local client: ${error.message}`}],isError:true};
-      const fresh=await api('/api/local/workspace');runtime.restore(JSON.stringify(fresh.scene),fresh.revision);revision=fresh.revision;
+      const fresh=await api('/api/local/workspace');runtime.restore(JSON.stringify(fresh.scene),fresh.revision);runtime.set_id_floor(fresh.next_local_id||1);runtime.set_group_floor(fresh.next_group_id||1);revision=fresh.revision;
     }
     await api('/api/local/jobs/result',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({id:job.id,result})});
     status.textContent=`Ready. Last tool: ${job.name}. Working-copy revision ${revision}.`;

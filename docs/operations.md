@@ -5,6 +5,19 @@ OpenTofu state/variables/plans, generated images and bundles are private/ignored
 
 ## Build and verify
 
+Native shared edits now need writable private temporary disk space for
+[working-state spilling](native-working-state.md). Defaults are 512 MiB main-file
+quota and a 1 MiB SQLite cache per working store; configure
+`ERGO_SHARED_SPILL_BYTES` / `ERGO_SHARED_SPILL_CACHE_KIB` and provision `TMPDIR`
+for concurrent edits. Scratch is disposable, never accepted state or a resumable
+session. Disk failures refuse publication rather than falling back to RAM.
+Commit metadata also uses private temporary files. Configure
+`ERGO_SHARED_COMMIT_BYTES` (128 MiB default, also the aggregate batch-record budget)
+and `ERGO_SHARED_COMMIT_ITEM_BYTES` (1 MiB default); see
+[native commit records](commit-history.md#bounded-native-commit-records) for the
+Rust API migration and remaining conditional-upload buffer. These do not rewrite
+accepted records or increase server RAM settings.
+
 ```sh
 cargo fmt --all -- --check
 cargo test --workspace --locked
@@ -36,6 +49,18 @@ npm test --prefix site
 Serve `site/dist` with the site's preview command for `scripts/test-site-orbit.py`.
 The common-world test uses an isolated current-format store; it checks shared
 commits/conflicts, public in-world list navigation, pagination, GPS and handoff.
+It also exercises paged pieces, authoritative group headers, complete group
+loading and sparse group moves. Its disposable startup certifies the read-only
+pavilion before listening; unoptimized numerical kernels can be slow. To test
+matching optimized binaries without changing the memory/work budgets:
+
+```sh
+cargo build --release --locked -p ergo-server -p ergo-mcp
+ERGO_TEST_BIN_DIR=target/release python3 scripts/test-common-world.py
+```
+
+`ERGO_TEST_BIN_DIR` affects this test harness only, defaults to `target/debug`,
+and is not passed into the child server's production configuration.
 For geometry-dependent walking guarantees, use the native
 [walking route checker](navigation.md#checking-a-walking-route) against a complete
 construction cache and its explicit route. It verifies continuous traversal,
@@ -75,7 +100,7 @@ handles. It may create and release normal GC activity pins; it never clears othe
 requests' pins. Run a fresh process for a cold process-cache comparison. Concurrent
 accepted edits do not change the pinned diagnostic revision.
 
-To reproduce the **actual authoring-workspace read** without returning its scene,
+To reproduce an explicit **full assembly materialization** without returning its scene,
 use `ergo-server shared-profile-workspace WORLD_ID ASSEMBLY_ID ACTOR_ID [SECONDS]`
 with the same private storage configuration. Its default deadline is 600 seconds
 (allowed range 1–1,800). It checks that actor's normal read permission and
@@ -84,7 +109,15 @@ count, elapsed time, errors and cache statistics. It does not mutate the world,
 log credentials, or print construction geometry. In particular, a successful
 `HEAD` freshness check does not establish that a full `GET` will finish.
 Operator JSON goes to stdout; progress and server logs go to stderr so a
-completed profile can be parsed without stripping log prefixes.
+completed profile can be parsed without stripping log prefixes. This operator
+diagnostic still materializes a complete scene; the new paged MCP open does not.
+
+For the unreleased paged-authoring transport/cache cutover, follow
+[paged authoring](paged-authoring.md#forward-migration). Deploy matching server,
+native and WASM first, stop clients, reconcile pending outcomes, and run the
+locked dry-run cache migration before `--apply`. Accepted geometry and native
+construction/proposal formats are unchanged; do not rewrite world roots merely
+to convert disposable caches.
 
 For `shared-profile-dependencies` only, an explicit trailing `--serve` retains
 that process's verified immutable cache

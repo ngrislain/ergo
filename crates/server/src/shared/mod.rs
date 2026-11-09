@@ -6,8 +6,12 @@ macro_rules! ensure {
 pub(crate) mod address;
 mod administration;
 mod authoring;
+mod authoring_groups;
+mod authoring_pages;
 mod bulk;
 pub(crate) mod catalog;
+mod edits;
+mod equilibrium_workspace;
 mod events;
 mod group_commit;
 mod joints;
@@ -54,6 +58,7 @@ pub struct SharedError {
     candidate: Option<ContentId>,
     world: Option<String>,
     retry_after: Option<u64>,
+    inconclusive: bool,
 }
 impl SharedError {
     fn forbidden() -> Self {
@@ -80,6 +85,7 @@ impl SharedError {
             candidate: None,
             world: None,
             retry_after: None,
+            inconclusive: false,
         }
     }
 }
@@ -91,7 +97,13 @@ impl std::fmt::Display for SharedError {
 impl std::error::Error for SharedError {}
 impl From<anyhow::Error> for SharedError {
     fn from(e: anyhow::Error) -> Self {
-        Self::status(StatusCode::UNPROCESSABLE_ENTITY, &format!("{e:#}"))
+        let mut result = Self::status(StatusCode::UNPROCESSABLE_ENTITY, &format!("{e:#}"));
+        result.inconclusive = e
+            .downcast_ref::<ergo_world::equilibrium::Inconclusive>()
+            .is_some()
+            || e.downcast_ref::<ergo_transactions::Error>()
+                .is_some_and(|error| matches!(error, ergo_transactions::Error::Scratch(_)));
+        result
     }
 }
 impl From<ergo_transactions::Error> for SharedError {
@@ -111,9 +123,11 @@ impl From<ergo_transactions::Error> for SharedError {
             | Error::MaintenanceBusy
             | Error::ActivePins { .. } => StatusCode::SERVICE_UNAVAILABLE,
             Error::Store(_) | Error::Corrupt(_) => StatusCode::BAD_GATEWAY,
+            Error::Scratch(_) => StatusCode::UNPROCESSABLE_ENTITY,
             _ => StatusCode::BAD_REQUEST,
         };
         let mut result = Self::status(status, &e.to_string());
+        result.inconclusive = matches!(&e, Error::Scratch(_));
         if let Error::PublicationUnknown { candidate, .. } = e {
             result.candidate = Some(candidate);
         }
@@ -122,7 +136,7 @@ impl From<ergo_transactions::Error> for SharedError {
 }
 impl IntoResponse for SharedError {
     fn into_response(self) -> Response {
-        let mut response=(self.status, Json(serde_json::json!({"error": self.message, "candidate": self.candidate, "world": self.world,"retry_after_seconds":self.retry_after}))).into_response();
+        let mut response=(self.status, Json(serde_json::json!({"error": self.message, "candidate": self.candidate, "world": self.world,"retry_after_seconds":self.retry_after,"validation_state":if self.inconclusive{Some("inconclusive")}else{None},"published":if self.inconclusive{Some(false)}else{None}}))).into_response();
         if let Some(seconds) = self.retry_after {
             response
                 .headers_mut()
@@ -183,6 +197,22 @@ impl SharedWorlds {
     }
     pub fn from_env(store: Store) -> Result<Self> {
         let mut service = Self::new(store)?;
+        let mut spill = service.root.spill_limits();
+        if let Ok(value) = std::env::var("ERGO_SHARED_SPILL_BYTES") {
+            spill.database_bytes = value.parse()?;
+        }
+        if let Ok(value) = std::env::var("ERGO_SHARED_SPILL_CACHE_KIB") {
+            spill.cache_kib = value.parse()?;
+        }
+        service.root = service.root.with_spill_limits(spill)?;
+        let mut commits = service.root.commit_limits();
+        if let Ok(value) = std::env::var("ERGO_SHARED_COMMIT_BYTES") {
+            commits.bytes = value.parse()?;
+        }
+        if let Ok(value) = std::env::var("ERGO_SHARED_COMMIT_ITEM_BYTES") {
+            commits.item_bytes = value.parse()?;
+        }
+        service.root = service.root.with_commit_limits(commits)?;
         service.common_world = std::env::var("ERGO_COMMON_WORLD_ID")
             .ok()
             .map(|id| uuid::Uuid::parse_str(&id).map(|id| id.to_string()))
@@ -681,7 +711,7 @@ impl SharedWorlds {
         }
         ws.flush_rules(&assemblies).await?;
         seeds.extend(before);
-        ws.reset_dependencies();
+        ws.reset_dependencies()?;
         let affected = ws.discover(&seeds).await?;
         let report = ws.validate(&affected).await?;
         self.advertise_blocks(id, ws.metadata.geo, &ws.new_blocks)
@@ -862,7 +892,23 @@ pub fn routes() -> Router<AppState> {
         )
         .route(
             "/api/shared-worlds/{id}/assemblies/{assembly}/workspace",
-            get(authoring::workspace).put(authoring::replace),
+            get(authoring_pages::manifest).patch(edits::edit),
+        )
+        .route(
+            "/api/shared-worlds/{id}/assemblies/{assembly}/workspace/pages",
+            get(authoring_pages::page),
+        )
+        .route(
+            "/api/shared-worlds/{id}/assemblies/{assembly}/workspace/groups",
+            get(authoring_groups::list),
+        )
+        .route(
+            "/api/shared-worlds/{id}/assemblies/{assembly}/workspace/groups/{group}",
+            get(authoring_groups::load),
+        )
+        .route(
+            "/api/shared-worlds/{id}/assemblies/{assembly}/workspace/meshes/{mesh}",
+            get(authoring_pages::mesh),
         )
         .route(
             "/api/shared-worlds/{id}/assemblies/{assembly}/export",
@@ -870,7 +916,7 @@ pub fn routes() -> Router<AppState> {
         )
         .route(
             "/api/shared-worlds/{id}/assemblies/workspaces",
-            put(authoring::replace_batch),
+            axum::routing::patch(edits::batch),
         )
         .route(
             "/api/shared-worlds/{id}/assemblies/{assembly}/location",
@@ -1324,7 +1370,8 @@ async fn history(
     let mut remaining = s.shared.limits.bytes;
     for id in page.revisions {
         let snapshot = repo.snapshot(&id).await?;
-        let bytes = canonical_cbor(snapshot.commit())?.len();
+        let bytes =
+            usize::try_from(snapshot.commit().encoded_len()).map_err(anyhow::Error::from)?;
         if bytes > remaining {
             return Err(SharedError::working_limit("history page bytes"));
         }

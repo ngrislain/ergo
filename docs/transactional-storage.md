@@ -201,7 +201,8 @@ suffix hash, preserving the same logical prefix conflict rules.
    Reads see the transaction's own pending edits. Missing reads are dependencies;
    `scan` protects its whole subtree against phantom insertions/deletions.
 3. `put` and `remove` also record dependencies, stage deterministic CBOR payloads,
-   and path-copy only affected ancestors in memory. No per-object locks are taken.
+   and path-copy only affected ancestors into the local working spool. No remote
+   per-object locks are taken.
 4. `commit` uploads reachable staged nodes, payloads referenced by history, and an
    immutable candidate commit. Uploads have bounded fanout.
 5. One conditional replacement of the branch head publishes everything atomically.
@@ -272,7 +273,8 @@ the implementation does not blindly continue after an unfenced attempt.
 
 ## Geometry encoding and sharing
 
-`canonical_cbor` materializes a Serde value, recursively orders maps by the
+`canonical_cbor` writes sequences without an intermediate decoded document,
+retains its encoded output buffer, and orders map entries by the
 lexicographic bytes of their deterministic keys (RFC 8949 core order), rejects
 duplicate canonical keys, emits definite lengths and shortest exact numeric
 encodings, rejects non-finite CBOR floats, and normalizes float negative zero.
@@ -319,8 +321,13 @@ overwritten or deleted by an edit.
   by repository clones and child namespaces. Cache keys include the namespace;
   heads and coordination state are never cached. `cache_stats` reports residency,
   hits, misses, and evictions. Each server repository cache uses a 256 MiB budget.
+  The same opt-in enables a separately bounded commit-file cache (32 records,
+  at most 128 MiB of encoded files and approximately 1 MiB retained-header
+  accounting), not a RAM cache of decoded edit histories. `cache_stats` still
+  describes the ordinary verified byte LRU. Capacity zero disables file retention;
+  bounded weak metadata entries can still coalesce active readers.
   Concurrent immutable reads of the same namespace/object share one verified
-  download; failures remain retryable. Acknowledged uploads populate the LRU,
+  download; failures remain retryable. Acknowledged ordinary-object uploads populate the LRU,
   but an LRU hit never skips a subsequent upload, preserving orphan/GC safety.
   Explicit uncached verification still bypasses the cache and read-coalescing gates.
   `Snapshot::scan_page_prefetched` optionally looks ahead four immutable-node levels
@@ -333,10 +340,17 @@ overwritten or deleted by an edit.
   `Transaction::scan_page_prefetched` provides the same optimization for authoring
   pages. It still observes the complete scanned prefix, reads pending edits, and
   reuses staged nodes without trying to download their not-yet-uploaded objects.
-- Nodes are also cached within a transaction; staged values and serialization
-  buffers remain in memory. There is no whole-process heap quota, streaming CBOR
-  encoder, or automatic chunker. `scan` is an unbounded compatibility convenience;
-  use `scan_page` for large trees. The shared-world service never uses a world scan.
+- [Native working state](native-working-state.md) now spills staged canonical
+  bytes, predicates, ordered edit journals and the upload frontier to disposable
+  SQLite. Decoded nodes have one bounded cache; upload batches do not collect all
+  reachable bytes in RAM. Snapshot clones share immutable commit metadata.
+  [Commit records](commit-history.md#bounded-native-commit-records) now construct/load
+  through verified private files and fallible lists, including GC and grouped
+  publication. Conditional commit upload retains one capped encoded buffer,
+  never a decoded history vector; explicit JSON/general serialization buffers
+  remain. There is no whole-process heap quota or automatic chunker. `scan`
+  remains an unbounded convenience; use `scan_page` for large trees. The shared
+  service never uses a world scan.
 - An edit path-copies O(depth) nodes; sequential edits share cached ancestors and
   only final reachable staged nodes plus history payloads are uploaded per attempt.
   Failed CAS attempts can leave orphaned candidates/ancestors. Failure handling

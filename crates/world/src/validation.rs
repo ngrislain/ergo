@@ -72,6 +72,8 @@ pub struct ValidationReport {
     /// unavailable on historical/unvalidated reports).
     #[serde(default)]
     pub largest_equilibrium_component: usize,
+    #[serde(default)]
+    pub equilibrium_solver: crate::equilibrium::SolverStats,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub compression_issue: Option<CompressionIssue>,
     #[serde(default)]
@@ -131,6 +133,21 @@ pub fn validate_static_with_measurements(
     scene: &mut WorldExport,
     tolerances: StaticTolerances,
     measurements: &crate::physical::ConnectionMeasurements,
+) -> Result<ValidationReport> {
+    validate_static_with_workspace(
+        scene,
+        tolerances,
+        measurements,
+        &mut crate::equilibrium::MemoryWorkspace::default(),
+    )
+}
+/// The same physical gate with caller-supplied coupled-solver storage. Storage
+/// is an authoring resource, not a source of supports, capacities or acceptance.
+pub fn validate_static_with_workspace(
+    scene: &mut WorldExport,
+    tolerances: StaticTolerances,
+    measurements: &crate::physical::ConnectionMeasurements,
+    workspace: &mut dyn crate::equilibrium::SolverWorkspace,
 ) -> Result<ValidationReport> {
     measurements.normalize_scene(scene)?;
     tolerances.validate()?;
@@ -226,6 +243,7 @@ pub fn validate_static_with_measurements(
         &scene.fixed_bricks,
         tolerances,
         measurements,
+        workspace,
     )?;
     let report = ValidationReport {
         collision_model:
@@ -244,6 +262,7 @@ pub fn validate_static_with_measurements(
         max_joint_utilisation: stability.certificate.max_utilisation,
         stability_components: stability.components,
         largest_equilibrium_component: stability.largest_equilibrium_component,
+        equilibrium_solver:stability.certificate.solver,
         compression_issue: stability.compression_issue,
         physical_calibration:
             "Metric dimensions and catalog masses; joint capacities from the measurement book or reviewed estimates".into(),
@@ -269,6 +288,7 @@ fn certify_components(
     fixed: &[u32],
     tol: StaticTolerances,
     measurements: &crate::physical::ConnectionMeasurements,
+    workspace: &mut dyn crate::equilibrium::SolverWorkspace,
 ) -> Result<StabilityCertificate> {
     use std::borrow::Cow;
     let islands = components::partition(bricks, joints, tol)?;
@@ -309,7 +329,9 @@ fn certify_components(
         } else {
             Cow::Owned(island.joints.iter().map(|&i| joints[i].clone()).collect())
         };
-        let certificate = support_certificate(bodies, &constraints, &fixed, tol, measurements)?;
+        let certificate =
+            support_certificate(bodies, &constraints, &fixed, tol, measurements, workspace)?;
+        result.certificate.solver.merge(&certificate.solver);
         result.certificate.loaded_joints += certificate.loaded_joints;
         result.certificate.max_utilisation = result
             .certificate
@@ -541,6 +563,7 @@ fn support_certificate(
     fixed: &[u32],
     tol: StaticTolerances,
     measurements: &crate::physical::ConnectionMeasurements,
+    workspace: &mut dyn crate::equilibrium::SolverWorkspace,
 ) -> Result<crate::equilibrium::Certificate> {
     let n = bricks.len();
     let index: HashMap<_, _> = bricks.iter().enumerate().map(|(i, b)| (b.id, i)).collect();
@@ -597,16 +620,19 @@ fn support_certificate(
         .iter()
         .map(|b| measurements.mass_kg(&b.part))
         .collect::<Result<Vec<_>>>()?;
-    crate::equilibrium::certify(&crate::equilibrium::Problem {
-        bricks,
-        joints,
-        contacts,
-        supports,
-        anchored,
-        masses,
-        force_tolerance: tol.force_newtons,
-        torque_tolerance: tol.torque_newton_meters,
-    })
+    crate::equilibrium::certify_with_workspace(
+        &crate::equilibrium::Problem {
+            bricks,
+            joints,
+            contacts,
+            supports,
+            anchored,
+            masses,
+            force_tolerance: tol.force_newtons,
+            torque_tolerance: tol.torque_newton_meters,
+        },
+        workspace,
+    )
 }
 
 pub fn compression_issue(
@@ -664,7 +690,14 @@ impl<'a> CompressionLoads<'a> {
         let brick = &self.bricks[i];
         let mass = self.measurements.mass_kg(&brick.part)?;
         let center = crate::physical::to_meters(brick.bounds.center() - self.origin);
-        Ok((mass, DVec2::new(center.x, center.z) * mass))
+        let moment = DVec2::new(center.x, center.z) * mass;
+        if !(mass * crate::physical::GRAVITY_M_S2).is_finite() || !moment.is_finite() {
+            return Err(crate::equilibrium::Inconclusive(
+                "compression load initialization overflowed".into(),
+            )
+            .into());
+        }
+        Ok((mass, moment))
     }
 
     fn take(&mut self, i: usize) -> Result<(f64, DVec2)> {
@@ -679,6 +712,12 @@ impl<'a> CompressionLoads<'a> {
         let load = self.entries.get_mut(&i).unwrap();
         load.0 += mass;
         load.1 += moment;
+        if !(load.0 * crate::physical::GRAVITY_M_S2).is_finite() || !load.1.is_finite() {
+            return Err(crate::equilibrium::Inconclusive(
+                "compression load propagation overflowed".into(),
+            )
+            .into());
+        }
         Ok(())
     }
 }
@@ -1026,7 +1065,13 @@ mod tests {
             idealized_fixture: true,
             ..Default::default()
         };
-        validate_static_with_measurements(&mut s, StaticTolerances::default(), &idealized).unwrap();
+        let report =
+            validate_static_with_measurements(&mut s, StaticTolerances::default(), &idealized)
+                .unwrap();
+        assert!(report.equilibrium_solver.partitions > 1);
+        assert!(report.equilibrium_solver.balance_correction_iterations > 0);
+        assert!(report.equilibrium_solver.sweeps <= 500);
+        assert!(report.equilibrium_solver.largest_local_kkt_dimension <= 2048);
     }
 
     #[test]
@@ -1098,10 +1143,24 @@ mod tests {
         let measurements = crate::physical::ConnectionMeasurements::default();
         let tol = StaticTolerances::default();
         let joints = [joint];
-        let result = certify_components(&demo.bricks, &joints, &[1], tol, &measurements).unwrap();
-        let whole =
-            support_certificate(Bodies::all(&demo.bricks), &joints, &[1], tol, &measurements)
-                .unwrap();
+        let result = certify_components(
+            &demo.bricks,
+            &joints,
+            &[1],
+            tol,
+            &measurements,
+            &mut crate::equilibrium::MemoryWorkspace::default(),
+        )
+        .unwrap();
+        let whole = support_certificate(
+            Bodies::all(&demo.bricks),
+            &joints,
+            &[1],
+            tol,
+            &measurements,
+            &mut crate::equilibrium::MemoryWorkspace::default(),
+        )
+        .unwrap();
         assert_eq!(result.components, 21);
         assert_eq!(result.largest_equilibrium_component, 2);
         assert!(!result.contact_only);
@@ -1110,13 +1169,33 @@ mod tests {
         assert!((result.certificate.max_utilisation - whole.max_utilisation).abs() < 1e-3);
         // A far-away good island cannot supply fictitious support to a floater.
         demo.add("3005", 4, 200., 10., 0.);
-        assert!(certify_components(&demo.bricks, &joints, &[1], tol, &measurements).is_err());
+        assert!(
+            certify_components(
+                &demo.bricks,
+                &joints,
+                &[1],
+                tol,
+                &measurements,
+                &mut crate::equilibrium::MemoryWorkspace::default()
+            )
+            .is_err()
+        );
         // Nor can partitioning hide an insufficient joint capacity.
         let weak = [crate::JointSpec {
             break_torque: Some(0.),
             ..joints[0].clone()
         }];
-        assert!(certify_components(&demo.bricks[..22], &weak, &[1], tol, &measurements).is_err());
+        assert!(
+            certify_components(
+                &demo.bricks[..22],
+                &weak,
+                &[1],
+                tol,
+                &measurements,
+                &mut crate::equilibrium::MemoryWorkspace::default()
+            )
+            .is_err()
+        );
     }
 
     #[test]
@@ -1190,6 +1269,7 @@ mod tests {
             &[1, 2],
             Default::default(),
             &measurements,
+            &mut crate::equilibrium::MemoryWorkspace::default(),
         )
         .unwrap();
         assert_eq!(result.components, 2);
@@ -1201,7 +1281,8 @@ mod tests {
                 &joints[..3],
                 &[1, 2],
                 Default::default(),
-                &measurements
+                &measurements,
+                &mut crate::equilibrium::MemoryWorkspace::default()
             )
             .is_err()
         );

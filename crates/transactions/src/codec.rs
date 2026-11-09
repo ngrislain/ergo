@@ -3,6 +3,7 @@ use serde::{Serialize, de::DeserializeOwned};
 
 #[path = "encoding.rs"]
 mod encoding;
+pub(crate) use encoding::header_bytes;
 
 /// RFC 8949 core deterministic CBOR, with finite floats and normalized negative zero.
 /// Numeric byte strings (including typed arrays) remain byte-for-byte unchanged.
