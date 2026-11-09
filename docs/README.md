@@ -8,7 +8,7 @@ designs live in `todo/` and are indexed by [TODO.md](../TODO.md).
 - [Agent editing and placement](agent-shared-editing.md)
 - [MCP tools and installation](local-construction-mcp.md)
 - [Paged authoring, sparse edits and forward cache migration](paged-authoring.md)
-- [Codex and Claude Code plugin](mcp-plugins.md)
+- [Agent client plugins (Claude Code, ChatGPT/Codex desktop, OpenCode, Pi)](mcp-plugins.md)
 - [Official MCP Inspector and unlisted 3D catalogue](mcp-inspector.md)
 - [Official/custom model search and reuse](model-library.md)
 - [Sourced building-technique library](local-construction-mcp.md#sourced-building-techniques)

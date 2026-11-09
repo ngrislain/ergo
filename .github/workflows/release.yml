@@ -49,6 +49,7 @@ jobs:
           echo "version=$version" >> "$GITHUB_OUTPUT"
       - run: python3 scripts/test-distribution.py
       - run: python3 scripts/test-npm-publish.py
+      - run: python3 scripts/test-plugin-packages.py --pack
 
   web:
     needs: version
@@ -195,6 +196,27 @@ jobs:
           set -- npm-release/*.tgz
           [ "$#" -eq 1 ] && [ -f "$1" ]
           python3 scripts/publish-npm.py "$1" --version "$VERSION"
+
+  publish-plugins:
+    needs: [version, publish-npm]
+    if: (github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v') && vars.ERGO_NPM_PUBLISH == 'true') || (github.event_name == 'workflow_dispatch' && inputs.publish_npm)
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: "24"
+          registry-url: https://registry.npmjs.org
+          package-manager-cache: false
+      - name: Publish the plugin packages after the verified bridge
+        env:
+          VERSION: ${{ needs.version.outputs.version }}
+        run: python3 scripts/publish-plugins.py --version "$VERSION"
 
   container:
     needs: version

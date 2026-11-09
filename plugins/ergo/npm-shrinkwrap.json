@@ -1,0 +1,19 @@
+{
+  "name": "@ngrislain/ergo-plugin",
+  "version": "0.5.36",
+  "lockfileVersion": 3,
+  "requires": true,
+  "packages": {
+    "": {
+      "name": "@ngrislain/ergo-plugin",
+      "version": "0.5.36",
+      "dependencies": {
+        "@ngrislain/ergo-mcp": "0.5.36"
+      }
+    },
+    "node_modules/@ngrislain/ergo-mcp": {
+      "resolved": "https://registry.npmjs.org/@ngrislain/ergo-mcp/-/ergo-mcp-0.5.36.tgz",
+      "version": "0.5.36"
+    }
+  }
+}

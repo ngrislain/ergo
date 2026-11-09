@@ -60,9 +60,11 @@ This completes approval and saves the token before exiting. Use it before
 connecting clients whose startup deadline is too short for interactive sign-in.
 The default token path is `~/.config/ergo/tokens/<origin-sha256>.token`
 (`$XDG_CONFIG_HOME` is honored), with Unix mode 0600. No token is put in chat,
-workspace files, URLs, or MCP stdout. Source plugin wrappers for Codex and Claude
-Code are available under `plugins/ergo` in the repository; they require the bridge
-to be installed and are not a public plugin-directory listing.
+workspace files, URLs, or MCP stdout. Source plugin packages for Claude Code,
+ChatGPT/Codex desktop, OpenCode and Pi are available under `plugins/` in the
+repository; the OpenCode and Pi packages pin this bridge as a version-matched
+npm dependency of the plugin, while the Claude/OpenAI wrappers require the
+bridge to be installed on PATH. None is a public plugin-directory listing.
 
 Publishing retains server authorization, pacing, and measured-physics checks.
 The client uses native Ergo construction/model/part descriptions. `get_user_position`
@@ -73,7 +75,7 @@ All binaries and browser assets are bundled together at the same release version
 There are no install/postinstall scripts, optional platform downloads, or
 runtime build steps. Package publication does not deploy the hosted API.
 
-v0.5.35 uses paged shared authoring: opening loads metadata, and
+v0.5.36 uses paged shared authoring: opening loads metadata, and
 `read_construction_page` explicitly loads geometry before sparse edits. Upgrade
 the server, native bridge and browser/WASM together. Bound pre-v0.5.35 caches need
 the locked, backup-preserving [forward migration](https://github.com/ngrislain/ergo/blob/main/docs/paged-authoring.md#forward-migration);

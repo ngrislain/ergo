@@ -95,7 +95,7 @@ use `open_shared_construction` with its ID or a specified position. Accepted
 mutations update the same shared assembly automatically; the working file is a
 cache. Read the confirmed `shared_commit` receipt.
 
-v0.5.35 uses [paged authoring](docs/paged-authoring.md):
+v0.5.36 uses [paged authoring](docs/paged-authoring.md):
 opening a construction loads its manifest; `read_construction_page` loads spatial
 bounds or selected IDs. Sparse edits preserve unloaded members. Upgrade matching
 server/native/WASM together and explicitly migrate bound caches. Group headers
@@ -124,8 +124,8 @@ Before a new design, [search/retrieve similar models](docs/model-library.md) wit
 their source/author/licence attribution.
 
 See [agent workflows](docs/agent-shared-editing.md), [MCP tools](docs/local-construction-mcp.md)
-and [distribution](docs/distribution.md). Source plugin packages for Codex and
-Claude Code live in [`plugins/ergo`](plugins/ergo); see
+and [distribution](docs/distribution.md). Source plugin packages for Claude Code,
+ChatGPT/Codex desktop, OpenCode and Pi live under [`plugins/`](plugins); see
 [plugin setup](docs/mcp-plugins.md). The current-source `get_build_feedback` harness
 adds actionable findings, measured part/palette observations and optional actual
 rendered views for an inspect–act–review–adjust workflow; acceptance is not an

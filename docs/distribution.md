@@ -27,8 +27,11 @@ Version 0.5.26 changes tokenless npm startup to the hosted Sandbox with
 human-approved browser token pickup; `--local` explicitly selects isolated
 proposals. This requires a rebuilt client and matching browser deployment and is
 not retroactively available in the published v0.5.25 artifact. Source plugin
-wrappers for Codex/Claude are in `plugins/ergo`, with repo-local marketplace
-manifests; they require an installed bridge and are not a public marketplace
+packages for Claude Code, ChatGPT/Codex desktop, OpenCode and Pi live under
+`plugins/`, with repo-local marketplace manifests; the OpenCode and Pi packages
+pin `@ngrislain/ergo-mcp` as a version-matched npm dependency of the plugin,
+while the portable Claude/OpenAI wrappers require a globally installed bridge.
+None is a public marketplace
 release. See [plugin setup](mcp-plugins.md) and [browser approval](access-and-onboarding.md).
 
 ## Release automation
@@ -37,6 +40,11 @@ release. See [plugin setup](mcp-plugins.md) and [browser approval](access-and-on
 targets and WASM assets, assembles/tests the tarball artifact and publishes the
 server image. The maintainer uploads the verified tarball/checksum to its GitHub
 Release. The source package alone is not the assembled bundle.
+The version job also runs the offline plugin guards
+(`scripts/test-plugin-packages.py --pack` packs the real plugin directories and
+validates their contents), and after the verified bridge is on npm the
+`publish-plugins` job publishes `@ngrislain/opencode-ergo` and
+`@ngrislain/ergo-pi`.
 The assembled package contains the native/runtime files, license and distribution
 manifest. Platform checks prevent accidentally packaging a host-only binary.
 
@@ -54,6 +62,18 @@ Configure npm's GitHub trusted publisher for `@ngrislain/ergo-mcp`, repository
 publish job uses GitHub OIDC (`id-token:write`), public access and npm provenance;
 it does not require an `NPM_TOKEN` repository secret. npm may require an interactive
 owner/security-key approval when establishing that trust.
+
+Configure the same trusted publisher for the plugin packages
+`@ngrislain/opencode-ergo` and `@ngrislain/ergo-pi`: the `publish-plugins` job
+publishes them after `publish-npm` verifies the matching bridge, with the same
+OIDC and provenance guarantees, and `scripts/publish-plugins.py` refuses to
+publish a plugin whose pinned bridge is not yet verified on npm. Until those
+two trusted publishers are configured, the `publish-plugins` job fails
+authentication without publishing anything; configure them and re-run the
+`publish_npm` workflow dispatch, which reconciles the already-published
+packages and completes the plugins. Re-running a failed publication is safe
+because every publish reconciles immutable npm versions by exact integrity
+first and never repeats an accepted publication to resolve a delay.
 
 Set repository variable `ERGO_NPM_PUBLISH=true` to publish successful `vVERSION`
 release builds automatically. Manual `workflow_dispatch` with `publish_npm=true`

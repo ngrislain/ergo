@@ -1,10 +1,23 @@
 {
   "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
   "name": "ergo",
-  "version": "0.5.35",
+  "version": "0.5.36",
   "description": "Find LEGO set inspiration and build in the shared Ergo world with human-approved browser sign-in.",
   "author": {"name": "Ergo"},
   "homepage": "https://ergosandbox.com",
   "repository": "https://github.com/ngrislain/ergo",
-  "license": "Apache-2.0"
+  "license": "Apache-2.0",
+  "extensions": {
+    "com.openai": {
+      "interface": {
+        "displayName": "Ergo",
+        "shortDescription": "LEGO set inspiration and shared-world building",
+        "longDescription": "Find LEGO sets by feature for inspiration, then build or edit constructions in the shared Ergo world through a local MCP bridge with human-approved browser sign-in.",
+        "developerName": "Ergo",
+        "category": "Productivity",
+        "capabilities": ["Read", "Write"],
+        "websiteURL": "https://ergosandbox.com"
+      }
+    }
+  }
 }

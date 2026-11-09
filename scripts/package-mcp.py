@@ -31,6 +31,35 @@ def digest(path):
     return hashlib.sha256(path.read_bytes()).hexdigest()
 
 
+def plugin_lock_content(release):
+    """Deterministic npm-shrinkwrap.json for the portable plugin's pinned bridge.
+
+    npm and Claude Code both install from an integrity-free entry with an exact
+    version and an https registry URL; integrity is recorded by the first
+    install. This keeps the lock generatable offline for a version that is not
+    published yet, so one release bump covers the bridge and every plugin.
+    """
+    scope = 'node_modules/@ngrislain/ergo-mcp'
+    lock = {
+        'name': '@ngrislain/ergo-plugin',
+        'version': release,
+        'lockfileVersion': 3,
+        'requires': True,
+        'packages': {
+            '': {
+                'name': '@ngrislain/ergo-plugin',
+                'version': release,
+                'dependencies': {'@ngrislain/ergo-mcp': release},
+            },
+            scope: {
+                'resolved': f'https://registry.npmjs.org/@ngrislain/ergo-mcp/-/ergo-mcp-{release}.tgz',
+                'version': release,
+            },
+        },
+    }
+    return json.dumps(lock, indent=2) + '\n'
+
+
 def output_directory(path):
     assert not path.exists(), f'Output already exists: {path}'
     path.mkdir(parents=True)
@@ -82,12 +111,24 @@ def main():
     npm.add_argument('--artifacts', type=pathlib.Path, required=True)
     npm.add_argument('--output', type=pathlib.Path, required=True)
     npm.add_argument('--allow-partial', action='store_true', help='Local tests only: force private=true to prevent publishing incomplete platform sets')
+    lock = commands.add_parser('plugin-lock')
+    lock.add_argument('--check', action='store_true', help='Verify the committed lock matches this version instead of writing it')
     args = parser.parse_args()
     release = version()
     if args.command == 'version':
         if args.tag:
             assert args.tag == 'v' + release, 'Tag does not match Cargo/npm version'
         print(release)
+        return
+    if args.command == 'plugin-lock':
+        target = ROOT / 'plugins/ergo/npm-shrinkwrap.json'
+        content = plugin_lock_content(release)
+        if args.check:
+            assert target.read_text() == content, 'plugins/ergo/npm-shrinkwrap.json does not match the current version; regenerate it with: python3 scripts/package-mcp.py plugin-lock'
+            print(f'plugins/ergo/npm-shrinkwrap.json matches v{release}')
+            return
+        target.write_text(content)
+        print(f'Wrote plugins/ergo/npm-shrinkwrap.json for v{release}')
         return
     if args.command == 'native':
         check_binary(args.binary, args.platform)

@@ -43,9 +43,14 @@ affects the WASM execution host, not the human's sign-in browser. Complete
 }
 ```
 
+The `plugins/opencode-ergo` server plugin registers this same server (without the
+explicit `--workspace` path) and the `ergo-build` skill in one entry; see
+[MCP plugins](mcp-plugins.md#opencode).
+
 Google sign-in stays in the human's browser. Tokens delegate the signed-in actor,
 expire and are origin/purpose-bound. They are not S3 credentials.
-Installable source wrappers for Codex and Claude Code are documented in
+Installable source plugin packages for Claude Code, ChatGPT/Codex desktop,
+OpenCode and Pi are documented in
 [MCP plugins](mcp-plugins.md); the underlying transport remains standard stdio MCP.
 The dedicated [official Inspector page](mcp-inspector.md) remains unlinked.
 

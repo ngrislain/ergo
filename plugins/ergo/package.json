@@ -1,0 +1,10 @@
+{
+  "name": "@ngrislain/ergo-plugin",
+  "version": "0.5.36",
+  "private": true,
+  "description": "Portable Ergo plugin package for Claude Code and OpenAI desktop hosts.",
+  "license": "Apache-2.0",
+  "dependencies": {
+    "@ngrislain/ergo-mcp": "0.5.36"
+  }
+}

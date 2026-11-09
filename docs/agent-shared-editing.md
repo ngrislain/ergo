@@ -10,7 +10,7 @@ explicit estimated connector tests, long shared operations and component-wise
 stability checks. The matching service release is also required; upgrading the
 client alone does not update server validation or its memory behaviour.
 
-Version 0.5.26 additionally packages [Codex/Claude plugins](mcp-plugins.md),
+Version 0.5.26 additionally packages [agent client plugins](mcp-plugins.md),
 feature-first reference discovery and the feedback harness below. Those additions
 require a matching rebuilt bundle; installing published v0.5.25 does not update
 its tool catalogue retroactively.

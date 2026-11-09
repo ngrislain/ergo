@@ -1,0 +1,21 @@
+{
+  "name": "@ngrislain/ergo-pi",
+  "version": "0.5.36",
+  "description": "Ergo MCP server and LEGO build/inspiration skill for the Pi agent.",
+  "type": "module",
+  "keywords": ["pi-package"],
+  "files": ["extensions", "skills"],
+  "license": "Apache-2.0",
+  "engines": {"node": ">=20"},
+  "publishConfig": {"access": "public"},
+  "dependencies": {
+    "@ngrislain/ergo-mcp": "0.5.36"
+  },
+  "peerDependencies": {
+    "@earendil-works/pi-coding-agent": "*"
+  },
+  "pi": {
+    "extensions": ["./extensions/ergo.ts"],
+    "skills": ["./skills"]
+  }
+}
