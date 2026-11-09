@@ -7,7 +7,7 @@ shared Sandbox. The bridge never grants itself acceptance or direct agent S3 acc
 ## Install and configure
 
 ```sh
-npm install --global --ignore-scripts @ngrislain/ergo-mcp@0.5.34
+npm install --global --ignore-scripts @ngrislain/ergo-mcp@0.5.35
 ergo-mcp --login --publish-url https://ergosandbox.com
 ```
 
@@ -153,7 +153,7 @@ Existing construction edits preserve their absolute accepted positions.
 
 ## Native construction and editing
 
-Unreleased source after v0.5.34 uses [paged shared authoring](paged-authoring.md).
+v0.5.35 uses [paged shared authoring](paged-authoring.md).
 `open_shared_construction` loads a manifest, not geometry. Explicitly call
 `read_construction_page` with spatial `bounds`, piece `ids`, or a continuation
 `cursor`; `append:true` keeps previous pages within the 2,048-piece/32 MiB resident

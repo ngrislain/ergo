@@ -1,6 +1,6 @@
 # Coupled partitioned static stability
 
-Implemented in **v0.5.35 source**, on native and WASM. This
+Implemented in **v0.5.35**, on native and WASM. This
 extends the same fixed-pose, nominal-contact/connector model; it is not elasticity,
 settling, earthquake simulation or a real-ABS strength guarantee.
 

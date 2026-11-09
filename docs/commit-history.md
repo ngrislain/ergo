@@ -76,7 +76,7 @@ does not retain an unbounded queue or pin every old snapshot. See
 
 ## Bounded native commit records
 
-Implemented in **v0.5.35 source**. Canonical format-3 bytes,
+Implemented in **v0.5.35**. Canonical format-3 bytes,
 commit IDs, list order, roots, base/parent relationships and acceptance semantics
 are unchanged. A byte-for-byte reference test compares the streamed envelope to
 the ordinary canonical encoder. No accepted-world data rewrite is required.

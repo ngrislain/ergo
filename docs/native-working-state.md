@@ -1,6 +1,6 @@
 # Native disk-backed working state
 
-Implemented in **v0.5.35 source**. Native transaction, authoring traversal and
+Implemented in **v0.5.35**. Native transaction, authoring traversal and
 physical working records are disk-backed. This is not a fixed whole-process RSS
 guarantee, a resumable authoring session, or an additional accepted-world database.
 

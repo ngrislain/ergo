@@ -1,6 +1,6 @@
 # Paged construction authoring
 
-This is implemented in **v0.5.35 source**. Deploy matching rebuilt server,
+This is implemented in **v0.5.35**. Deploy matching rebuilt server,
 MCP and viewer assets together. Old whole-workspace `PUT` requests are rejected;
 there is no compatibility save path.
 `/api/config` advertises `authoring_format:"ergo-workspace-2"` and

@@ -5,13 +5,13 @@
 The current prebuilt client is published on npm with GitHub Actions provenance:
 
 ```sh
-npm install --global --ignore-scripts @ngrislain/ergo-mcp@0.5.34
+npm install --global --ignore-scripts @ngrislain/ergo-mcp@0.5.35
 ergo-mcp --version
 ```
 
-The identical complete tarball and `SHA256SUMS` are also available on the
-[v0.5.34 GitHub Release](https://github.com/ngrislain/ergo/releases/tag/v0.5.34).
-Verify its `SHA256SUMS`, registry integrity/provenance and an installed MCP client
+The identical complete tarball and `ngrislain-ergo-mcp-0.5.35.tgz.sha256` are also available on the
+[v0.5.35 GitHub Release](https://github.com/ngrislain/ergo/releases/tag/v0.5.35).
+Verify its checksum sidecar, registry integrity/provenance and an installed MCP client
 using the release verification workflow below.
 
 It bundles native bridges for macOS/Linux ARM64/x64 and their matching WASM client.
@@ -94,11 +94,47 @@ coordinated storage migration and matching client upgrade accompany a breaking
 format change. Bound caches reload authoritative state; they are not data roots.
 
 `ERGO_MCP_PACKAGE` is the public website's installation-source setting. Production
-is promoted to `@ngrislain/ergo-mcp@0.5.34` only after registry/consumer verification;
+is promoted to `@ngrislain/ergo-mcp@0.5.35` only after registry/consumer verification;
 npm trusted publication is enabled. Never embed a token,
 S3 credentials or a credential-bearing URL in the package configuration.
 
-## Verified v0.5.34 release
+## Verified v0.5.35 release
+
+The tagged source is `296bd2833e77ad0a4542e849c6a561f6f3dc4903`.
+[Release workflow 42593581588](https://github.com/ngrislain/ergo/actions/runs/42593581588)
+and [engine/admission workflow 42593573347](https://github.com/ngrislain/ergo/actions/runs/42593573347)
+passed. Local release validation passed 417 tests, with one live-S3 test skipped;
+browser/MCP integration, complete 6,000-piece browser views, service-worker and
+catalogue checks, ten infrastructure tests and cache-migration guards also passed.
+
+The complete four-platform npm bundle matches the tested CI artifact and GitHub
+Release asset. Its SHA-256 is
+`09c8a926b3e75458b1595fd01c3110a9969cd0cc92ce7764d2511a1b8229f3fe`;
+npm integrity is
+`sha512-KZreZOdF1WbgPfSk6x4wraVFlmu0a59ZGMlz6VjKBjOYGZUtIbm/o12iw2XdJFnnoCRj/8oa/duHXuXRntT7wA==`.
+An outside-checkout, offline `--ignore-scripts` installation passed the actual
+native/WASM MCP editing, physics, grouping and rendering/browser smoke.
+
+The API/workbench runs the publicly pullable Linux/AMD64 image
+`ghcr.io/ngrislain/ergo@sha256:8d1f4f9a37b8e9752af5357e1b0af20399542b61c38a1875454763b22eed3728`.
+Its source/version labels match the tag; the actual container smoke verifies
+non-root writes to disk-backed scratch. The inspected/apply-matched OpenTofu plan
+updated one existing container in place: image, ephemeral disk (1,000,000,000 to
+4,295,000,000 bytes) and `TMPDIR`/`SQLITE_TMPDIR` (`/var/lib/ergo-tmp`). CPU (1 vCPU),
+RAM (2,148,000,000 bytes), one-hour deadline, scale-to-zero settings, secrets and
+all other environment/resources were unchanged. The private image pointer and
+backup were refreshed, with exact backup readback and unsigned access denied.
+A post-deployment plan using the pinned private configuration reported no changes.
+
+After deployment `/api/config` returned v0.5.35, `ergo-workspace-2` and `ergo-edit-1`.
+The world ID, accepted head, frozen model and part-library revision were unchanged;
+HTML/JS/WASM endpoints returned 200. An existing construction returned a metadata-only
+manifest and a revision-pinned one-piece `ergo-authoring-page-1` with continuation.
+No production construction edit or large-castle save was attempted; these checks
+are not a fixed-RSS or arbitrary-size publication guarantee. Upgrade matching
+clients and use the [safe bound-cache migration](paged-authoring.md#forward-migration).
+
+## Historical v0.5.34 verification
 
 The tagged source is `c2c5e43d80007390f02e0e92d499a141f75d4ea6`.
 [Release workflow 42498676528](https://github.com/ngrislain/ergo/actions/runs/42498676528)
@@ -110,13 +146,13 @@ Release asset. Its SHA-256 is
 An outside-checkout, offline `--ignore-scripts` consumer installation also passed
 the real native/WASM MCP editing, physics and rendering smoke.
 
-The API/workbench runs the verified Linux/AMD64 image
+That release deployed the verified Linux/AMD64 image
 `ghcr.io/ngrislain/ergo@sha256:7f4634eca088e738100e7c81e0d344dc97ceb66e2b708dc613ffada6347cb559`.
-The applied plan changed only that image: CPU (1 vCPU), RAM (2,148,000,000 bytes),
+Its applied plan changed only that image: CPU (1 vCPU), RAM (2,148,000,000 bytes),
 one-hour deadline, scale-to-zero settings, authentication/environment, world and
-part library were preserved. The pinned private configuration has no post-deploy
-OpenTofu drift. `/api/config` reports v0.5.34, and the current served viewer/MCP
-WASM includes the component-wise stability report. Authenticated read-back of
+part library were preserved. The pinned private configuration had no post-deploy
+OpenTofu drift. At that verification `/api/config` reported v0.5.34, and the served viewer/MCP
+WASM included the component-wise stability report. Authenticated read-back of
 the castle header confirms the same 27,833 pieces and accepted revision as before
 deployment. No castle edit was attempted as part of this release; a successful
 read is not proof that a large save now succeeds.

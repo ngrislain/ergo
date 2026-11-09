@@ -67,11 +67,11 @@ The prebuilt bundle includes native binaries and WASM assets; consumers need
 Node.js 20+ and Chrome/Chromium, not Rust.
 
 ```sh
-npm install --global --ignore-scripts @ngrislain/ergo-mcp@0.5.34
+npm install --global --ignore-scripts @ngrislain/ergo-mcp@0.5.35
 ergo-mcp --login --publish-url https://ergosandbox.com
 ```
 
-The [GitHub Release](https://github.com/ngrislain/ergo/releases/tag/v0.5.34)
+The [GitHub Release](https://github.com/ngrislain/ergo/releases/tag/v0.5.35)
 also provides the verified complete tarball and checksum.
 
 In v0.5.26, `--login` opens browser sign-in, asks the human to approve
@@ -95,7 +95,7 @@ use `open_shared_construction` with its ID or a specified position. Accepted
 mutations update the same shared assembly automatically; the working file is a
 cache. Read the confirmed `shared_commit` receipt.
 
-v0.5.35 source uses [paged authoring](docs/paged-authoring.md):
+v0.5.35 uses [paged authoring](docs/paged-authoring.md):
 opening a construction loads its manifest; `read_construction_page` loads spatial
 bounds or selected IDs. Sparse edits preserve unloaded members. Upgrade matching
 server/native/WASM together and explicitly migrate bound caches. Group headers

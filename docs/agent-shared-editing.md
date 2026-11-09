@@ -3,7 +3,7 @@
 There is one **public Ergo Sandbox**. Anyone can view it; signed-in users can
 edit it, subject to pacing and physical validation. Current MCP clients commit
 accepted edits to that same S3-backed world automatically. A working file is a
-cache, not a private world. Use MCP **v0.5.34** for current cells, attachment
+cache, not a private world. Use MCP **v0.5.35** for paged authoring, current cells, attachment
 checks and canonical part/construct references,
 coherent grid snapping, proper-isometry checks, per-piece stability diagnostics,
 explicit estimated connector tests, long shared operations and component-wise
@@ -170,7 +170,7 @@ authoritative; uncertain writes are not automatically repeated.
 
 ## Acceptance, conflicts, and cache recovery
 
-Unreleased source after v0.5.34 opens only a manifest. Use
+v0.5.35 opens only a manifest. Use
 `read_construction_page` to load spatial bounds or exact IDs, and its cursor for
 bounded continuation. All local feedback is scoped to the resident view; never
 infer whole-model stability or absence of groups from a partial page. Existing
