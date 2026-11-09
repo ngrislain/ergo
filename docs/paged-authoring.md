@@ -1,6 +1,6 @@
 # Paged construction authoring
 
-This is **unreleased source after v0.5.34**. Deploy matching rebuilt server,
+This is implemented in **v0.5.35 source**. Deploy matching rebuilt server,
 MCP and viewer assets together. Old whole-workspace `PUT` requests are rejected;
 there is no compatibility save path.
 `/api/config` advertises `authoring_format:"ergo-workspace-2"` and
@@ -168,11 +168,12 @@ The [coupled interface-force solver](partitioned-stability.md) now bounds local
 SOCP factorization and independently checks one assembled witness body-by-body.
 [Native working-state spilling](native-working-state.md) now externalizes staged
 objects, predicates, edit journals, dependency indexes/frontiers and rule-diff rows.
-Durable authoring sessions, asynchronous publication and fully out-of-core physical
-input remain unimplemented. Shared-native geometry now uses disk-backed normalized
-bodies and paged spatial candidates, not a complete affected pose vector. Assembly
-rules, cached geometry, global joint lists, scalar component indexes and each
-complete mechanical component's body/contact/planner/verifier inputs still materialize.
+Durable authoring sessions and asynchronous publication remain unimplemented.
+Shared-native geometry uses disk-backed normalized bodies and paged spatial
+candidates, not a complete affected pose vector. Constraint collections, component
+membership, compression state, canonical solver inputs and planner/verifier indexes
+spill too. Assembly rules, cached geometry and affected-ID/audit sets can remain
+resident under their existing budgets; local/full exports explicitly materialize.
 Native solver plan/interface records, reaction state and the piece cache now
 spill through [the paged workspace](partitioned-stability.md#paged-coordinator-state).
 Commit

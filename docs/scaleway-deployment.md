@@ -22,6 +22,13 @@ state, saved plans and `.env` are ignored and never belong in a source commit.
 - Application S3 access/secret, region, endpoint and prefix.
 - Google Web client ID/secret, stable session-signing key and public origin.
 - Common world ID/prefix, brick-change pacing and map-provider configuration.
+- The current module preserves 2,148,000,000 bytes of RAM and allocates
+  4,295,000,000 bytes of ephemeral disk, using the API's whole-decimal-MB precision.
+  `TMPDIR` and `SQLITE_TMPDIR` are fixed to the image-owned mode-0700
+  `/var/lib/ergo-tmp`. In sandbox v2, `/tmp` is RAM-backed; the rest of the writable
+  layer is disk-backed. Do not override these managed scratch variables to tmpfs.
+  Ephemeral disk is disposable and not encrypted at rest by the platform; use
+  private permissions and never treat it as accepted storage or a backup.
 - `request_timeout_seconds`: container processing deadline, default 3600 seconds,
   configurable from 10 to 3600, matching the provider's supported range. Long loads
   can use the full one-hour deadline; native MCP/client deadlines are separate. Longer deadlines do not retry
@@ -76,3 +83,7 @@ MCP accepted read-back, allowance and clean shutdown/scale behavior.
 
 The private bucket-root configuration backup is `_ops/ergo/production.env`.
 It is a recovery artifact, not an alternate database or a substitute for state.
+
+Storage behavior is documented in Scaleway's
+[container sandbox reference](https://www.scaleway.com/en/docs/serverless-containers/reference-content/containers-sandbox/)
+and [access/security FAQ](https://www.scaleway.com/en/docs/serverless-containers/faq/).

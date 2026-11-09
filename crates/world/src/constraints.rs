@@ -62,29 +62,33 @@ pub fn validate_joint_ids(
             j.a != j.b && ids.contains(&j.a) && ids.contains(&j.b),
             "Joint references an absent or identical body"
         );
-        ensure!(j.anchor.is_finite(), "Invalid joint anchor");
-        ensure!(
-            j.break_force.is_none_or(|f| f.is_finite() && f > 0.0)
-                && j.break_torque.is_none_or(|f| f.is_finite() && f > 0.0),
-            "Connection capacities must be positive and finite"
-        );
-        if let JointKind::Revolute { axis, limits } = &j.kind {
-            ensure!(
-                axis.is_finite() && axis.length() > 1e-8,
-                "Hinge axis must be nonzero"
-            );
-            if let Some([lo, hi]) = limits {
-                ensure!(
-                    lo.is_finite() && hi.is_finite() && lo <= hi,
-                    "Invalid hinge limits"
-                );
-            }
-        }
+        validate_joint_spec(j)?;
     }
     ensure!(
         fixed.iter().all(|id| ids.contains(id)),
         "Fixed body is absent"
     );
+    Ok(())
+}
+pub fn validate_joint_spec(j: &JointSpec) -> Result<()> {
+    ensure!(j.anchor.is_finite(), "Invalid joint anchor");
+    ensure!(
+        j.break_force.is_none_or(|f| f.is_finite() && f > 0.0)
+            && j.break_torque.is_none_or(|f| f.is_finite() && f > 0.0),
+        "Connection capacities must be positive and finite"
+    );
+    if let JointKind::Revolute { axis, limits } = &j.kind {
+        ensure!(
+            axis.is_finite() && axis.length() > 1e-8,
+            "Hinge axis must be nonzero"
+        );
+        if let Some([lo, hi]) = limits {
+            ensure!(
+                lo.is_finite() && hi.is_finite() && lo <= hi,
+                "Invalid hinge limits"
+            );
+        }
+    }
     Ok(())
 }
 pub fn connected_group(id: u32, joints: &[JointSpec]) -> HashSet<u32> {

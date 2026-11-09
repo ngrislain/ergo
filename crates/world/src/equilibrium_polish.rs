@@ -186,6 +186,71 @@ impl Operator<'_, '_> {
 /// four active-set passes freeze negative normals at zero; they do not invent
 /// reactions. The caller always checks all balances again after clipping.
 pub(super) fn correct_workspace<W: ReactionWrite + ?Sized>(
+    input: &dyn ProblemInput,
+    layout: &Layout,
+    witness: &mut W,
+) -> Result<usize> {
+    let s = input.size();
+    // The optional correction owns numeric metadata, not part strings or poses.
+    // Include it in the SAME 32 MiB cap as all five body-row vectors, scalar
+    // scratch, active mask and ID index. Oversized corrections are skipped.
+    let bytes = s
+        .bodies
+        .saturating_mul(std::mem::size_of::<Brick>() + 8 + 6 * 5 * 8 + 64)
+        .saturating_add(s.joints.saturating_mul(std::mem::size_of::<JointSpec>()))
+        .saturating_add(s.contacts.saturating_mul(std::mem::size_of::<Contact>()))
+        .saturating_add(
+            s.supports
+                .saturating_mul(std::mem::size_of::<(usize, DVec3)>()),
+        )
+        .saturating_add(s.anchors.saturating_mul(std::mem::size_of::<usize>()))
+        .saturating_add(layout.columns.saturating_mul(9));
+    if bytes > MAX_WORKSPACE_BYTES {
+        return Ok(0);
+    }
+    let mut bricks = Vec::with_capacity(s.bodies);
+    let mut masses = Vec::with_capacity(s.bodies);
+    for i in 0..s.bodies {
+        let b = input.body(i)?;
+        let bounds = crate::Aabb::new(b.bounds.center(), b.bounds.center());
+        bricks.push(Brick {
+            id: b.id,
+            part: String::new(),
+            color: 0,
+            rgb: 0,
+            position: DVec3::ZERO,
+            transform: glam::DMat3::IDENTITY,
+            bounds,
+            render_bounds: bounds,
+            step: 0,
+        });
+        masses.push(input.mass(i)?);
+    }
+    let mut joints = Vec::with_capacity(s.joints);
+    for i in 0..s.joints {
+        let mut j = input.joint(i)?.into_owned();
+        j.strength_source = None;
+        joints.push(j);
+    }
+    let problem = Problem {
+        bricks: Bodies::all(&bricks),
+        joints: &joints,
+        contacts: (0..s.contacts)
+            .map(|i| input.contact(i))
+            .collect::<Result<_>>()?,
+        supports: (0..s.supports)
+            .map(|i| input.support(i))
+            .collect::<Result<_>>()?,
+        anchored: (0..s.anchors)
+            .map(|i| input.anchor(i))
+            .collect::<Result<_>>()?,
+        masses,
+        force_tolerance: input.tolerances().0,
+        torque_tolerance: input.tolerances().1,
+    };
+    correct_numeric_workspace(&problem, layout, witness)
+}
+fn correct_numeric_workspace<W: ReactionWrite + ?Sized>(
     problem: &Problem,
     layout: &Layout,
     witness: &mut W,

@@ -47,6 +47,14 @@ run "scale_zero_existing_bucket_and_apex_domain" {
     error_message = "Memory must provide at least 2 GiB in whole decimal MB to match the API's precision."
   }
   assert {
+    condition     = scaleway_container.api.memory_limit_bytes == 2148000000 && scaleway_container.api.local_storage_limit_bytes == 4295000000
+    error_message = "Spilling must add disk capacity without increasing the existing RAM allocation."
+  }
+  assert {
+    condition     = scaleway_container.api.environment_variables["TMPDIR"] == "/var/lib/ergo-tmp" && scaleway_container.api.environment_variables["SQLITE_TMPDIR"] == "/var/lib/ergo-tmp"
+    error_message = "Scaleway v2 /tmp consumes RAM; all scratch must use the image's owned disk-backed directory."
+  }
+  assert {
     condition     = scaleway_container.api.environment_variables["S3_BUCKET"] == "ergo" && scaleway_container.api.environment_variables["S3_ENDPOINT"] == "https://s3.fr-par.scw.cloud"
     error_message = "The API must use the existing ergo bucket and regional path-style S3 endpoint."
   }
@@ -103,5 +111,11 @@ run "reject_public_development_identity" {
 run "reject_origin_override" {
   command = plan
   variables { extra_environment_variables = { ERGO_PUBLIC_URL = "http://localhost:3000" } }
+  expect_failures = [var.extra_environment_variables]
+}
+
+run "reject_ram_backed_scratch_override" {
+  command = plan
+  variables { extra_environment_variables = { TMPDIR = "/tmp" } }
   expect_failures = [var.extra_environment_variables]
 }

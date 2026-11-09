@@ -410,13 +410,19 @@ impl Columns {
 }
 
 pub(super) struct NativeSolverWorkspace {
+    store: ergo_transactions::spill::SpillStore,
     plans: SpillMap<u64, PartitionPlan>,
     columns: Mutex<Columns>,
     len: usize,
+    components: super::validation_workspace::NativeValidationState,
+    compression: super::validation_workspace::NativeValidationState,
+    planner: super::validation_workspace::NativeValidationState,
+    verifier: super::validation_workspace::NativeValidationState,
 }
 impl NativeSolverWorkspace {
     pub fn new(tx: &Transaction) -> Result<Self> {
         Ok(Self {
+            store: tx.local_store(),
             plans: tx.local_map()?,
             columns: Mutex::new(Columns {
                 pages: tx.local_map()?,
@@ -427,6 +433,10 @@ impl NativeSolverWorkspace {
                 failed: None,
             }),
             len: 0,
+            components: super::validation_workspace::NativeValidationState::new(tx)?,
+            compression: super::validation_workspace::NativeValidationState::new(tx)?,
+            planner: super::validation_workspace::NativeValidationState::new(tx)?,
+            verifier: super::validation_workspace::NativeValidationState::new(tx)?,
         })
     }
     fn with<T>(&self, f: impl FnOnce(&mut Columns) -> Result<T>) -> Result<T> {
@@ -475,6 +485,31 @@ impl ReactionWrite for NativeSolverWorkspace {
     }
 }
 impl SolverWorkspace for NativeSolverWorkspace {
+    fn new_state(&self) -> Result<Box<dyn ergo_world::validation::ValidationState>> {
+        Ok(Box::new(
+            super::validation_workspace::NativeValidationState::from_store(&self.store)?,
+        ))
+    }
+    fn planner_state(&self) -> &dyn ergo_world::validation::ValidationState {
+        &self.planner
+    }
+    fn planner_state_mut(&mut self) -> &mut dyn ergo_world::validation::ValidationState {
+        &mut self.planner
+    }
+    fn verifier_state(&self) -> &dyn ergo_world::validation::ValidationState {
+        &self.verifier
+    }
+    fn verifier_state_mut(&mut self) -> &mut dyn ergo_world::validation::ValidationState {
+        &mut self.verifier
+    }
+    fn validation_state(
+        &mut self,
+    ) -> (
+        &mut dyn ergo_world::validation::ValidationState,
+        &mut dyn ergo_world::validation::ValidationState,
+    ) {
+        (&mut self.components, &mut self.compression)
+    }
     fn reset(&mut self, columns: usize) -> Result<()> {
         self.plans.clear().map_err(unavailable)?;
         self.with(|state| state.reset(columns))?;

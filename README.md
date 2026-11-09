@@ -95,7 +95,7 @@ use `open_shared_construction` with its ID or a specified position. Accepted
 mutations update the same shared assembly automatically; the working file is a
 cache. Read the confirmed `shared_commit` receipt.
 
-Unreleased source after v0.5.34 uses [paged authoring](docs/paged-authoring.md):
+v0.5.35 source uses [paged authoring](docs/paged-authoring.md):
 opening a construction loads its manifest; `read_construction_page` loads spatial
 bounds or selected IDs. Sparse edits preserve unloaded members. Upgrade matching
 server/native/WASM together and explicitly migrate bound caches. Group headers
@@ -104,13 +104,14 @@ and complete bounded descendant-group reads are available separately.
 checks one assembled force/moment witness, including any matrix-free balance
 correction. [Native working state](docs/native-working-state.md) spills staged
 objects, predicates, edit journals and dependency indexes to bounded local disk
-stores. This is not yet an out-of-core physical-validation guarantee.
+stores. This is not a fixed whole-process RAM guarantee.
 Commit histories use verified file-backed iteration without retaining whole
 decoded edit lists; conditional upload still uses one capped encoded buffer.
 Shared-native equilibrium now pages partition/interface and reaction state through
 the same physical algorithm. Geometry checks use normalized disk-backed bodies and
-paged spatial candidates; certification still loads one complete mechanical
-component, with resident global joint/component and per-component solver indexes.
+paged spatial candidates. Joint/component collections, compression order/loads,
+canonical equilibrium inputs and independent planner/verifier indexes now spill
+too; only bounded local kernels and capped numeric correction buffers materialize.
 See [input limits](docs/native-working-state.md#streamed-physical-input) and
 [workspace limits](docs/partitioned-stability.md#paged-coordinator-state).
 

@@ -13,7 +13,7 @@ import urllib.request
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 parser = argparse.ArgumentParser()
-parser.add_argument("--server-binary", default=str(ROOT / "target/debug/ergo-server"))
+parser.add_argument("--server-binary", default=str(pathlib.Path(os.environ.get("ERGO_TEST_BIN_DIR", ROOT / "target/debug")).resolve() / "ergo-server"))
 parser.add_argument("--artifacts", default=str(ROOT / ".playwright-mcp"))
 parser.add_argument("--script", default=str(ROOT / "scripts/test-web.py"))
 parser.add_argument("script_args", nargs=argparse.REMAINDER, help="Arguments after -- are forwarded to the script")

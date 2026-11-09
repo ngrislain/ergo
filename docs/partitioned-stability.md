@@ -1,6 +1,6 @@
 # Coupled partitioned static stability
 
-Implemented in **unreleased source after v0.5.34**, on native and WASM. This
+Implemented in **v0.5.35 source**, on native and WASM. This
 extends the same fixed-pose, nominal-contact/connector model; it is not elasticity,
 settling, earthquake simulation or a real-ABS strength guarantee.
 
@@ -79,7 +79,9 @@ Each attempt has at most four active-set passes of 1,024 iterations. A negative
 normal is fixed at zero before another pass; clipping does not itself certify
 equilibrium. The numeric-buffer/body-index workspace estimate is capped at
 32 MiB (five six-component body-row vectors, one scalar-column scratch vector,
-an active mask and an estimated body-ID index); an oversized correction is
+an active mask, an estimated body-ID index and the materialized numeric-only
+body/joint/contact/support metadata). Part/source strings are excluded from this
+numeric adapter. An oversized correction is
 skipped, without changing ADMM limits or
 allocating a larger solver. This is not a whole-process RSS guarantee.
 
@@ -102,8 +104,9 @@ the transaction-backed implementation in `shared/equilibrium_workspace.rs`.
 
 The planner builds one bounded core/halo record at a time from canonical incident
 edges and writes it to the workspace. It no longer retains every full plan and
-boundary-dual vector simultaneously. Cores, owner/incident indexes and canonical
-input geometry still materialize during planning. Plan records are checked for
+boundary-dual vector simultaneously. Morton ordering, cores, owner/incident indexes
+and canonical physical inputs use fallible record stores. Only the active bounded
+core/halo sets and its local input materialize. Plan records are checked for
 dimensions, endpoint/source identities and local column/KKT bounds when loaded.
 They never supply fictitious anchors or override the canonical problem.
 
@@ -125,7 +128,7 @@ guarantee or a claim that every small problem physically writes scalar pages.
 The independent checker reads the complete canonical witness through
 `ReactionRead`; bounded dense SOCP candidates use the same checker through a slice
 adapter. Matrix-free correction reads/writes that witness directly through
-`ReactionWrite`, retaining only its existing explicitly bounded scratch vectors.
+`ReactionWrite`, retaining only its explicitly bounded numeric metadata/scratch vectors.
 Neither phase copies the complete paged witness into a hidden dense input vector.
 
 ## Independent body-at-a-time checking
@@ -134,9 +137,10 @@ Neither phase copies the complete paged witness into a hidden dense input vector
 problem, not from the partition plans. It checks every joint capacity and every
 contact/ground normal reaction, then accumulates gravity and incident wrenches
 **one body at a time**, using the real application points. There is no
-whole-scene force/moment accumulator array. The independently constructed incidence
-index still resides in memory; native witness values are fetched from the paged
-workspace, while the browser/local default keeps its records resident.
+whole-scene force/moment accumulator array. Its independent incidence and ID records
+spill natively and are checked against per-body expected counts; missing rows are
+inconclusive, never fewer force equations. Native witness values are fetched from
+the paged workspace, while the browser/local default keeps its records resident.
 
 Accumulation uses compensated summation and a conservative floating roundoff
 allowance. Catastrophic cancellation cannot hide a body's small weight behind
@@ -205,31 +209,32 @@ The spill fields count logical records assigned to a spilling backend, including
 records currently in its bounded dirty-page cache. They are not physical I/O-byte
 counts or proof of a RAM saving for a problem that already fits in that cache.
 
-This implements coupled local factorization and body-wise witness checking,
-**not fully out-of-core validation**. Shared-native geometry checks use
+This implements streamed shared-native physical working state, coupled local
+factorization and independent body-wise checking. Shared-native geometry checks use
 [disk-backed bodies and paged spatial candidates](native-working-state.md#streamed-physical-input)
 through the same gate as the resident local/WASM slice. All physical edges are
-discovered before loading one complete component for compression/equilibrium;
-spatial pages are not independent supports. The global joint/fixed lists, scalar
-component indexes, current component's complete body/contact input, planner
-owner/incident indexes and independent witness incidence still materialize.
-Native partition/interface records and reaction state now spill;
+discovered before certification; spatial pages are not independent supports.
+Global constraint collections, component membership, height-ordered compression
+loads, canonical body/contact inputs and planner/verifier indexes now spill.
+Only bounded local kernels and the capped optional numeric correction materialize.
+Native partition/interface records and reaction state also spill;
 the browser/local default retains its workspace records in memory.
 [Native transaction/authoring state](native-working-state.md) now spills staged
 objects, predicates, edit journals and dependency traversal/index data. Assembly
 rules and cached mesh/spatial data still materialize. The native piece cache and
-normalized physical-body/index records are disk-backed; no complete affected pose
-vector is constructed, but the largest mechanical component is still resident.
+normalized physical-body/index records are disk-backed; neither a complete affected
+pose vector nor a complete mechanical-component vector is constructed for native
+physical certification. Explicit local/full-scene APIs retain their caller-owned
+scenes, and application rules/affected-ID/audit sets can remain resident.
 Commit-record lists now use
 [file-backed iteration](commit-history.md#bounded-native-commit-records), though
 conditional upload retains a capped encoded buffer. Durable solver
-checkpoints, persisted force-witness reuse, fully out-of-core physical inputs and
-asynchronous publication jobs remain future work.
+checkpoints, persisted force-witness reuse and asynchronous publication jobs remain future work.
 Do not infer that a large castle save now fits a fixed process RAM budget from
 the local solver limits alone.
 
-Sources: `crates/world/src/{equilibrium,equilibrium_partitioned,equilibrium_workspace,equilibrium_polish,equilibrium_verify,validation,validation_input,validation_components}.rs`,
-`crates/server/src/shared/{equilibrium_workspace,validation_input}.rs`.
+Sources: `crates/world/src/{equilibrium,equilibrium_input,equilibrium_planner,equilibrium_partitioned,equilibrium_workspace,equilibrium_polish,equilibrium_verify,validation,validation_input,validation_components,validation_constraints,validation_workspace}.rs`,
+`crates/server/src/shared/{equilibrium_workspace,validation_input,validation_workspace}.rs`.
 The consensus framework follows [Boyd et al., ADMM (2011)](https://web.stanford.edu/~boyd/papers/admm_distr_stats.html);
 general convex convergence theory does not guarantee finite-time convergence of
 every concrete scene or inexact numerical subproblem.

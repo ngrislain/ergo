@@ -29,6 +29,12 @@ def main():
     assert image["Config"]["WorkingDir"] == "/app"
     baked_environment = {entry.split("=", 1)[0] for entry in image["Config"].get("Env", [])}
     assert not {"AWS_ACCESS_KEY_ID", "AWS_SECRET_ACCESS_KEY", "GOOGLE_CLIENT_SECRET", "ERGO_SESSION_SECRET"} & baked_environment
+    values = dict(entry.split("=", 1) for entry in image["Config"].get("Env", []))
+    assert values.get("TMPDIR") == values.get("SQLITE_TMPDIR") == "/var/lib/ergo-tmp"
+    filesystem = engine("run", "--rm", "--pull=never", "--platform", "linux/amd64",
+        "--tmpfs", "/tmp:rw,size=1m", "--entrypoint", "sh", args.image, "-ec",
+        'test -w "$TMPDIR"; test "$TMPDIR" = "$SQLITE_TMPDIR"; mktemp -p "$TMPDIR" >/dev/null; stat -f -c %T "$TMPDIR"').strip()
+    assert filesystem not in {"tmpfs", "ramfs"}, "Validation scratch must not consume a RAM-backed filesystem"
 
     name = "ergo-container-smoke-" + uuid.uuid4().hex[:12]
     created = False
@@ -108,7 +114,7 @@ def main():
         engine("stop", "--time", "10", name)
         state = json.loads(engine("inspect", name))[0]["State"]
         assert state["ExitCode"] == 0, state
-        print(f"Container smoke passed ({args.engine}): Linux/AMD64, non-root startup, HTML/JS/WASM, "
+        print(f"Container smoke passed ({args.engine}): Linux/AMD64, non-root disk-backed scratch, startup, HTML/JS/WASM, "
               "file import/save/read-back, and graceful SIGTERM shutdown.")
     except Exception:
         if created:

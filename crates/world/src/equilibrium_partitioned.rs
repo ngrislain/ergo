@@ -51,7 +51,7 @@ fn inconclusive(message: impl Into<String>) -> anyhow::Error {
 }
 
 fn load_plan(
-    problem: &Problem,
+    problem: &dyn ProblemInput,
     layout: &Layout,
     options: PartitionOptions,
     workspace: &dyn SolverWorkspace,
@@ -67,42 +67,45 @@ fn load_plan(
     );
     let bodies: BTreeSet<_> = plan.bodies.iter().copied().collect();
     ensure!(
-        bodies.len() == plan.bodies.len() && bodies.iter().all(|i| *i < problem.bricks.len()),
+        bodies.len() == plan.bodies.len() && bodies.iter().all(|i| *i < problem.size().bodies),
         "Invalid partition body indices"
     );
+    let expected = plan
+        .bodies
+        .iter()
+        .map(|&i| problem.body(i).map(|b| b.id as usize))
+        .collect::<Result<Vec<_>>>()?;
     ensure!(
-        plan.source_indices.len() == plan.bodies.len()
-            && plan
-                .source_indices
-                .iter()
-                .zip(&plan.bodies)
-                .all(|(&source, &i)| source
-                    == problem.bricks.indices.map_or(i, |indices| indices[i])),
+        plan.source_indices == expected,
         "Partition source identities changed"
     );
-    let ids: BTreeSet<_> = plan.bodies.iter().map(|&i| problem.bricks[i].id).collect();
-    ensure!(
-        plan.joints.iter().all(|&j| problem
-            .joints
-            .get(j)
-            .is_some_and(|j| ids.contains(&j.a) && ids.contains(&j.b)))
-            && plan.contacts.iter().all(|&c| problem
-                .contacts
-                .get(c)
-                .is_some_and(|c| bodies.contains(&c.lower) && bodies.contains(&c.upper))),
-        "Partition lost an endpoint"
-    );
-    ensure!(
-        plan.supports.iter().all(|&k| problem
-            .supports
-            .get(k)
-            .is_some_and(|v| bodies.contains(&v.0)))
-            && plan
-                .anchored
-                .iter()
-                .all(|&k| problem.anchored.get(k).is_some_and(|i| bodies.contains(i))),
-        "Invalid partition support indices"
-    );
+    let ids: BTreeSet<_> = expected.iter().map(|&i| i as u32).collect();
+    for &j in &plan.joints {
+        let j = problem.joint(j)?;
+        ensure!(
+            ids.contains(&j.a) && ids.contains(&j.b),
+            "Partition lost an endpoint"
+        );
+    }
+    for &c in &plan.contacts {
+        let c = problem.contact(c)?;
+        ensure!(
+            bodies.contains(&c.lower) && bodies.contains(&c.upper),
+            "Partition lost an endpoint"
+        );
+    }
+    for &s in &plan.supports {
+        ensure!(
+            bodies.contains(&problem.support(s)?.0),
+            "Invalid partition support indices"
+        );
+    }
+    for &a in &plan.anchored {
+        ensure!(
+            bodies.contains(&problem.anchor(a)?),
+            "Invalid partition support indices"
+        );
+    }
     let columns = plan.joints.len() * 6
         + plan.contacts.len() * 4
         + plan.supports.len()
@@ -129,265 +132,15 @@ fn load_plan(
     Ok(plan)
 }
 
-fn plans(
-    problem: &Problem,
-    options: PartitionOptions,
-    layout: &Layout,
-    workspace: &mut dyn SolverWorkspace,
-) -> Result<(usize, usize)> {
-    let n = problem.bricks.len();
-    let index: HashMap<_, _> = problem
-        .bricks
-        .iter()
-        .enumerate()
-        .map(|(i, b)| (b.id, i))
-        .collect();
-    let mut order: Vec<_> = (0..n).collect();
-    let bounds = problem
-        .bricks
-        .iter()
-        .map(|b| b.bounds)
-        .reduce(crate::Aabb::union)
-        .expect("nonempty validated problem");
-    let side = bounds.size().max_element().max(1e-9);
-    let spatial_key = |i: usize| {
-        let p = (problem.bricks[i].bounds.center() - bounds.min) / side;
-        let q = [p.x, p.y, p.z].map(|v| (v.clamp(0., 1.) * ((1u64 << 21) - 1) as f64) as u64);
-        let mut key = 0;
-        for bit in 0..21 {
-            for axis in 0..3 {
-                key |= ((q[axis] >> bit) & 1) << (3 * bit + axis);
-            }
-        }
-        (key, problem.bricks[i].id)
-    };
-    order.sort_unstable_by_key(|&i| spatial_key(i));
-    // Pack each core against its actual incident workload. A single high-degree
-    // body must not force every otherwise cheap partition down to the same tiny
-    // uniform size.
-    let mut joints_at = vec![Vec::new(); n];
-    let mut contacts_at = vec![Vec::new(); n];
-    let mut support_count = vec![0usize; n];
-    let mut anchor_count = vec![0usize; n];
-    for (j, spec) in problem.joints.iter().enumerate() {
-        joints_at[index[&spec.a]].push(j);
-        joints_at[index[&spec.b]].push(j);
-    }
-    for (k, c) in problem.contacts.iter().enumerate() {
-        contacts_at[c.lower].push(k);
-        contacts_at[c.upper].push(k);
-    }
-    for &(i, _) in &problem.supports {
-        support_count[i] += 1;
-    }
-    for &i in &problem.anchored {
-        anchor_count[i] += 1;
-    }
-    let mut cores = Vec::new();
-    let mut core = Vec::new();
-    let mut js = BTreeSet::new();
-    let mut cs = BTreeSet::new();
-    let mut bs = BTreeSet::new();
-    let mut sc = 0;
-    let mut ac = 0;
-    for i in order {
-        loop {
-            bs.insert(i);
-            for &j in &joints_at[i] {
-                js.insert(j);
-                let spec = &problem.joints[j];
-                bs.extend([index[&spec.a], index[&spec.b]]);
-            }
-            for &k in &contacts_at[i] {
-                cs.insert(k);
-                let c = problem.contacts[k];
-                bs.extend([c.lower, c.upper]);
-            }
-            let columns =
-                js.len() * 6 + cs.len() * 4 + sc + support_count[i] + (ac + anchor_count[i]) * 6;
-            let fits = bs.len() <= options.max_local_bodies
-                && columns <= options.max_local_columns
-                && kkt_bound(
-                    core.len() + 1,
-                    js.len(),
-                    cs.len(),
-                    sc + support_count[i],
-                    columns,
-                ) <= MAX_LOCAL_KKT_DIMENSION;
-            if !fits {
-                if core.is_empty() {
-                    return Err(inconclusive(
-                        "one body's incident interface exceeds the local workspace budget",
-                    ));
-                }
-                cores.push(std::mem::take(&mut core));
-                js.clear();
-                cs.clear();
-                bs.clear();
-                sc = 0;
-                ac = 0;
-                continue;
-            }
-            core.push(i);
-            sc += support_count[i];
-            ac += anchor_count[i];
-            break;
-        }
-        if core.len() == options.core_bodies {
-            cores.push(std::mem::take(&mut core));
-            js.clear();
-            cs.clear();
-            bs.clear();
-            sc = 0;
-            ac = 0;
-        }
-    }
-    if !core.is_empty() {
-        cores.push(core);
-    }
-    let mut owner = vec![0; n];
-    for (p, core) in cores.iter().enumerate() {
-        for &i in core {
-            owner[i] = p;
-        }
-    }
-    for (j, spec) in problem.joints.iter().enumerate() {
-        let (a, b) = (owner[index[&spec.a]], owner[index[&spec.b]]);
-        if a != b {
-            for k in 0..6 {
-                let col = j * 6 + k;
-                let mut state = workspace.column(col)?;
-                state.copies = 2;
-                workspace.put_column(col, state)?;
-            }
-        }
-    }
-    for (k, c) in problem.contacts.iter().enumerate() {
-        let (a, b) = (owner[c.lower], owner[c.upper]);
-        if a != b {
-            for i in 0..4 {
-                let col = layout.contact + k * 4 + i;
-                let mut state = workspace.column(col)?;
-                state.copies = 2;
-                workspace.put_column(col, state)?;
-            }
-        }
-    }
-    let (mut largest_bodies, mut largest_kkt) = (0, 0);
-    for (p, core) in cores.into_iter().enumerate() {
-        // Materialize only this core's bounded incident workload. Reusing the
-        // planner's own incidence preserves canonical edge order without using
-        // the independent verifier's separately derived incidence table.
-        let joints: BTreeSet<_> = core
-            .iter()
-            .flat_map(|&i| joints_at[i].iter().copied())
-            .collect();
-        let contacts: BTreeSet<_> = core
-            .iter()
-            .flat_map(|&i| contacts_at[i].iter().copied())
-            .collect();
-        let mut plan = Plan {
-            core: core.len(),
-            bodies: core,
-            source_indices: vec![],
-            joints: joints.into_iter().collect(),
-            contacts: contacts.into_iter().collect(),
-            supports: problem
-                .supports
-                .iter()
-                .enumerate()
-                .filter(|(_, v)| owner[v.0] == p)
-                .map(|(k, _)| k)
-                .collect(),
-            anchored: problem
-                .anchored
-                .iter()
-                .enumerate()
-                .filter(|(_, i)| owner[**i] == p)
-                .map(|(k, _)| k)
-                .collect(),
-            columns: vec![],
-            boundary: vec![],
-        };
-        let mut extra = BTreeSet::new();
-        let core: BTreeSet<_> = plan.bodies.iter().copied().collect();
-        for &j in &plan.joints {
-            let spec = &problem.joints[j];
-            extra.extend([index[&spec.a], index[&spec.b]]);
-            plan.columns.extend((0..6).map(|k| j * 6 + k));
-        }
-        for &k in &plan.contacts {
-            let c = &problem.contacts[k];
-            extra.extend([c.lower, c.upper]);
-            plan.columns
-                .extend((0..4).map(|i| layout.contact + k * 4 + i));
-        }
-        for &k in &plan.supports {
-            plan.columns.push(layout.support + k);
-        }
-        for &k in &plan.anchored {
-            plan.columns
-                .extend((0..6).map(|i| layout.anchor + k * 6 + i));
-        }
-        plan.bodies
-            .extend(extra.into_iter().filter(|i| !core.contains(i)));
-        if plan.bodies.len() > options.max_local_bodies
-            || plan.columns.len() > options.max_local_columns
-        {
-            return Err(inconclusive(
-                "local partition/halo exceeds its body or reaction-column budget",
-            ));
-        }
-        if kkt_bound(
-            plan.core,
-            plan.joints.len(),
-            plan.contacts.len(),
-            plan.supports.len(),
-            plan.columns.len(),
-        ) > MAX_LOCAL_KKT_DIMENSION
-        {
-            return Err(inconclusive(
-                "local KKT dimension exceeds its factorization budget",
-            ));
-        }
-        plan.source_indices = plan
-            .bodies
-            .iter()
-            .map(|&i| problem.bricks.indices.map_or(i, |indices| indices[i]))
-            .collect();
-        for (local, &global) in plan.columns.iter().enumerate() {
-            if workspace.column(global)?.copies == 2 {
-                plan.boundary.push(Boundary {
-                    local,
-                    global,
-                    dual: 0.,
-                    value: 0.,
-                    input: 0.,
-                });
-            }
-        }
-        largest_bodies = largest_bodies.max(plan.bodies.len());
-        largest_kkt = largest_kkt.max(kkt_bound(
-            plan.core,
-            plan.joints.len(),
-            plan.contacts.len(),
-            plan.supports.len(),
-            plan.columns.len(),
-        ));
-        workspace.push_plan(plan)?;
-    }
-    Ok((largest_bodies, largest_kkt))
-}
-
 fn initialize_columns(
-    problem: &Problem,
+    problem: &dyn ProblemInput,
     layout: &Layout,
     workspace: &mut dyn SolverWorkspace,
 ) -> Result<()> {
     // A contact typically transfers a few bodies' weight, not the entire
     // island's. Scaling by total island weight makes consensus artificially
     // weaker as a model grows and stalls large compression-dominated scenes.
-    let weight = representative_force(problem);
+    let weight = input::force_unit(problem)?;
     workspace.reset(layout.columns)?;
     for column in 0..layout.columns {
         workspace.put_column(
@@ -399,7 +152,8 @@ fn initialize_columns(
             },
         )?;
     }
-    for (j, spec) in problem.joints.iter().enumerate() {
+    for j in 0..problem.size().joints {
+        let spec = problem.joint(j)?;
         let force = [spec.break_force, spec.axial_force]
             .into_iter()
             .flatten()
@@ -432,7 +186,8 @@ fn initialize_columns(
 
 /// A bounded sequence of local solves over one physical problem. The default
 /// workspace is resident; shared-native callers supply paged plan/reaction storage.
-/// Canonical inputs and planner/verifier indexes still reside in memory.
+/// Canonical inputs and independently derived planner/verifier indexes use
+/// fallible storage; only bounded local problems are materialized.
 /// Resource/nonconvergence exits are typed Inconclusive, never a static proof.
 pub fn certify_partitioned(problem: &Problem, options: PartitionOptions) -> Result<Certificate> {
     certify_partitioned_with_workspace(problem, options, &mut MemoryWorkspace::default())
@@ -442,7 +197,14 @@ pub fn certify_partitioned_with_workspace(
     options: PartitionOptions,
     workspace: &mut dyn SolverWorkspace,
 ) -> Result<Certificate> {
-    validate_problem(problem)?;
+    certify_input_partitioned(problem, options, workspace)
+}
+pub(super) fn certify_input_partitioned(
+    problem: &dyn ProblemInput,
+    options: PartitionOptions,
+    workspace: &mut dyn SolverWorkspace,
+) -> Result<Certificate> {
+    validate_problem_input(problem)?;
     ensure!(
         (1..=512).contains(&options.core_bodies)
             && options.max_local_bodies >= options.core_bodies
@@ -454,7 +216,7 @@ pub fn certify_partitioned_with_workspace(
             && options.rho <= 1e6,
         "Invalid partition solver options"
     );
-    let layout = Layout::of(problem);
+    let layout = Layout::of_input(problem);
     if layout.columns > MAX_WITNESS_COLUMNS {
         return Err(inconclusive(
             "global reaction witness exceeds its configured column budget",
@@ -469,16 +231,16 @@ pub fn certify_partitioned_with_workspace(
     })
 }
 fn run(
-    problem: &Problem,
+    problem: &dyn ProblemInput,
     options: PartitionOptions,
     layout: &Layout,
     workspace: &mut dyn SolverWorkspace,
 ) -> Result<Certificate> {
     initialize_columns(problem, layout, workspace)?;
     let (largest_local_bodies, largest_local_kkt_dimension) =
-        plans(problem, options, layout, workspace)?;
-    let force_unit = representative_force(problem);
-    let verifier = WitnessVerifier::new(problem)?;
+        planner::plans(problem, options, layout, workspace)?;
+    let force_unit = input::force_unit(problem)?;
+    let verifier = WitnessVerifier::new(problem, workspace.verifier_state_mut())?;
     let mut rho = options.rho;
     let mut stats = SolverStats {
         partitions: workspace.plan_len(),
@@ -514,52 +276,15 @@ fn run(
                 )));
             }
             stats.local_solves += 1;
-            let local_index: HashMap<_, _> = plan
-                .bodies
-                .iter()
-                .enumerate()
-                .map(|(i, &global)| (global, i))
-                .collect();
-            let joints: Vec<_> = plan
-                .joints
-                .iter()
-                .map(|&j| problem.joints[j].clone())
-                .collect();
-            let local = Problem {
-                bricks: Bodies {
-                    source: problem.bricks.source,
-                    indices: Some(&plan.source_indices),
-                },
-                joints: &joints,
-                contacts: plan
-                    .contacts
-                    .iter()
-                    .map(|&k| {
-                        let c = problem.contacts[k];
-                        Contact {
-                            lower: local_index[&c.lower],
-                            upper: local_index[&c.upper],
-                            patch: c.patch,
-                        }
-                    })
-                    .collect(),
-                supports: plan
-                    .supports
-                    .iter()
-                    .map(|&k| {
-                        let (i, p) = problem.supports[k];
-                        (local_index[&i], p)
-                    })
-                    .collect(),
-                anchored: plan
-                    .anchored
-                    .iter()
-                    .map(|&k| local_index[&problem.anchored[k]])
-                    .collect(),
-                masses: plan.bodies.iter().map(|&i| problem.masses[i]).collect(),
-                force_tolerance: problem.force_tolerance,
-                torque_tolerance: problem.torque_tolerance,
-            };
+            let local_input = input::materialize(
+                problem,
+                &plan.bodies,
+                &plan.joints,
+                &plan.contacts,
+                &plan.supports,
+                &plan.anchored,
+            )?;
+            let local = local_input.problem();
             let owned: Vec<_> = (0..plan.bodies.len()).map(|i| i < plan.core).collect();
             for b in &mut plan.boundary {
                 b.input = workspace.column(b.global)?.consensus - b.dual;
@@ -671,21 +396,35 @@ fn run(
         // Averages keep the convex physical interface cones; the one canonical
         // witness is nevertheless rechecked independently, with *global island*
         // tolerances, all body balances, capacities and real application points.
-        match verifier.verify(problem, &*workspace, layout, None) {
+        match verifier.verify(
+            problem,
+            &*workspace,
+            layout,
+            None,
+            workspace.verifier_state(),
+        ) {
             Ok(mut certificate) => {
                 certificate.solver = stats;
                 return Ok(certificate);
             }
+            Err(error) if error.downcast_ref::<Inconclusive>().is_some() => return Err(error),
             Err(error) => last_witness_error = format!("{error:#}"),
         }
         if matches!(sweep, 20 | 100 | 200 | 400) {
             stats.balance_correction_iterations +=
                 polish::correct_workspace(problem, layout, workspace)?;
-            match verifier.verify(problem, &*workspace, layout, None) {
+            match verifier.verify(
+                problem,
+                &*workspace,
+                layout,
+                None,
+                workspace.verifier_state(),
+            ) {
                 Ok(mut certificate) => {
                     certificate.solver = stats;
                     return Ok(certificate);
                 }
+                Err(error) if error.downcast_ref::<Inconclusive>().is_some() => return Err(error),
                 Err(error) => last_witness_error = format!("balance correction: {error:#}"),
             }
         }

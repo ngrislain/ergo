@@ -240,11 +240,12 @@ a complete affected pose vector. Stability
 discovers independent contact/joint islands and checks one at a time, constructing
 contacts and solver matrices only for the current island; the compression path
 keeps an active pending-load frontier rather than every body's accumulated load.
-Global joint lists, scalar component/membership indexes and the current complete
-island's body/contact inputs remain resident and linear in their domain; one
-connected island can still be large. See [native input storage](native-working-state.md#streamed-physical-input)
+Global constraints, scalar component/membership indexes, canonical body/contact
+inputs and independent planner/verifier incidence use disk-backed records. Only
+bounded local solver inputs and explicitly capped numeric correction buffers are
+materialized for certification. See [native input storage](native-working-state.md#streamed-physical-input)
 and [the static certificate](rigid-body-physics.md#lightweight-static-certificate).
-This does not implement streaming HTTP uploads, fully out-of-core validation or partial acceptance.
+This does not implement streaming HTTP uploads, a fixed process-RSS bound or partial acceptance.
 Transport CBOR is serialized directly from the typed packet to avoid a second
 complete generic value tree at the dense-view encoding peak. It is ordinary CBOR,
 not a new canonical world-record encoding; authoritative record hashes and cache

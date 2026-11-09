@@ -95,9 +95,11 @@ bounded matrix-free balance correction. One independent assembled witness must
 pass. Shared-native solver plan/interface records and scalar reaction state use
 the [paged workspace](partitioned-stability.md#paged-coordinator-state). Shared-native
 geometry checks read normalized bodies and conservative candidates from disk through
-the same physical gate as resident local/WASM slices. Only complete mechanical
-components are materialized for compression/equilibrium. Global joint/fixed lists,
-scalar component indexes and per-component contact/planner/verifier inputs remain resident;
+the same physical gate as resident local/WASM slices. Complete mechanical
+components are discovered through disk-backed membership; compression streams
+height-ordered load records and general equilibrium reads canonical problem rows.
+Constraint, component and independent planner/verifier indexes spill as well;
+only bounded local kernels and capped numeric correction metadata materialize;
 no partial island result is published. Shared validation infers joints once, after
 frozen-model normalization, through this same gate rather than a preliminary copy.
 

@@ -1,8 +1,8 @@
 # Native disk-backed working state
 
-Implemented in **unreleased source after v0.5.34**. This reduces native
-transaction/authoring execution memory. It is **not** fully out-of-core physics,
-a resumable authoring session, or an additional accepted-world database.
+Implemented in **v0.5.35 source**. Native transaction, authoring traversal and
+physical working records are disk-backed. This is not a fixed whole-process RSS
+guarantee, a resumable authoring session, or an additional accepted-world database.
 
 ## One authoritative publication path
 
@@ -110,14 +110,46 @@ No index cursor survives a page read or await. The accepted spatial octree and
 its dependency-closure/publication semantics are unchanged: this RTree is only
 disposable validation scratch, not a second authoritative world index.
 
-After streamed geometry and joint inference, discovery still forms **complete
-mechanical components** through every joint and admissible nominal/reviewed bearing.
-Only then is one component's body vector loaded for compression or equilibrium.
-Spatial pages are never treated as independently supported islands. The global
-joint vector, fixed IDs, scalar identity/component indexes and the largest complete
-component still materialize; a single connected construction can therefore remain
-large. Storage/resource failure is inconclusive and prevents publication of every
-component, including those already checked successfully.
+After streamed geometry and joint inference, discovery forms **complete mechanical
+components** through every joint and admissible nominal/reviewed bearing. Its
+union-find, body/joint membership, anchor flags and component metadata are fallible
+records, not scene-sized vectors. Spatial pages are never independently supported
+islands. `ValidationConstraints` stores joints, anchors, pair indexes and incident
+markers in the same scratch store and audits their identities before certification.
+
+Compression reads one body and its real candidate bearings at a time. Its ordered
+queue uses descending finite height and source ordinal as a stable tie-break;
+both resident and native adapters use this order. Load records distinguish fresh,
+pending and processed states explicitly: a lost pending row cannot be recreated
+with only its own weight. Own weight is still added before received reactions;
+processed accumulator values are discarded. Queue count/identity checks precede
+early physical diagnostics. At most 16,384 support points are collected for one
+body; exhausting this work buffer is inconclusive, not a weaker compression proof.
+
+When a component needs general equilibrium, its bodies/masses, joints, all nominal
+and reviewed bearing contact patches, ground points and anchors are written to a
+`StoredProblem`. `ProblemInput` reads these canonical records fallibly; it does not
+load the complete component. Morton ordering, core ownership and planner incidence
+also use records, with bounded active core/halo sets. The independent verifier
+derives a separate incidence index and checks its per-body counts while streaming
+the complete witness. No planner omission can remove a canonical body balance.
+
+`shared/validation_workspace.rs` checks SHA-256 bindings between every record and
+its key, caps an encoded record at 64 KiB and retains at most 256 records / 256 KiB
+of accounted decoded payload per store (plus map/allocator overhead). Pages use the
+existing 128-row / approximately 1 MiB encoded bound. The bounded local SOCP and
+optional 32 MiB-estimated numerical correction are the only materialized solver
+work buffers; correction's numeric metadata is included in that same cap, with
+part/source strings discarded. Storage/resource failure is inconclusive and
+prevents publication of every component, including those already checked.
+
+Rust `SolverWorkspace` implementations now supply `new_state`, separate
+component/compression stores and independent planner/verifier stores. Numerical
+`reset` must not erase component membership mid-validation. `Transaction::local_store()`
+is the shared disposable-state factory under the transaction quota; it grants no
+publication capability. `validate_constraints_with_workspace` is the shared-native
+entry point; vector/slice entry points adapt explicit resident scenes to the same
+gate rather than providing another validation algorithm or transport endpoint.
 
 ### Solver and database budgets
 
@@ -152,6 +184,14 @@ Rust callers can use `Repository::with_spill_limits(SpillLimits)` and inspect
 - `ERGO_SHARED_SPILL_CACHE_KIB` (default 1024; accepted range 4–8192).
 
 `TMPDIR` selects temporary storage through the normal platform tempfile behavior.
+`SQLITE_TMPDIR` selects SQLite's separate temporary/sort files. The v0.5.35 image
+and Scaleway module set both to owned mode-0700 `/var/lib/ergo-tmp`, on the writable
+disk-backed layer. Do not use `/tmp` for production spilling on Scaleway sandbox
+v2: that mount is tmpfs and counts directly toward container RAM. The deployment
+provisions 4,295,000,000 bytes of ephemeral disk while keeping the previous
+2,148,000,000-byte RAM setting unchanged. Other hosts must likewise verify that
+their chosen scratch filesystem is disk-backed; an in-memory mount defeats the
+memory reduction. See [Scaleway's sandbox directories](https://www.scaleway.com/en/docs/serverless-containers/reference-content/containers-sandbox/).
 Provision private, writable local space for all concurrent transactions. Disk
 exhaustion refuses the edit; it does not increase memory budgets. The database is
 disposable (`journal_mode=OFF`, `synchronous=OFF`), not crash-recoverable state.
@@ -183,24 +223,24 @@ entry is kept merely to cache a commit. These caches do not pin remote history.
 ## Remaining resident state
 
 Assembly rules and membership maps, cached meshes/spatial references, the affected
-ID/audit set, global joint/fixed lists, scalar component indexes, the largest
-complete mechanical component, planner incident/owner indexes and independent
-verification incidence still materialize. The full shared-native affected pose
-vector and its geometry broad-phase index no longer do. The piece cache, physical
-body/index records, native partition/interface records and global reaction state
-now spill. Local/WASM numerical entry points default
+ID/audit set, HTTP request/response buffers and explicitly requested local/full
+exports still materialize under their existing budgets. Shared-native physical
+poses, constraints, component records, canonical equilibrium inputs, planner and
+independent verifier indexes no longer require full resident copies. The piece
+cache, partition/interface records and global reaction state spill too.
+Local/WASM numerical entry points default
 to a resident workspace. Commit construction, snapshot loading and GC no longer retain decoded
 edit/blob vectors. The storage SDK's conditional create API still requires one
 size-capped encoded upload buffer; commit uploads are serialized within a batch
 and do not populate the ordinary byte LRU. Explicit general-purpose serialization
 and HTTP JSON history responses can also materialize their bounded output buffers.
-The [coupled solver](partitioned-stability.md) bounds local factorization, not these
-inputs. Durable sessions, asynchronous publication and fully out-of-core physical
-input/index handling remain future work. Do not infer a fixed end-to-end RAM
+The [coupled solver](partitioned-stability.md) bounds its local materialization and
+factorization. Durable sessions and asynchronous publication remain future work.
+Do not infer a fixed end-to-end RAM
 guarantee for a large castle from these local limits.
 
 Sources: `crates/transactions/src/{spill,tree,lib,batch}.rs`,
-`crates/server/src/shared/{working,working_graph,validation_input,equilibrium_workspace,paged,model}.rs`,
-`crates/world/src/{validation,validation_input,validation_components}.rs`.
+`crates/server/src/shared/{working,working_graph,validation_input,validation_workspace,equilibrium_workspace,paged,model}.rs`,
+`crates/world/src/{validation,validation_input,validation_components,validation_constraints,validation_workspace,equilibrium_input,equilibrium_planner}.rs`.
 See [SQLite RTree rounding](https://sqlite.org/rtree.html#roundoff_error) for the
 conservative candidate storage (exact geometry is not rounded).

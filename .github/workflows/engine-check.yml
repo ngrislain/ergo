@@ -13,6 +13,8 @@ permissions:
 jobs:
   catalogue-browser:
     runs-on: ubuntu-24.04
+    env:
+      ERGO_TEST_BIN_DIR: target/release
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
         with:
@@ -23,7 +25,7 @@ jobs:
           rustup default 1.97.1
           cargo install wasm-bindgen-cli --version 0.2.129 --locked
       - run: cargo xtask build-web
-      - run: cargo build --locked -p ergo-server -p ergo-mcp
+      - run: cargo build --release --locked -p ergo-server -p ergo-mcp
       - run: python3 -m pip install playwright
       - run: python3 scripts/test-web-isolated.py --script scripts/test-catalogue.py
       - run: python3 scripts/test-web-isolated.py --script scripts/test-navigation-lighting.py

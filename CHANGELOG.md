@@ -1,19 +1,37 @@
 # Changelog
 
-## Unreleased
+## v0.5.35
+
+- Complete shared-native physical working-state streaming: spill joint/anchor
+  collections and pair indexes, component union-find/membership records,
+  compression order/load markers, canonical equilibrium inputs, Morton planner
+  incidence/owners and the independently derived witness-checker incidence.
+  Materialize only bounded local SOCP inputs and optional numeric correction
+  metadata within the existing 32 MiB estimate. Missing/corrupt records or work
+  limits remain inconclusive; no spatial cut becomes an artificial support.
+- Include reviewed stepped/compound bearing patches in canonical general-solver
+  contacts as well as compression/component discovery. Keep all capacities and
+  exact frozen-model body/connector predicates authoritative.
+- Bound decoded validation-record caches to 256 records / 256 KiB accounted
+  payload per store and encoded records to 64 KiB. Use optimized binaries for
+  browser CI startup without raising solver or server-memory budgets.
+- Keep container scratch on owned `/var/lib/ergo-tmp` through `TMPDIR` and
+  `SQLITE_TMPDIR`: Scaleway sandbox v2 `/tmp` is RAM-backed. Provision approximately
+  4 GiB of ephemeral disk while preserving the existing 2 GiB RAM allocation;
+  verify non-root disk-backed writes in the actual container smoke test.
 
 - Stream shared-native geometry validation through normalized, checksummed body
   records and conservative SQLite RTree candidate pages in transaction-local
   scratch. Use one physical gate with resident/WASM slices; preserve complete
   mechanical-component discovery and atomic publication. Bound decoded body
   caching; refuse missing/corrupt index data and storage exhaustion as inconclusive.
-  Global joint/component indexes and one complete component still materialize.
+  Global joint/component and complete-component input records also spill.
 - Page shared-native coupled-equilibrium plan/interface records and global
   reaction state into transaction-local storage. Use bounded, checksummed scalar
   pages and the same independent body-wise verifier/correction through fallible
   reaction accessors; storage errors remain inconclusive with no RAM fallback.
   Keep local/WASM storage adapters on the same coordinator and expose spill-work
-  diagnostics. Complete component inputs and planner/verifier indexes still materialize.
+  diagnostics. Canonical inputs and planner/verifier indexes now use fallible stores.
 - Spill per-operation piece-cache entries without changing unique loading charges
   or cached absence semantics. Infer shared-native joints once after frozen-model
   normalization instead of building a preliminary duplicate inference list.
@@ -24,7 +42,7 @@
   hints before decoding and retain immutable create-if-absent/head-CAS guarantees.
   Cap grouped commit-file totals, avoid caching their encoded bodies, and stream
   uncached immutable-upload proofs. The SDK still needs one capped conditional
-  upload buffer; fully out-of-core physical/planner/verifier inputs remain unfinished.
+  upload buffer; this is not a fixed whole-process RSS guarantee.
 
 - Spill native staged objects, transaction predicates, ordered edit journals,
   attachments and upload frontiers to bounded disposable SQLite working stores.
@@ -34,7 +52,7 @@
 - Externalize authoring dependency edges, incident constraints, traversal queues
   and rule-diff records to the same transaction-local store. Configure scratch
   disk/cache budgets separately from authoring CBOR limits; report scratch
-  exhaustion as inconclusive. Complete physical components remain resident; commit records
+  exhaustion as inconclusive. Physical component records spill; commit records
   now use verified file-backed lists. Accepted formats and the atomic head CAS
   are unchanged.
 
@@ -50,7 +68,7 @@
   through MCP/API, including internal joints/anchors and outside/global transform
   fences. Use manifest group-ID floors and order-independent group preconditions;
   ungrouping preserves unloaded parents. Private assembly-metadata edits retain
-  full permission checks. Fully out-of-core physical input/index handling remains open.
+  full permission checks. Physical input/index handling uses bounded disk-backed access.
   Tombstoned empty groups no longer break full export or paged group discovery;
   missing headers with live orphan membership still fail closed.
 
@@ -63,8 +81,9 @@
   migrate native/browser callers, tests and recipe export paths. Full exports are
   explicit and separate from the page cache.
 - Provide a locked, dry-run-by-default operator migration for old accepted MCP
-  caches. World geometry and native proposal formats are unchanged; fully
-  out-of-core server validation is not yet implemented.
+  caches. World geometry and native proposal formats are unchanged. Shared-native
+  physical working state streams; explicit local scenes and authoring metadata
+  can remain resident.
 
 ## v0.5.34
 

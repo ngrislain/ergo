@@ -76,7 +76,7 @@ does not retain an unbounded queue or pin every old snapshot. See
 
 ## Bounded native commit records
 
-Implemented in **unreleased source after v0.5.34**. Canonical format-3 bytes,
+Implemented in **v0.5.35 source**. Canonical format-3 bytes,
 commit IDs, list order, roots, base/parent relationships and acceptance semantics
 are unchanged. A byte-for-byte reference test compares the streamed envelope to
 the ordinary canonical encoder. No accepted-world data rewrite is required.
@@ -104,7 +104,7 @@ disables strong file retention. This cache never caches mutable heads, pins remo
 history, supplies publication proof or bypasses tighter read budgets. Active
 snapshots/iterators can retain files outside the cache's own limits.
 
-Rust API migration in this unreleased source:
+Rust API migration in v0.5.35:
 
 - `Commit.edits` and `Commit.blobs` are `CommitList<T>`, with `len`, `is_empty`,
   and fallible `iter`/items. Handle both iterator creation and each item error.

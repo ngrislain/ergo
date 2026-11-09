@@ -19,10 +19,6 @@ pub trait ValidationInput {
     fn query(&self, bounds: Aabb) -> Result<Box<dyn Iterator<Item = Result<usize>> + '_>>;
     /// Refuse missing records or an index box that does not contain `expected`.
     fn check_indexed_bounds(&self, index: usize, expected: Aabb) -> Result<()>;
-    /// Optional borrowing optimization, in the identical ordinal/identity order.
-    fn resident(&self) -> Option<&[Brick]> {
-        None
-    }
 }
 /// One envelope covers all candidate queries used by geometry and island
 /// discovery. Exact pair predicates still decide collisions and physical edges.
@@ -70,7 +66,4 @@ impl ValidationInput for SliceInput<'_> {
     fn check_indexed_bounds(&self, _: usize, _: Aabb) -> Result<()> {
         Ok(())
     } // immutable slice/index constructed together
-    fn resident(&self) -> Option<&[Brick]> {
-        Some(self.bodies)
-    }
 }

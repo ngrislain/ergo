@@ -151,12 +151,12 @@ variable "extra_environment_variables" {
   validation {
     condition = alltrue([for key in keys(var.extra_environment_variables) :
       key != "PORT" && !startswith(key, "SCW_") && !contains([
-        "ERGO_BIND", "ERGO_PUBLIC_URL", "S3_BUCKET", "S3_REGION", "S3_ENDPOINT", "S3_PREFIX",
+        "ERGO_BIND", "ERGO_PUBLIC_URL", "TMPDIR", "SQLITE_TMPDIR", "S3_BUCKET", "S3_REGION", "S3_ENDPOINT", "S3_PREFIX",
         "GOOGLE_CLIENT_ID", "GOOGLE_CLIENT_SECRET", "ERGO_SESSION_SECRET",
         "AWS_ACCESS_KEY_ID", "AWS_SECRET_ACCESS_KEY", "ERGO_EDIT_BRICKS_PER_PERIOD", "ERGO_EDIT_PERIOD_SECONDS"
       ], key)
     ])
-    error_message = "Use the dedicated variables for storage/authentication/origin settings; PORT and SCW_* are platform-reserved."
+    error_message = "Use the dedicated storage/authentication/origin settings and managed disk-backed scratch paths; PORT and SCW_* are platform-reserved."
   }
 }
 

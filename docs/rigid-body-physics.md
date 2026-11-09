@@ -276,22 +276,24 @@ failed sufficient certificate; it does not prove every possible load allocation
 or calibrated joint model would fail.
 
 This is component-wise solver execution and incremental load propagation, not
-fully out-of-core validation. Shared-native geometry checks use normalized
+an end-to-end process-RSS guarantee. Shared-native geometry checks use normalized
 disk-backed bodies and paged conservative spatial candidates; local/WASM callers
-retain their slice. Global joint lists and scalar membership/component indexes
-still materialize, and each complete mechanical component's bodies are loaded
-before certification, never independently supported spatial chunks.
+retain their slice. Constraint collections, component membership, ordered
+compression loads, canonical equilibrium inputs and independent planner/verifier
+indexes also spill. Only bounded local kernel inputs and capped numeric correction
+buffers materialize, never independently supported spatial chunks.
 Only the current island's contact problem/compression frontier is built, and
 general solver matrices/factors are partition-local under KKT dimension limits.
 The independent verifier checks bodies one at a time with compensated sums;
-its incidence metadata still resides in memory. Shared-native validation reads
+its independently derived incidence metadata spills natively. Shared-native validation reads
 the canonical reaction witness from a paged disk workspace; local/WASM defaults
 use resident records and the same checker. Numerical
 limits return **inconclusive**, never a claimed physical instability or a partial
 publication. See [the coupled solver and its limits](partitioned-stability.md).
-`equilibrium::Problem.bricks` uses a borrowed `equilibrium::Bodies` view:
-Rust callers use `Bodies::all(&bricks)` or `Bodies::select(&bricks, &indices)`;
-partitioning does not clone brick geometry or renumber IDs. A single connected
+Explicit resident `equilibrium::Problem.bricks` uses an `equilibrium::Bodies` view:
+Rust callers use `Bodies::all(&bricks)` or `Bodies::select(&bricks, &indices)`.
+`ProblemInput` / `StoredProblem` provide fallible canonical access; only each
+bounded local partition's records are copied, without renumbering IDs. A single connected
 castle may still be one large island requiring several coupled solves. Island certificates
 are aggregated only after all pass; none publishes a partial shared edit.
 

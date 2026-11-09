@@ -47,9 +47,9 @@ def main():
         library_fixture.seed(directory / 'store')
         with tempfile.TemporaryFile(mode='w+t') as log:
             def start():
-                process = subprocess.Popen([str(ROOT / 'target/debug/ergo-server')], cwd=directory,
+                process = subprocess.Popen([str(Path(os.environ.get('ERGO_TEST_BIN_DIR', ROOT / 'target/debug')).resolve() / 'ergo-server')], cwd=directory,
                                            env=environment, stdout=log, stderr=log)
-                for _ in range(100):
+                for _ in range(1800):
                     if process.poll() is not None:
                         log.seek(0)
                         raise AssertionError('Isolated dense-view server stopped:\n' + log.read())
@@ -58,7 +58,10 @@ def main():
                         return process
                     except OSError:
                         time.sleep(.1)
-                raise AssertionError('Isolated dense-view server did not start')
+                process.terminate()
+                process.wait(timeout=10)
+                log.seek(0)
+                raise AssertionError('Isolated dense-view server did not start within 180 seconds:\n' + log.read())
             server = start()
             try:
                 head = request(base + '/api/shared-worlds', {'name': 'Dense region regression',

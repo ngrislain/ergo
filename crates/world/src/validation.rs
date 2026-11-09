@@ -1,20 +1,30 @@
 //! Persistence gate: no penetrating nominal body boxes, plus a conservative
 //! static support/constraint-wrench certificate. No time integration runs here.
 //! declared simplified model, not real ABS stress, clutch strength, or earthquakes.
+#[cfg(test)]
 use crate::equilibrium::Bodies;
-use crate::{Brick, WorldExport, constraints, spatial::Octree};
+use crate::equilibrium::ProblemInput;
+use crate::{Brick, WorldExport, constraints};
 use anyhow::{Result, ensure};
 use glam::{DVec2, DVec3};
 use serde::{Deserialize, Serialize};
-use std::collections::{HashMap, HashSet};
 
 #[path = "validation_components.rs"]
 mod components;
 #[path = "validation_input.rs"]
 mod input;
 pub use input::{ValidationInput, validation_envelope};
+#[path = "validation_constraints.rs"]
+mod constraints_input;
+#[path = "validation_workspace.rs"]
+pub(crate) mod working_state;
+pub use constraints_input::ValidationConstraints;
+pub use working_state::{
+    CompressionLoad, MemoryValidationState, ValidationRecord, ValidationState,
+};
 
 pub const OVERLAP_TOLERANCE: f64 = 0.0001;
+const MAX_COMPRESSION_SUPPORT_POINTS: usize = 16_384;
 
 #[derive(Clone, Copy, Debug, Serialize, Deserialize)]
 pub struct StaticTolerances {
@@ -181,6 +191,32 @@ pub fn validate_input_with_workspace(
     measurements: &crate::physical::ConnectionMeasurements,
     workspace: &mut dyn crate::equilibrium::SolverWorkspace,
 ) -> Result<ValidationReport> {
+    let mut constraints = ValidationConstraints::new(workspace.new_state()?);
+    for joint in joints.iter() {
+        constraints.push_joint(joint.clone())?;
+    }
+    for &id in fixed {
+        constraints.push_anchor(id)?;
+    }
+    let report = validate_constraints_with_workspace(
+        input,
+        &mut constraints,
+        tolerances,
+        measurements,
+        workspace,
+    )?;
+    *joints = (0..constraints.len())
+        .map(|i| constraints.joint(i))
+        .collect::<Result<_>>()?;
+    Ok(report)
+}
+pub fn validate_constraints_with_workspace(
+    input: &dyn ValidationInput,
+    joints: &mut ValidationConstraints,
+    tolerances: StaticTolerances,
+    measurements: &crate::physical::ConnectionMeasurements,
+    workspace: &mut dyn crate::equilibrium::SolverWorkspace,
+) -> Result<ValidationReport> {
     use anyhow::Context;
     measurements.validate()?;
     tolerances.validate()?;
@@ -188,7 +224,7 @@ pub fn validate_input_with_workspace(
         !input.is_empty(),
         "A static construction must contain at least one brick"
     );
-    let mut ids = Vec::with_capacity(input.len());
+    joints.verify()?;
     for i in 0..input.len() {
         let brick = input.body(i)?;
         crate::catalog::validate(std::slice::from_ref(brick.as_ref()))?;
@@ -200,16 +236,22 @@ pub fn validate_input_with_workspace(
             "Physical body bounds were not normalized from the frozen model"
         );
         input.check_indexed_bounds(i, validation_envelope(&brick))?;
-        ids.push(brick.id);
-    }
-    constraints::validate_joint_ids(ids.iter().copied(), joints, fixed)?;
-    for (i, id) in ids.into_iter().enumerate() {
         ensure!(
-            input.body_index(id)? == Some(i),
-            "Physical body identity/index mismatch"
+            input.body_index(brick.id)? == Some(i),
+            "Duplicate brick IDs or physical body identity/index mismatch"
         );
     }
-    for joint in joints.iter() {
+    ensure!(
+        joints.len() <= input.len().saturating_mul(12),
+        "Too many constraints"
+    );
+    for i in 0..joints.len() {
+        let joint = joints.joint(i)?;
+        ensure!(
+            joint.a != joint.b,
+            "Joint references an absent or identical body"
+        );
+        constraints::validate_joint_spec(&joint)?;
         let a = input.body(
             input
                 .body_index(joint.a)?
@@ -223,13 +265,14 @@ pub fn validate_input_with_workspace(
         crate::attachments::validate_pair(
             &a,
             &b,
-            joint,
+            &joint,
             tolerances.position_brick_units,
             tolerances.rotation_radians,
         )?;
     }
-    for id in fixed {
-        let brick = input.body(input.body_index(*id)?.context("Anchored brick is absent")?)?;
+    for i in 0..joints.anchor_len() {
+        let id = joints.anchor(i)?;
+        let brick = input.body(input.body_index(id)?.context("Anchored brick is absent")?)?;
         validate_ground_anchor(&brick, tolerances)?;
     }
     for i in 0..input.len() {
@@ -279,10 +322,6 @@ pub fn validate_input_with_workspace(
             }
         }
     }
-    let pairs: HashSet<_> = joints
-        .iter()
-        .map(|j| (j.a.min(j.b), j.a.max(j.b)))
-        .collect();
     let mut inferred_count = 0;
     for i in 0..input.len() {
         let a = input.body(i)?;
@@ -296,29 +335,29 @@ pub fn validate_input_with_workspace(
                 continue;
             }
             let b = input.body(j)?;
-            if !pairs.contains(&(a.id.min(b.id), a.id.max(b.id)))
+            if !joints.has_pair(a.id, b.id)?
                 && let Some(joint) =
                     constraints::inferred_pair(&a, &b, tolerances.position_brick_units)
             {
-                joints.push(joint);
+                joints.push_joint(joint)?;
                 inferred_count += 1;
             }
         }
     }
-    drop(pairs);
-    let constrained: HashSet<_> = joints.iter().flat_map(|j| [j.a, j.b]).collect();
+    joints.verify()?;
     for i in 0..input.len() {
         let b = input.body(i)?;
         if !crate::interference::axis_aligned(&b) {
             ensure!(
-                b.bounds.min.y > tolerances.position_brick_units && constrained.contains(&b.id),
+                b.bounds.min.y > tolerances.position_brick_units && joints.has_body(b.id)?,
                 "Cannot certify tilted brick {} ({}): tilted bodies require a joint-supported load path, not a bounding-box bearing face",
                 b.id,
                 b.part
             );
         }
     }
-    for joint in joints.iter_mut() {
+    for i in 0..joints.len() {
+        let mut joint = joints.joint(i)?;
         let a = input.body(
             input
                 .body_index(joint.a)?
@@ -329,10 +368,10 @@ pub fn validate_input_with_workspace(
                 .body_index(joint.b)?
                 .context("Missing joint endpoint")?,
         )?;
-        measurements.apply_pair(&a, &b, joint)?;
+        measurements.apply_pair(&a, &b, &mut joint)?;
+        joints.put_joint(i, joint)?;
     }
-    let stability =
-        certify_input_components(input, joints, fixed, tolerances, measurements, workspace)?;
+    let stability = certify_input_components(input, joints, tolerances, measurements, workspace)?;
     let report = ValidationReport {
         collision_model:
             "nominal body boxes with finite registered connector clearance; visual studs excluded"
@@ -379,10 +418,16 @@ fn certify_components(
     measurements: &crate::physical::ConnectionMeasurements,
     workspace: &mut dyn crate::equilibrium::SolverWorkspace,
 ) -> Result<StabilityCertificate> {
+    let mut constraints = ValidationConstraints::new(workspace.new_state()?);
+    for joint in joints {
+        constraints.push_joint(joint.clone())?;
+    }
+    for &id in fixed {
+        constraints.push_anchor(id)?;
+    }
     certify_input_components(
         &input::SliceInput::new(bricks),
-        joints,
-        fixed,
+        &constraints,
         tol,
         measurements,
         workspace,
@@ -390,66 +435,58 @@ fn certify_components(
 }
 fn certify_input_components(
     input: &dyn ValidationInput,
-    joints: &[crate::JointSpec],
-    fixed: &[u32],
+    joints: &ValidationConstraints,
     tol: StaticTolerances,
     measurements: &crate::physical::ConnectionMeasurements,
     workspace: &mut dyn crate::equilibrium::SolverWorkspace,
 ) -> Result<StabilityCertificate> {
-    use std::borrow::Cow;
-    let islands = components::partition_input(input, joints, tol)?;
-    let anchored: HashSet<_> = fixed.iter().copied().collect();
+    let count = {
+        let (state, _) = workspace.validation_state();
+        components::partition_input(input, joints, tol, state)?
+    };
     let mut result = StabilityCertificate {
         certificate: Default::default(),
         contact_only: true,
         compression_issue: None,
-        components: islands.len(),
+        components: count,
         largest_equilibrium_component: 0,
     };
-    for island in islands {
-        // Resident callers borrow their original slice. Paged inputs are loaded
-        // only after complete mechanical components are known; no spatial chunk
-        // is certified independently. Current equilibrium inputs are per-island.
-        let loaded;
-        let bodies = if let Some(bricks) = input.resident() {
-            Bodies::select(bricks, &island.bodies)
-        } else {
-            loaded = island
-                .bodies
-                .iter()
-                .map(|&i| input.body(i).map(|b| b.into_owned()))
-                .collect::<Result<Vec<_>>>()?;
-            Bodies::all(&loaded)
+    for component in 0..count {
+        let store = workspace.new_state()?;
+        let (problem, issue) = {
+            let (state, compression) = workspace.validation_state();
+            let island = components::ComponentInput::new(input, state, component)?;
+            // A constructive contact-only proof remains valid even with joints:
+            // all their wrenches can be zero, without assuming unknown clutch loads.
+            let issue = if !island.anchored {
+                compression_issue_input(&island, tol, measurements, compression)?
+            } else {
+                None
+            };
+            if !island.anchored && issue.is_none() {
+                continue;
+            }
+            let constraints =
+                (0..island.joints).map(|i| island.joint_index(i).and_then(|j| joints.joint(j)));
+            let problem = build_problem(
+                &island,
+                constraints,
+                |i| island.is_anchored(i),
+                tol,
+                measurements,
+                store,
+            )?;
+            (problem, issue)
         };
-        let fixed: Vec<_> = bodies
-            .iter()
-            .filter(|b| anchored.contains(&b.id))
-            .map(|b| b.id)
-            .collect();
-        // A constructive contact-only proof remains valid even with joints:
-        // all their wrenches can be zero, without assuming unknown clutch loads.
-        let issue = if fixed.is_empty() {
-            compression_issue_for(bodies, tol, measurements)?
-        } else {
-            None
-        };
-        if fixed.is_empty() && issue.is_none() {
-            continue;
-        }
         result.contact_only = false;
         if result.compression_issue.is_none() {
             result.compression_issue = issue;
         }
-        result.largest_equilibrium_component =
-            result.largest_equilibrium_component.max(bodies.len());
+        result.largest_equilibrium_component = result
+            .largest_equilibrium_component
+            .max(problem.size().bodies);
         // Compression-only islands never need a copied joint list, either.
-        let constraints: Cow<'_, [crate::JointSpec]> = if result.components == 1 {
-            Cow::Borrowed(joints)
-        } else {
-            Cow::Owned(island.joints.iter().map(|&i| joints[i].clone()).collect())
-        };
-        let certificate =
-            support_certificate(bodies, &constraints, &fixed, tol, measurements, workspace)?;
+        let certificate = crate::equilibrium::certify_input_with_workspace(&problem, workspace)?;
         result.certificate.solver.merge(&certificate.solver);
         result.certificate.loaded_joints += certificate.loaded_joints;
         result.certificate.max_utilisation = result
@@ -643,6 +680,7 @@ mod registration_tests {
 
 /// One nominal horizontal contact, shared by island discovery and the general
 /// solver so a load-bearing edge cannot disappear at a partition boundary.
+#[cfg(test)]
 fn nominal_contact(
     bricks: Bodies<'_>,
     a: usize,
@@ -689,6 +727,7 @@ fn nominal_body_contact(
 /// ([`crate::equilibrium`]): joints within their capacities, frictionless
 /// unilateral contact patches between axis-aligned bodies, ground supports
 /// and anchored bricks.
+#[cfg(test)]
 fn support_certificate(
     bricks: Bodies<'_>,
     joints: &[crate::JointSpec],
@@ -697,74 +736,109 @@ fn support_certificate(
     measurements: &crate::physical::ConnectionMeasurements,
     workspace: &mut dyn crate::equilibrium::SolverWorkspace,
 ) -> Result<crate::equilibrium::Certificate> {
-    let n = bricks.len();
-    let index: HashMap<_, _> = bricks.iter().enumerate().map(|(i, b)| (b.id, i)).collect();
-    let mut parent = components::Partition::new(n);
-    for joint in joints {
-        let (a, b) = (index[&joint.a], index[&joint.b]);
-        parent.join(a, b);
-    }
-    let mut contacts = Vec::new();
-    let tree = Octree::new(bricks.iter().map(|b| b.bounds).collect());
-    for (a, brick) in bricks.iter().enumerate() {
-        for b in tree.query(brick.bounds.expanded(tol.position_brick_units)) {
-            // Touching axis-aligned bodies bear in compression whether or not
-            // a joint also holds them: the joint only adds its capacity.
-            if b <= a {
+    let bodies = bricks.iter().cloned().collect::<Vec<_>>();
+    let input = input::SliceInput::new(&bodies);
+    let problem = build_problem(
+        &input,
+        joints.iter().cloned().map(Ok),
+        |i| Ok(fixed.contains(&bodies[i].id)),
+        tol,
+        measurements,
+        workspace.new_state()?,
+    )?;
+    crate::equilibrium::certify_input_with_workspace(&problem, workspace)
+}
+
+fn build_problem(
+    input: &dyn ValidationInput,
+    joints: impl Iterator<Item = Result<crate::JointSpec>>,
+    anchored: impl Fn(usize) -> Result<bool>,
+    tol: StaticTolerances,
+    measurements: &crate::physical::ConnectionMeasurements,
+    store: Box<dyn ValidationState>,
+) -> Result<crate::equilibrium::StoredProblem> {
+    let mut problem =
+        crate::equilibrium::StoredProblem::new(store, tol.force_newtons, tol.torque_newton_meters);
+    let mut supported = false;
+    for i in 0..input.len() {
+        let b = input.body(i)?;
+        let mass = measurements.mass_kg(&b.part)?;
+        problem.push_body(b.clone().into_owned(), mass)?;
+        if anchored(i)? {
+            problem.push_anchor(i)?;
+            supported = true;
+        }
+        if b.bounds.min.y.abs() <= tol.position_brick_units {
+            for point in ground_support_points(&b) {
+                problem.push_support(i, point)?;
+                supported = true;
+            }
+        }
+        for candidate in input.query(validation_envelope(&b).expanded(tol.position_brick_units))? {
+            let j = candidate?;
+            if j <= i {
                 continue;
             }
-            if let Some(contact) = nominal_contact(bricks, a, b, tol) {
-                contacts.push(contact);
-                parent.join(a, b);
+            let other = input.body(j)?;
+            for c in body_contacts(&b, &other, i, j, tol) {
+                problem.push_contact(c)?;
             }
         }
     }
-    let mut supports = Vec::new();
-    let mut supported = vec![false; n];
-    for (i, brick) in bricks.iter().enumerate() {
-        if brick.bounds.min.y.abs() <= tol.position_brick_units {
-            for point in ground_support_points(brick) {
-                supports.push((i, point));
+    for joint in joints {
+        problem.push_joint(joint?)?;
+    }
+    ensure!(
+        supported,
+        "Construction is not static: component containing brick {} has no ground support",
+        input.body(0)?.id
+    );
+    Ok(problem)
+}
+fn body_contacts(
+    a: &Brick,
+    b: &Brick,
+    i: usize,
+    j: usize,
+    tol: StaticTolerances,
+) -> Vec<crate::equilibrium::Contact> {
+    let mut contacts = nominal_body_contact(a, b, i, j, tol)
+        .into_iter()
+        .collect::<Vec<_>>();
+    if !crate::interference::axis_aligned(a) || !crate::interference::axis_aligned(b) {
+        return contacts;
+    }
+    let (upper, lower, u, l) = if a.bounds.min.y > b.bounds.min.y {
+        (a, b, i, j)
+    } else if b.bounds.min.y > a.bounds.min.y {
+        (b, a, j, i)
+    } else {
+        return contacts;
+    };
+    for foot in crate::part_profiles::lower_bearing_regions(upper) {
+        for face in crate::part_profiles::upper_bearing_regions(lower) {
+            let lo = foot.min.max(face.min);
+            let hi = foot.max.min(face.max);
+            if (face.max.y - foot.min.y).abs() > tol.position_brick_units
+                || hi.x - lo.x <= tol.position_brick_units
+                || hi.z - lo.z <= tol.position_brick_units
+            {
+                continue;
             }
-            let r = parent.root(i);
-            supported[r] = true;
+            let y = (face.max.y + foot.min.y) * 0.5;
+            let patch = crate::Aabb::new(DVec3::new(lo.x, y, lo.z), DVec3::new(hi.x, y, hi.z));
+            if !contacts.iter().any(|c| {
+                c.lower == l && c.upper == u && c.patch.min == patch.min && c.patch.max == patch.max
+            }) {
+                contacts.push(crate::equilibrium::Contact {
+                    lower: l,
+                    upper: u,
+                    patch,
+                });
+            }
         }
     }
-    let anchored: Vec<usize> = bricks
-        .iter()
-        .enumerate()
-        .filter(|(_, b)| fixed.contains(&b.id))
-        .map(|(i, _)| i)
-        .collect();
-    for &i in &anchored {
-        let r = parent.root(i);
-        supported[r] = true;
-    }
-    for (i, brick) in bricks.iter().enumerate() {
-        let r = parent.root(i);
-        ensure!(
-            supported[r],
-            "Construction is not static: component containing brick {} has no ground support",
-            brick.id
-        );
-    }
-    let masses = bricks
-        .iter()
-        .map(|b| measurements.mass_kg(&b.part))
-        .collect::<Result<Vec<_>>>()?;
-    crate::equilibrium::certify_with_workspace(
-        &crate::equilibrium::Problem {
-            bricks,
-            joints,
-            contacts,
-            supports,
-            anchored,
-            masses,
-            force_tolerance: tol.force_newtons,
-            torque_tolerance: tol.torque_newton_meters,
-        },
-        workspace,
-    )
+    contacts
 }
 
 pub fn compression_issue(
@@ -772,22 +846,28 @@ pub fn compression_issue(
     tol: StaticTolerances,
     measurements: &crate::physical::ConnectionMeasurements,
 ) -> Result<Option<CompressionIssue>> {
-    compression_issue_for(Bodies::all(bricks), tol, measurements)
+    compression_issue_input(
+        &input::SliceInput::new(bricks),
+        tol,
+        measurements,
+        &mut MemoryValidationState::default(),
+    )
 }
 
-fn compression_issue_for(
-    bricks: Bodies<'_>,
+fn compression_issue_input(
+    input: &dyn ValidationInput,
     tol: StaticTolerances,
     measurements: &crate::physical::ConnectionMeasurements,
+    state: &mut dyn ValidationState,
 ) -> Result<Option<CompressionIssue>> {
     // Both paths construct nonnegative reactions and check the same force/moment
     // tolerances. Prefer a direct centred reaction on a real bearing patch;
     // corner-only triangulation can needlessly tip the next supporting piece.
-    let preferred = compression_issue_with_strategy(bricks, tol, measurements, true)?;
+    let preferred = compression_issue_with_strategy(input, tol, measurements, state, true)?;
     if preferred.is_none() {
         return Ok(None);
     }
-    if compression_issue_with_strategy(bricks, tol, measurements, false)?.is_none() {
+    if compression_issue_with_strategy(input, tol, measurements, state, false)?.is_none() {
         Ok(None)
     } else {
         Ok(preferred)
@@ -799,27 +879,30 @@ fn compression_issue_for(
 /// This preserves the existing addition order (own weight, then reactions) while
 /// avoiding a load record for every body in a tall structure.
 struct CompressionLoads<'a> {
-    entries: HashMap<usize, (f64, DVec2)>,
-    bricks: Bodies<'a>,
+    state: &'a mut dyn ValidationState,
+    input: &'a dyn ValidationInput,
     origin: DVec3,
     measurements: &'a crate::physical::ConnectionMeasurements,
+    pending: usize,
 }
 impl<'a> CompressionLoads<'a> {
     fn new(
-        bricks: Bodies<'a>,
+        input: &'a dyn ValidationInput,
+        state: &'a mut dyn ValidationState,
         origin: DVec3,
         measurements: &'a crate::physical::ConnectionMeasurements,
     ) -> Self {
         Self {
-            entries: HashMap::new(),
-            bricks,
+            state,
+            input,
             origin,
             measurements,
+            pending: 0,
         }
     }
 
     fn initial(&self, i: usize) -> Result<(f64, DVec2)> {
-        let brick = &self.bricks[i];
+        let brick = self.input.body(i)?;
         let mass = self.measurements.mass_kg(&brick.part)?;
         let center = crate::physical::to_meters(brick.bounds.center() - self.origin);
         let moment = DVec2::new(center.x, center.z) * mass;
@@ -833,15 +916,45 @@ impl<'a> CompressionLoads<'a> {
     }
 
     fn take(&mut self, i: usize) -> Result<(f64, DVec2)> {
-        self.entries.remove(&i).map_or_else(|| self.initial(i), Ok)
+        let load = match working_state::required(self.state, &working_state::key(0, &[i]))? {
+            ValidationRecord::Load(CompressionLoad::Fresh) => self.initial(i)?,
+            ValidationRecord::Load(CompressionLoad::Pending { mass, moment }) => {
+                self.pending = self.pending.checked_sub(1).ok_or_else(|| {
+                    working_state::unavailable("compression pending count changed")
+                })?;
+                (mass, DVec2::from_array(moment))
+            }
+            _ => {
+                return Err(working_state::unavailable(
+                    "compression load is absent, invalid or already processed",
+                ));
+            }
+        };
+        if !load.0.is_finite() || load.0 <= 0. || !load.1.is_finite() {
+            return Err(working_state::unavailable("invalid compression load"));
+        }
+        self.state.put(
+            working_state::key(0, &[i]),
+            ValidationRecord::Load(CompressionLoad::Processed),
+        )?;
+        Ok(load)
     }
 
     fn add(&mut self, i: usize, mass: f64, moment: DVec2) -> Result<()> {
-        if !self.entries.contains_key(&i) {
-            let initial = self.initial(i)?;
-            self.entries.insert(i, initial);
-        }
-        let load = self.entries.get_mut(&i).unwrap();
+        let mut load = match working_state::required(self.state, &working_state::key(0, &[i]))? {
+            ValidationRecord::Load(CompressionLoad::Fresh) => {
+                self.pending += 1;
+                self.initial(i)?
+            }
+            ValidationRecord::Load(CompressionLoad::Pending { mass, moment }) => {
+                (mass, DVec2::from_array(moment))
+            }
+            _ => {
+                return Err(working_state::unavailable(
+                    "compression load is absent, invalid or already processed",
+                ));
+            }
+        };
         load.0 += mass;
         load.1 += moment;
         if !(load.0 * crate::physical::GRAVITY_M_S2).is_finite() || !load.1.is_finite() {
@@ -850,177 +963,274 @@ impl<'a> CompressionLoads<'a> {
             )
             .into());
         }
+        self.state.put(
+            working_state::key(0, &[i]),
+            ValidationRecord::Load(CompressionLoad::Pending {
+                mass: load.0,
+                moment: load.1.to_array(),
+            }),
+        )?;
         Ok(())
     }
 }
 
 fn compression_issue_with_strategy(
-    bricks: Bodies<'_>,
+    input: &dyn ValidationInput,
     tol: StaticTolerances,
     measurements: &crate::physical::ConnectionMeasurements,
+    state: &mut dyn ValidationState,
     centered: bool,
 ) -> Result<Option<CompressionIssue>> {
     use crate::physical::{GRAVITY_M_S2, to_meters};
     ensure!(
-        !bricks.is_empty(),
+        !input.is_empty(),
         "Compression analysis needs at least one brick"
     );
-    if let Some(brick) = bricks
-        .iter()
-        .find(|b| !crate::interference::axis_aligned(b))
-    {
-        return Ok(Some(CompressionIssue {
+    state.clear()?;
+    for i in 0..input.len() {
+        let brick = input.body(i)?;
+        if !crate::interference::axis_aligned(&brick) {
+            return Ok(Some(CompressionIssue {
             brick_id: brick.id, part: brick.part.clone(),
             reason: "Tilted body requires a joint-supported load path; an envelope face is not a bearing patch".into(),
             loaded_center_world: brick.bounds.center(), support_polygon_world: vec![],
         }));
+        }
+        state.put(
+            working_state::key(0, &[i]),
+            ValidationRecord::Load(CompressionLoad::Fresh),
+        )?;
+        state.put(
+            compression_order_key(brick.bounds.min.y, i)?,
+            ValidationRecord::Index(i),
+        )?;
     }
-    let origin = bricks[0].bounds.center();
-    let tree = Octree::new(
-        bricks
-            .iter()
-            .map(crate::part_profiles::bearing_bounds)
-            .collect(),
-    );
-    let mut loads = CompressionLoads::new(bricks, origin, measurements);
-    let mut order: Vec<_> = (0..bricks.len()).collect();
-    order.sort_by(|&a, &b| bricks[b].bounds.min.y.total_cmp(&bricks[a].bounds.min.y));
-    for i in order {
-        let brick = &bricks[i];
-        let (mass, moment) = loads.take(i)?;
-        let center = moment / mass;
-        let mut supports = Vec::new();
-        let mut patches = Vec::new();
-        if brick.bounds.min.y.abs() <= tol.position_brick_units {
-            for point in ground_support_points(brick) {
-                let p = to_meters(point - origin);
-                supports.push((DVec2::new(p.x, p.z), None));
+    // Audit the complete ordered frontier before any early physical diagnostic
+    // can bypass an unread/missing queue row. Loads have explicit fresh markers;
+    // a lost pending record can never be reinitialized with only its own weight.
+    let mut after = None;
+    let mut queued = 0;
+    loop {
+        let page = state.page(&[1], after.as_deref(), 128)?;
+        if page.is_empty() {
+            break;
+        }
+        for (key, record) in page {
+            let ValidationRecord::Index(i) = record else {
+                return Err(working_state::unavailable(
+                    "invalid compression order record",
+                ));
+            };
+            if i >= input.len() || key != compression_order_key(input.body(i)?.bounds.min.y, i)? {
+                return Err(working_state::unavailable(
+                    "compression order identity changed",
+                ));
             }
-        } else {
-            for j in tree.query(brick.bounds.expanded(tol.position_brick_units)) {
-                if j == i {
-                    continue;
+            if !matches!(
+                working_state::required(state, &working_state::key(0, &[i]))?,
+                ValidationRecord::Load(CompressionLoad::Fresh)
+            ) {
+                return Err(working_state::unavailable(
+                    "compression initial marker changed",
+                ));
+            }
+            queued += 1;
+            after = Some(key);
+        }
+    }
+    if queued != input.len() {
+        return Err(working_state::unavailable(
+            "compression order lost or duplicated bodies",
+        ));
+    }
+    let origin = input.body(0)?.bounds.center();
+    let mut loads = CompressionLoads::new(input, state, origin, measurements);
+    let mut after = None;
+    let mut processed = 0;
+    loop {
+        let page = loads.state.page(&[1], after.as_deref(), 128)?;
+        if page.is_empty() {
+            break;
+        }
+        for (key, record) in page {
+            let ValidationRecord::Index(i) = record else {
+                return Err(working_state::unavailable(
+                    "invalid compression order record",
+                ));
+            };
+            if i >= input.len() {
+                return Err(working_state::unavailable("compression body is absent"));
+            }
+            let brick = input.body(i)?;
+            if key != compression_order_key(brick.bounds.min.y, i)?
+                || after.as_ref().is_some_and(|old| *old >= key)
+            {
+                return Err(working_state::unavailable(
+                    "compression order identity changed",
+                ));
+            }
+            after = Some(key);
+            processed += 1;
+            let (mass, moment) = loads.take(i)?;
+            let center = moment / mass;
+            let mut supports = Vec::new();
+            let mut patches = Vec::new();
+            if brick.bounds.min.y.abs() <= tol.position_brick_units {
+                for point in ground_support_points(&brick) {
+                    let p = to_meters(point - origin);
+                    supports.push((DVec2::new(p.x, p.z), None));
                 }
-                let lower = &bricks[j];
-                if lower.bounds.min.y >= brick.bounds.min.y {
-                    continue;
-                }
-                for foot in crate::part_profiles::lower_bearing_regions(brick) {
-                    for face in crate::part_profiles::upper_bearing_regions(lower) {
-                        if (face.max.y - foot.min.y).abs() > tol.position_brick_units {
-                            continue;
-                        }
-                        let lo = foot.min.max(face.min);
-                        let hi = foot.max.min(face.max);
-                        if hi.x - lo.x <= tol.position_brick_units
-                            || hi.z - lo.z <= tol.position_brick_units
-                        {
-                            continue;
-                        }
-                        let a = to_meters(lo - origin);
-                        let b = to_meters(hi - origin);
-                        patches.push((DVec2::new(a.x, a.z), DVec2::new(b.x, b.z), j));
-                        for (x, z) in [(lo.x, lo.z), (hi.x, lo.z), (hi.x, hi.z), (lo.x, hi.z)] {
-                            let p = to_meters(DVec3::new(x, foot.min.y, z) - origin);
-                            supports.push((DVec2::new(p.x, p.z), Some(j)));
+            } else {
+                for candidate in input.query(brick.bounds.expanded(tol.position_brick_units))? {
+                    let j = candidate?;
+                    if j == i {
+                        continue;
+                    }
+                    let lower = input.body(j)?;
+                    if lower.bounds.min.y >= brick.bounds.min.y {
+                        continue;
+                    }
+                    for foot in crate::part_profiles::lower_bearing_regions(&brick) {
+                        for face in crate::part_profiles::upper_bearing_regions(&lower) {
+                            if (face.max.y - foot.min.y).abs() > tol.position_brick_units {
+                                continue;
+                            }
+                            let lo = foot.min.max(face.min);
+                            let hi = foot.max.min(face.max);
+                            if hi.x - lo.x <= tol.position_brick_units
+                                || hi.z - lo.z <= tol.position_brick_units
+                            {
+                                continue;
+                            }
+                            let a = to_meters(lo - origin);
+                            let b = to_meters(hi - origin);
+                            if supports.len() + 4 > MAX_COMPRESSION_SUPPORT_POINTS {
+                                return Err(working_state::unavailable(
+                                    "compression per-body bearing workspace budget exceeded",
+                                ));
+                            }
+                            patches.push((DVec2::new(a.x, a.z), DVec2::new(b.x, b.z), j));
+                            for (x, z) in [(lo.x, lo.z), (hi.x, lo.z), (hi.x, hi.z), (lo.x, hi.z)] {
+                                let p = to_meters(DVec3::new(x, foot.min.y, z) - origin);
+                                supports.push((DVec2::new(p.x, p.z), Some(j)));
+                            }
                         }
                     }
                 }
             }
-        }
-        let hull = convex_hull(supports.iter().map(|(point, _)| *point).collect());
-        let issue = |reason: &str| CompressionIssue {
-            brick_id: brick.id,
-            part: brick.part.clone(),
-            reason: reason.into(),
-            loaded_center_world: DVec3::new(
-                origin.x + center.x / 0.008,
-                brick.bounds.min.y,
-                origin.z + center.y / 0.008,
-            ),
-            support_polygon_world: hull
-                .iter()
-                .map(|p| {
-                    crate::coordinates::public(DVec3::new(
-                        origin.x + p.x / 0.008,
-                        brick.bounds.min.y,
-                        origin.z + p.y / 0.008,
-                    ))
-                    .to_array()
-                })
-                .collect(),
-        };
-        if hull.len() < 3 {
-            return Ok(Some(issue(
-                "No two-dimensional bearing patch under the loaded brick",
-            )));
-        }
-        let mut reactions = None;
-        if centered
-            && let Some((_, _, lower)) = patches
-                .iter()
-                .filter(|(lo, hi, _)| center.cmpge(*lo).all() && center.cmple(*hi).all())
-                .max_by(|(a, b, _), (c, d, _)| {
-                    ((b.x - a.x) * (b.y - a.y)).total_cmp(&((d.x - c.x) * (d.y - c.y)))
-                })
-        {
-            reactions = Some(vec![(center, 1., Some(*lower))]);
-        }
-        for k in 1..hull.len() - 1 {
-            if reactions.is_some() {
+            let hull = convex_hull(supports.iter().map(|(point, _)| *point).collect());
+            let issue = |reason: &str| CompressionIssue {
+                brick_id: brick.id,
+                part: brick.part.clone(),
+                reason: reason.into(),
+                loaded_center_world: DVec3::new(
+                    origin.x + center.x / 0.008,
+                    brick.bounds.min.y,
+                    origin.z + center.y / 0.008,
+                ),
+                support_polygon_world: hull
+                    .iter()
+                    .map(|p| {
+                        crate::coordinates::public(DVec3::new(
+                            origin.x + p.x / 0.008,
+                            brick.bounds.min.y,
+                            origin.z + p.y / 0.008,
+                        ))
+                        .to_array()
+                    })
+                    .collect(),
+            };
+            if hull.len() < 3 {
+                return Ok(Some(issue(
+                    "No two-dimensional bearing patch under the loaded brick",
+                )));
+            }
+            let mut reactions = None;
+            if centered
+                && let Some((_, _, lower)) = patches
+                    .iter()
+                    .filter(|(lo, hi, _)| center.cmpge(*lo).all() && center.cmple(*hi).all())
+                    .max_by(|(a, b, _), (c, d, _)| {
+                        ((b.x - a.x) * (b.y - a.y)).total_cmp(&((d.x - c.x) * (d.y - c.y)))
+                    })
+            {
+                reactions = Some(vec![(center, 1., Some(*lower))]);
+            }
+            for k in 1..hull.len() - 1 {
+                if reactions.is_some() {
+                    break;
+                }
+                let [a, b, c] = [hull[0], hull[k], hull[k + 1]];
+                let area = (b - a).perp_dot(c - a);
+                if area <= 1e-15 {
+                    continue;
+                }
+                let wa = (b - center).perp_dot(c - center) / area;
+                let wb = (c - center).perp_dot(a - center) / area;
+                let wc = 1. - wa - wb;
+                if [wa, wb, wc].iter().any(|w| *w < -1e-10) {
+                    continue;
+                }
+                let weights = [wa.max(0.), wb.max(0.), wc.max(0.)];
+                let sum: f64 = weights.iter().sum();
+                let points = [a, b, c];
+                let residual = points
+                    .iter()
+                    .zip(weights)
+                    .map(|(p, w)| *p * (w / sum))
+                    .sum::<DVec2>()
+                    - center;
+                if residual.length() * mass * GRAVITY_M_S2 > tol.torque_newton_meters {
+                    continue;
+                }
+                reactions = Some(
+                    points
+                        .into_iter()
+                        .zip(weights)
+                        .map(|(point, weight)| {
+                            (
+                                point,
+                                weight / sum,
+                                supports.iter().find(|(p, _)| *p == point).unwrap().1,
+                            )
+                        })
+                        .collect::<Vec<_>>(),
+                );
                 break;
             }
-            let [a, b, c] = [hull[0], hull[k], hull[k + 1]];
-            let area = (b - a).perp_dot(c - a);
-            if area <= 1e-15 {
-                continue;
-            }
-            let wa = (b - center).perp_dot(c - center) / area;
-            let wb = (c - center).perp_dot(a - center) / area;
-            let wc = 1. - wa - wb;
-            if [wa, wb, wc].iter().any(|w| *w < -1e-10) {
-                continue;
-            }
-            let weights = [wa.max(0.), wb.max(0.), wc.max(0.)];
-            let sum: f64 = weights.iter().sum();
-            let points = [a, b, c];
-            let residual = points
-                .iter()
-                .zip(weights)
-                .map(|(p, w)| *p * (w / sum))
-                .sum::<DVec2>()
-                - center;
-            if residual.length() * mass * GRAVITY_M_S2 > tol.torque_newton_meters {
-                continue;
-            }
-            reactions = Some(
-                points
-                    .into_iter()
-                    .zip(weights)
-                    .map(|(point, weight)| {
-                        (
-                            point,
-                            weight / sum,
-                            supports.iter().find(|(p, _)| *p == point).unwrap().1,
-                        )
-                    })
-                    .collect::<Vec<_>>(),
-            );
-            break;
-        }
-        let Some(reactions) = reactions else {
-            return Ok(Some(issue(
-                "No admissible compressive reactions balance the accumulated load",
-            )));
-        };
-        for (point, weight, lower) in reactions {
-            if let Some(j) = lower {
-                loads.add(j, mass * weight, point * (mass * weight))?;
+            let Some(reactions) = reactions else {
+                return Ok(Some(issue(
+                    "No admissible compressive reactions balance the accumulated load",
+                )));
+            };
+            for (point, weight, lower) in reactions {
+                if let Some(j) = lower {
+                    loads.add(j, mass * weight, point * (mass * weight))?;
+                }
             }
         }
     }
-    debug_assert!(loads.entries.is_empty());
+    if processed != input.len() || loads.pending != 0 {
+        return Err(working_state::unavailable("compression order lost bodies"));
+    }
+    loads.state.clear()?;
     Ok(None)
+}
+
+fn compression_order_key(height: f64, index: usize) -> Result<Vec<u8>> {
+    if !height.is_finite() {
+        return Err(working_state::unavailable("nonfinite compression height"));
+    }
+    let bits = height.to_bits();
+    let ascending = if bits >> 63 != 0 {
+        !bits
+    } else {
+        bits ^ (1 << 63)
+    };
+    let mut key = vec![1];
+    key.extend_from_slice(&(!ascending).to_be_bytes());
+    key.extend_from_slice(&(index as u64).to_be_bytes());
+    Ok(key)
 }
 
 fn convex_hull(mut points: Vec<DVec2>) -> Vec<DVec2> {
@@ -1075,6 +1285,52 @@ mod tests {
             model: None,
         }
     }
+    #[test]
+    fn missing_compression_queue_and_load_markers_are_inconclusive() {
+        let mut demo = Demo::new();
+        demo.add("3005", 4, 0., 0., 0.);
+        demo.add("3005", 4, 0., 1., 0.);
+        let input = input::SliceInput::new(&demo.bricks);
+        for queue in [false, true] {
+            let mut state = working_state::faults::MissingRowState::default();
+            if queue {
+                state.missing_page = Some(vec![1]);
+            } else {
+                state.missing_get = Some(working_state::key(0, &[1]));
+            }
+            let error = compression_issue_input(
+                &input,
+                Default::default(),
+                &Default::default(),
+                &mut state,
+            )
+            .unwrap_err();
+            assert!(
+                error
+                    .downcast_ref::<crate::equilibrium::Inconclusive>()
+                    .is_some(),
+                "{error:#}"
+            );
+        }
+    }
+    #[test]
+    fn a_lost_joint_pair_index_cannot_duplicate_joint_capacity() {
+        let mut demo = Demo::new();
+        demo.add("3003", 4, 0., 0., 0.);
+        demo.add("3003", 4, 0., 1., 0.);
+        let mut state = working_state::faults::MissingRowState::default();
+        state.missing_get = Some(working_state::key(1, &[1, 2]));
+        let mut constraints = ValidationConstraints::new(Box::new(state));
+        let joint = crate::constraints::inferred_joints(&demo.bricks).remove(0);
+        constraints.push_joint(joint).unwrap();
+        assert!(
+            constraints
+                .verify()
+                .unwrap_err()
+                .downcast_ref::<crate::equilibrium::Inconclusive>()
+                .is_some()
+        );
+    }
 
     #[test]
     fn loose_multi_pillar_roof_balances_compression_independent_of_piece_order() {
@@ -1115,9 +1371,10 @@ mod tests {
         let measurements = crate::physical::ConnectionMeasurements::default();
         assert!(
             compression_issue_with_strategy(
-                Bodies::all(&demo.bricks),
+                &input::SliceInput::new(&demo.bricks),
                 Default::default(),
                 &measurements,
+                &mut MemoryValidationState::default(),
                 false
             )
             .unwrap()
@@ -1232,11 +1489,12 @@ mod tests {
         demo.add("3001", 4, 127., 1., 0.);
         let islands = components::partition_input(
             &input::SliceInput::new(&demo.bricks),
-            &[],
+            &ValidationConstraints::new(Box::new(MemoryValidationState::default())),
             Default::default(),
+            &mut MemoryValidationState::default(),
         )
         .unwrap();
-        assert_eq!(islands.len(), 1);
+        assert_eq!(islands, 1);
         let report = validate_static(&mut scene(demo)).unwrap();
         assert_eq!(report.stability_components, 1);
     }
@@ -1250,13 +1508,13 @@ mod tests {
         assert!(nominal_contact(Bodies::all(&demo.bricks), 0, 1, Default::default()).is_none());
         let islands = components::partition_input(
             &input::SliceInput::new(&demo.bricks),
-            &[],
+            &ValidationConstraints::new(Box::new(MemoryValidationState::default())),
             Default::default(),
+            &mut MemoryValidationState::default(),
         )
         .unwrap();
         assert_eq!(
-            islands.len(),
-            1,
+            islands, 1,
             "The real wing still transmits the upper brick's weight"
         );
     }
@@ -1347,25 +1605,36 @@ mod tests {
             demo.add("3005", 4, 0., h as f64, 0.);
         }
         let measurements = crate::physical::ConnectionMeasurements::default();
+        let input = input::SliceInput::new(&demo.bricks);
+        let mut state = MemoryValidationState::default();
+        for i in 0..demo.bricks.len() {
+            state
+                .put(
+                    working_state::key(0, &[i]),
+                    ValidationRecord::Load(CompressionLoad::Fresh),
+                )
+                .unwrap();
+        }
         let mut loads = CompressionLoads::new(
-            Bodies::all(&demo.bricks),
+            &input,
+            &mut state,
             demo.bricks[0].bounds.center(),
             &measurements,
         );
         let mass = measurements.mass_kg("3005.dat").unwrap();
         for i in (0..demo.bricks.len()).rev() {
             let (weight, moment) = loads.take(i).unwrap();
-            assert!(loads.entries.is_empty());
+            assert_eq!(loads.pending, 0);
             assert!((weight - mass * (demo.bricks.len() - i) as f64).abs() < 1e-10);
             if i > 0 {
                 loads.add(i - 1, weight, moment).unwrap();
             }
             assert!(
-                loads.entries.len() <= 1,
+                loads.pending <= 1,
                 "Frontier size must not scale with stack height"
             );
         }
-        assert!(loads.entries.is_empty());
+        assert_eq!(loads.pending, 0);
         assert!(
             compression_issue(&demo.bricks, Default::default(), &measurements)
                 .unwrap()

@@ -29,6 +29,7 @@ mod spatial;
 #[cfg(test)]
 mod tests;
 mod validation_input;
+mod validation_workspace;
 mod view;
 mod working;
 mod world_pack;

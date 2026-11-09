@@ -18,6 +18,12 @@ and `ERGO_SHARED_COMMIT_ITEM_BYTES` (1 MiB default); see
 Rust API migration and remaining conditional-upload buffer. These do not rewrite
 accepted records or increase server RAM settings.
 
+On Scaleway sandbox v2, `/tmp` is RAM-backed. The v0.5.35 image and module set
+`TMPDIR=SQLITE_TMPDIR=/var/lib/ergo-tmp` on the writable disk layer, owned by UID/GID
+10001 with mode 0700. The module adds approximately 4 GiB of ephemeral disk and
+keeps the existing RAM/CPU settings. Verify the image's scratch variables and
+filesystem smoke; do not solve disk exhaustion by silently using tmpfs or more RAM.
+
 ```sh
 cargo fmt --all -- --check
 cargo test --workspace --locked
@@ -59,7 +65,8 @@ cargo build --release --locked -p ergo-server -p ergo-mcp
 ERGO_TEST_BIN_DIR=target/release python3 scripts/test-common-world.py
 ```
 
-`ERGO_TEST_BIN_DIR` affects this test harness only, defaults to `target/debug`,
+`ERGO_TEST_BIN_DIR` affects the common-world, dense-world and isolated-browser test
+harnesses only, defaults to `target/debug`,
 and is not passed into the child server's production configuration.
 For geometry-dependent walking guarantees, use the native
 [walking route checker](navigation.md#checking-a-walking-route) against a complete
@@ -112,7 +119,7 @@ Operator JSON goes to stdout; progress and server logs go to stderr so a
 completed profile can be parsed without stripping log prefixes. This operator
 diagnostic still materializes a complete scene; the new paged MCP open does not.
 
-For the unreleased paged-authoring transport/cache cutover, follow
+For the v0.5.35 paged-authoring transport/cache cutover, follow
 [paged authoring](paged-authoring.md#forward-migration). Deploy matching server,
 native and WASM first, stop clients, reconcile pending outcomes, and run the
 locked dry-run cache migration before `--apply`. Accepted geometry and native

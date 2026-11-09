@@ -39,11 +39,15 @@ RUN --mount=type=cache,target=/usr/local/cargo/registry \
 
 FROM docker.io/library/debian:bookworm-slim AS runtime
 RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates \
-    && rm -rf /var/lib/apt/lists/*
+    && rm -rf /var/lib/apt/lists/* \
+    && install -d -m 0700 -o 10001 -g 10001 /var/lib/ergo-tmp
 WORKDIR /app
 COPY --from=server-build /ergo-server /usr/local/bin/ergo-server
 COPY --from=web-build /src/web /app/web
-ENV ERGO_BIND=0.0.0.0:8080 ERGO_DATA_DIR=/tmp/ergo
+# Scaleway sandbox v2 mounts /tmp as RAM-backed tmpfs. Keep both Rust tempfile
+# working files and SQLite sort/temp files on the disk-backed writable layer.
+ENV ERGO_BIND=0.0.0.0:8080 ERGO_DATA_DIR=/tmp/ergo \
+    TMPDIR=/var/lib/ergo-tmp SQLITE_TMPDIR=/var/lib/ergo-tmp
 USER 10001:10001
 EXPOSE 8080
 ENTRYPOINT ["ergo-server"]

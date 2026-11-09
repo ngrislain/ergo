@@ -699,7 +699,10 @@ impl Working {
                 model.validate_isometries()?;
             }
         }
-        use ergo_world::validation::ValidationInput;
+        use ergo_world::{
+            equilibrium::SolverWorkspace,
+            validation::{ValidationConstraints, ValidationInput},
+        };
         let mut input = super::validation_input::NativeValidationInput::new(&self.tx)?;
         for id in affected {
             if let Some(piece) = self.piece(id).await? {
@@ -713,8 +716,8 @@ impl Working {
         if input.is_empty() {
             return Ok(None);
         }
-        let mut joints = Vec::new();
-        let mut fixed = Vec::new();
+        let mut workspace = super::equilibrium_workspace::NativeSolverWorkspace::new(&self.tx)?;
+        let mut constraints = ValidationConstraints::new(workspace.new_state()?);
         for row in self.joints.iter() {
             let (_, joint) = row?;
             let a = &joint.a;
@@ -725,21 +728,20 @@ impl Working {
             if a.is_some() || b.is_some() {
                 joint.a = a.context("Incomplete constraint dependency closure")?;
                 joint.b = b.context("Incomplete constraint dependency closure")?;
-                joints.push(joint);
+                constraints.push_joint(joint)?;
             }
         }
         for row in self.fixed.iter() {
             let (id, _) = row?;
             if let Some(id) = input.local_id(&id)? {
-                fixed.push(id);
+                constraints.push_anchor(id)?;
             }
         }
         let model = self.model.clone();
-        let mut workspace = super::equilibrium_workspace::NativeSolverWorkspace::new(&self.tx)?;
         Ok(Some(tokio::task::spawn_blocking(move || -> anyhow::Result<_> {
             // Validation assigns every capacity from the frozen measurement
             // book and the reviewed connector estimates; uploads claim none.
-            let mut report = ergo_world::validation::validate_input_with_workspace(&input, &mut joints, &fixed, model.tolerances,&model.measurements,&mut workspace)?;
+            let mut report = ergo_world::validation::validate_constraints_with_workspace(&input, &mut constraints, model.tolerances,&model.measurements,&mut workspace)?;
             report.physical_calibration = if report.joint_strength_required == Some(false) {
                 "Frozen model, sourced masses and nominal bounds; complete gravity-contact proof with zero joint wrench; no clutch capacity assumed; no simulation"
             } else { "Frozen server-owned measurement/model version; complete affected dependency domain; equilibrium with measured or reviewed-estimate connector capacities; no simulation" }.into();

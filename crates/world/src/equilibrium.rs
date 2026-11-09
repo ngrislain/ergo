@@ -25,14 +25,19 @@ use glam::DVec3;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
+#[path = "equilibrium_input.rs"]
+mod input;
 #[path = "equilibrium_partitioned.rs"]
 mod partitioned;
+#[path = "equilibrium_planner.rs"]
+mod planner;
 #[path = "equilibrium_polish.rs"]
 mod polish;
 #[path = "equilibrium_verify.rs"]
 mod verification;
 #[path = "equilibrium_workspace.rs"]
 mod workspace;
+pub use input::{ProblemInput, ProblemSize, StoredProblem};
 pub use partitioned::{PartitionOptions, certify_partitioned, certify_partitioned_with_workspace};
 use verification::WitnessVerifier;
 use workspace::Boundary;
@@ -233,6 +238,19 @@ struct Layout {
     columns: usize,
 }
 impl Layout {
+    fn of_input(problem: &dyn ProblemInput) -> Self {
+        let s = problem.size();
+        let contact = s.joints.saturating_mul(6);
+        let support = contact.saturating_add(s.contacts.saturating_mul(4));
+        let anchor = support.saturating_add(s.supports);
+        Self {
+            joint: 0,
+            contact,
+            support,
+            anchor,
+            columns: anchor.saturating_add(s.anchors.saturating_mul(6)),
+        }
+    }
     fn of(problem: &Problem) -> Self {
         Self {
             joint: 0,
@@ -704,18 +722,40 @@ pub fn certify_with_workspace(
     problem: &Problem,
     workspace: &mut dyn SolverWorkspace,
 ) -> Result<Certificate> {
-    validate_problem(problem)?;
-    if problem.bricks.len() > PartitionOptions::default().core_bodies
+    certify_input_with_workspace(problem, workspace)
+}
+pub fn certify_input_with_workspace(
+    problem: &dyn ProblemInput,
+    workspace: &mut dyn SolverWorkspace,
+) -> Result<Certificate> {
+    validate_problem_input(problem)?;
+    let size = problem.size();
+    if size.bodies > PartitionOptions::default().core_bodies
         || partitioned::kkt_bound(
-            problem.bricks.len(),
-            problem.joints.len(),
-            problem.contacts.len(),
-            problem.supports.len(),
-            Layout::of(problem).columns,
+            size.bodies,
+            size.joints,
+            size.contacts,
+            size.supports,
+            Layout::of_input(problem).columns,
         ) > partitioned::MAX_LOCAL_KKT_DIMENSION
     {
-        return certify_partitioned_with_workspace(problem, PartitionOptions::default(), workspace);
+        return partitioned::certify_input_partitioned(
+            problem,
+            PartitionOptions::default(),
+            workspace,
+        );
     }
+    let local = input::materialize(
+        problem,
+        &(0..size.bodies).collect::<Vec<_>>(),
+        &(0..size.joints).collect::<Vec<_>>(),
+        &(0..size.contacts).collect::<Vec<_>>(),
+        &(0..size.supports).collect::<Vec<_>>(),
+        &(0..size.anchors).collect::<Vec<_>>(),
+    )?;
+    certify_local(&local.problem())
+}
+fn certify_local(problem: &Problem) -> Result<Certificate> {
     let (status, x, layout) = solve(problem, false)
         .map_err(|error| Inconclusive(format!("local SOCP failed: {error:#}")))?;
     // The independent check is the certificate, whatever the solver reports:
@@ -756,39 +796,34 @@ pub fn certify_with_workspace(
     }
 }
 
-fn validate_problem(problem: &Problem) -> Result<()> {
-    let n = problem.bricks.len();
+fn validate_problem_input(problem: &dyn ProblemInput) -> Result<()> {
+    problem.validate_storage()?;
+    let n = problem.size().bodies;
+    ensure!(n > 0, "Invalid equilibrium body/mass dimensions");
+    let (f, t) = problem.tolerances();
     ensure!(
-        n > 0 && problem.masses.len() == n,
-        "Invalid equilibrium body/mass dimensions"
-    );
-    ensure!(
-        problem.masses.iter().all(|m| m.is_finite() && *m >= 0.),
-        "Invalid equilibrium masses"
-    );
-    ensure!(
-        (problem.masses.iter().sum::<f64>() * crate::physical::GRAVITY_M_S2).is_finite(),
-        "Equilibrium weight overflow"
-    );
-    ensure!(
-        problem.force_tolerance.is_finite()
-            && problem.force_tolerance > 0.
-            && problem.torque_tolerance.is_finite()
-            && problem.torque_tolerance > 0.,
+        f.is_finite() && f > 0. && t.is_finite() && t > 0.,
         "Invalid equilibrium tolerances"
     );
-    let ids: std::collections::HashSet<_> = problem.bricks.iter().map(|b| b.id).collect();
-    ensure!(
-        ids.len() == n
-            && problem
-                .bricks
-                .iter()
-                .all(|b| b.bounds.min.is_finite() && b.bounds.max.is_finite()),
-        "Invalid equilibrium bodies"
-    );
-    for j in problem.joints {
+    for i in 0..n {
+        let b = problem.body(i)?;
+        let m = problem.mass(i)?;
         ensure!(
-            j.a != j.b && ids.contains(&j.a) && ids.contains(&j.b) && j.anchor.is_finite(),
+            problem.body_index(b.id)? == Some(i)
+                && b.bounds.min.is_finite()
+                && b.bounds.max.is_finite(),
+            "Invalid equilibrium bodies"
+        );
+        ensure!(m.is_finite() && m >= 0., "Invalid equilibrium masses");
+    }
+    input::weight(problem)?;
+    for i in 0..problem.size().joints {
+        let j = problem.joint(i)?;
+        ensure!(
+            j.a != j.b
+                && problem.body_index(j.a)?.is_some()
+                && problem.body_index(j.b)?.is_some()
+                && j.anchor.is_finite(),
             "Invalid equilibrium joint endpoints"
         );
         ensure!(
@@ -800,7 +835,7 @@ fn validate_problem(problem: &Problem) -> Result<()> {
             ]
             .into_iter()
             .flatten()
-            .all(|c| c.is_finite() && c >= 0.),
+            .all(|v| v.is_finite() && v >= 0.),
             "Invalid joint capacity"
         );
         if let JointKind::Revolute { axis, .. } = j.kind {
@@ -810,22 +845,24 @@ fn validate_problem(problem: &Problem) -> Result<()> {
             );
         }
     }
-    ensure!(
-        problem.contacts.iter().all(|c| c.lower < n
-            && c.upper < n
-            && c.lower != c.upper
-            && c.patch.min.is_finite()
-            && c.patch.max.is_finite()),
-        "Invalid equilibrium contacts"
-    );
-    ensure!(
-        problem
-            .supports
-            .iter()
-            .all(|(i, p)| *i < n && p.is_finite())
-            && problem.anchored.iter().all(|i| *i < n),
-        "Invalid equilibrium supports"
-    );
+    for i in 0..problem.size().contacts {
+        let c = problem.contact(i)?;
+        ensure!(
+            c.lower < n
+                && c.upper < n
+                && c.lower != c.upper
+                && c.patch.min.is_finite()
+                && c.patch.max.is_finite(),
+            "Invalid equilibrium contacts"
+        );
+    }
+    for i in 0..problem.size().supports {
+        let (b, p) = problem.support(i)?;
+        ensure!(b < n && p.is_finite(), "Invalid equilibrium supports");
+    }
+    for i in 0..problem.size().anchors {
+        ensure!(problem.anchor(i)? < n, "Invalid equilibrium supports");
+    }
     Ok(())
 }
 
@@ -840,7 +877,8 @@ fn verify_subset(
     layout: &Layout,
     owned: Option<&[bool]>,
 ) -> Result<Certificate> {
-    WitnessVerifier::new(problem)?.verify(problem, x, layout, owned)
+    let mut state = crate::validation::MemoryValidationState::default();
+    WitnessVerifier::new(problem, &mut state)?.verify(problem, x, layout, owned, &state)
 }
 
 /// Explain an infeasible equilibrium: the joints that would need more

@@ -34,7 +34,7 @@ designs live in `todo/` and are indexed by [TODO.md](../TODO.md).
 - [128-stud cells, atomic migration and incompatible-cache deletion](cells-and-migration.md)
 - [Shared-world protocol](concurrent-global-editing.md)
 - [Transactional CBOR library](transactional-storage.md)
-- [Native disk-backed transaction, authoring and physical-input working state](native-working-state.md)
+- [Native disk-backed transaction, authoring and physical-validation working state](native-working-state.md)
 - [Paging, history and maintenance](storage-operations.md)
   includes whole-world packed-read migration and Merkle-based cache invalidation.
 - [Commit history](commit-history.md)

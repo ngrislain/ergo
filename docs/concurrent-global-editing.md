@@ -138,10 +138,11 @@ indexes, generic discovery frontiers and rule-diff rows use
 [disk-backed working state](native-working-state.md). Scratch has its own disk/cache
 limits (`ERGO_SHARED_SPILL_BYTES`, `ERGO_SHARED_SPILL_CACHE_KIB`); exhaustion is
 explicitly inconclusive and never publishes a partial root. Physical-body and
-geometry broad-phase records now spill too; certification still loads each complete
-mechanical component. Global joint lists, scalar component indexes, assembly rules
-and the final audit ID set remain resident; this is not a
-whole-process RSS bound or fully out-of-core physics.
+geometry broad-phase records spill too. Complete mechanical-component membership,
+constraint collections, compression loads, canonical general-equilibrium inputs
+and planner/verifier incidence use the same bounded working-state path. Assembly
+rules and the final audit ID set can remain resident; this is not a whole-process
+RSS bound.
 
 ### Frozen physical model
 
@@ -242,8 +243,8 @@ directly. See [MCP setup and outcome handling](local-construction-mcp.md#publica
   permissions, pacing and frozen physics are checked before one publication.
   Budgets are aggregate. The receipt has one accepted revision/audit and per-assembly
   **upserted** ID mappings. The previous full-scene `PUT` protocol is removed;
-  migrate all consumers and bound caches together. These changes are unreleased
-  source after v0.5.34, not an out-of-core validation guarantee.
+   migrate all consumers and bound caches together for v0.5.35. Physical working
+   state streams; authoring metadata and explicit exports retain separate budgets.
 - `POST /api/shared-worlds/{id}/commits`: `{base, pieces, rules, joints, message}`. Each
   piece edit contains `{id, geometry, mesh}`; null geometry deletes the piece.
   A new geometry preserves the birth ID; optional mesh selects an uploaded,

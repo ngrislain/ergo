@@ -195,10 +195,11 @@ patches with zero joint wrench, and its result is a feasible point of the same
 problem. Own weights are initialized on demand; processed accumulated loads are
 discarded, retaining only the pending-load frontier rather than a whole-scene
 load vector. Shared-native geometry uses normalized disk-backed bodies and paged
-conservative spatial candidates through the common validation gate. One complete
-mechanical component is then loaded for certification; global joint lists and
-scalar component indexes still materialize. This does not claim constant-memory
-or arbitrary-chunk validation. All islands
+conservative spatial candidates through the common validation gate. Component
+membership, constraints, ordered compression state, canonical equilibrium inputs
+and independent planner/verifier indexes also spill. Only bounded local kernels
+and capped numeric correction buffers materialize, never arbitrary independently
+supported chunks. This does not claim fixed whole-process memory. All islands
 must pass before the single atomic publication.
 
 The default residual tolerances are `1e-6 N` and `1e-8 N·m` (raised in proportion

@@ -919,6 +919,11 @@ impl Transaction {
     pub fn local_spatial(&self) -> Result<spill::SpillSpatial> {
         self.tree.spool.spatial()
     }
+    /// Shared factory for disposable application state under this transaction's
+    /// scratch quota. It cannot publish accepted objects or bypass the head CAS.
+    pub fn local_store(&self) -> spill::SpillStore {
+        self.tree.spool.clone()
+    }
     pub fn spill_database_bytes(&self) -> Result<u64> {
         self.tree.spool.database_bytes()
     }

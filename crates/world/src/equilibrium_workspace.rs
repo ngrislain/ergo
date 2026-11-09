@@ -73,6 +73,20 @@ pub struct PartitionPlan {
 /// Reset per physical island. Missing/corrupt records must error, never truncate
 /// a plan, invent an anchor or return an incomplete reaction vector.
 pub trait SolverWorkspace: ReactionWrite {
+    fn new_state(&self) -> Result<Box<dyn crate::validation::ValidationState>>;
+    fn planner_state(&self) -> &dyn crate::validation::ValidationState;
+    fn planner_state_mut(&mut self) -> &mut dyn crate::validation::ValidationState;
+    fn verifier_state(&self) -> &dyn crate::validation::ValidationState;
+    fn verifier_state_mut(&mut self) -> &mut dyn crate::validation::ValidationState;
+    /// Independent of per-island numerical resets. Component membership and
+    /// compression state have disjoint stores so indexed body reads can borrow
+    /// the former while propagation updates the latter.
+    fn validation_state(
+        &mut self,
+    ) -> (
+        &mut dyn crate::validation::ValidationState,
+        &mut dyn crate::validation::ValidationState,
+    );
     fn reset(&mut self, columns: usize) -> Result<()>;
     fn plan_len(&self) -> usize;
     fn push_plan(&mut self, plan: PartitionPlan) -> Result<()>;
@@ -88,6 +102,10 @@ pub trait SolverWorkspace: ReactionWrite {
 pub struct MemoryWorkspace {
     plans: Vec<PartitionPlan>,
     columns: Vec<ReactionColumn>,
+    components: crate::validation::MemoryValidationState,
+    compression: crate::validation::MemoryValidationState,
+    planner: crate::validation::MemoryValidationState,
+    verifier: crate::validation::MemoryValidationState,
 }
 impl ReactionRead for MemoryWorkspace {
     fn reaction_len(&self) -> usize {
@@ -117,6 +135,29 @@ impl ReactionWrite for MemoryWorkspace {
     }
 }
 impl SolverWorkspace for MemoryWorkspace {
+    fn new_state(&self) -> Result<Box<dyn crate::validation::ValidationState>> {
+        Ok(Box::new(crate::validation::MemoryValidationState::default()))
+    }
+    fn planner_state(&self) -> &dyn crate::validation::ValidationState {
+        &self.planner
+    }
+    fn planner_state_mut(&mut self) -> &mut dyn crate::validation::ValidationState {
+        &mut self.planner
+    }
+    fn verifier_state(&self) -> &dyn crate::validation::ValidationState {
+        &self.verifier
+    }
+    fn verifier_state_mut(&mut self) -> &mut dyn crate::validation::ValidationState {
+        &mut self.verifier
+    }
+    fn validation_state(
+        &mut self,
+    ) -> (
+        &mut dyn crate::validation::ValidationState,
+        &mut dyn crate::validation::ValidationState,
+    ) {
+        (&mut self.components, &mut self.compression)
+    }
     fn reset(&mut self, columns: usize) -> Result<()> {
         self.plans.clear();
         self.columns = vec![ReactionColumn::default(); columns];
@@ -156,5 +197,144 @@ impl SolverWorkspace for MemoryWorkspace {
             .get_mut(index)
             .context("Reaction column is absent")? = column;
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod storage_tests {
+    use super::*;
+    use crate::validation::{
+        ValidationState,
+        working_state::{faults::MissingRowState, key},
+    };
+    struct FaultWorkspace {
+        inner: MemoryWorkspace,
+        planner: MissingRowState,
+        verifier: MissingRowState,
+    }
+    impl ReactionRead for FaultWorkspace {
+        fn reaction_len(&self) -> usize {
+            self.inner.reaction_len()
+        }
+        fn read_reactions(&self, start: usize, out: &mut [f64]) -> Result<()> {
+            self.inner.read_reactions(start, out)
+        }
+    }
+    impl ReactionWrite for FaultWorkspace {
+        fn set_reaction(&mut self, i: usize, value: f64) -> Result<()> {
+            self.inner.set_reaction(i, value)
+        }
+    }
+    impl SolverWorkspace for FaultWorkspace {
+        fn new_state(&self) -> Result<Box<dyn ValidationState>> {
+            self.inner.new_state()
+        }
+        fn planner_state(&self) -> &dyn ValidationState {
+            &self.planner
+        }
+        fn planner_state_mut(&mut self) -> &mut dyn ValidationState {
+            &mut self.planner
+        }
+        fn verifier_state(&self) -> &dyn ValidationState {
+            &self.verifier
+        }
+        fn verifier_state_mut(&mut self) -> &mut dyn ValidationState {
+            &mut self.verifier
+        }
+        fn validation_state(&mut self) -> (&mut dyn ValidationState, &mut dyn ValidationState) {
+            self.inner.validation_state()
+        }
+        fn reset(&mut self, n: usize) -> Result<()> {
+            self.inner.reset(n)
+        }
+        fn plan_len(&self) -> usize {
+            self.inner.plan_len()
+        }
+        fn push_plan(&mut self, p: PartitionPlan) -> Result<()> {
+            self.inner.push_plan(p)
+        }
+        fn plan(&self, i: usize) -> Result<PartitionPlan> {
+            self.inner.plan(i)
+        }
+        fn put_plan(&mut self, i: usize, p: PartitionPlan) -> Result<()> {
+            self.inner.put_plan(i, p)
+        }
+        fn column(&self, i: usize) -> Result<ReactionColumn> {
+            self.inner.column(i)
+        }
+        fn put_column(&mut self, i: usize, c: ReactionColumn) -> Result<()> {
+            self.inner.put_column(i, c)
+        }
+    }
+    #[test]
+    fn lost_planner_or_independent_verifier_incidence_never_certifies() {
+        let mut d = crate::demo::Demo::new();
+        d.add("3005", 4, 0., 0., 0.);
+        d.add("3005", 4, 0., 1., 0.);
+        let joints = [crate::JointSpec {
+            a: 1,
+            b: 2,
+            anchor: glam::DVec3::new(0.5, 1., 0.5),
+            kind: crate::JointKind::Fixed,
+            break_force: Some(10.),
+            break_torque: Some(1.),
+            axial_force: None,
+            friction_torque: None,
+            strength_source: None,
+        }];
+        let problem = Problem {
+            bricks: Bodies::all(&d.bricks),
+            joints: &joints,
+            contacts: vec![],
+            supports: vec![],
+            anchored: vec![0],
+            masses: vec![0.0016; 2],
+            force_tolerance: 1e-6,
+            torque_tolerance: 1e-8,
+        };
+        for planner in [true, false] {
+            let mut workspace = FaultWorkspace {
+                inner: MemoryWorkspace::default(),
+                planner: MissingRowState::default(),
+                verifier: MissingRowState::default(),
+            };
+            if planner {
+                workspace.planner.missing_page = Some(key(2, &[0]));
+            } else {
+                workspace.verifier.missing_page = Some(key(1, &[0]));
+            }
+            let error = certify_partitioned_with_workspace(
+                &problem,
+                PartitionOptions {
+                    core_bodies: 1,
+                    ..Default::default()
+                },
+                &mut workspace,
+            )
+            .unwrap_err();
+            assert!(error.downcast_ref::<Inconclusive>().is_some(), "{error:#}");
+            assert!(error.to_string().contains("incidence"), "{error:#}");
+        }
+    }
+    #[test]
+    fn canonical_body_loss_is_inconclusive_before_any_local_solve() {
+        let mut d = crate::demo::Demo::new();
+        d.add("3005", 4, 0., 0., 0.);
+        d.add("3005", 4, 0., 1., 0.);
+        let mut state = MissingRowState::default();
+        state.missing_get = Some(key(0, &[1]));
+        let mut problem = StoredProblem::new(Box::new(state), 1e-6, 1e-8);
+        for body in d.bricks {
+            problem.push_body(body, 0.0016).unwrap();
+        }
+        problem.push_anchor(0).unwrap();
+        let mut workspace = MemoryWorkspace::default();
+        assert!(
+            certify_input_with_workspace(&problem, &mut workspace)
+                .unwrap_err()
+                .downcast_ref::<Inconclusive>()
+                .is_some()
+        );
+        assert_eq!(workspace.plan_len(), 0);
     }
 }

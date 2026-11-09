@@ -32,9 +32,11 @@ resource "scaleway_container" "api" {
   cpu_limit              = 1000
   # Scaleway stores whole decimal MB; round 2 GiB up to avoid perpetual drift.
   memory_limit_bytes = 2148 * 1000 * 1000
-  min_scale          = 0
-  max_scale          = var.max_scale
-  timeout            = var.request_timeout_seconds
+  # Disk-backed scratch, not more RAM. Match the API's whole-decimal-MB precision.
+  local_storage_limit_bytes = 4295 * 1000 * 1000
+  min_scale                 = 0
+  max_scale                 = var.max_scale
+  timeout                   = var.request_timeout_seconds
 
   scaling_option {
     concurrent_requests_threshold = 10
@@ -42,6 +44,8 @@ resource "scaleway_container" "api" {
 
   environment_variables = merge({ ERGO_GROUND_SOURCE = "osm" }, var.extra_environment_variables, local.sandbox_environment, {
     ERGO_BIND                   = "0.0.0.0:8080"
+    TMPDIR                      = "/var/lib/ergo-tmp"
+    SQLITE_TMPDIR               = "/var/lib/ergo-tmp"
     ERGO_PUBLIC_URL             = local.public_url
     S3_BUCKET                   = data.scaleway_object_bucket.ergo.name
     S3_REGION                   = var.bucket_region

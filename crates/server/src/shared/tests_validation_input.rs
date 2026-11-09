@@ -306,3 +306,53 @@ async fn paged_pavilion_uses_the_same_coupled_solver_and_complete_witness() {
     assert!(report.equilibrium_solver.spilled_reaction_columns > 0);
     assert!(report.equilibrium_solver.largest_local_kkt_dimension <= 2048);
 }
+
+#[tokio::test]
+async fn a_large_connected_compression_component_keeps_only_bounded_body_pages() {
+    use ergo_world::{
+        equilibrium::SolverWorkspace,
+        validation::{ValidationConstraints, ValidationRecord},
+    };
+    let mut demo = Demo::new();
+    for h in 0..2048 {
+        demo.add("3005", 4, 0., h as f64, 0.);
+    }
+    let source = scene(demo);
+    let tx = transaction().await;
+    let input = input(&tx, &source, &Default::default());
+    let mut workspace =
+        super::super::equilibrium_workspace::NativeSolverWorkspace::new(&tx).unwrap();
+    let mut constraints = ValidationConstraints::new(workspace.new_state().unwrap());
+    let report = validation::validate_constraints_with_workspace(
+        &input,
+        &mut constraints,
+        Default::default(),
+        &Default::default(),
+        &mut workspace,
+    )
+    .unwrap();
+    assert_eq!(report.checked_bricks, 2048);
+    assert_eq!(report.stability_components, 1);
+    assert_eq!(report.largest_equilibrium_component, 0);
+    assert_eq!(constraints.len(), 2047);
+    assert_eq!(workspace.plan_len(), 0);
+    assert!(input.cache.borrow().len() <= CACHE_BODIES);
+    let (state, _) = workspace.validation_state();
+    assert!(matches!(
+        state
+            .get(&[vec![0], 0u64.to_be_bytes().to_vec()].concat())
+            .unwrap(),
+        Some(ValidationRecord::Node {
+            component: Some(0),
+            ordinal: Some(0),
+            ..
+        })
+    ));
+    assert_eq!(
+        state
+            .page(&[vec![1], 0u64.to_be_bytes().to_vec()].concat(), None, 128)
+            .unwrap()
+            .len(),
+        128
+    );
+}
