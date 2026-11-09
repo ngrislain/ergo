@@ -2,6 +2,93 @@ use ergo_transactions::{Error, OctreePath, Repository, spill::SpillLimits};
 use object_store::memory::InMemory;
 use std::sync::Arc;
 
+#[test]
+fn spatial_pages_are_complete_ordered_and_conservative_at_float_boundaries() {
+    let store = ergo_transactions::spill::SpillStore::default();
+    let mut index = store.spatial().expect("bundled SQLite must include RTree");
+    let coordinates = [
+        -1e20,
+        -16_777_217.1,
+        -1.00000001,
+        -1e-40,
+        0.,
+        1e-40,
+        1.00000001,
+        16_777_217.1,
+        1e20,
+    ];
+    for id in (0..385).rev() {
+        let x = coordinates[id as usize % coordinates.len()];
+        let min = [x, x, x];
+        let max = [x + 1e-10, x + 0.1, x + 1.];
+        index.insert(id, min, max).unwrap();
+        index.check_contains(id, min, max).unwrap();
+        for point in [min, max] {
+            let mut after = None;
+            let mut found = false;
+            loop {
+                let page = index.page(point, point, after, 13).unwrap();
+                if page.is_empty() {
+                    break;
+                }
+                found |= page.contains(&id);
+                after = page.last().copied();
+            }
+            assert!(found, "rounded index lost exact boundary {id} {point:?}");
+        }
+    }
+    index.check_count().unwrap();
+    let mut after = None;
+    let mut all = Vec::new();
+    loop {
+        let page = index.page([-1e21; 3], [1e21; 3], after, 128).unwrap();
+        assert!(page.len() <= 128);
+        if page.is_empty() {
+            break;
+        }
+        after = page.last().copied();
+        all.extend(page);
+    }
+    assert_eq!(all, (0..385).collect::<Vec<_>>());
+    assert_eq!(index.len(), 385);
+}
+
+#[tokio::test]
+async fn spatial_disk_exhaustion_poisoning_prevents_publication() {
+    let repo = Repository::new(Arc::new(InMemory::new()), "spatial-disk-full")
+        .unwrap()
+        .with_spill_limits(SpillLimits {
+            database_bytes: 64 * 1024,
+            cache_kib: 4,
+        })
+        .unwrap();
+    let initial = repo.create("main").await.unwrap();
+    let mut tx = repo.begin("main").await.unwrap();
+    tx.put(&OctreePath::new(vec![1]).unwrap(), &42u32)
+        .await
+        .unwrap();
+    let mut index = tx.local_spatial().unwrap();
+    let mut failed = false;
+    for i in 0..10000u32 {
+        if let Err(error) = index.insert(i, [i as f64; 3], [i as f64 + 1.; 3]) {
+            assert!(matches!(error, Error::Scratch(_)));
+            failed = true;
+            break;
+        }
+    }
+    assert!(failed);
+    assert!(matches!(
+        index.page([0.; 3], [10000.; 3], None, 128),
+        Err(Error::Scratch(_))
+    ));
+    assert!(matches!(
+        tx.commit("alice", "must not publish", Default::default())
+            .await,
+        Err(Error::Scratch(_))
+    ));
+    assert_eq!(repo.checkout("main").await.unwrap().id(), initial.id());
+}
+
 #[tokio::test]
 async fn spilled_execution_replays_disjoint_changes_and_retains_all_predicates() {
     let repo = Repository::new(Arc::new(InMemory::new()), "spilled-replay").unwrap();

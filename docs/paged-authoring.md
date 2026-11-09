@@ -169,8 +169,10 @@ SOCP factorization and independently checks one assembled witness body-by-body.
 [Native working-state spilling](native-working-state.md) now externalizes staged
 objects, predicates, edit journals, dependency indexes/frontiers and rule-diff rows.
 Durable authoring sessions, asynchronous publication and fully out-of-core physical
-input remain unimplemented. Assembly rules, cached geometry, the affected scene,
-planner/verifier indexes and physical contact/joint inputs still materialize.
+input remain unimplemented. Shared-native geometry now uses disk-backed normalized
+bodies and paged spatial candidates, not a complete affected pose vector. Assembly
+rules, cached geometry, global joint lists, scalar component indexes and each
+complete mechanical component's body/contact/planner/verifier inputs still materialize.
 Native solver plan/interface records, reaction state and the piece cache now
 spill through [the paged workspace](partitioned-stability.md#paged-coordinator-state).
 Commit

@@ -916,6 +916,9 @@ impl Transaction {
     ) -> Result<SpillMap<K, V>> {
         self.tree.spool.map()
     }
+    pub fn local_spatial(&self) -> Result<spill::SpillSpatial> {
+        self.tree.spool.spatial()
+    }
     pub fn spill_database_bytes(&self) -> Result<u64> {
         self.tree.spool.database_bytes()
     }

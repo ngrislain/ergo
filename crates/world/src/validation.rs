@@ -10,6 +10,9 @@ use std::collections::{HashMap, HashSet};
 
 #[path = "validation_components.rs"]
 mod components;
+#[path = "validation_input.rs"]
+mod input;
+pub use input::{ValidationInput, validation_envelope};
 
 pub const OVERLAP_TOLERANCE: f64 = 0.0001;
 
@@ -107,12 +110,16 @@ pub fn validate_ground_anchors_with_tolerances(
             .iter()
             .find(|b| b.id == *id)
             .ok_or_else(|| anyhow::anyhow!("Anchored brick is absent"))?;
-        ensure!(
-            brick.bounds.min.y.abs() <= tolerances.position_brick_units,
-            "Anchored brick {} is not on its baseplate; a floating world anchor cannot certify a construction",
-            id
-        );
+        validate_ground_anchor(brick, tolerances)?;
     }
+    Ok(())
+}
+fn validate_ground_anchor(brick: &Brick, tolerances: StaticTolerances) -> Result<()> {
+    ensure!(
+        brick.bounds.min.y.abs() <= tolerances.position_brick_units,
+        "Anchored brick {} is not on its baseplate; a floating world anchor cannot certify a construction",
+        brick.id
+    );
     Ok(())
 }
 
@@ -150,46 +157,102 @@ pub fn validate_static_with_workspace(
     workspace: &mut dyn crate::equilibrium::SolverWorkspace,
 ) -> Result<ValidationReport> {
     measurements.normalize_scene(scene)?;
-    tolerances.validate()?;
-    ensure!(
-        !scene.bricks.is_empty(),
-        "A static construction must contain at least one brick"
-    );
-    crate::catalog::validate(&scene.bricks)?;
     crate::groups::validate(&scene.bricks, &scene.groups)?;
     if let Some(model) = &scene.model {
         model.validate_isometries()?;
     }
-    for brick in &scene.bricks {
-        crate::physical::validate_pose(brick)?;
+    let input = input::SliceInput::new(&scene.bricks);
+    validate_input_with_workspace(
+        &input,
+        &mut scene.joints,
+        &scene.fixed_bricks,
+        tolerances,
+        measurements,
+        workspace,
+    )
+}
+/// Physical gate over normalized, indexed body access. Authoring group/model
+/// metadata is validated by its owner; it is never a substitute physical weld.
+pub fn validate_input_with_workspace(
+    input: &dyn ValidationInput,
+    joints: &mut Vec<crate::JointSpec>,
+    fixed: &[u32],
+    tolerances: StaticTolerances,
+    measurements: &crate::physical::ConnectionMeasurements,
+    workspace: &mut dyn crate::equilibrium::SolverWorkspace,
+) -> Result<ValidationReport> {
+    use anyhow::Context;
+    measurements.validate()?;
+    tolerances.validate()?;
+    ensure!(
+        !input.is_empty(),
+        "A static construction must contain at least one brick"
+    );
+    let mut ids = Vec::with_capacity(input.len());
+    for i in 0..input.len() {
+        let brick = input.body(i)?;
+        crate::catalog::validate(std::slice::from_ref(brick.as_ref()))?;
+        crate::physical::validate_pose(&brick)?;
+        let mut expected = brick.clone().into_owned();
+        measurements.normalize_brick(&mut expected)?;
+        ensure!(
+            brick.bounds.min == expected.bounds.min && brick.bounds.max == expected.bounds.max,
+            "Physical body bounds were not normalized from the frozen model"
+        );
+        input.check_indexed_bounds(i, validation_envelope(&brick))?;
+        ids.push(brick.id);
     }
-    constraints::validate_joints(&scene.bricks, &scene.joints, &scene.fixed_bricks)?;
-    crate::attachments::validate_joints(
-        &scene.bricks,
-        &scene.joints,
-        tolerances.position_brick_units,
-        tolerances.rotation_radians,
-    )?;
-    validate_ground_anchors_with_tolerances(&scene.bricks, &scene.fixed_bricks, tolerances)?;
-    validate_baseplate_registration(&scene.bricks, tolerances)?;
-    let tree = Octree::new(scene.bricks.iter().map(|b| b.bounds).collect());
-    for (i, brick) in scene.bricks.iter().enumerate() {
+    constraints::validate_joint_ids(ids.iter().copied(), joints, fixed)?;
+    for (i, id) in ids.into_iter().enumerate() {
+        ensure!(
+            input.body_index(id)? == Some(i),
+            "Physical body identity/index mismatch"
+        );
+    }
+    for joint in joints.iter() {
+        let a = input.body(
+            input
+                .body_index(joint.a)?
+                .context("Attachment endpoint is absent")?,
+        )?;
+        let b = input.body(
+            input
+                .body_index(joint.b)?
+                .context("Attachment endpoint is absent")?,
+        )?;
+        crate::attachments::validate_pair(
+            &a,
+            &b,
+            joint,
+            tolerances.position_brick_units,
+            tolerances.rotation_radians,
+        )?;
+    }
+    for id in fixed {
+        let brick = input.body(input.body_index(*id)?.context("Anchored brick is absent")?)?;
+        validate_ground_anchor(&brick, tolerances)?;
+    }
+    for i in 0..input.len() {
+        let brick = input.body(i)?;
+        validate_baseplate_brick(&brick, tolerances)?;
         ensure!(
             brick.bounds.min.y >= -tolerances.position_brick_units,
             "Brick {} intersects its baseplate",
             brick.id
         );
-        for j in tree.query(brick.bounds) {
+        for candidate in input.query(brick.bounds)? {
+            let j = candidate?;
+            ensure!(j < input.len(), "Spatial candidate is absent");
             if j <= i {
                 continue;
             }
-            let other = &scene.bricks[j];
+            let other = input.body(j)?;
             let overlap =
                 brick.bounds.max.min(other.bounds.max) - brick.bounds.min.max(other.bounds.min);
             ensure!(
                 !crate::interference::bodies_penetrate(
-                    brick,
-                    other,
+                    &brick,
+                    &other,
                     tolerances.position_brick_units
                 ),
                 "Bricks {} and {} overlap by {:.4} brick units; fix the model before saving",
@@ -199,52 +262,77 @@ pub fn validate_static_with_workspace(
             );
         }
     }
-    drop(tree);
-    if let Some(error) =
-        crate::interference::first_stud_collision(&scene.bricks, tolerances.position_brick_units)
-    {
-        anyhow::bail!(error);
+    for i in 0..input.len() {
+        let source = input.body(i)?;
+        if let Some(bounds) = crate::interference::stud_bounds(&source) {
+            for candidate in input.query(bounds)? {
+                let j = candidate?;
+                ensure!(j < input.len(), "Spatial candidate is absent");
+                let target = input.body(j)?;
+                if let Some(error) = crate::interference::stud_collision_pair(
+                    &source,
+                    &target,
+                    tolerances.position_brick_units,
+                ) {
+                    anyhow::bail!(error);
+                }
+            }
+        }
     }
-    let pairs: HashSet<_> = scene
-        .joints
+    let pairs: HashSet<_> = joints
         .iter()
         .map(|j| (j.a.min(j.b), j.a.max(j.b)))
         .collect();
-    let inferred: Vec<_> =
-        constraints::inferred_joints_with_tolerance(&scene.bricks, tolerances.position_brick_units)
-            .into_iter()
-            .filter(|j| !pairs.contains(&(j.a.min(j.b), j.a.max(j.b))))
-            .collect();
-    let inferred_count = inferred.len();
-    scene.joints.extend(inferred);
-    drop(pairs);
-    for brick in scene
-        .bricks
-        .iter()
-        .filter(|b| !crate::interference::axis_aligned(b))
-    {
-        ensure!(
-            brick.bounds.min.y > tolerances.position_brick_units
-                && scene
-                    .joints
-                    .iter()
-                    .any(|j| j.a == brick.id || j.b == brick.id),
-            "Cannot certify tilted brick {} ({}): tilted bodies require a joint-supported load path, not a bounding-box bearing face",
-            brick.id,
-            brick.part
-        );
+    let mut inferred_count = 0;
+    for i in 0..input.len() {
+        let a = input.body(i)?;
+        for candidate in input.query(
+            crate::attachments::bounds(&a)
+                .expanded(constraints::INFERRED_JOINT_HALO.max(tolerances.position_brick_units)),
+        )? {
+            let j = candidate?;
+            ensure!(j < input.len(), "Spatial candidate is absent");
+            if j <= i {
+                continue;
+            }
+            let b = input.body(j)?;
+            if !pairs.contains(&(a.id.min(b.id), a.id.max(b.id)))
+                && let Some(joint) =
+                    constraints::inferred_pair(&a, &b, tolerances.position_brick_units)
+            {
+                joints.push(joint);
+                inferred_count += 1;
+            }
+        }
     }
-    // Capacities: the measurement book, then reviewed estimates. A joint
-    // without either may carry no load.
-    measurements.apply(&scene.bricks, &mut scene.joints)?;
-    let stability = certify_components(
-        &scene.bricks,
-        &scene.joints,
-        &scene.fixed_bricks,
-        tolerances,
-        measurements,
-        workspace,
-    )?;
+    drop(pairs);
+    let constrained: HashSet<_> = joints.iter().flat_map(|j| [j.a, j.b]).collect();
+    for i in 0..input.len() {
+        let b = input.body(i)?;
+        if !crate::interference::axis_aligned(&b) {
+            ensure!(
+                b.bounds.min.y > tolerances.position_brick_units && constrained.contains(&b.id),
+                "Cannot certify tilted brick {} ({}): tilted bodies require a joint-supported load path, not a bounding-box bearing face",
+                b.id,
+                b.part
+            );
+        }
+    }
+    for joint in joints.iter_mut() {
+        let a = input.body(
+            input
+                .body_index(joint.a)?
+                .context("Missing joint endpoint")?,
+        )?;
+        let b = input.body(
+            input
+                .body_index(joint.b)?
+                .context("Missing joint endpoint")?,
+        )?;
+        measurements.apply_pair(&a, &b, joint)?;
+    }
+    let stability =
+        certify_input_components(input, joints, fixed, tolerances, measurements, workspace)?;
     let report = ValidationReport {
         collision_model:
             "nominal body boxes with finite registered connector clearance; visual studs excluded"
@@ -256,7 +344,7 @@ pub fn validate_static_with_workspace(
         }
         .into(),
         inferred_joints: inferred_count,
-        checked_bricks: scene.bricks.len(),
+        checked_bricks: input.len(),
         max_displacement: 0.0,
         joint_strength_required: Some(stability.certificate.loaded_joints > 0),
         max_joint_utilisation: stability.certificate.max_utilisation,
@@ -282,6 +370,7 @@ struct StabilityCertificate {
 /// No island is independently supported at an artificial cut: discovery joins
 /// every joint and every bearing/contact interface before any island is checked.
 /// Only the current island gets a compression frontier or solver matrices.
+#[cfg(test)]
 fn certify_components(
     bricks: &[Brick],
     joints: &[crate::JointSpec],
@@ -290,8 +379,25 @@ fn certify_components(
     measurements: &crate::physical::ConnectionMeasurements,
     workspace: &mut dyn crate::equilibrium::SolverWorkspace,
 ) -> Result<StabilityCertificate> {
+    certify_input_components(
+        &input::SliceInput::new(bricks),
+        joints,
+        fixed,
+        tol,
+        measurements,
+        workspace,
+    )
+}
+fn certify_input_components(
+    input: &dyn ValidationInput,
+    joints: &[crate::JointSpec],
+    fixed: &[u32],
+    tol: StaticTolerances,
+    measurements: &crate::physical::ConnectionMeasurements,
+    workspace: &mut dyn crate::equilibrium::SolverWorkspace,
+) -> Result<StabilityCertificate> {
     use std::borrow::Cow;
-    let islands = components::partition(bricks, joints, tol)?;
+    let islands = components::partition_input(input, joints, tol)?;
     let anchored: HashSet<_> = fixed.iter().copied().collect();
     let mut result = StabilityCertificate {
         certificate: Default::default(),
@@ -301,7 +407,20 @@ fn certify_components(
         largest_equilibrium_component: 0,
     };
     for island in islands {
-        let bodies = Bodies::select(bricks, &island.bodies);
+        // Resident callers borrow their original slice. Paged inputs are loaded
+        // only after complete mechanical components are known; no spatial chunk
+        // is certified independently. Current equilibrium inputs are per-island.
+        let loaded;
+        let bodies = if let Some(bricks) = input.resident() {
+            Bodies::select(bricks, &island.bodies)
+        } else {
+            loaded = island
+                .bodies
+                .iter()
+                .map(|&i| input.body(i).map(|b| b.into_owned()))
+                .collect::<Result<Vec<_>>>()?;
+            Bodies::all(&loaded)
+        };
         let fixed: Vec<_> = bodies
             .iter()
             .filter(|b| anchored.contains(&b.id))
@@ -346,56 +465,60 @@ pub fn validate_baseplate_registration(
     tolerances: StaticTolerances,
 ) -> Result<()> {
     tolerances.validate()?;
-    for brick in bricks
-        .iter()
-        .filter(|b| b.bounds.min.y.abs() <= tolerances.position_brick_units)
-    {
-        // Tyres rest on the virtual ground's flat bearing plane. They do not
-        // engage ground studs and need no fabricated display plate beneath them.
-        if crate::attachments::connectors(&brick.part)
-            .iter()
-            .any(|c| c.kind == crate::attachments::Kind::Tyre)
-            || crate::catalog::canonical_id(&brick.part) == "4624c01.dat"
-        {
-            continue;
-        }
-        ensure!(
-            (crate::physical::metric_transform(brick.transform).y_axis - DVec3::Y).length()
-                <= tolerances.rotation_radians,
-            "Grounded brick {} ({}) is not upright for baseplate registration",
-            brick.id,
-            brick.part
-        );
-        // Factory feet and specialty profiles register their actual receiving
-        // datums, not an envelope edge that may lie inside the moulded outline.
-        let grids = crate::part_profiles::receiving_grids(&brick.part);
-        let registrations = if !grids.is_empty() {
-            grids
-                .iter()
-                .map(|grid| {
-                    let stud = brick.position
-                        + brick.transform * DVec3::new(grid.first[0], grid.bottom, grid.first[1]);
-                    [stud.x - 0.5, stud.z - 0.5]
-                })
-                .collect::<Vec<_>>()
-        } else {
-            vec![[brick.bounds.min.x, brick.bounds.max.z]]
-        };
-        ensure!(
-            registrations
-                .iter()
-                .flatten()
-                .all(|v| (v - v.round()).abs() <= tolerances.position_brick_units),
-            "Grounded brick {} ({}) is off the baseplate stud grid at {:?}; snap the whole placement to integer X/Y stud coordinates",
-            brick.id,
-            brick.part,
-            crate::coordinates::public(DVec3::new(
-                brick.bounds.min.x,
-                brick.bounds.min.y,
-                brick.bounds.max.z
-            ))
-        );
+    for brick in bricks {
+        validate_baseplate_brick(brick, tolerances)?;
     }
+    Ok(())
+}
+fn validate_baseplate_brick(brick: &Brick, tolerances: StaticTolerances) -> Result<()> {
+    if brick.bounds.min.y.abs() > tolerances.position_brick_units {
+        return Ok(());
+    }
+    // Tyres rest on the virtual ground's flat bearing plane. They do not
+    // engage ground studs and need no fabricated display plate beneath them.
+    if crate::attachments::connectors(&brick.part)
+        .iter()
+        .any(|c| c.kind == crate::attachments::Kind::Tyre)
+        || crate::catalog::canonical_id(&brick.part) == "4624c01.dat"
+    {
+        return Ok(());
+    }
+    ensure!(
+        (crate::physical::metric_transform(brick.transform).y_axis - DVec3::Y).length()
+            <= tolerances.rotation_radians,
+        "Grounded brick {} ({}) is not upright for baseplate registration",
+        brick.id,
+        brick.part
+    );
+    // Factory feet and specialty profiles register their actual receiving
+    // datums, not an envelope edge that may lie inside the moulded outline.
+    let grids = crate::part_profiles::receiving_grids(&brick.part);
+    let registrations = if !grids.is_empty() {
+        grids
+            .iter()
+            .map(|grid| {
+                let stud = brick.position
+                    + brick.transform * DVec3::new(grid.first[0], grid.bottom, grid.first[1]);
+                [stud.x - 0.5, stud.z - 0.5]
+            })
+            .collect::<Vec<_>>()
+    } else {
+        vec![[brick.bounds.min.x, brick.bounds.max.z]]
+    };
+    ensure!(
+        registrations
+            .iter()
+            .flatten()
+            .all(|v| (v - v.round()).abs() <= tolerances.position_brick_units),
+        "Grounded brick {} ({}) is off the baseplate stud grid at {:?}; snap the whole placement to integer X/Y stud coordinates",
+        brick.id,
+        brick.part,
+        crate::coordinates::public(DVec3::new(
+            brick.bounds.min.x,
+            brick.bounds.min.y,
+            brick.bounds.max.z
+        ))
+    );
     Ok(())
 }
 
@@ -527,6 +650,15 @@ fn nominal_contact(
     tol: StaticTolerances,
 ) -> Option<crate::equilibrium::Contact> {
     let (brick, other) = (&bricks[a], &bricks[b]);
+    nominal_body_contact(brick, other, a, b, tol)
+}
+fn nominal_body_contact(
+    brick: &Brick,
+    other: &Brick,
+    a: usize,
+    b: usize,
+    tol: StaticTolerances,
+) -> Option<crate::equilibrium::Contact> {
     let overlap = brick.bounds.max.min(other.bounds.max) - brick.bounds.min.max(other.bounds.min);
     if !crate::interference::axis_aligned(brick)
         || !crate::interference::axis_aligned(other)
@@ -1098,7 +1230,12 @@ mod tests {
         demo.add("3005", 4, 127., 0., 0.);
         demo.add("3005", 4, 130., 0., 0.);
         demo.add("3001", 4, 127., 1., 0.);
-        let islands = components::partition(&demo.bricks, &[], Default::default()).unwrap();
+        let islands = components::partition_input(
+            &input::SliceInput::new(&demo.bricks),
+            &[],
+            Default::default(),
+        )
+        .unwrap();
         assert_eq!(islands.len(), 1);
         let report = validate_static(&mut scene(demo)).unwrap();
         assert_eq!(report.stability_components, 1);
@@ -1111,7 +1248,12 @@ mod tests {
         let wing = crate::part_profiles::upper_bearing_regions(&demo.bricks[0])[1];
         demo.add("3005", 71, wing.min.x, wing.min.y, wing.min.z);
         assert!(nominal_contact(Bodies::all(&demo.bricks), 0, 1, Default::default()).is_none());
-        let islands = components::partition(&demo.bricks, &[], Default::default()).unwrap();
+        let islands = components::partition_input(
+            &input::SliceInput::new(&demo.bricks),
+            &[],
+            Default::default(),
+        )
+        .unwrap();
         assert_eq!(
             islands.len(),
             1,

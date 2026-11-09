@@ -2,12 +2,18 @@
 
 ## Unreleased
 
+- Stream shared-native geometry validation through normalized, checksummed body
+  records and conservative SQLite RTree candidate pages in transaction-local
+  scratch. Use one physical gate with resident/WASM slices; preserve complete
+  mechanical-component discovery and atomic publication. Bound decoded body
+  caching; refuse missing/corrupt index data and storage exhaustion as inconclusive.
+  Global joint/component indexes and one complete component still materialize.
 - Page shared-native coupled-equilibrium plan/interface records and global
   reaction state into transaction-local storage. Use bounded, checksummed scalar
   pages and the same independent body-wise verifier/correction through fallible
   reaction accessors; storage errors remain inconclusive with no RAM fallback.
   Keep local/WASM storage adapters on the same coordinator and expose spill-work
-  diagnostics. Physical input and planner/verifier indexes still materialize.
+  diagnostics. Complete component inputs and planner/verifier indexes still materialize.
 - Spill per-operation piece-cache entries without changing unique loading charges
   or cached absence semantics. Infer shared-native joints once after frozen-model
   normalization instead of building a preliminary duplicate inference list.
@@ -18,7 +24,7 @@
   hints before decoding and retain immutable create-if-absent/head-CAS guarantees.
   Cap grouped commit-file totals, avoid caching their encoded bodies, and stream
   uncached immutable-upload proofs. The SDK still needs one capped conditional
-  upload buffer; physical-input/planner/verifier-index streaming remains unfinished.
+  upload buffer; fully out-of-core physical/planner/verifier inputs remain unfinished.
 
 - Spill native staged objects, transaction predicates, ordered edit journals,
   attachments and upload frontiers to bounded disposable SQLite working stores.
@@ -28,7 +34,7 @@
 - Externalize authoring dependency edges, incident constraints, traversal queues
   and rule-diff records to the same transaction-local store. Configure scratch
   disk/cache budgets separately from authoring CBOR limits; report scratch
-  exhaustion as inconclusive. Physical scenes remain resident; commit records
+  exhaustion as inconclusive. Complete physical components remain resident; commit records
   now use verified file-backed lists. Accepted formats and the atomic head CAS
   are unchanged.
 

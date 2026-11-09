@@ -132,6 +132,7 @@ pub(crate) fn lower_bearing_regions(brick: &crate::Brick) -> Vec<Aabb> {
 pub(crate) fn bearing_bounds(brick: &crate::Brick) -> Aabb {
     upper_bearing_regions(brick)
         .into_iter()
+        .chain(lower_bearing_regions(brick))
         .fold(brick.bounds, Aabb::union)
 }
 

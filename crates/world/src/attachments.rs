@@ -609,54 +609,66 @@ pub fn validate_joints(
         let b = index
             .get(&joint.b)
             .context("Attachment endpoint is absent")?;
-        if connection(a, b, tolerance).is_some() {
+        validate_pair(a, b, joint, tolerance, rotation_tolerance)?;
+    }
+    Ok(())
+}
+/// Validate one resolved explicit attachment using the same predicate as a list.
+pub fn validate_pair(
+    a: &Brick,
+    b: &Brick,
+    joint: &JointSpec,
+    tolerance: f64,
+    rotation_tolerance: f64,
+) -> anyhow::Result<()> {
+    use anyhow::ensure;
+    if connection(a, b, tolerance).is_some() {
+        ensure!(
+            connection_with_tolerances(a, b, tolerance, rotation_tolerance).is_some(),
+            "Invalid attachment alignment for {} ↔ {}: connector axes exceed the server rotation tolerance",
+            a.id,
+            b.id
+        );
+    }
+    ensure!(
+        crate::spatial::relation_with_tolerance(a, b, tolerance)
+            .is_some_and(|r| r.certainty == "inferred"),
+        "Invalid attachment {} ({}) ↔ {} ({}): no registered connector fits these poses",
+        a.id,
+        a.part,
+        b.id,
+        b.part
+    );
+    let expected = joint_with_tolerance(a, b, tolerance);
+    ensure!(
+        (joint.anchor - expected.anchor).abs().max_element() <= tolerance,
+        "Invalid attachment anchor for {} ↔ {}: use the registered interface datum",
+        a.id,
+        b.id
+    );
+    match (&joint.kind, &expected.kind) {
+        (JointKind::Fixed, JointKind::Fixed) => {}
+        (JointKind::Revolute { axis, limits }, JointKind::Revolute { axis: correct, .. }) => {
+            let axis = physical::to_meters(*axis).normalize();
+            let correct = physical::to_meters(*correct).normalize();
             ensure!(
-                connection_with_tolerances(a, b, tolerance, rotation_tolerance).is_some(),
-                "Invalid attachment alignment for {} ↔ {}: connector axes exceed the server rotation tolerance",
+                axis.cross(correct).length() <= rotation_tolerance,
+                "Invalid attachment hinge axis for {} ↔ {}: it must follow the registered bearing",
+                a.id,
+                b.id
+            );
+            ensure!(
+                limits.is_none(),
+                "Invalid attachment limits for {} ↔ {}: this bearing has no registered rotation stops",
                 a.id,
                 b.id
             );
         }
-        ensure!(
-            crate::spatial::relation_with_tolerance(a, b, tolerance)
-                .is_some_and(|r| r.certainty == "inferred"),
-            "Invalid attachment {} ({}) ↔ {} ({}): no registered connector fits these poses",
-            a.id,
-            a.part,
-            b.id,
-            b.part
-        );
-        let expected = joint_with_tolerance(a, b, tolerance);
-        ensure!(
-            (joint.anchor - expected.anchor).abs().max_element() <= tolerance,
-            "Invalid attachment anchor for {} ↔ {}: use the registered interface datum",
+        _ => anyhow::bail!(
+            "Invalid attachment joint kind for {} ↔ {}: fixed/revolute behavior must match the registered connector",
             a.id,
             b.id
-        );
-        match (&joint.kind, &expected.kind) {
-            (JointKind::Fixed, JointKind::Fixed) => {}
-            (JointKind::Revolute { axis, limits }, JointKind::Revolute { axis: correct, .. }) => {
-                let axis = physical::to_meters(*axis).normalize();
-                let correct = physical::to_meters(*correct).normalize();
-                ensure!(
-                    axis.cross(correct).length() <= rotation_tolerance,
-                    "Invalid attachment hinge axis for {} ↔ {}: it must follow the registered bearing",
-                    a.id,
-                    b.id
-                );
-                ensure!(
-                    limits.is_none(),
-                    "Invalid attachment limits for {} ↔ {}: this bearing has no registered rotation stops",
-                    a.id,
-                    b.id
-                );
-            }
-            _ => anyhow::bail!(
-                "Invalid attachment joint kind for {} ↔ {}: fixed/revolute behavior must match the registered connector",
-                a.id,
-                b.id
-            ),
-        }
+        ),
     }
     Ok(())
 }

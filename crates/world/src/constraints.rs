@@ -22,16 +22,17 @@ pub fn inferred_joints_with_tolerance(bricks: &[Brick], tolerance: f64) -> Vec<J
                 continue;
             }
             let other = &bricks[j];
-            if crate::spatial::relation_with_tolerance(brick, other, tolerance)
-                .is_some_and(|r| r.certainty == "inferred")
-            {
-                out.push(crate::attachments::joint_with_tolerance(
-                    brick, other, tolerance,
-                ));
+            if let Some(joint) = inferred_pair(brick, other, tolerance) {
+                out.push(joint);
             }
         }
     }
     out
+}
+pub fn inferred_pair(a: &Brick, b: &Brick, tolerance: f64) -> Option<JointSpec> {
+    crate::spatial::relation_with_tolerance(a, b, tolerance)
+        .is_some_and(|r| r.certainty == "inferred")
+        .then(|| crate::attachments::joint_with_tolerance(a, b, tolerance))
 }
 pub fn validate_joints(bricks: &[Brick], joints: &[JointSpec], fixed: &[u32]) -> Result<()> {
     validate_joint_ids(bricks.iter().map(|b| b.id), joints, fixed)

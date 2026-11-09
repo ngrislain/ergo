@@ -2,7 +2,7 @@ use super::{READ_CONCURRENCY, SharedError, SharedResult, address::entity_path, m
 use anyhow::Context;
 use ergo_transactions::spill::SpillMap;
 use ergo_transactions::{ContentId, OctreePath, Transaction, canonical_cbor};
-use ergo_world::{Aabb, BlockCoord, WorldExport, constraints::INFERRED_JOINT_HALO, geometry::Mesh};
+use ergo_world::{Aabb, BlockCoord, constraints::INFERRED_JOINT_HALO, geometry::Mesh};
 use serde::{Serialize, de::DeserializeOwned};
 #[path = "working_graph.rs"]
 mod graph;
@@ -699,17 +699,18 @@ impl Working {
                 model.validate_isometries()?;
             }
         }
-        let mut local = BTreeMap::new();
-        let mut bricks = Vec::new();
+        use ergo_world::validation::ValidationInput;
+        let mut input = super::validation_input::NativeValidationInput::new(&self.tx)?;
         for id in affected {
             if let Some(piece) = self.piece(id).await? {
-                let number = u32::try_from(bricks.len() + 1)
-                    .context("Working-set integer index overflow")?;
-                bricks.push(self.brick(&piece, number).await?);
-                local.insert(id.clone(), number);
+                let number =
+                    u32::try_from(input.len() + 1).context("Working-set integer index overflow")?;
+                let brick = self.brick(&piece, number).await?;
+                input.push(id.clone(), brick, &self.model.measurements)?;
             }
         }
-        if bricks.is_empty() {
+        let input = input.finish()?;
+        if input.is_empty() {
             return Ok(None);
         }
         let mut joints = Vec::new();
@@ -719,40 +720,26 @@ impl Working {
             let a = &joint.a;
             let b = &joint.b;
             let mut joint = joint.spec.clone();
-            if local.contains_key(a) || local.contains_key(b) {
-                joint.a = *local
-                    .get(a)
-                    .context("Incomplete constraint dependency closure")?;
-                joint.b = *local
-                    .get(b)
-                    .context("Incomplete constraint dependency closure")?;
+            let a = input.local_id(a)?;
+            let b = input.local_id(b)?;
+            if a.is_some() || b.is_some() {
+                joint.a = a.context("Incomplete constraint dependency closure")?;
+                joint.b = b.context("Incomplete constraint dependency closure")?;
                 joints.push(joint);
             }
         }
         for row in self.fixed.iter() {
             let (id, _) = row?;
-            if let Some(id) = local.get(&id) {
-                fixed.push(*id);
+            if let Some(id) = input.local_id(&id)? {
+                fixed.push(id);
             }
         }
-        let mut scene = WorldExport {
-            schema: ergo_world::SCHEMA_VERSION,
-            name: self.metadata.name.clone(),
-            geo: self.metadata.geo,
-            bricks,
-            meshes: BTreeMap::new(),
-            joints,
-            fixed_bricks: fixed,
-            groups: Vec::new(),
-            model: None,
-            ground: Vec::new(),
-        };
         let model = self.model.clone();
         let mut workspace = super::equilibrium_workspace::NativeSolverWorkspace::new(&self.tx)?;
         Ok(Some(tokio::task::spawn_blocking(move || -> anyhow::Result<_> {
             // Validation assigns every capacity from the frozen measurement
             // book and the reviewed connector estimates; uploads claim none.
-            let mut report = ergo_world::validation::validate_static_with_workspace(&mut scene, model.tolerances,&model.measurements,&mut workspace)?;
+            let mut report = ergo_world::validation::validate_input_with_workspace(&input, &mut joints, &fixed, model.tolerances,&model.measurements,&mut workspace)?;
             report.physical_calibration = if report.joint_strength_required == Some(false) {
                 "Frozen model, sourced masses and nominal bounds; complete gravity-contact proof with zero joint wrench; no clutch capacity assumed; no simulation"
             } else { "Frozen server-owned measurement/model version; complete affected dependency domain; equilibrium with measured or reviewed-estimate connector capacities; no simulation" }.into();

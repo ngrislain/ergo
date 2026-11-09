@@ -276,9 +276,11 @@ failed sufficient certificate; it does not prove every possible load allocation
 or calibrated joint model would fail.
 
 This is component-wise solver execution and incremental load propagation, not
-out-of-core validation: the caller still retains the affected bricks/joints, and
-island discovery uses a resident spatial index and membership data linear in
-the number of bodies and joints.
+fully out-of-core validation. Shared-native geometry checks use normalized
+disk-backed bodies and paged conservative spatial candidates; local/WASM callers
+retain their slice. Global joint lists and scalar membership/component indexes
+still materialize, and each complete mechanical component's bodies are loaded
+before certification, never independently supported spatial chunks.
 Only the current island's contact problem/compression frontier is built, and
 general solver matrices/factors are partition-local under KKT dimension limits.
 The independent verifier checks bodies one at a time with compensated sums;

@@ -194,8 +194,11 @@ loads top-to-bottom through nonnegative reactions inside horizontal support
 patches with zero joint wrench, and its result is a feasible point of the same
 problem. Own weights are initialized on demand; processed accumulated loads are
 discarded, retaining only the pending-load frontier rather than a whole-scene
-load vector. The affected scene and spatial membership index still materialize;
-this does not claim constant-memory or arbitrary-chunk validation. All islands
+load vector. Shared-native geometry uses normalized disk-backed bodies and paged
+conservative spatial candidates through the common validation gate. One complete
+mechanical component is then loaded for certification; global joint lists and
+scalar component indexes still materialize. This does not claim constant-memory
+or arbitrary-chunk validation. All islands
 must pass before the single atomic publication.
 
 The default residual tolerances are `1e-6 N` and `1e-8 N·m` (raised in proportion

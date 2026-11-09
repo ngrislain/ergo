@@ -97,7 +97,8 @@ The coordinator has one `SolverWorkspace` interface. `MemoryWorkspace` is the
 default for local/WASM entry points; authoritative shared-native validation uses
 the transaction-backed implementation in `shared/equilibrium_workspace.rs`.
 `certify_with_workspace`, `certify_partitioned_with_workspace` and
-`validate_static_with_workspace` select storage, **not a different physical gate**.
+`validate_static_with_workspace` / `validate_input_with_workspace` select storage,
+**not a different physical gate**.
 
 The planner builds one bounded core/halo record at a time from canonical incident
 edges and writes it to the workspace. It no longer retains every full plan and
@@ -205,14 +206,20 @@ records currently in its bounded dirty-page cache. They are not physical I/O-byt
 counts or proof of a RAM saving for a problem that already fits in that cache.
 
 This implements coupled local factorization and body-wise witness checking,
-**not fully out-of-core validation**. The caller's physical scene, contact/joint
-input, planner owner/incident indexes and independent witness incidence still
-materialize. Native partition/interface records and reaction state now spill;
+**not fully out-of-core validation**. Shared-native geometry checks use
+[disk-backed bodies and paged spatial candidates](native-working-state.md#streamed-physical-input)
+through the same gate as the resident local/WASM slice. All physical edges are
+discovered before loading one complete component for compression/equilibrium;
+spatial pages are not independent supports. The global joint/fixed lists, scalar
+component indexes, current component's complete body/contact input, planner
+owner/incident indexes and independent witness incidence still materialize.
+Native partition/interface records and reaction state now spill;
 the browser/local default retains its workspace records in memory.
 [Native transaction/authoring state](native-working-state.md) now spills staged
 objects, predicates, edit journals and dependency traversal/index data. Assembly
-rules and cached mesh/spatial data still materialize. The native piece cache is
-disk-backed, but the complete physical scene is still built for validation.
+rules and cached mesh/spatial data still materialize. The native piece cache and
+normalized physical-body/index records are disk-backed; no complete affected pose
+vector is constructed, but the largest mechanical component is still resident.
 Commit-record lists now use
 [file-backed iteration](commit-history.md#bounded-native-commit-records), though
 conditional upload retains a capped encoded buffer. Durable solver
@@ -221,8 +228,8 @@ asynchronous publication jobs remain future work.
 Do not infer that a large castle save now fits a fixed process RAM budget from
 the local solver limits alone.
 
-Sources: `crates/world/src/{equilibrium,equilibrium_partitioned,equilibrium_workspace,equilibrium_polish,equilibrium_verify,validation}.rs`,
-`crates/server/src/shared/equilibrium_workspace.rs`.
+Sources: `crates/world/src/{equilibrium,equilibrium_partitioned,equilibrium_workspace,equilibrium_polish,equilibrium_verify,validation,validation_input,validation_components}.rs`,
+`crates/server/src/shared/{equilibrium_workspace,validation_input}.rs`.
 The consensus framework follows [Boyd et al., ADMM (2011)](https://web.stanford.edu/~boyd/papers/admm_distr_stats.html);
 general convex convergence theory does not guarantee finite-time convergence of
 every concrete scene or inexact numerical subproblem.

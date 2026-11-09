@@ -156,6 +156,35 @@ impl SpillStore {
             types: PhantomData,
         })
     }
+    pub fn spatial(&self) -> Result<SpillSpatial> {
+        let collection = {
+            let mut state = self
+                .state
+                .lock()
+                .map_err(|_| failure("scratch mutex poisoned"))?;
+            if let Some(error) = &state.poisoned {
+                return Err(failure(error));
+            }
+            state.next_collection = state
+                .next_collection
+                .checked_add(1)
+                .ok_or_else(|| failure("scratch collection overflow"))?;
+            state.next_collection
+        };
+        let table = format!("spatial_{collection}");
+        self.with(|db| {
+            db.execute_batch(&format!(
+                "CREATE VIRTUAL TABLE {table} USING rtree(id,min_x,max_x,min_y,max_y,min_z,max_z)"
+            ))
+            .map_err(failure)?;
+            Ok(())
+        })?;
+        Ok(SpillSpatial {
+            store: self.clone(),
+            table,
+            len: 0,
+        })
+    }
     pub fn database_bytes(&self) -> Result<u64> {
         if !self.initialized()? {
             return Ok(0);
@@ -302,6 +331,141 @@ impl SpillStore {
             .map_err(failure)?;
             Ok(())
         })
+    }
+}
+
+/// Conservative 3-D candidate index. SQLite RTree rounds stored f32 bounds
+/// outward; exact f64 geometry must still be checked by the caller. Dynamic
+/// identifiers contain only an engine-issued integer, never user input.
+pub struct SpillSpatial {
+    store: SpillStore,
+    table: String,
+    len: usize,
+}
+impl SpillSpatial {
+    pub fn len(&self) -> usize {
+        self.len
+    }
+    pub fn is_empty(&self) -> bool {
+        self.len == 0
+    }
+    fn bounds(&self, min: [f64; 3], max: [f64; 3]) -> Result<()> {
+        if (0..3).any(|i| {
+            !min[i].is_finite()
+                || !max[i].is_finite()
+                || min[i] > max[i]
+                || min[i].abs() > f32::MAX as f64 / 2.
+                || max[i].abs() > f32::MAX as f64 / 2.
+        }) {
+            return Err(self.store.abort("invalid/out-of-range spatial bounds"));
+        }
+        Ok(())
+    }
+    pub fn insert(&mut self, id: u32, min: [f64; 3], max: [f64; 3]) -> Result<()> {
+        self.bounds(min, max)?;
+        self.store.with(|db| {
+            db.execute(
+                &format!("INSERT INTO {} VALUES(?1,?2,?3,?4,?5,?6,?7)", self.table),
+                params![
+                    i64::from(id),
+                    min[0],
+                    max[0],
+                    min[1],
+                    max[1],
+                    min[2],
+                    max[2]
+                ],
+            )
+            .map_err(failure)?;
+            Ok(())
+        })?;
+        self.len = self
+            .len
+            .checked_add(1)
+            .ok_or_else(|| self.store.abort("spatial count overflow"))?;
+        Ok(())
+    }
+    pub fn check_count(&self) -> Result<()> {
+        self.store.with(|db| {
+            let count: i64 = db
+                .query_row(&format!("SELECT count(*) FROM {}", self.table), [], |row| {
+                    row.get(0)
+                })
+                .map_err(failure)?;
+            if usize::try_from(count).map_err(failure)? != self.len {
+                return Err(failure("spatial index lost or gained records"));
+            }
+            // A leaf can have the right box while a corrupt parent prunes it
+            // from intersection queries. Audit parent containment and row/node
+            // mappings too, not just leaf coordinates and the logical row count.
+            let integrity: String = db
+                .query_row("SELECT rtreecheck(?1)", [&self.table], |row| row.get(0))
+                .map_err(failure)?;
+            if integrity != "ok" {
+                return Err(failure(format!("spatial index integrity: {integrity}")));
+            }
+            Ok(())
+        })
+    }
+    pub fn check_contains(&self, id: u32, min: [f64; 3], max: [f64; 3]) -> Result<()> {
+        self.bounds(min, max)?;
+        self.store.with(|db| {
+            let bounds: Option<[f64; 6]> = db
+                .query_row(
+                    &format!(
+                        "SELECT min_x,max_x,min_y,max_y,min_z,max_z FROM {} WHERE id=?1",
+                        self.table
+                    ),
+                    [i64::from(id)],
+                    |r| {
+                        Ok([
+                            r.get(0)?,
+                            r.get(1)?,
+                            r.get(2)?,
+                            r.get(3)?,
+                            r.get(4)?,
+                            r.get(5)?,
+                        ])
+                    },
+                )
+                .optional()
+                .map_err(failure)?;
+            let bounds = bounds.ok_or_else(|| failure("spatial record is absent"))?;
+            if (0..3).any(|i| {
+                !bounds[i * 2].is_finite()
+                    || !bounds[i * 2 + 1].is_finite()
+                    || bounds[i * 2] > min[i]
+                    || bounds[i * 2 + 1] < max[i]
+            }) {
+                return Err(failure("spatial index is not conservative"));
+            }
+            Ok(())
+        })
+    }
+    pub fn page(
+        &self,
+        min: [f64; 3],
+        max: [f64; 3],
+        after: Option<u32>,
+        limit: usize,
+    ) -> Result<Vec<u32>> {
+        self.bounds(min, max)?;
+        if !(1..=128).contains(&limit) {
+            return Err(failure("spatial page limit must be 1..=128"));
+        }
+        self.store.with(|db|{
+            let mut statement=db.prepare(&format!("SELECT id FROM {} WHERE min_x<=?1 AND max_x>=?2 AND min_y<=?3 AND max_y>=?4 AND min_z<=?5 AND max_z>=?6 AND id>?7 ORDER BY id LIMIT ?8",self.table)).map_err(failure)?;
+            statement.query_map(params![max[0],min[0],max[1],min[1],max[2],min[2],after.map(i64::from).unwrap_or(-1),limit as i64],|r|r.get::<_,i64>(0)).map_err(failure)?.map(|id|u32::try_from(id.map_err(failure)?).map_err(failure)).collect()
+        })
+    }
+}
+impl Drop for SpillSpatial {
+    fn drop(&mut self) {
+        let _ = self.store.with(|db| {
+            db.execute_batch(&format!("DROP TABLE IF EXISTS {}", self.table))
+                .map_err(failure)?;
+            Ok(())
+        });
     }
 }
 pub(crate) struct Work {
@@ -570,6 +734,34 @@ impl<K: SpillKey, V: Serialize + DeserializeOwned> Iterator for SpillIter<'_, K,
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn spatial_loss_and_inward_bounds_poison_the_store() {
+        for attack in ["missing", "count", "inward", "structure"] {
+            let store = SpillStore::default();
+            let mut index = store.spatial().unwrap();
+            index.insert(0, [-1.; 3], [1.; 3]).unwrap();
+            store
+                .with(|db| {
+                    let sql = if attack == "structure" {
+                        format!("UPDATE {}_rowid SET nodeno=999 WHERE rowid=0", index.table)
+                    } else if attack == "inward" {
+                        format!("UPDATE {} SET min_x=0 WHERE id=0", index.table)
+                    } else {
+                        format!("DELETE FROM {} WHERE id=0", index.table)
+                    };
+                    db.execute(&sql, []).map_err(failure)?;
+                    Ok(())
+                })
+                .unwrap();
+            let result = if attack == "count" || attack == "structure" {
+                index.check_count()
+            } else {
+                index.check_contains(0, [-1.; 3], [1.; 3])
+            };
+            assert!(matches!(result, Err(Error::Scratch(_))), "{attack}");
+            assert!(store.stage(vec![1], false).is_err());
+        }
+    }
     #[test]
     fn read_only_empty_maps_do_not_create_scratch_and_keys_keep_their_order() {
         fn thread_safe<T: Send + Sync>() {}

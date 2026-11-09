@@ -29,6 +29,8 @@ The native transaction uses this **single** working-state implementation for:
 - native piece-cache records, including cached absence/deletion, preserving
   distinct-identity accounting and read-your-writes without retaining every pose;
 - coupled-solver partition/interface records and bounded-cache scalar pages.
+- normalized physical-body records, global-to-local IDs and conservative spatial
+  candidates, without retaining a complete affected pose dictionary.
 
 Decoded staged and remote nodes share one disposable, approximately 8 MiB node
 cache. Eviction reloads staged bytes from disk, not from an uncommitted S3 object.
@@ -80,6 +82,44 @@ dictionaries and a separate full adjacency graph in RAM. Existing permissions,
 whole affected-domain checks, quota and atomic publication remain mandatory.
 
 ## Resource controls and operations
+
+### Streamed physical input
+
+`shared/validation_input.rs` supplies `validation::ValidationInput` to the same
+physical gate as the resident local/WASM slice adapter. The shared server no
+longer constructs a complete `Vec<Brick>`/`WorldExport` before checking geometry.
+It reads affected canonical pieces in deterministic ID order, normalizes each pose
+with the frozen physical model **before indexing**, and stores it in the existing
+transaction-local database. SHA-256 binds each body to its ordinal and canonical
+body bytes. A separate checksum binds each global/local identity mapping; its
+complete ordered scan also checks for missing rows before resolving constraints.
+A decoded FIFO retains at most 64 bodies, each limited to 16 KiB of
+encoded body data (at most 1 MiB encoded-equivalent, plus allocator overhead).
+
+The transient SQLite RTree covers nominal bounds, registered connectors, reviewed
+bearing faces and collision profiles. Its stored f32 bounds round outward; exact
+f64 predicates still decide physical relations. Queries enumerate all candidates
+in ordinal order through at most 128 IDs per page, never a truncated neighbor set.
+The adapter checks the actual index row count and SQLite `rtreecheck` parent/node
+containment and mapping integrity, then the common gate checks every
+body's identity, frozen-model normalization and conservative stored envelope before
+pair enumeration. Missing, corrupt or inward-rounded records refuse validation;
+they never turn into empty space. Nonfinite/inverted bounds or magnitudes beyond
+half the f32 maximum are inconclusive, not an alternate all-pairs/RAM fallback.
+No index cursor survives a page read or await. The accepted spatial octree and
+its dependency-closure/publication semantics are unchanged: this RTree is only
+disposable validation scratch, not a second authoritative world index.
+
+After streamed geometry and joint inference, discovery still forms **complete
+mechanical components** through every joint and admissible nominal/reviewed bearing.
+Only then is one component's body vector loaded for compression or equilibrium.
+Spatial pages are never treated as independently supported islands. The global
+joint vector, fixed IDs, scalar identity/component indexes and the largest complete
+component still materialize; a single connected construction can therefore remain
+large. Storage/resource failure is inconclusive and prevents publication of every
+component, including those already checked successfully.
+
+### Solver and database budgets
 
 Shared-native physical validation now uses the
 [paged solver workspace](partitioned-stability.md#paged-coordinator-state), sharing
@@ -143,9 +183,12 @@ entry is kept merely to cache a commit. These caches do not pin remote history.
 ## Remaining resident state
 
 Assembly rules and membership maps, cached meshes/spatial references, the affected
-physical scene, planner incident/owner indexes and independent verification
-incidence still materialize. The piece cache, native partition/interface records
-and global reaction state now spill. Local/WASM numerical entry points default
+ID/audit set, global joint/fixed lists, scalar component indexes, the largest
+complete mechanical component, planner incident/owner indexes and independent
+verification incidence still materialize. The full shared-native affected pose
+vector and its geometry broad-phase index no longer do. The piece cache, physical
+body/index records, native partition/interface records and global reaction state
+now spill. Local/WASM numerical entry points default
 to a resident workspace. Commit construction, snapshot loading and GC no longer retain decoded
 edit/blob vectors. The storage SDK's conditional create API still requires one
 size-capped encoded upload buffer; commit uploads are serialized within a batch
@@ -157,4 +200,7 @@ input/index handling remain future work. Do not infer a fixed end-to-end RAM
 guarantee for a large castle from these local limits.
 
 Sources: `crates/transactions/src/{spill,tree,lib,batch}.rs`,
-`crates/server/src/shared/{working,working_graph,equilibrium_workspace,paged,model}.rs`.
+`crates/server/src/shared/{working,working_graph,validation_input,equilibrium_workspace,paged,model}.rs`,
+`crates/world/src/{validation,validation_input,validation_components}.rs`.
+See [SQLite RTree rounding](https://sqlite.org/rtree.html#roundoff_error) for the
+conservative candidate storage (exact geometry is not rounded).

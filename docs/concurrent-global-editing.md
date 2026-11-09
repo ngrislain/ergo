@@ -137,8 +137,10 @@ Native staged objects, transaction predicates/journals, authoring dependency
 indexes, generic discovery frontiers and rule-diff rows use
 [disk-backed working state](native-working-state.md). Scratch has its own disk/cache
 limits (`ERGO_SHARED_SPILL_BYTES`, `ERGO_SHARED_SPILL_CACHE_KIB`); exhaustion is
-explicitly inconclusive and never publishes a partial root. The affected physical
-scene, assembly rules and final audit ID set still materialize; this is not a
+explicitly inconclusive and never publishes a partial root. Physical-body and
+geometry broad-phase records now spill too; certification still loads each complete
+mechanical component. Global joint lists, scalar component indexes, assembly rules
+and the final audit ID set remain resident; this is not a
 whole-process RSS bound or fully out-of-core physics.
 
 ### Frozen physical model

@@ -234,13 +234,17 @@ Canonical encoding in `crates/transactions/src/encoding.rs` writes array element
 incrementally rather than building a second `ciborium::Value` tree. Maps buffer
 encoded key/value bytes for deterministic sorting and duplicate-key checks.
 The resulting CBOR bytes, normalized floats and content IDs are unchanged.
-The HTTP request and affected physical scene still materialize. Stability now
+The HTTP request still materializes. Shared-native geometry validation reads
+normalized disk-backed bodies and bounded candidate pages; it no longer constructs
+a complete affected pose vector. Stability
 discovers independent contact/joint islands and checks one at a time, constructing
 contacts and solver matrices only for the current island; the compression path
 keeps an active pending-load frontier rather than every body's accumulated load.
-The resident spatial index/membership metadata remain linear in affected pieces and joints,
-and one connected island can still be large. See [the static certificate](rigid-body-physics.md#lightweight-static-certificate).
-This does not implement streaming uploads, out-of-core validation or partial acceptance.
+Global joint lists, scalar component/membership indexes and the current complete
+island's body/contact inputs remain resident and linear in their domain; one
+connected island can still be large. See [native input storage](native-working-state.md#streamed-physical-input)
+and [the static certificate](rigid-body-physics.md#lightweight-static-certificate).
+This does not implement streaming HTTP uploads, fully out-of-core validation or partial acceptance.
 Transport CBOR is serialized directly from the typed packet to avoid a second
 complete generic value tree at the dense-view encoding peak. It is ordinary CBOR,
 not a new canonical world-record encoding; authoritative record hashes and cache

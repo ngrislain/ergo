@@ -88,4 +88,5 @@ MCP tools are `list_groups`, `create_group`, `set_group_members`,
 Ungrouping preserves world poses and splices children into an existing parent.
 Removing pieces also removes their direct membership references. A metadata edit
 does not make an otherwise invalid draft publishable; the server checks the
-materialized physical scene before a snapshot is committed.
+complete affected physical domain before a snapshot is committed, using streamed
+geometry checks and complete mechanical-component certification on shared-native.

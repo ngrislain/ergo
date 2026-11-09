@@ -215,24 +215,25 @@ impl ConnectionMeasurements {
             }
         }
         for brick in &mut scene.bricks {
-            let canonical = crate::catalog::canonical_part(&brick.part);
-            let bounds = if let Some(record) = self
-                .parts
-                .iter()
-                .find(|p| crate::catalog::canonical_part(&p.part) == canonical)
-            {
-                record.body_bounds
-            } else if let Some(bounds) = crate::geometry::nominal_body_bounds(&brick.part) {
-                bounds
-            } else {
-                anyhow::bail!(
-                    "No sourced mass and nominal body bounds for {}. Add a sourced parts record to ERGO_CONNECTION_MEASUREMENTS",
-                    brick.part
-                );
-            };
-            brick.bounds = bounds.transformed(brick.transform, brick.position);
-            brick.render_bounds = brick.render_bounds.union(brick.bounds);
+            self.normalize_brick(brick)?;
         }
+        Ok(())
+    }
+    /// Normalize one body before spatial indexing. The caller validates this
+    /// frozen measurement book once before streaming its bodies.
+    pub fn normalize_brick(&self, brick: &mut crate::Brick) -> Result<()> {
+        let bounds = if let Some(record) = self.part_record(&brick.part) {
+            record.body_bounds
+        } else if let Some(bounds) = crate::geometry::nominal_body_bounds(&brick.part) {
+            bounds
+        } else {
+            anyhow::bail!(
+                "No sourced mass and nominal body bounds for {}. Add a sourced parts record to ERGO_CONNECTION_MEASUREMENTS",
+                brick.part
+            );
+        };
+        brick.bounds = bounds.transformed(brick.transform, brick.position);
+        brick.render_bounds = brick.render_bounds.union(brick.bounds);
         Ok(())
     }
     /// Ignore capacity claims from an untrusted client; use only this server-owned
@@ -247,36 +248,43 @@ impl ConnectionMeasurements {
         for joint in joints.iter_mut() {
             let a = index.get(&joint.a).context("Missing joint endpoint")?;
             let b = index.get(&joint.b).context("Missing joint endpoint")?;
-            let connection =
-                crate::attachments::connection(a, b, crate::validation::OVERLAP_TOLERANCE);
-            let estimate = connection.as_ref().and_then(connector_estimate);
-            joint.break_force = None;
-            joint.break_torque = None;
-            joint.axial_force = None;
-            joint.friction_torque = None;
-            joint.strength_source = None;
-            if let Some(measurement) = self.measurement(a, b, joint) {
-                joint.break_force = Some(measurement.conservative_force_limit_n);
-                joint.break_torque = Some(measurement.conservative_torque_limit_nm);
-                joint.strength_source = Some(measurement.source.clone());
-                if let Some(estimate) = estimate {
-                    joint.axial_force = estimate.axial_n;
-                    joint.friction_torque = estimate.friction_nm;
-                }
-            } else if let Some(estimate) = estimate {
-                joint.break_force = Some(estimate.force_n);
-                joint.break_torque = Some(estimate.torque_nm);
+            self.apply_pair(a, b, joint)?;
+        }
+        Ok(())
+    }
+    /// Assign capacities for resolved endpoints, using a validated frozen book.
+    pub fn apply_pair(
+        &self,
+        a: &crate::Brick,
+        b: &crate::Brick,
+        joint: &mut crate::JointSpec,
+    ) -> Result<()> {
+        let connection = crate::attachments::connection(a, b, crate::validation::OVERLAP_TOLERANCE);
+        let estimate = connection.as_ref().and_then(connector_estimate);
+        joint.break_force = None;
+        joint.break_torque = None;
+        joint.axial_force = None;
+        joint.friction_torque = None;
+        joint.strength_source = None;
+        if let Some(measurement) = self.measurement(a, b, joint) {
+            joint.break_force = Some(measurement.conservative_force_limit_n);
+            joint.break_torque = Some(measurement.conservative_torque_limit_nm);
+            joint.strength_source = Some(measurement.source.clone());
+            if let Some(estimate) = estimate {
                 joint.axial_force = estimate.axial_n;
                 joint.friction_torque = estimate.friction_nm;
-                joint.strength_source =
-                    Some(format!("{} ({})", estimates().source, estimate.basis));
-            } else if self.idealized_fixture {
-                joint.break_force = Some(IDEALIZED_CAPACITY);
-                joint.break_torque = Some(IDEALIZED_CAPACITY);
-                joint.friction_torque = Some(IDEALIZED_CAPACITY);
-                joint.strength_source =
-                    Some("idealized fixture example (not a measurement)".into());
             }
+        } else if let Some(estimate) = estimate {
+            joint.break_force = Some(estimate.force_n);
+            joint.break_torque = Some(estimate.torque_nm);
+            joint.axial_force = estimate.axial_n;
+            joint.friction_torque = estimate.friction_nm;
+            joint.strength_source = Some(format!("{} ({})", estimates().source, estimate.basis));
+        } else if self.idealized_fixture {
+            joint.break_force = Some(IDEALIZED_CAPACITY);
+            joint.break_torque = Some(IDEALIZED_CAPACITY);
+            joint.friction_torque = Some(IDEALIZED_CAPACITY);
+            joint.strength_source = Some("idealized fixture example (not a measurement)".into());
         }
         Ok(())
     }

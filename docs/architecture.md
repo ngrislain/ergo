@@ -93,8 +93,11 @@ Compression retains a pending-load frontier, while general solver matrices are
 built only for bounded local partitions, with explicit coupled interfaces and
 bounded matrix-free balance correction. One independent assembled witness must
 pass. Shared-native solver plan/interface records and scalar reaction state use
-the [paged workspace](partitioned-stability.md#paged-coordinator-state). The physical
-scene, contact/joint inputs and planner/verifier indexes still reside in memory;
+the [paged workspace](partitioned-stability.md#paged-coordinator-state). Shared-native
+geometry checks read normalized bodies and conservative candidates from disk through
+the same physical gate as resident local/WASM slices. Only complete mechanical
+components are materialized for compression/equilibrium. Global joint/fixed lists,
+scalar component indexes and per-component contact/planner/verifier inputs remain resident;
 no partial island result is published. Shared validation infers joints once, after
 frozen-model normalization, through this same gate rather than a preliminary copy.
 

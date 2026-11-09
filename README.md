@@ -108,8 +108,11 @@ stores. This is not yet an out-of-core physical-validation guarantee.
 Commit histories use verified file-backed iteration without retaining whole
 decoded edit lists; conditional upload still uses one capped encoded buffer.
 Shared-native equilibrium now pages partition/interface and reaction state through
-the same physical algorithm, while the complete physical input/indexes remain
-resident. See [workspace limits](docs/partitioned-stability.md#paged-coordinator-state).
+the same physical algorithm. Geometry checks use normalized disk-backed bodies and
+paged spatial candidates; certification still loads one complete mechanical
+component, with resident global joint/component and per-component solver indexes.
+See [input limits](docs/native-working-state.md#streamed-physical-input) and
+[workspace limits](docs/partitioned-stability.md#paged-coordinator-state).
 
 Call `get_building_techniques` to propose sourced wall, junction, opening, floor
 and roof patterns before building. Placements snap complete models coherently to

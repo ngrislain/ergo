@@ -83,93 +83,133 @@ pub fn axis_aligned(brick: &Brick) -> bool {
 
 pub fn first_stud_collision(bricks: &[Brick], tolerance: f64) -> Option<String> {
     let tree = Octree::new(bricks.iter().map(|b| b.bounds).collect());
-    let radius = STUD_DIAMETER_M / 2.;
-    let epsilon = tolerance * SCALE.min_element();
     for source in bricks {
-        if !axis_aligned(source) {
-            continue;
+        if let Some(bounds) = stud_bounds(source) {
+            for index in tree.query(bounds) {
+                if let Some(error) = stud_collision_pair(source, &bricks[index], tolerance) {
+                    return Some(error);
+                }
+            }
         }
-        let up = metric_transform(source.transform) * DVec3::Y;
-        let axis = if up.x.abs() > 0.5 {
-            0
-        } else if up.y.abs() > 0.5 {
-            1
-        } else {
-            2
-        };
-        for local in stud_centres(&source.part) {
+    }
+    None
+}
+struct StudProbe {
+    up: DVec3,
+    axis: usize,
+    base: DVec3,
+    center: DVec3,
+    half: DVec3,
+    query: crate::Aabb,
+}
+fn probes(source: &Brick) -> impl Iterator<Item = StudProbe> + '_ {
+    let radius = STUD_DIAMETER_M / 2.;
+    let active = axis_aligned(source);
+    let up = metric_transform(source.transform) * DVec3::Y;
+    let axis = if up.x.abs() > 0.5 {
+        0
+    } else if up.y.abs() > 0.5 {
+        1
+    } else {
+        2
+    };
+    stud_centres(&source.part)
+        .into_iter()
+        .filter(move |_| active)
+        .map(move |local| {
             let base = source.position + source.transform * local;
             let center = base * SCALE + up * STUD_HEIGHT_M / 2.;
             let mut half = DVec3::splat(radius);
             half[axis] = STUD_HEIGHT_M / 2.;
             let query = crate::Aabb::new((center - half) / SCALE, (center + half) / SCALE);
-            for index in tree.query(query) {
-                let target = &bricks[index];
-                if target.id == source.id
-                    || !axis_aligned(target)
-                    || registered_bar_clearance(source, target, tolerance)
-                {
-                    continue;
-                }
-                // New compound mould profiles keep empty space between horse
-                // legs/arch feet empty. Existing profiles retain their original
-                // stud-clearance envelope; no prior part is reinterpreted.
-                let explicit = crate::part_library::get(&target.part)
-                    .and_then(|p| p.catalogue.nominal.as_ref())
-                    .is_some_and(|n| !n.collision_boxes_ldu.is_empty());
-                let bodies = if explicit {
-                    crate::part_profiles::collision_boxes(&target.part)
-                        .into_iter()
-                        .map(|bounds| bounds.transformed(target.transform, target.position))
-                        .collect()
-                } else {
-                    vec![target.bounds]
-                };
-                let intersects = bodies.iter().any(|bounds| {
-                    let lo = bounds.min * SCALE;
-                    let hi = bounds.max * SCALE;
-                    if (center[axis] + half[axis]).min(hi[axis])
-                        - (center[axis] - half[axis]).max(lo[axis])
-                        <= epsilon
-                    {
-                        return false;
-                    }
-                    let mut radial = center - center.clamp(lo, hi);
-                    radial[axis] = 0.;
-                    radial.length() < radius - epsilon
-                });
-                if !intersects {
-                    continue;
-                }
-                let mut cavity = false;
-                for other in receiving_grids(&target.part) {
-                    let target_up = metric_transform(target.transform) * DVec3::Y;
-                    if up.dot(target_up) > 1. - 1e-8 {
-                        let point = target.transform.inverse() * (base - target.position);
-                        let u = point.x - other.first[0];
-                        let v = point.z - other.first[1];
-                        cavity |= point.y <= other.bottom + tolerance
-                            && point.y >= other.bottom - STUD_HEIGHT_M / SCALE.y - tolerance
-                            && (u - u.round()).abs() < tolerance
-                            && (v - v.round()).abs() < tolerance
-                            && u >= -tolerance
-                            && u <= f64::from(other.width - 1) + tolerance
-                            && v >= -tolerance
-                            && v <= f64::from(other.depth - 1) + tolerance;
-                    }
-                }
-                if !cavity {
-                    return Some(format!(
-                        "Stud interference: brick {} ({}) at {:?} penetrates the solid body of brick {} ({}) at {:?}; no registered bottom cavity matches this orientation",
-                        source.id,
-                        source.part,
-                        crate::coordinates::public(source.position),
-                        target.id,
-                        target.part,
-                        crate::coordinates::public(target.position)
-                    ));
-                }
+            StudProbe {
+                up,
+                axis,
+                base,
+                center,
+                half,
+                query,
             }
+        })
+}
+pub fn stud_bounds(source: &Brick) -> Option<crate::Aabb> {
+    probes(source).map(|p| p.query).reduce(crate::Aabb::union)
+}
+/// The exact stud predicate, shared by resident and paged candidate enumeration.
+pub fn stud_collision_pair(source: &Brick, target: &Brick, tolerance: f64) -> Option<String> {
+    if target.id == source.id
+        || !axis_aligned(target)
+        || registered_bar_clearance(source, target, tolerance)
+    {
+        return None;
+    }
+    let radius = STUD_DIAMETER_M / 2.;
+    let epsilon = tolerance * SCALE.min_element();
+    for StudProbe {
+        up,
+        axis,
+        base,
+        center,
+        half,
+        ..
+    } in probes(source)
+    {
+        // New compound mould profiles keep empty space between horse
+        // legs/arch feet empty. Existing profiles retain their original
+        // stud-clearance envelope; no prior part is reinterpreted.
+        let explicit = crate::part_library::get(&target.part)
+            .and_then(|p| p.catalogue.nominal.as_ref())
+            .is_some_and(|n| !n.collision_boxes_ldu.is_empty());
+        let bodies = if explicit {
+            crate::part_profiles::collision_boxes(&target.part)
+                .into_iter()
+                .map(|bounds| bounds.transformed(target.transform, target.position))
+                .collect()
+        } else {
+            vec![target.bounds]
+        };
+        let intersects = bodies.iter().any(|bounds| {
+            let lo = bounds.min * SCALE;
+            let hi = bounds.max * SCALE;
+            if (center[axis] + half[axis]).min(hi[axis]) - (center[axis] - half[axis]).max(lo[axis])
+                <= epsilon
+            {
+                return false;
+            }
+            let mut radial = center - center.clamp(lo, hi);
+            radial[axis] = 0.;
+            radial.length() < radius - epsilon
+        });
+        if !intersects {
+            continue;
+        }
+        let mut cavity = false;
+        for other in receiving_grids(&target.part) {
+            let target_up = metric_transform(target.transform) * DVec3::Y;
+            if up.dot(target_up) > 1. - 1e-8 {
+                let point = target.transform.inverse() * (base - target.position);
+                let u = point.x - other.first[0];
+                let v = point.z - other.first[1];
+                cavity |= point.y <= other.bottom + tolerance
+                    && point.y >= other.bottom - STUD_HEIGHT_M / SCALE.y - tolerance
+                    && (u - u.round()).abs() < tolerance
+                    && (v - v.round()).abs() < tolerance
+                    && u >= -tolerance
+                    && u <= f64::from(other.width - 1) + tolerance
+                    && v >= -tolerance
+                    && v <= f64::from(other.depth - 1) + tolerance;
+            }
+        }
+        if !cavity {
+            return Some(format!(
+                "Stud interference: brick {} ({}) at {:?} penetrates the solid body of brick {} ({}) at {:?}; no registered bottom cavity matches this orientation",
+                source.id,
+                source.part,
+                crate::coordinates::public(source.position),
+                target.id,
+                target.part,
+                crate::coordinates::public(target.position)
+            ));
         }
     }
     None
