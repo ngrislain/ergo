@@ -9,6 +9,7 @@ designs live in `todo/` and are indexed by [TODO.md](../TODO.md).
 - [MCP tools and installation](local-construction-mcp.md)
 - [Paged authoring, sparse edits and forward cache migration](paged-authoring.md)
 - [Agent client plugins (Claude Code, ChatGPT/Codex desktop, OpenCode, Pi)](mcp-plugins.md)
+  — [public installation and first-build walkthrough](https://www.ergosandbox.com/#connect)
 - [Official MCP Inspector and unlisted 3D catalogue](mcp-inspector.md)
 - [Official/custom model search and reuse](model-library.md)
 - [Sourced building-technique library](local-construction-mcp.md#sourced-building-techniques)

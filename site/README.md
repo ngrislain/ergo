@@ -4,10 +4,14 @@ The public shared-renderer WebGL landing page and static agent guide for
 **https://www.ergosandbox.com**. The authenticated sandbox is at
 **https://ergosandbox.com**.
 
-Consumer setup is an npm installation, selected by public `ERGO_MCP_PACKAGE`.
-The site installs the configured verified `@ngrislain/ergo-mcp` release from npm. The same
-setting can point at a verified GitHub Release tarball. The commands below are
-for **site maintainers**.
+Consumer onboarding starts with the repository plugins for Claude Code,
+Codex/ChatGPT desktop, OpenCode and Pi, including browser approval, per-client
+skill invocation and troubleshooting. Local-source installs read the matching
+bridge version from the plugin manifest; they do not assume unpublished plugin
+packages are on npm. The manual MCP tab installs the verified release selected
+by public `ERGO_MCP_PACKAGE`, which can also point at a verified GitHub Release
+tarball. `/llms.txt` describes both paths. The commands below are for
+**site maintainers**.
 
 ```sh
 rustup target add wasm32-unknown-unknown

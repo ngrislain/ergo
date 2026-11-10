@@ -11,6 +11,7 @@ on:
         "crates/xtask/**",
         "web/favicon.svg",
         "scripts/test-site-proportions.py",
+        "scripts/test-site-onboarding.py",
         "Cargo.toml",
         "Cargo.lock",
         ".github/workflows/pages.yml",
@@ -24,6 +25,7 @@ on:
         "crates/xtask/**",
         "web/favicon.svg",
         "scripts/test-site-proportions.py",
+        "scripts/test-site-onboarding.py",
         "Cargo.toml",
         "Cargo.lock",
         ".github/workflows/pages.yml",
@@ -59,7 +61,7 @@ jobs:
       - run: cargo test --locked -p ergo-client lighting::tests
       - run: npm run build --prefix site
       - run: npm test --prefix site
-      - name: Check responsive image and WebGL proportions
+      - name: Check responsive proportions and agent onboarding
         run: |
           python3 -m pip install playwright
           npm run preview --prefix site -- --port 4173 --strictPort > /tmp/ergo-site-preview.log 2>&1 &
@@ -72,6 +74,7 @@ jobs:
             sleep 1
           done
           python3 scripts/test-site-proportions.py
+          python3 scripts/test-site-onboarding.py
       - uses: actions/upload-pages-artifact@7b1f4a764d45c48632c6b24a0339c27f5614fb0b # v4
         with:
           path: site/dist

@@ -311,6 +311,7 @@ dd code {
   position: absolute;
   inset: 0 0 69px;
   cursor: grab;
+  overflow: clip;
 }
 .scene-mount:active {
   cursor: grabbing;
@@ -382,6 +383,7 @@ dd code {
 }
 .scene-actions {
   display: flex;
+  flex-wrap: wrap;
   gap: 6px;
   align-items: center;
 }
@@ -780,6 +782,12 @@ dd code {
 .build-details pre {
   padding: 12px 0 0;
   font-size: 11px;
+}
+.build-details .code-heading {
+  padding: 12px 0 0;
+}
+#panel-plugin > .code-doc-link {
+  padding-top: 16px;
 }
 .build-details a,
 .code-doc-link {

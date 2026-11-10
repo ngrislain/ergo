@@ -170,22 +170,27 @@
           <article class="step step-human">
             <div class="step-number number-yellow" aria-hidden="true">1</div>
             <div class="step-body">
-              <h3>Sign in. Hand over a token.</h3>
+              <h3>Sign in. Keep approval with you.</h3>
               <p>
-                Open the sandbox, sign in with Google, and choose
-                <strong>Generate access token</strong>. Download it as
-                <code>ergo-mcp-token</code> and keep it in a private local file.
+                Open the sandbox and sign in with Google. When you connect the
+                plugin below, approve Ergo’s access in your browser. The bridge
+                saves an expiring token in a private local file, not in chat.
               </p>
               <a
                 class="button button-ink"
                 href="https://ergosandbox.com/login#connect"
-                >Sign in &amp; get a token <span aria-hidden="true">↗</span></a
+                >Sign in to the sandbox <span aria-hidden="true">↗</span></a
               >
               <div class="small-note">
                 <strong>Your Google login stays with you.</strong> The agent
                 gets a limited delegation, not your password or browser cookies.
                 Tokens default to 365 days; shorter lifetimes are available.
               </div>
+              <p class="small-note">
+                Prefer manual setup? Choose <strong>Generate access token</strong>
+                on the sign-in page, download <code>ergo-mcp-token</code>, and
+                use its private file path in the MCP configuration below.
+              </p>
             </div>
             <div
               class="permission-slip"
@@ -205,27 +210,37 @@
           <article class="step step-agent">
             <div class="step-number number-blue" aria-hidden="true">2</div>
             <div class="step-body">
-              <h3>Install and start the MCP server.</h3>
+              <h3>Add the plugin. Pick your agent.</h3>
               <p>
-                Connect the local <code>ergo-mcp</code> bridge to your
-                MCP-capable agent. Set absolute paths for the construction file,
-                and downloaded token.
+                The Ergo plugin connects the MCP tools and adds a build skill:
+                find reference models, build at your location, inspect real
+                views, and improve the result with you.
               </p>
               <p class="small-note">
-                The bridge runs locally over stdio. It calls the hosted REST API
-                for publication; there is no public remote MCP endpoint.
+                Use Claude Code, Codex or ChatGPT desktop, OpenCode, or Pi with
+                local executable support. Other MCP clients can use the manual
+                setup. The bridge runs locally over stdio; there is no public
+                remote MCP endpoint.
               </p>
             </div>
             <div class="connection-code">
               <div class="tabs" role="tablist" aria-label="Connection method">
                 <button
-                  id="tab-mcp"
+                  id="tab-plugin"
                   role="tab"
                   aria-selected="true"
-                  aria-controls="panel-mcp"
+                  aria-controls="panel-plugin"
                   tabindex="0"
                 >
-                  MCP quickstart</button
+                  Plugin</button
+                ><button
+                  id="tab-mcp"
+                  role="tab"
+                  aria-selected="false"
+                  aria-controls="panel-mcp"
+                  tabindex="-1"
+                >
+                  Manual MCP</button
                 ><button
                   id="tab-api"
                   role="tab"
@@ -236,7 +251,117 @@
                   Direct API
                 </button>
               </div>
-              <div id="panel-mcp" role="tabpanel" aria-labelledby="tab-mcp">
+              <div id="panel-plugin" role="tabpanel" aria-labelledby="tab-plugin">
+                <div class="code-heading">
+                  <span>1. Get the source plugins</span>
+                  <button type="button" class="copy-button" data-copy="plugin-source">Copy commands</button>
+                </div>
+                <p class="code-explainer">
+                  Requires Git, Node.js 20+, and Chrome/Chromium on macOS or
+                  Linux. These are repository plugins, not public directory
+                  listings. OpenCode and Pi plugin packages are not yet published
+                  on npm. Review the source before loading a plugin.
+                </p>
+                <pre><code id="plugin-source">git clone https://github.com/ngrislain/ergo.git
+cd ergo</code></pre>
+                <div class="code-heading">
+                  <span>2. Install the matching bridge &amp; approve access</span>
+                  <button type="button" class="copy-button" data-copy="plugin-bridge">Copy commands</button>
+                </div>
+                <p class="code-explainer">
+                  Run these in the cloned <code>ergo</code> folder. Local-path
+                  and desktop installs need <code>ergo-mcp</code> on PATH. The
+                  version comes from the plugin manifest, so it stays matched.
+                  No Rust build is needed.
+                </p>
+                <pre><code id="plugin-bridge">ERGO_PLUGIN_VERSION="$(node -p "require('./plugins/ergo/package.json').version")"
+npm install --global --ignore-scripts "@ngrislain/ergo-mcp@$ERGO_PLUGIN_VERSION"
+ergo-mcp --login --publish-url https://ergosandbox.com</code></pre>
+                <p class="code-explainer">
+                  Finish browser sign-in and approve the delegation, then choose
+                  your agent below. Sign-in is shared by bridge copies on this
+                  computer; never paste the token into a prompt or plugin file.
+                </p>
+                <details class="build-details" data-plugin-client="claude">
+                  <summary>Claude Code</summary>
+                  <p>From the cloned folder, start a session with the plugin:</p>
+                  <div class="code-heading">
+                    <span>In your terminal</span>
+                    <button type="button" class="copy-button" data-copy="plugin-claude">Copy command</button>
+                  </div>
+                  <pre><code id="plugin-claude">claude --plugin-dir ./plugins/ergo</code></pre>
+                  <p>
+                    In Claude Code, use <code>/ergo:build</code> followed by your
+                    idea. For a persistent install, add this checkout with
+                    <code>/plugin marketplace add ./</code>, then run
+                    <code>/plugin install ergo@ergo</code>.
+                  </p>
+                </details>
+                <details class="build-details" data-plugin-client="openai">
+                  <summary>Codex &amp; ChatGPT desktop</summary>
+                  <p>
+                    In a desktop host that supports local plugins, add the cloned
+                    repository as a local source in the Plugins Directory and
+                    install <strong>Ergo</strong>. Its marketplace manifest is
+                    <code>.agents/plugins/marketplace.json</code>; the plugin is
+                    <code>plugins/ergo</code>.
+                  </p>
+                  <p>
+                    Ask the agent to use Ergo’s build skill with your idea. The
+                    desktop app must be able to launch <code>ergo-mcp</code>
+                    from PATH. A cloud-only chat or remote connector cannot run
+                    this local plugin.
+                  </p>
+                </details>
+                <details class="build-details" data-plugin-client="opencode">
+                  <summary>OpenCode</summary>
+                  <p>
+                    Merge this into <code>opencode.json</code> in the cloned
+                    folder. In another project, use an absolute plugin path
+                    instead. Keep your existing settings and plugin entries.
+                  </p>
+                  <div class="code-heading">
+                    <span>Project configuration</span>
+                    <button type="button" class="copy-button" data-copy="plugin-opencode">Copy JSON</button>
+                  </div>
+                  <pre><code id="plugin-opencode">{
+  "$schema": "https://opencode.ai/config.json",
+  "plugins": ["./plugins/opencode-ergo"]
+}</code></pre>
+                  <p>
+                    OpenCode loads the <code>ergo</code> MCP connection and the
+                    <code>@ergo-build</code> skill. Mention that skill with your
+                    idea; use <code>/reload</code> if you need to reload it.
+                  </p>
+                </details>
+                <details class="build-details" data-plugin-client="pi">
+                  <summary>Pi</summary>
+                  <p>From the cloned folder, install the local package:</p>
+                  <div class="code-heading">
+                    <span>In your terminal</span>
+                    <button type="button" class="copy-button" data-copy="plugin-pi">Copy command</button>
+                  </div>
+                  <pre><code id="plugin-pi">pi install ./plugins/ergo-pi</code></pre>
+                  <p>
+                    Start Pi, or use <code>/reload</code> in an existing session.
+                    Check <code>pi mcp list</code> or <code>/mcp</code>, then use
+                    <code>/skill:build</code> followed by your idea.
+                  </p>
+                </details>
+                <details class="build-details">
+                  <summary>If the tools don’t appear</summary>
+                  <p>
+                    Check that <code>ergo-mcp --help</code> works in the agent’s
+                    environment. If connection times out during sign-in, finish
+                    <code>ergo-mcp --login</code> in a terminal, then reconnect
+                    the agent’s Ergo MCP server. Use a separate writable working
+                    folder for each concurrent agent; the default cache is
+                    <code>construction.ergo.json</code>.
+                  </p>
+                </details>
+                <a class="code-doc-link" href="https://github.com/ngrislain/ergo/blob/main/docs/mcp-plugins.md">Full plugin guide &amp; installation details</a>
+              </div>
+              <div id="panel-mcp" role="tabpanel" aria-labelledby="tab-mcp" hidden>
                 <div class="code-heading">
                   <span>1. Install the prebuilt npm package</span
                   ><button
@@ -359,8 +484,9 @@ curl --fail "$ERGO_URL/api/shared-worlds/allowance" \
             <div class="step-body">
               <h3>Start small. See what stands.</h3>
               <p>
-                Ask your agent to inspect its tools and catalog, make a grounded
-                construction, and show you what it built. Accepted production
+                Open the sandbox, move to where you want to build, and ask your
+                agent to use the build skill. Start with a small idea, review the
+                rendered views, and ask for changes. Accepted production
                 edits commit to the one public sandbox under your signed-in identity.
               </p>
               <p class="small-note">
@@ -384,20 +510,21 @@ curl --fail "$ERGO_URL/api/shared-worlds/allowance" \
                 </button>
               </div>
               <p id="first-prompt">
-                Use the Ergo MCP tools to build a small, grounded courtyard in
-                the shared Ergo Sandbox. Start with get_catalog and list_bricks.
-                Minimize brick count with larger suitable parts. Place the
-                bricks, run validate_construction and test_stability_by_gravity,
-                then show me a view with test_visual_appearance. Explain any
-                unsupported parts or missing calibration, and return confirmed
-                shared revisions. Do not call an unaccepted preview a saved edit.
+                Use Ergo’s build skill and MCP tools to build a small, grounded
+                courtyard at my saved sandbox position. Search reference models
+                with get_lego_models, check get_user_position and get_catalog,
+                then build with suitable parts. Use get_build_feedback with
+                include_images:true to show me real views and suggest improvements.
+                Keep source attribution, explain any limitations, and return the
+                confirmed shared_commit and view_url. Do not call an unaccepted
+                preview a saved edit.
               </p>
               <div class="tool-chain" aria-label="Build workflow">
-                <code>get_catalog</code><span aria-hidden="true">→</span
-                ><code>place_brick</code><span aria-hidden="true">→</span
-                ><code>validate_construction</code
+                <code>get_lego_models</code><span aria-hidden="true">→</span
+                ><code>get_user_position</code><span aria-hidden="true">→</span
+                ><code>place_brick</code
                 ><span aria-hidden="true">→</span
-                ><code>test_visual_appearance</code>
+                ><code>get_build_feedback</code>
               </div>
             </div>
           </article>

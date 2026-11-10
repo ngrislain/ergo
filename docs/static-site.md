@@ -8,25 +8,35 @@ tokens, receive credentials, proxy the API, or provide a remote MCP endpoint.
 
 ## Pages and content
 
-- `/`: an interactive shared-engine WebGL brick illustration, agent onboarding, visible
-  MCP build/start commands, client configuration, direct-API example, and a
-  first construction prompt.
+- `/`: an interactive shared-engine WebGL brick illustration and plugin-first
+  onboarding for Claude Code, Codex/ChatGPT desktop, OpenCode and Pi. The guide
+  includes source installation, browser approval, skill invocation, troubleshooting,
+  manual MCP install/start commands, client configuration, a direct-API example,
+  and a first construction prompt.
 - `/privacy/` and `/terms/`: static policy pages describing the hosted service,
   current Google/profile storage, cookies, delegation limits, shared-world
   visibility, third-party providers, and experimental physics limitations.
 - `/llms.txt`: a plain-text authentication and building guide for agents.
 - `/404.html`: a real Pages error document with a link back to the guide.
 
-Agent instructions follow [access and onboarding](access-and-onboarding.md) and
-the [MCP guide](local-construction-mcp.md). The setup installs the prebuilt npm
-package with Node, not Rust. The verified public package is
+Agent instructions follow [access and onboarding](access-and-onboarding.md),
+[client plugins](mcp-plugins.md) and the [MCP guide](local-construction-mcp.md).
+The plugin tab documents the actual repository packages, not a public directory
+listing or unpublished npm plugins. The common source setup clones the repo and
+reads `plugins/ergo/package.json` to install the matching bridge from npm for
+local-path/desktop loads. It leaves the manual MCP release setting unchanged.
+Both paths install a prebuilt bridge with Node, not Rust. Manual MCP setup uses
 the verified npm version selected by `ERGO_MCP_PACKAGE`, with a byte-identical
 GitHub Release tarball. Keep the prior verified setting until a new release passes
 registry and consumer checks.
-Google login stays in the human's browser. The agent receives the path to a
-downloaded, expiring delegation and the operator-selected API origin. The example
-prompt explicitly asks for a shared construction; accepted production mutations
-publish atomically under the delegated identity.
+Google login and approval stay in the human's browser. Plugin setup completes
+`ergo-mcp --login` before connecting; the bridge saves a private origin-scoped
+delegation shared by bridge copies on that computer. Manual token download and
+file-path configuration remain available. No token goes in chat or a plugin
+manifest. The first prompt follows the build skill's reference search, saved
+position, rendered-feedback and confirmed-receipt workflow; it does not prescribe
+redundant validation/dynamics after every accepted edit. Accepted production
+mutations publish atomically under the delegated identity.
 
 Keep the policy pages and agent guide synchronized with authentication,
 permissions, storage, provider, and retention changes. They describe current
@@ -97,17 +107,22 @@ Rendering stops when assembly/interaction settles.
 Offscreen/hidden scenes pause, reduced-motion preferences are respected, and
 WebGL failure leaves the onboarding text usable. The illustration does not use
 or claim to replace the construction validator.
+The scene clips its rotated fallback artwork to its own mount and lets toolbar
+buttons wrap, so missing WebGL does not create horizontal scrolling on narrow screens.
 
 Build tests check the static routes, legal navigation, MCP origin/token-file
 configuration, distribution boundaries, and current documentation semantics.
 Browser checks cover real WebGL mouse/scroll controls, tabs, clipboard, 320/390-pixel layouts,
 time-independent point lighting, shadow draw passes, reduced motion, WebGL-unavailable fallback,
 and readable no-JavaScript content.
+Run `python3 scripts/test-site-onboarding.py --url http://127.0.0.1:4173`
+against the preview server to check all plugin disclosures, copied commands,
+three-tab keyboard navigation, 320/390-pixel layouts and no-JavaScript setup.
 Run `python3 scripts/test-site-proportions.py --url http://127.0.0.1:4173`
 against the preview server to verify image ratios and the actual WebGL camera
 matrix at eight portrait/landscape/desktop sizes and device pixel ratios 1, 2 and 3.
 It also checks shared-page logos and the static no-JavaScript illustrations;
-the Pages workflow runs this regression before uploading its deployment artifact.
+the Pages workflow runs both browser regressions before uploading its deployment artifact.
 
 ## Public package-source environment setting
 

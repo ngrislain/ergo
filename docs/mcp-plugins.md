@@ -37,6 +37,13 @@ bridge copy — `ergo-mcp --login` from a global install, or
 token file is shared by every copy. Secrets live in that private token file,
 never the plugin manifests or chat.
 
+The public [website setup guide](https://www.ergosandbox.com/#connect) walks
+through cloning this repository, installing the prebuilt bridge version read
+from `plugins/ergo/package.json`, completing `ergo-mcp --login`, and loading a
+plugin in each host. Its manual MCP tab remains a separate, verified-release
+installation path. Local-path and desktop loads use the globally installed
+bridge on PATH; keep it matched to the source plugin version when updating.
+
 ## Claude Code
 
 From this checkout, test the plugin directly:
@@ -46,7 +53,9 @@ claude --plugin-dir ./plugins/ergo
 ```
 
 The repo's `.claude-plugin/marketplace.json` also advertises the plugin for a local
-marketplace install. `plugins/ergo/.claude-plugin/plugin.json` and `.mcp.json` use
+marketplace install. In a Claude Code session from the checkout, run
+`/plugin marketplace add ./` then `/plugin install ergo@ergo` for a persistent
+installation. `plugins/ergo/.claude-plugin/plugin.json` and `.mcp.json` use
 Claude's supported layout. `/ergo:build` provides the workflow; the same skill
 can load for LEGO/Ergo building tasks. When Claude Code copies a marketplace
 plugin into its cache it also installs the dependencies pinned by

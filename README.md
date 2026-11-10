@@ -126,7 +126,10 @@ their source/author/licence attribution.
 See [agent workflows](docs/agent-shared-editing.md), [MCP tools](docs/local-construction-mcp.md)
 and [distribution](docs/distribution.md). Source plugin packages for Claude Code,
 ChatGPT/Codex desktop, OpenCode and Pi live under [`plugins/`](plugins); see
-[plugin setup](docs/mcp-plugins.md). The current-source `get_build_feedback` harness
+[plugin setup](docs/mcp-plugins.md) and the public
+[plugin walkthrough](https://www.ergosandbox.com/#connect),
+including source installation, browser approval and each client's build skill.
+The current-source `get_build_feedback` harness
 adds actionable findings, measured part/palette observations and optional actual
 rendered views for an inspect–act–review–adjust workflow; acceptance is not an
 automatic aesthetic verdict. The unlisted [`/catalogue`](https://ergosandbox.com/catalogue)
