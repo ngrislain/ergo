@@ -31,6 +31,19 @@ with tempfile.TemporaryDirectory(prefix='ergo-login-') as temporary:
     (directory/'web').symlink_to(ROOT/'web', target_is_directory=True)
     (directory/'store/users').mkdir(parents=True)
     (directory/'store/users/alice.json').write_text(json.dumps({'id':'alice','name':'Alice Builder','email':'alice@example.test','picture':None,'created_at':1,'last_login':1}))
+    # Auth tests don't need demo geometry. Seed a tiny example manifest so
+    # isolated server startup doesn't have to synthesize the demo worlds.
+    example_id = '00000000-0000-4000-8000-000000000001'
+    example = directory/'store/worlds/examples'/example_id
+    example.mkdir(parents=True)
+    (example/'manifest.json').write_text(json.dumps({
+        'schema':2,'cell_size':128,'id':example_id,'name':'Empty fixture',
+        'source':'test','brick_count':0,'bounds':{'min':[0,0,0],'max':[0,0,0]},
+        'geo':{'latitude':0,'longitude':0,'arcseconds_per_block':1},
+        'blocks':[],'geometry':{},'proxy_parts':[],'notes':[],'owner':'examples',
+        'validation':{'collision_model':'empty','method':'fixture','inferred_joints':0,
+                      'checked_bricks':0,'max_displacement':0},
+    }))
     (directory/'bin').mkdir()
     # Capture automatic browser opening without disturbing the user's real browser.
     for command in ['open','xdg-open']:
@@ -52,7 +65,9 @@ with tempfile.TemporaryDirectory(prefix='ergo-login-') as temporary:
                 try:
                     if helpers.http(url+'/api/config')[0] == 200: break
                 except OSError: time.sleep(.1)
-            else: raise AssertionError('Test server did not start')
+            else:
+                log.seek(0)
+                raise AssertionError('Test server did not start:\n'+log.read().decode(errors='replace'))
             with sync_playwright() as p:
                 browser = p.chromium.launch(channel='chrome',headless=True,args=['--enable-unsafe-swiftshader'])
                 context = browser.new_context()
@@ -91,6 +106,8 @@ with tempfile.TemporaryDirectory(prefix='ergo-login-') as temporary:
                             assert pending['isError'] and login_url in pending['content'][0]['text'], pending
                         page.goto(login_url)
                         page.wait_for_load_state('networkidle')
+                        expect(page.get_by_role('heading',name='Connect Ergo to your agent')).to_be_visible()
+                        expect(page.get_by_role('button',name='Generate access token')).to_have_count(0)
                         page.get_by_role('button',name='Authorize MCP server',exact=True).click()
                         page.wait_for_url('http://127.0.0.1:*/callback/*')
                         expect(page.get_by_role('heading',name='Authorization received',exact=True)).to_be_visible()
@@ -129,7 +146,10 @@ with tempfile.TemporaryDirectory(prefix='ergo-login-') as temporary:
                 for callback in ['https://attacker.example/callback/'+'a'*64, 'http://127.0.0.1:1234/unsafe']:
                     page.goto(url+'/login?'+urllib.parse.urlencode({'mcp_callback':callback})+'#connect')
                     expect(page.get_by_role('alert')).to_contain_text('Invalid MCP callback')
-                    expect(page.get_by_role('button',name='Generate access token',exact=True)).to_be_disabled()
+                    expect(page.get_by_role('button',name='Authorize MCP server')).to_have_count(0)
+                page.goto(url+'/login#connect')
+                expect(page.get_by_role('button',name='Generate access token')).to_be_enabled()
+
                 browser.close()
         finally:
             server.terminate(); server.wait(timeout=10)

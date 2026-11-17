@@ -6,7 +6,7 @@ Accepted edits live in S3 with authenticated author attribution.
 
 - **Sandbox:** https://ergosandbox.com/
 - **Project guide:** https://www.ergosandbox.com/
-- **Agent setup:** https://ergosandbox.com/login#connect
+- **Agent setup:** The MCP bridge opens its own browser approval screen. [Manual token setup](https://ergosandbox.com/login#connect) is also available.
 - **Current implementation:** [docs/README.md](docs/README.md)
 - **Unimplemented work:** [TODO.md](TODO.md)
 

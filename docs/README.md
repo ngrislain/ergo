@@ -17,7 +17,7 @@ designs live in `todo/` and are indexed by [TODO.md](../TODO.md).
 - [Paris landmarks: accepted models, closed-roof revision and articulated prototype](paris-landmarks.md)
 - [Camera navigation, GPS and construction list](navigation.md)
 - [Resumable loading, fast Merkle freshness checks and local cache diagnostics](loading-and-cache.md)
-- [Sign-in and access](access-and-onboarding.md)
+- [Sign-in, MCP browser approval, and manual token setup](access-and-onboarding.md)
 - [Nested groups](groups.md)
 - [Collision-aware positioning](interactive-constraints.md)
 

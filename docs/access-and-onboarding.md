@@ -14,13 +14,17 @@ guests must sign in first. **Edit here with an agent**
 carries the current view target and selected construction ID to setup; no token
 is embedded in that URL.
 
-When a current-source MCP bridge needs credentials, it opens `/login` with a
-one-time `mcp_callback` URL and waits up to ten minutes. The browser accepts only
+When an MCP bridge needs credentials, it opens a dedicated approval screen at
+`/login?mcp_callback=…` and waits up to ten minutes. If needed, sign in with
+Google first; Ergo returns you to that screen for approval. This is separate
+from manual token setup at `/login#connect`. The browser accepts only
 an HTTP `127.0.0.1` callback with a nonzero port and a 64-hex-character capability
 path. **Authorize MCP server** explicitly delegates editing to the local process;
 Google credentials stay in the human's browser. The token is returned in a form
-POST body, never a URL. The listener checks the exact application Origin and
-loopback Host, accepts one token, and closes. The bridge verifies the token with
+POST body, never a URL. The handoff sends only the application origin, not the
+approval URL, as referrer. The listener checks the exact application Origin and
+loopback Host, accepts one token, and shows a confirmation page before closing.
+The bridge verifies the token with
 the configured API before saving it atomically with Unix mode 0600.
 
 The default token path is `$XDG_CONFIG_HOME/ergo/tokens/SHA256_ORIGIN.token`, or
@@ -49,16 +53,17 @@ control. Sign-out does not revoke an already-issued delegated token.
 
 ## Install and delegate
 
-Install the current prebuilt client from npm:
+Install the [plugin for your agent client](mcp-plugins.md) and follow the browser
+approval link it opens. To approve separately without a global install, run:
 
 ```sh
-npm install --global --ignore-scripts @ngrislain/ergo-mcp@0.5.35
-ergo-mcp --login --publish-url https://ergosandbox.com
+npx @ngrislain/ergo-mcp@0.5.38 --login --publish-url https://ergosandbox.com
 ```
 
-Sign in in the human's browser, generate/download the token, and configure only its
-private file path. Do not pass Google or S3 credentials to the agent. The bundle
-includes native/WASM assets; consumers need no Rust build.
+If browser approval is unavailable, generate or download a token from
+`/login#connect` and configure only its private file path. Do not pass Google or
+S3 credentials to the agent. The bundle includes native/WASM assets; consumers
+need no Rust build.
 
 Tokens are purpose-, origin- and expiry-bound. The UI and API default to 365 days
 (31,536,000 seconds), which is also the maximum; the API accepts shorter explicit

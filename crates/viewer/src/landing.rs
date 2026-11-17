@@ -39,11 +39,99 @@ pub fn Entry() -> impl IntoView {
         .unwrap_or_default();
     let workspace = pathname == "/app";
     let home = pathname == "/";
+    if pathname == "/login" {
+        match mcp_callback() {
+            Ok(None) => {}
+            callback => return view! { <McpLogin account error callback/> }.into_any(),
+        }
+    }
     view! {
         <Show when=move ||account.get().is_some_and(|a|(workspace&&(a.signed_in||a.development||a.common_world.is_some()))||(home&&(a.common_world.is_some()||(a.signed_in&&!a.development))))
             fallback=move ||view!{<Landing account error/>}>
             <crate::app::App/>
         </Show>
+    }.into_any()
+}
+
+fn google_login_url() -> String {
+    let return_path = web_sys::window()
+        .map(|w| {
+            format!(
+                "{}{}{}",
+                w.location().pathname().unwrap_or_default(),
+                w.location().search().unwrap_or_default(),
+                w.location().hash().unwrap_or_default()
+            )
+        })
+        .unwrap_or_else(|| "/".into());
+    format!(
+        "/auth/google?return_to={}",
+        js_sys::encode_uri_component(&return_path)
+            .as_string()
+            .unwrap_or_default()
+    )
+}
+
+#[component]
+fn McpLogin(
+    account: RwSignal<Option<Account>>,
+    error: RwSignal<Option<String>>,
+    callback: Result<Option<String>, JsValue>,
+) -> impl IntoView {
+    let login_url = StoredValue::new(google_login_url());
+    let destination = StoredValue::new(callback.ok().flatten());
+    let valid = destination.get_value().is_some();
+    let busy = RwSignal::new(false);
+    let signed_in = move || account.get().is_some_and(|a| a.signed_in || a.development);
+    let approve = move |_| {
+        if busy.get_untracked() || !signed_in() {
+            return;
+        }
+        let Some(destination) = destination.get_value() else {
+            return;
+        };
+        busy.set(true);
+        error.set(None);
+        spawn_local(async move {
+            let result = async {
+                let (token, _) = issue_token().await?;
+                return_mcp_token(&destination, &token)
+                    .map_err(|_| anyhow::anyhow!("Could not send approval. Restart Ergo in your agent and open the new sign-in link."))
+            }.await;
+            if let Err(e) = result {
+                error.set(Some(e.to_string()));
+                busy.set(false);
+            }
+        });
+    };
+    view! {
+        <header class="app-header landing-header">
+            <a class="brand" href="/app" aria-label="Ergo home"><img src="/favicon.svg" alt="" width="38" height="38"/>"ergo"</a>
+        </header>
+        <main class="mcp-login landing-intro" aria-labelledby="mcp-login-title">
+            <h1 id="mcp-login-title">"Connect Ergo to your agent"</h1>
+            <Show when=move ||valid fallback=||view!{
+                <p class="onboarding-error" role="alert">"Invalid MCP callback. Restart Ergo in your agent and open the new sign-in link."</p>
+            }>
+                <p>"Only approve if you just started Ergo in your agent on this device. Approval lets the agent edit constructions using your account’s permissions."</p>
+                <Show when=signed_in fallback=move ||view!{
+                    <Show when=move ||account.get().is_some_and(|a|a.google_enabled) fallback=move ||view!{
+                        <Show when=move ||error.get().is_none()>
+                            <p role="status">{move ||if account.get().is_none(){"Checking your session…"}else{"Google sign-in is not available on this server."}}</p>
+                        </Show>
+                    }>
+                        <a class="button primary" href=login_url.get_value()>"Continue with Google"</a>
+                        <p class="landing-note">"You’ll return here to review and approve the connection."</p>
+                    </Show>
+                }>
+                    <p class="signed-in-name">{move ||account.get().map(|a|if a.signed_in {format!("Signed in as {}", a.name)} else {"Development session".into()}).unwrap_or_default()}</p>
+                    <button class="button primary" disabled=move ||busy.get() on:click=approve>{move ||if busy.get(){"Sending approval…"}else{"Authorize MCP server"}}</button>
+                    <p class="landing-note">"After approval, return to your agent. The token is sent directly to Ergo on this device."</p>
+                </Show>
+                <Show when=move ||error.get().is_some()><p class="onboarding-error" role="alert">{move ||error.get().unwrap_or_default()}</p></Show>
+            </Show>
+            <a class="text-button" href="/login#connect">"Use manual token setup instead"</a>
+        </main>
     }
 }
 
@@ -65,22 +153,7 @@ fn Landing(account: RwSignal<Option<Account>>, error: RwSignal<Option<String>>) 
     let origin = web_sys::window()
         .and_then(|w| w.location().origin().ok())
         .unwrap_or_default();
-    let return_path = web_sys::window()
-        .map(|w| {
-            format!(
-                "{}{}{}",
-                w.location().pathname().unwrap_or_default(),
-                w.location().search().unwrap_or_default(),
-                w.location().hash().unwrap_or_default()
-            )
-        })
-        .unwrap_or_else(|| "/".into());
-    let login_url = StoredValue::new(format!(
-        "/auth/google?return_to={}",
-        js_sys::encode_uri_component(&return_path)
-            .as_string()
-            .unwrap_or_default()
-    ));
+    let login_url = StoredValue::new(google_login_url());
     let mut environment = serde_json::json!({"ERGO_PUBLISH_URL":origin,"ERGO_PUBLISH_TOKEN_FILE":"/absolute/path/ergo-mcp-token"});
     let query = web_sys::window()
         .and_then(|w| w.location().search().ok())
@@ -162,52 +235,19 @@ fn TokenPanel(account: RwSignal<Option<Account>>) -> impl IntoView {
     let busy = RwSignal::new(false);
     let error = RwSignal::new(None::<String>);
     let copied = RwSignal::new(false);
-    let callback = mcp_callback();
-    if callback.is_err() {
-        error.set(Some(
-            "Invalid MCP callback. Restart your MCP server to get a new sign-in link.".into(),
-        ));
-    }
-    let invalid_callback = callback.is_err();
-    let callback = StoredValue::new(callback.ok().flatten());
     let generate = move |_| {
-        if busy.get_untracked() || invalid_callback {
+        if busy.get_untracked() {
             return;
         }
         busy.set(true);
         error.set(None);
         copied.set(false);
         spawn_local(async move {
-            let result: anyhow::Result<serde_json::Value> = async {
-                let response = Request::post("/api/auth/mcp-token")
-                    .header("X-Ergo-Request", "1")
-                    .json(&serde_json::json!({}))?
-                    .send()
-                    .await?;
-                let value: serde_json::Value = response.json().await?;
-                anyhow::ensure!(
-                    response.ok(),
-                    "{}",
-                    value["error"].as_str().unwrap_or("Could not issue a token")
-                );
-                Ok(value)
-            }
-            .await;
-            match result {
-                Ok(value) => {
-                    if let Some(value_token) = value["token"].as_str() {
-                        token.set(Some(value_token.into()));
-                    }
-                    let date = js_sys::Date::new(&JsValue::from_f64(
-                        value["expires_at"].as_f64().unwrap_or_default() * 1000.,
-                    ));
+            match issue_token().await {
+                Ok((value, expires_at)) => {
+                    token.set(Some(value));
+                    let date = js_sys::Date::new(&JsValue::from_f64(expires_at * 1000.));
                     expires.set(date.to_iso_string().as_string().unwrap_or_default());
-                    if let Some(destination) = callback.get_value()
-                        && let Some(value_token) = value["token"].as_str()
-                        && let Err(e) = return_mcp_token(&destination, value_token)
-                    {
-                        error.set(Some(format!("Could not connect to your MCP server: {e:?}. You can still download this token.")));
-                    }
                 }
                 Err(e) => error.set(Some(e.to_string())),
             }
@@ -218,10 +258,9 @@ fn TokenPanel(account: RwSignal<Option<Account>>) -> impl IntoView {
         <section class="token-panel" aria-labelledby="token-title"><div><h2 id="token-title">"Your MCP and API access token"</h2>
             <p class="account-id">{move ||account.get().and_then(|a|a.id).map(|id|format!("Account: {id}")).unwrap_or_default()}</p>
             <p>"Tokens last 365 days, independently of your browser session. S3 credentials stay on the server."</p>
-            <Show when=move ||callback.get_value().is_some()><p>"Authorize only the MCP server you just started on this device. This sends it an edit token and lets it save that token privately for future sessions."</p></Show>
             <p class="allowance-label">{move ||account.get().and_then(|a|a.edit_allowance).map(allowance_label).unwrap_or_else(||"Sign in to see your edit allowance.".into())}</p>
         </div><div class="token-actions">
-            <button class="button primary" disabled=move ||busy.get()||invalid_callback||!account.get().is_some_and(|a|a.signed_in||a.development) on:click=generate>{move ||if busy.get(){"Generating…"}else if callback.get_value().is_some(){"Authorize MCP server"}else{"Generate access token"}}</button>
+            <button class="button primary" disabled=move ||busy.get()||!account.get().is_some_and(|a|a.signed_in||a.development) on:click=generate>{move ||if busy.get(){"Generating…"}else{"Generate access token"}}</button>
             <Show when=move ||token.get().is_some()><label>"Access token"<textarea readonly aria-label="MCP and API token" prop:value=move ||token.get().unwrap_or_default()/></label>
                 <p class="subtle">{move ||format!("Expires {}. Sign-out does not revoke already-issued tokens.",expires.get())}</p>
                 <div class="token-buttons"><button class="button quiet" on:click=move |_|{
@@ -235,6 +274,29 @@ fn TokenPanel(account: RwSignal<Option<Account>>) -> impl IntoView {
             <Show when=move ||error.get().is_some()><p class="onboarding-error" role="alert">{move ||error.get().unwrap_or_default()}</p></Show>
         </div></section>
     }
+}
+
+async fn issue_token() -> anyhow::Result<(String, f64)> {
+    let response = Request::post("/api/auth/mcp-token")
+        .header("X-Ergo-Request", "1")
+        .json(&serde_json::json!({}))?
+        .send()
+        .await?;
+    let value: serde_json::Value = response.json().await?;
+    anyhow::ensure!(
+        response.ok(),
+        "{}",
+        value["error"]
+            .as_str()
+            .unwrap_or("Could not issue an access token.")
+    );
+    let token = value["token"]
+        .as_str()
+        .ok_or_else(|| anyhow::anyhow!("Ergo did not return an access token."))?;
+    Ok((
+        token.into(),
+        value["expires_at"].as_f64().unwrap_or_default(),
+    ))
 }
 
 fn mcp_callback() -> Result<Option<String>, JsValue> {
@@ -269,6 +331,16 @@ fn mcp_callback() -> Result<Option<String>, JsValue> {
 
 fn return_mcp_token(destination: &str, token: &str) -> Result<(), JsValue> {
     let document = web_sys::window().unwrap().document().unwrap();
+    // For an HTTPS-to-HTTP navigation POST Chromium sends Origin: null under
+    // the default strict policy, even to loopback. Send only the origin so
+    // the bridge can validate it without disclosing the sign-in URL.
+    let policy = document.create_element("meta")?;
+    policy.set_attribute("name", "referrer")?;
+    policy.set_attribute("content", "origin")?;
+    document
+        .query_selector("head")?
+        .unwrap()
+        .append_child(&policy)?;
     let form = document
         .create_element("form")?
         .dyn_into::<web_sys::HtmlFormElement>()?;

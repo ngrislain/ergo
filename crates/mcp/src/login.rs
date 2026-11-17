@@ -164,20 +164,38 @@ async fn callback(
             .bytes()
             .all(|b| b.is_ascii_alphanumeric() || b"-_.".contains(&b))
     {
-        return StatusCode::FORBIDDEN.into_response();
+        return callback_page(
+            StatusCode::FORBIDDEN,
+            "Approval could not be verified",
+            "Restart Ergo in your agent and open the new sign-in link. Approve from the Ergo page in this browser.",
+        );
     }
     let Some(sender) = state.result.lock().await.take() else {
-        return StatusCode::GONE.into_response();
+        return callback_page(
+            StatusCode::GONE,
+            "This approval link was already used",
+            "Return to your agent. If it still asks you to sign in, restart Ergo to get a new link.",
+        );
     };
     let _ = sender.send(form.token);
+    callback_page(
+        StatusCode::OK,
+        "Authorization received",
+        "Return to your agent. Ergo is checking and saving your token. You can close this tab.",
+    )
+}
+
+fn callback_page(status: StatusCode, heading: &'static str, message: &'static str) -> Response {
     (
+        status,
         [
             (header::CACHE_CONTROL, "no-store"),
             (header::REFERRER_POLICY, "no-referrer"),
             (header::CONTENT_SECURITY_POLICY, "default-src 'none'; frame-ancestors 'none'"),
         ],
-        Html("<!doctype html><title>Ergo MCP authorization</title><h1>Authorization received</h1><p>The MCP server is checking and saving your token. You can close this tab.</p>"),
-    ).into_response()
+        Html(format!("<!doctype html><html lang=\"en\"><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width, initial-scale=1\"><title>Ergo MCP approval</title><main><h1>{heading}</h1><p>{message}</p></main></html>")),
+    )
+        .into_response()
 }
 
 async fn authorize(publisher: &Publisher) -> Result<String> {
