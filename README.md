@@ -95,7 +95,7 @@ use `open_shared_construction` with its ID or a specified position. Accepted
 mutations update the same shared assembly automatically; the working file is a
 cache. Read the confirmed `shared_commit` receipt.
 
-v0.5.36 uses [paged authoring](docs/paged-authoring.md):
+Shared edits use [paged authoring](docs/paged-authoring.md):
 opening a construction loads its manifest; `read_construction_page` loads spatial
 bounds or selected IDs. Sparse edits preserve unloaded members. Upgrade matching
 server/native/WASM together and explicitly migrate bound caches. Group headers
@@ -124,11 +124,12 @@ Before a new design, [search/retrieve similar models](docs/model-library.md) wit
 their source/author/licence attribution.
 
 See [agent workflows](docs/agent-shared-editing.md), [MCP tools](docs/local-construction-mcp.md)
-and [distribution](docs/distribution.md). Source plugin packages for Claude Code,
-ChatGPT/Codex desktop, OpenCode and Pi live under [`plugins/`](plugins); see
-[plugin setup](docs/mcp-plugins.md) and the public
-[plugin walkthrough](https://www.ergosandbox.com/#connect),
-including source installation, browser approval and each client's build skill.
+and [distribution](docs/distribution.md). OpenCode and Pi plugins install from
+npm without cloning this repository; see [plugin setup](docs/mcp-plugins.md).
+Plugin sources for all four clients (including Claude Code and ChatGPT/Codex
+desktop) live under [`plugins/`](plugins). The public
+[plugin walkthrough](https://www.ergosandbox.com/#connect) covers native
+installers, browser approval and each client's build skill.
 The current-source `get_build_feedback` harness
 adds actionable findings, measured part/palette observations and optional actual
 rendered views for an inspect–act–review–adjust workflow; acceptance is not an

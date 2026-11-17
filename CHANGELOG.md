@@ -1,5 +1,18 @@
 # Changelog
 
+## v0.5.37
+
+- Distribute OpenCode and Pi plugins through npm with the matching prebuilt MCP
+  bridge, repository metadata and GitHub trusted publication. Preserve the
+  authenticated v0.5.36 bootstrap artifacts; publish this new immutable version
+  through the existing provenance-enabled release workflow.
+- Replace checkout-first website setup with npm installation for OpenCode/Pi
+  and remote marketplace setup for Claude Code/Codex. Keep the human browser
+  approval flow, local stdio transport and client-specific build skills; no
+  remote MCP endpoint or new data migration is introduced.
+- Synchronize the website's machine-readable guide, clipboard/mobile/no-JS
+  checks and operator documentation with the no-manual-clone installation paths.
+
 ## v0.5.36
 
 - Package the build/inspiration skill and stdio MCP bridge as source plugins for

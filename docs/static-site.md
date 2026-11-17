@@ -10,7 +10,7 @@ tokens, receive credentials, proxy the API, or provide a remote MCP endpoint.
 
 - `/`: an interactive shared-engine WebGL brick illustration and plugin-first
   onboarding for Claude Code, Codex/ChatGPT desktop, OpenCode and Pi. The guide
-  includes source installation, browser approval, skill invocation, troubleshooting,
+  includes native package/marketplace installation, browser approval, skill invocation, troubleshooting,
   manual MCP install/start commands, client configuration, a direct-API example,
   and a first construction prompt.
 - `/privacy/` and `/terms/`: static policy pages describing the hosted service,
@@ -21,16 +21,21 @@ tokens, receive credentials, proxy the API, or provide a remote MCP endpoint.
 
 Agent instructions follow [access and onboarding](access-and-onboarding.md),
 [client plugins](mcp-plugins.md) and the [MCP guide](local-construction-mcp.md).
-The plugin tab documents the actual repository packages, not a public directory
-listing or unpublished npm plugins. The common source setup clones the repo and
-reads `plugins/ergo/package.json` to install the matching bridge from npm for
-local-path/desktop loads. It leaves the manual MCP release setting unchanged.
+The plugin tab installs published OpenCode/Pi npm packages with their matching
+bridge dependencies, without Git or a global bridge. Claude Code and Codex use
+remote marketplace registration: they fetch the repository internally and need
+Git, not a manual checkout. Claude Code installs the locked bridge dependency;
+OpenAI desktop clients require the documented global bridge installation. These
+are repository marketplaces, not public directory listings. The OpenCode
+instructions are expanded by default and remain usable without JavaScript.
 Both paths install a prebuilt bridge with Node, not Rust. Manual MCP setup uses
 the verified npm version selected by `ERGO_MCP_PACKAGE`, with a byte-identical
 GitHub Release tarball. Keep the prior verified setting until a new release passes
 registry and consumer checks.
 Google login and approval stay in the human's browser. Plugin setup completes
-`ergo-mcp --login` before connecting; the bridge saves a private origin-scoped
+the optional version-pinned `npx @ngrislain/ergo-mcp@VERSION --login` before
+connecting when a host has a short startup deadline; otherwise the bridge opens
+sign-in when needed. It saves a private origin-scoped
 delegation shared by bridge copies on that computer. Manual token download and
 file-path configuration remain available. No token goes in chat or a plugin
 manifest. The first prompt follows the build skill's reference search, saved
@@ -116,7 +121,8 @@ Browser checks cover real WebGL mouse/scroll controls, tabs, clipboard, 320/390-
 time-independent point lighting, shadow draw passes, reduced motion, WebGL-unavailable fallback,
 and readable no-JavaScript content.
 Run `python3 scripts/test-site-onboarding.py --url http://127.0.0.1:4173`
-against the preview server to check all plugin disclosures, copied commands,
+against the preview server to check all plugin disclosures, npm/marketplace commands,
+the absence of manual-clone prerequisites, copied commands,
 three-tab keyboard navigation, 320/390-pixel layouts and no-JavaScript setup.
 Run `python3 scripts/test-site-proportions.py --url http://127.0.0.1:4173`
 against the preview server to verify image ratios and the actual WebGL camera

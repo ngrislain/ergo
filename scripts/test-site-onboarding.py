@@ -51,10 +51,14 @@ with sync_playwright() as p:
         expect(plugin).to_be_focused()
 
         for details in page.locator("#panel-plugin details").all():
-            details.locator("summary").click()
+            if details.get_attribute("open") is None:
+                details.locator("summary").click()
             expect(details).to_have_attribute("open", "")
         for client in ["claude", "openai", "opencode", "pi"]:
             expect(page.locator(f'[data-plugin-client="{client}"]')).to_be_visible()
+        expect(page.locator("#plugin-opencode")).to_contain_text("@ngrislain/opencode-ergo@")
+        expect(page.locator("#plugin-pi")).to_contain_text("pi install npm:@ngrislain/ergo-pi@")
+        assert "git clone" not in page.locator("#panel-plugin").inner_text()
         for button in page.locator("#panel-plugin [data-copy]").all():
             target = page.locator("#" + button.get_attribute("data-copy"))
             expected = target.text_content()
@@ -66,8 +70,9 @@ with sync_playwright() as p:
         for tab in [plugin, manual, api]:
             tab.click()
             panel = page.locator("#" + tab.get_attribute("aria-controls"))
-            for details in panel.locator("details:not([open])").all():
-                details.locator("summary").click()
+            for details in panel.locator("details").all():
+                if details.get_attribute("open") is None:
+                    details.locator("summary").click()
             assert page.evaluate("document.documentElement.scrollWidth <= innerWidth"), (
                 width, tab.text_content()
             )
@@ -79,8 +84,10 @@ with sync_playwright() as p:
     context = browser.new_context(java_script_enabled=False, viewport={"width": 320, "height": 900})
     page = context.new_page()
     page.goto(args.url + "/#connect")
-    expect(page.locator("#plugin-source")).to_be_visible()
-    expect(page.locator("#plugin-bridge")).to_be_visible()
+    expect(page.locator("#plugin-opencode")).to_be_visible()
+    expect(page.locator("#plugin-login")).to_be_visible()
+    page.locator('[data-plugin-client="pi"] summary').click()
+    expect(page.locator("#plugin-pi")).to_be_visible()
     page.locator('[data-plugin-client="claude"] summary').click()
     expect(page.locator("#plugin-claude")).to_be_visible()
     assert page.evaluate("document.documentElement.scrollWidth <= innerWidth")

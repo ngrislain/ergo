@@ -26,13 +26,15 @@ editing defaults to the canonical apex service. Local files are caches when boun
 Version 0.5.26 changes tokenless npm startup to the hosted Sandbox with
 human-approved browser token pickup; `--local` explicitly selects isolated
 proposals. This requires a rebuilt client and matching browser deployment and is
-not retroactively available in the published v0.5.25 artifact. Source plugin
-packages for Claude Code, ChatGPT/Codex desktop, OpenCode and Pi live under
-`plugins/`, with repo-local marketplace manifests; the OpenCode and Pi packages
-pin `@ngrislain/ergo-mcp` as a version-matched npm dependency of the plugin,
-while the portable Claude/OpenAI wrappers require a globally installed bridge.
-None is a public marketplace
-release. See [plugin setup](mcp-plugins.md) and [browser approval](access-and-onboarding.md).
+not retroactively available in the published v0.5.25 artifact. Plugin sources
+for Claude Code, ChatGPT/Codex desktop, OpenCode and Pi live under `plugins/`,
+with repo-local marketplace manifests. `@ngrislain/opencode-ergo@0.5.36` and
+`@ngrislain/ergo-pi@0.5.36` are public npm packages that install the exact
+`@ngrislain/ergo-mcp@0.5.36` dependency; no checkout or global bridge is needed.
+Claude Code's marketplace cache installs the portable package's locked bridge
+dependency; local-path and OpenAI desktop loads use the globally installed
+bridge. The portable packages are not public marketplace listings. See
+[plugin setup](mcp-plugins.md) and [browser approval](access-and-onboarding.md).
 
 ## Release automation
 
@@ -67,13 +69,37 @@ Configure the same trusted publisher for the plugin packages
 `@ngrislain/opencode-ergo` and `@ngrislain/ergo-pi`: the `publish-plugins` job
 publishes them after `publish-npm` verifies the matching bridge, with the same
 OIDC and provenance guarantees, and `scripts/publish-plugins.py` refuses to
-publish a plugin whose pinned bridge is not yet verified on npm. Until those
-two trusted publishers are configured, the `publish-plugins` job fails
-authentication without publishing anything; configure them and re-run the
-`publish_npm` workflow dispatch, which reconciles the already-published
-packages and completes the plugins. Re-running a failed publication is safe
-because every publish reconciles immutable npm versions by exact integrity
-first and never repeats an accepted publication to resolve a delay.
+publish a plugin whose pinned bridge is not yet verified on npm. Each plugin's
+`repository.url` identifies this GitHub repository for npm provenance, and
+`repository.directory` identifies its source package.
+
+npm requires a package to exist before its trusted publisher can be configured.
+For the first publication only, sign in interactively as the package owner with
+`npm login`, verify the matching bridge exists, run
+`python3 scripts/test-plugin-packages.py --pack`, and publish the validated plugin
+tarballs with `npm publish /absolute/path/to/package.tgz --access public
+--ignore-scripts --provenance=false --registry=https://registry.npmjs.org/`.
+Complete npm's browser/2FA approval in the owner's terminal; never put an OTP or
+token into chat. This local bootstrap publication has **no GitHub Actions
+provenance**. Keep the normal CI publisher unchanged: it requires provenance.
+
+After the first publication, configure both trusted publishers (npm 11.15+ and
+interactive owner/2FA authentication required):
+
+```sh
+npm trust github @ngrislain/opencode-ergo --repo ngrislain/ergo --file release.yml --allow-publish
+npm trust github @ngrislain/ergo-pi --repo ngrislain/ergo --file release.yml --allow-publish
+```
+
+The next new release can then publish through GitHub OIDC. A newly configured
+trust must complete a successful publication within npm's two-day validation
+window; configuration read-back alone does not prove CI publication works.
+Until trust is configured, the `publish-plugins` job fails authentication. Retry
+only the failed plugin job when the candidate tarballs are identical to any
+already-published versions. An older tag that predates bootstrap package changes
+cannot reconcile those immutable artifacts: use a new release version instead.
+Every publisher compares exact integrity and never repeats an accepted
+publication to resolve a registry delay.
 
 Set repository variable `ERGO_NPM_PUBLISH=true` to publish successful `vVERSION`
 release builds automatically. Manual `workflow_dispatch` with `publish_npm=true`
@@ -91,6 +117,40 @@ processing; it never republishes to resolve a delay. If the deadline expires,
 reconcile the exact registry version/integrity before retrying. Successful publication
 is confirmed by reading the npm integrity back. Source setup/CI configuration
 alone does not establish that a package is available on npmjs.
+
+### Initial plugin bootstrap v0.5.36
+
+On 2026-11-17 the authenticated npm owner published
+[`@ngrislain/opencode-ergo@0.5.36`](https://www.npmjs.com/package/@ngrislain/opencode-ergo/v/0.5.36)
+and [`@ngrislain/ergo-pi@0.5.36`](https://www.npmjs.com/package/@ngrislain/ergo-pi/v/0.5.36).
+Both public `latest` tags resolve to 0.5.36. These first plugin publications
+were local bootstrap uploads with **no GitHub Actions provenance**, unlike the
+version-matched bridge. Their repository metadata was added after the v0.5.36
+source tag; do not move that tag or attempt to replace the published artifacts.
+Commit the metadata and use a new version for the next release.
+
+Registry read-back matched the exact uploaded tarballs:
+
+- OpenCode npm integrity:
+  `sha512-0vK+lY+OqJGcSnC/xA/hdHD8Pd7xwd0wxS89mL8p/Xt9KBOb+e211C2h0+TnJQ+sHz78oSV94tTlgLLQQ7ckwg==`.
+- Pi npm integrity:
+  `sha512-7UPwQPI8Wf6/E9AfHzQM94g5YfbeCzzPtIxofF26/EOjIHmhKoY5COxH71bDd7reyVRUUVJw9Ca1MetLzwaqTw==`.
+
+Separate consumer directories outside the checkout installed both registry
+packages with `--ignore-scripts --omit=peer`; each resolved the matching bridge
+and ran its bundled launcher, which reported 0.5.36. Bun import and registration
+smokes exercised the published TypeScript entrypoints with stub host callbacks:
+OpenCode registered the packaged bridge and build skill; Pi registered the
+packaged bridge and exposed its build skill in the package manifest. These are
+not full authenticated host-session or production construction-edit tests.
+Plain Node type stripping cannot import TypeScript directly from `node_modules`;
+the agent host's TypeScript loader is required.
+
+Owner-approved trusted publishers were created for both packages with repository
+`ngrislain/ergo`, workflow `release.yml`, and direct-publication permission.
+No OIDC publication has yet validated these new configurations. Complete the
+first successful CI publication by 2026-11-19, or recreate any expired trust
+before the next release. No server deployment accompanied these plugin uploads.
 
 ## Server image
 

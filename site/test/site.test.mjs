@@ -79,38 +79,38 @@ test("one package-source setting switches GitHub downloads to npm", () => {
   );
 });
 
-test("plugin onboarding covers source installs, browser approval and each client's skill", async () => {
+test("plugin onboarding uses native installers without a manual checkout", async () => {
   const html = await text("index.html");
   const guide = await text("llms.txt");
+  const release = JSON.parse(
+    await readFile(resolve(import.meta.dirname, "../../plugins/opencode-ergo/package.json"), "utf8"),
+  ).version;
   assert.match(html, /id="tab-plugin"[^>]*aria-selected="true"/);
   assert.match(html, /id="panel-plugin"[^>]*aria-labelledby="tab-plugin"/);
   assert.match(html, /id="panel-mcp"[^>]*hidden/);
   assert.match(html, /id="panel-api"[^>]*hidden/);
   for (const content of [html, guide]) {
-    assert.match(content, /git clone https:\/\/github.com\/ngrislain\/ergo\.git/);
-    assert.ok(content.includes(`node -p "require('./plugins/ergo/package.json').version"`));
-    assert.ok(content.includes('"@ngrislain/ergo-mcp@$ERGO_PLUGIN_VERSION"'));
-    assert.match(content, /ergo-mcp --login --publish-url https:\/\/ergosandbox\.com/);
-    assert.match(content, /claude --plugin-dir \.\/plugins\/ergo/);
-    assert.match(content, /\/plugin marketplace add \.\//);
-    assert.match(content, /\/plugin install ergo@ergo/);
+    assert.doesNotMatch(content, /git clone|not yet published|ERGO_PLUGIN_VERSION/);
+    assert.ok(content.includes(`npx @ngrislain/ergo-mcp@${release} --login --publish-url https://ergosandbox.com`));
+    assert.match(content, /claude plugin marketplace add ngrislain\/ergo/);
+    assert.match(content, /claude plugin install ergo@ergo/);
+    assert.match(content, /codex plugin marketplace add ngrislain\/ergo/);
     assert.match(content, /\/ergo:build/);
     assert.match(content, /\.agents\/plugins\/marketplace\.json/);
     assert.match(content, /@ergo-build/);
-    assert.match(content, /pi install \.\/plugins\/ergo-pi/);
+    assert.ok(content.includes(`pi install npm:@ngrislain/ergo-pi@${release}`));
     assert.match(content, /\/skill:build/);
     assert.match(content, /get_lego_models/);
     assert.match(content, /get_build_feedback/);
     assert.match(content, /shared_commit/);
     assert.match(content, /view_url/);
-    assert.match(content, /not yet published\s+on npm/);
-    assert.doesNotMatch(content, /pi install npm:@ngrislain\/ergo-pi/);
+    assert.doesNotMatch(content, /\.\/plugins\/opencode-ergo|pi install \.\/plugins\/ergo-pi/);
   }
   const json = html.match(/<code id="plugin-opencode">([\s\S]*?)<\/code>/)?.[1];
   assert.ok(json, "OpenCode plugin configuration must be readable without JavaScript");
   const configuration = JSON.parse(json);
   assert.equal(configuration.$schema, "https://opencode.ai/config.json");
-  assert.deepEqual(configuration.plugins, ["./plugins/opencode-ergo"]);
+  assert.deepEqual(configuration.plugins, [`@ngrislain/opencode-ergo@${release}`]);
   for (const client of ["claude", "openai", "opencode", "pi"]) {
     assert.match(html, new RegExp(`data-plugin-client="${client}"`));
   }

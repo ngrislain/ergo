@@ -36,6 +36,11 @@ class PluginPublication(unittest.TestCase):
             data=json.loads((publisher.PLUGINS[package]/'package.json').read_text())
             self.assertEqual(data['version'],self.version)
             self.assertEqual(data['dependencies'][publisher.BRIDGE],self.version)
+            self.assertEqual(data['repository'],{
+                'type':'git',
+                'url':'git+https://github.com/ngrislain/ergo.git',
+                'directory':str(publisher.PLUGINS[package].relative_to(ROOT)),
+            })
             publisher.manifest(package,self.version)
     def test_unpublished_bridge_stops_before_packing(self):
         def offline(command,**kwargs):

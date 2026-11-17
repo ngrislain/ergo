@@ -75,7 +75,7 @@ All binaries and browser assets are bundled together at the same release version
 There are no install/postinstall scripts, optional platform downloads, or
 runtime build steps. Package publication does not deploy the hosted API.
 
-v0.5.36 uses paged shared authoring: opening loads metadata, and
+Shared authoring is paged: opening loads metadata, and
 `read_construction_page` explicitly loads geometry before sparse edits. Upgrade
 the server, native bridge and browser/WASM together. Bound pre-v0.5.35 caches need
 the locked, backup-preserving [forward migration](https://github.com/ngrislain/ergo/blob/main/docs/paged-authoring.md#forward-migration);

@@ -30,44 +30,47 @@ another delegation. Logging out does not individually revoke an issued token.
 
 ## Connect with the Ergo plugin
 
-Source packages bundle the local MCP connection and a build/inspiration skill
-for Claude Code, Codex and ChatGPT desktop, OpenCode, and Pi. These are repository
-plugins, not a public plugin-directory listing. OpenCode and Pi plugin packages
-are not yet published on npm. A desktop host must support local executables;
-a cloud-only chat or remote connector cannot run this local stdio bridge.
+Plugins bundle the local MCP connection and a build/inspiration skill for
+Claude Code, Codex and ChatGPT desktop, OpenCode, and Pi. No manual repository
+checkout or Rust build is needed. OpenCode and Pi install public npm packages
+and their matching bridge; no Git or global bridge installation is needed.
+Claude Code and Codex fetch the repository marketplace for you (Git required).
+These are not public plugin-directory listings. Desktop hosts must support
+local executables; a cloud-only chat cannot run this local stdio bridge.
+Ergo requires Node.js 20+ and Chrome/Chromium on macOS/Linux; host clients may
+require a newer Node version. Review plugins before installing.
 
-Requires Git, Node.js 20+ and Chrome/Chromium on macOS/Linux; Rust is not needed.
-Review the source, then get the plugins and install the matching bridge for
-local-path and desktop installs:
-
-git clone https://github.com/ngrislain/ergo.git
-cd ergo
-ERGO_PLUGIN_VERSION="$(node -p "require('./plugins/ergo/package.json').version")"
-npm install --global --ignore-scripts "@ngrislain/ergo-mcp@$ERGO_PLUGIN_VERSION"
-ergo-mcp --login --publish-url https://ergosandbox.com
-
-Finish human browser approval before connecting. Every bridge copy on this
-computer shares the private origin-scoped sign-in state, never plugin secrets.
-Run the following commands from the cloned folder. Use absolute plugin paths
-when loading from another project.
-
-- Claude Code: claude --plugin-dir ./plugins/ergo
-  Invoke /ergo:build followed by the goal. For a persistent installation, run
-  /plugin marketplace add ./ then /plugin install ergo@ergo inside Claude Code.
-- Codex and ChatGPT desktop: add the cloned repository as a local source in the
-  Plugins Directory and install Ergo. The repo marketplace is
-  .agents/plugins/marketplace.json and the plugin is plugins/ergo. The app must
-  find the globally installed ergo-mcp on PATH. Ask it to use Ergo's build skill.
 - OpenCode: merge {"$schema":"https://opencode.ai/config.json",
-  "plugins":["./plugins/opencode-ergo"]} into opencode.json in the cloned folder,
+  "plugins":["@ngrislain/opencode-ergo@0.5.37"]} into your project's opencode.json,
   preserving existing settings and plugin entries. Invoke @ergo-build with the
   goal; /reload can force a reload.
-- Pi: pi install ./plugins/ergo-pi
+- Pi: pi install npm:@ngrislain/ergo-pi@0.5.37
   Start Pi or /reload, check pi mcp list or /mcp, then use /skill:build with the goal.
+- Claude Code: run these in your terminal:
+  claude plugin marketplace add ngrislain/ergo
+  claude plugin install ergo@ergo
+  Claude Code installs the plugin's locked bridge dependency automatically.
+  Start a session and invoke /ergo:build followed by the goal.
+- Codex and ChatGPT desktop: install the bridge and register the marketplace:
+  npm install --global --ignore-scripts @ngrislain/ergo-mcp@0.5.37
+  codex plugin marketplace add ngrislain/ergo
+  Open the Plugins Directory in a supported desktop client, select the Ergo
+  marketplace and install Ergo. Its catalog is .agents/plugins/marketplace.json.
+  The app must find ergo-mcp on PATH. Ask it to use Ergo's build skill.
 
-If tools do not appear, check ergo-mcp --help in the agent's environment. If
-sign-in times out, finish ergo-mcp --login in a terminal, then reconnect the
-agent's Ergo MCP server. Use separate writable folders for concurrent agents;
+The bridge opens human browser sign-in when needed. Complete sign-in first if
+the host has a short connection deadline:
+
+npx @ngrislain/ergo-mcp@0.5.37 --login --publish-url https://ergosandbox.com
+
+Finish human browser approval before connecting. Every bridge copy on this
+computer shares the private origin-scoped sign-in state. Never paste a token
+into chat or plugin files.
+
+If tools do not appear, check that the plugin's dependencies installed. Desktop
+clients need ergo-mcp --help on PATH. If sign-in times out, run the optional
+sign-in command above, then reconnect the agent's Ergo MCP server.
+Use separate writable folders for concurrent agents;
 the default workspace cache is construction.ergo.json. Installing a plugin does
 not authorize edits or bypass server checks.
 

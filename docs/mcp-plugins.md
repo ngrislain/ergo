@@ -21,9 +21,11 @@ in lockstep with the release through `python3 scripts/package-mcp.py
 plugin-lock`; the lock pins an exact version with an https registry URL and no
 integrity, which npm and Claude Code both install and record on first use.
 
-These are **source plugin packages**, not a published marketplace listing. Install
-a current rebuilt/assembled Ergo MCP bridge and its matching browser UI first;
-published v0.5.25 does not gain browser token pickup from installing this wrapper.
+The OpenCode and Pi plugins are published on npm at **0.5.36** and can be
+installed without a repository checkout or a global bridge installation. The
+Claude Code and OpenAI packages remain source/repo-marketplace distributions,
+not public marketplace listings. The bridge must match the browser UI;
+installing a plugin does not update an older bridge already on PATH.
 Node 20+ and Chrome/Chromium are required for Ergo; the host clients have their own
 requirements. When the OpenCode or Pi package is installed from npm or Git, the
 pinned `@ngrislain/ergo-mcp` dependency supplies the bridge and the plugin launches
@@ -33,36 +35,39 @@ host's PATH. Every package starts the bridge with `--headless` and the canonical
 hosted origin; normal startup opens human sign-in if credentials are missing or
 rejected. For hosts with short startup deadlines, complete sign-in first with any
 bridge copy — `ergo-mcp --login` from a global install, or
-`npx @ngrislain/ergo-mcp@0.5.35 --login` — then reconnect; the origin-scoped
+`npx @ngrislain/ergo-mcp@0.5.36 --login` — then reconnect; the origin-scoped
 token file is shared by every copy. Secrets live in that private token file,
 never the plugin manifests or chat.
 
-The public [website setup guide](https://www.ergosandbox.com/#connect) walks
-through cloning this repository, installing the prebuilt bridge version read
-from `plugins/ergo/package.json`, completing `ergo-mcp --login`, and loading a
-plugin in each host. Its manual MCP tab remains a separate, verified-release
-installation path. Local-path and desktop loads use the globally installed
-bridge on PATH; keep it matched to the source plugin version when updating.
+The public [website setup guide](https://www.ergosandbox.com/#connect) uses npm
+for OpenCode/Pi and remote marketplace registration for Claude Code/Codex;
+no manual checkout is needed. The bridge requests human browser approval when
+needed, with an optional login command for short host startup deadlines. Its
+manual MCP tab remains a separate, verified-release installation path.
+Local-path and OpenAI desktop loads use the globally installed bridge on PATH;
+keep it matched to the plugin version when updating.
 
 ## Claude Code
 
-From this checkout, test the plugin directly:
+Register the repository marketplace directly and install the plugin:
 
 ```sh
-claude --plugin-dir ./plugins/ergo
+claude plugin marketplace add ngrislain/ergo
+claude plugin install ergo@ergo
 ```
 
-The repo's `.claude-plugin/marketplace.json` also advertises the plugin for a local
-marketplace install. In a Claude Code session from the checkout, run
-`/plugin marketplace add ./` then `/plugin install ergo@ergo` for a persistent
-installation. `plugins/ergo/.claude-plugin/plugin.json` and `.mcp.json` use
+Claude Code fetches the repository internally; Git is required, but no manual
+clone is needed. The repo's `.claude-plugin/marketplace.json` advertises the
+plugin. `plugins/ergo/.claude-plugin/plugin.json` and `.mcp.json` use
 Claude's supported layout. `/ergo:build` provides the workflow; the same skill
 can load for LEGO/Ergo building tasks. When Claude Code copies a marketplace
 plugin into its cache it also installs the dependencies pinned by
 `plugins/ergo/package.json` and `npm-shrinkwrap.json`, so the matching bridge
 arrives with the plugin; the install is skipped if it exceeds Claude Code's
 60-second budget or the lock is out of sync, and the documented global
-install remains the manual fallback.
+install remains the manual fallback. Developers can test a checkout with
+`claude --plugin-dir ./plugins/ergo` or add it as a local marketplace with
+`/plugin marketplace add ./` and `/plugin install ergo@ergo`.
 
 ```sh
 claude plugin validate plugins/ergo
@@ -73,35 +78,39 @@ claude plugin validate plugins/ergo
 `plugins/ergo/plugin.json` and `mcp.json` use the portable Agent Plugins 1.0.0
 schemas, with OpenAI-host presentation metadata under `extensions.com.openai`.
 `.agents/plugins/marketplace.json` is the repo marketplace that the ChatGPT
-desktop app and Codex read; install the plugin from that local source in the
-Plugins Directory. Like Claude's `.mcp.json`, these OpenAI hosts run the local
+desktop app and Codex read. Register it with
+`codex plugin marketplace add ngrislain/ergo` (Git required; the CLI fetches the
+marketplace), then select the Ergo marketplace and install the plugin in the
+supported desktop Plugins Directory. Install the matching global bridge first;
+these hosts do not install the plugin's npm dependencies. Like Claude's
+`.mcp.json`, these OpenAI hosts run the local
 stdio bridge. This is a **local/desktop stdio integration**, not a cloud/remote
 MCP service; a host without local executable support cannot run the bridge
 merely by reading its manifest. Publishing to the shared public plugin directory
 would require OpenAI review, and local-MCP submissions are limited to approved
 partner organizations; this repository documents only the repo-local marketplace
-path.
+path and direct repository registration, not a public directory submission.
 
 ## OpenCode
 
 `plugins/opencode-ergo` is an OpenCode server plugin that registers the `ergo`
 local MCP server — with the startup/catalog/execution timeouts from the
 [MCP client guide](local-construction-mcp.md#opencode) — and the `ergo-build`
-skill (the same build workflow, discovered by `@ergo-build`). From this checkout,
-load it directly in `opencode.json(c)`:
+skill (the same build workflow, discovered by `@ergo-build`). Install the
+published package by adding it to `opencode.json(c)`:
 
 ```jsonc
 {
   "$schema": "https://opencode.ai/config.json",
-  "plugins": ["./plugins/opencode-ergo"]
+  "plugins": ["@ngrislain/opencode-ergo@0.5.36"]
 }
 ```
 
-Once the package is published to npm, listing `"@ngrislain/opencode-ergo"` or
-`opencode plugin add` works the same way; the pinned `@ngrislain/ergo-mcp`
-dependency is installed with it, so no global bridge install is needed. A
-checkout-local load skips dependency installation and uses the PATH bridge
-instead. The manual one-shot MCP configuration
+OpenCode installs the package and its pinned `@ngrislain/ergo-mcp` dependency,
+so no Git clone or global bridge install is needed. Approve browser sign-in
+when the bridge requests it. For development, a checkout-local entry
+`"./plugins/opencode-ergo"` skips dependency installation and uses the PATH
+bridge instead. The manual one-shot MCP configuration
 in the [MCP client guide](local-construction-mcp.md#opencode) remains available
 without the plugin; both register the identical bridge command and environment.
 
@@ -110,16 +119,17 @@ without the plugin; both register the identical bridge command and environment.
 `plugins/ergo-pi` is a [Pi package](https://pi.dev/docs/latest/packages.md): the
 build skill under `skills/build` plus an extension that registers the `ergo`
 stdio server with the same command, environment and a 3,900-second per-request
-timeout. Install it from this checkout:
+timeout. Install the published package:
 
 ```sh
-pi install ./plugins/ergo-pi
+pi install npm:@ngrislain/ergo-pi@0.5.36
 ```
 
-Once published, `pi install npm:@ngrislain/ergo-pi` (or a git source) works the
-same way and installs the pinned `@ngrislain/ergo-mcp` dependency with the
-package, so no global bridge install is needed. A local-path install skips
-dependency installation and uses the PATH bridge instead. Verify the connection
+Pi installs the pinned `@ngrislain/ergo-mcp` dependency with the package, so no
+Git clone or global bridge install is needed. Approve browser sign-in when
+requested. For development, `pi install ./plugins/ergo-pi` loads the checkout;
+a local-path install skips dependency installation and uses the PATH bridge
+instead. Verify the connection
 with `pi mcp list`, inspect it with `/mcp`, and
 load the workflow with `/skill:build`. A user-level `mcp.json` entry configured
 through `pi mcp add ergo --env ERGO_PUBLISH_URL=https://ergosandbox.com -- ergo-mcp --headless`
