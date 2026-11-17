@@ -1,5 +1,13 @@
 # Changelog
 
+## v0.5.39 — 2026-11-17
+
+- Fix the HTTP 403 Chrome could show after MCP approval. The HTTPS sign-in
+  page now preserves the origin on the local handoff without exposing the
+  approval URL or relaxing callback validation.
+- Give MCP sign-in and approval a dedicated screen, separate from manual token
+  setup. The local callback shows a confirmation or explains how to retry.
+
 ## v0.5.38
 
 - Answer the MCP handshake before browser sign-in: `ergo-mcp` reads the
