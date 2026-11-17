@@ -21,7 +21,7 @@ in lockstep with the release through `python3 scripts/package-mcp.py
 plugin-lock`; the lock pins an exact version with an https registry URL and no
 integrity, which npm and Claude Code both install and record on first use.
 
-The OpenCode and Pi plugins are published on npm at **0.5.36** and can be
+The OpenCode and Pi plugins are published on npm at **0.5.37** and can be
 installed without a repository checkout or a global bridge installation. The
 Claude Code and OpenAI packages remain source/repo-marketplace distributions,
 not public marketplace listings. The bridge must match the browser UI;
@@ -35,7 +35,7 @@ host's PATH. Every package starts the bridge with `--headless` and the canonical
 hosted origin; normal startup opens human sign-in if credentials are missing or
 rejected. For hosts with short startup deadlines, complete sign-in first with any
 bridge copy — `ergo-mcp --login` from a global install, or
-`npx @ngrislain/ergo-mcp@0.5.36 --login` — then reconnect; the origin-scoped
+`npx @ngrislain/ergo-mcp@0.5.37 --login` — then reconnect; the origin-scoped
 token file is shared by every copy. Secrets live in that private token file,
 never the plugin manifests or chat.
 
@@ -102,7 +102,7 @@ published package by adding it to `opencode.json(c)`:
 ```jsonc
 {
   "$schema": "https://opencode.ai/config.json",
-  "plugins": ["@ngrislain/opencode-ergo@0.5.36"]
+  "plugins": ["@ngrislain/opencode-ergo@0.5.37"]
 }
 ```
 
@@ -122,7 +122,7 @@ stdio server with the same command, environment and a 3,900-second per-request
 timeout. Install the published package:
 
 ```sh
-pi install npm:@ngrislain/ergo-pi@0.5.36
+pi install npm:@ngrislain/ergo-pi@0.5.37
 ```
 
 Pi installs the pinned `@ngrislain/ergo-mcp` dependency with the package, so no
