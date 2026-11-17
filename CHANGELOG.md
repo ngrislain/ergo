@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## v0.5.38
 
 - Answer the MCP handshake before browser sign-in: `ergo-mcp` reads the
   public server configuration, replies to `initialize`/`tools/list`, and runs

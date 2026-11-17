@@ -1,6 +1,6 @@
 {
   "name": "@ngrislain/opencode-ergo",
-  "version": "0.5.37",
+  "version": "0.5.38",
   "description": "Ergo MCP server and LEGO build/inspiration skill for OpenCode.",
   "type": "module",
   "exports": {".": "./index.ts"},
@@ -15,6 +15,6 @@
   "publishConfig": {"access": "public"},
   "dependencies": {
     "@opencode/plugin": "latest",
-    "@ngrislain/ergo-mcp": "0.5.37"
+    "@ngrislain/ergo-mcp": "0.5.38"
   }
 }
