@@ -71,6 +71,23 @@ pub fn open_login(url: Option<String>, token_file: Option<PathBuf>) -> Result<()
     Ok(())
 }
 
+/// The common world advertised by the server's public configuration, read
+/// without credentials so the MCP handshake never waits for sign-in.
+pub async fn public_common_world(url: Option<String>) -> Result<Option<String>> {
+    let Some(url) = url.or_else(|| env::var("ERGO_PUBLISH_URL").ok()) else {
+        return Ok(None);
+    };
+    // This placeholder is never sent in an HTTP request.
+    let mut publisher = Publisher::new(&url, Some("anonymous".into()))?;
+    publisher.token = None;
+    publisher.common_world().await
+}
+
+/// The browser sign-in URL while approval is outstanding.
+pub fn pending_sign_in() -> Option<String> {
+    login::pending_sign_in()
+}
+
 impl Publisher {
     pub async fn user_position(&self) -> Value {
         match self.request(Method::GET, "/api/user-position", None).await {

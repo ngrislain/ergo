@@ -14,6 +14,14 @@ use tokio::sync::{Mutex, oneshot};
 
 const LOGIN_TIMEOUT: Duration = Duration::from_secs(600);
 
+/// Outstanding sign-in URL, so tool calls made during approval can point the
+/// user at it. The callback capability only accepts a token, never returns one.
+static SIGN_IN: std::sync::Mutex<Option<String>> = std::sync::Mutex::new(None);
+
+pub(super) fn pending_sign_in() -> Option<String> {
+    SIGN_IN.lock().unwrap().clone()
+}
+
 fn default_token_file(base: &Url) -> Result<PathBuf> {
     let config = env::var_os("XDG_CONFIG_HOME")
         .map(PathBuf::from)
@@ -203,6 +211,7 @@ async fn authorize(publisher: &Publisher) -> Result<String> {
         .append_pair("mcp_callback", &callback_url);
     url.set_fragment(Some("connect"));
     eprintln!("Sign in and authorize this MCP server in your browser: {url}");
+    *SIGN_IN.lock().unwrap() = Some(url.to_string());
     let opener = if cfg!(target_os = "macos") {
         "open"
     } else {
@@ -221,6 +230,7 @@ async fn authorize(publisher: &Publisher) -> Result<String> {
         ),
     }
     let result = tokio::time::timeout(LOGIN_TIMEOUT, rx).await;
+    *SIGN_IN.lock().unwrap() = None;
     // Finish the accepted POST without relying on a timing guess. Bound shutdown
     // as well, so an unrelated stalled local request cannot hold login open.
     let _ = shutdown_tx.send(());

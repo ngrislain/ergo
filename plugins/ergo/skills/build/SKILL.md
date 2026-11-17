@@ -8,7 +8,8 @@ description: Finds existing LEGO sets by feature for inspiration, then builds or
 Use Ergo MCP tools, not hand-edited cache files. Google sign-in and token approval
 belong to the human's browser; never ask for a token in chat or print one.
 If setup is needed, direct the human to complete the browser authorization opened
-by `ergo-mcp`, or run `ergo-mcp --login` before reconnecting the MCP server.
+by `ergo-mcp`; a tool reply that reports pending sign-in includes its link. Retry
+after approval. Older bridges may need `ergo-mcp --login` before reconnecting.
 
 Before a new design, call `get_lego_models` with the subject or a `feature`
 such as `arches`, `pitched_roofs`, `steering`, `suspension`, `gears`,

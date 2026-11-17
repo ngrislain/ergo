@@ -1,5 +1,13 @@
 # Changelog
 
+## Unreleased
+
+- Answer the MCP handshake before browser sign-in: `ergo-mcp` reads the
+  public server configuration, replies to `initialize`/`tools/list`, and runs
+  sign-in, shared-world loading, library mirroring and the WASM client in the
+  background. Tool calls made during approval return the sign-in link; hosts
+  with short connection deadlines (Claude Code's 30 s) no longer time out.
+
 ## v0.5.37
 
 - Distribute OpenCode and Pi plugins through npm with the matching prebuilt MCP

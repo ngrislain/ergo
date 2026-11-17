@@ -77,6 +77,18 @@ with tempfile.TemporaryDirectory(prefix='ergo-login-') as temporary:
                         parsed = urllib.parse.urlparse(login_url)
                         assert parsed.path == '/login' and parsed.fragment == 'connect'
                         assert 'token' not in urllib.parse.parse_qs(parsed.query)
+                        if case != 'login':
+                            # Hosts give the handshake a short deadline; it must
+                            # not wait for the human approval.
+                            process.stdin.write(json.dumps({'jsonrpc':'2.0','id':1,'method':'initialize','params':{}})+'\n')
+                            process.stdin.flush()
+                            assert select.select([process.stdout],[],[],5)[0], 'Handshake waited for sign-in'
+                            assert json.loads(process.stdout.readline())['id'] == 1
+                        if case == 'missing':
+                            process.stdin.write(json.dumps({'jsonrpc':'2.0','id':2,'method':'tools/call','params':{'name':'get_edit_allowance','arguments':{}}})+'\n')
+                            process.stdin.flush()
+                            pending = json.loads(process.stdout.readline())['result']
+                            assert pending['isError'] and login_url in pending['content'][0]['text'], pending
                         page.goto(login_url)
                         page.wait_for_load_state('networkidle')
                         page.get_by_role('button',name='Authorize MCP server',exact=True).click()
@@ -93,9 +105,10 @@ with tempfile.TemporaryDirectory(prefix='ergo-login-') as temporary:
                             stdout, _ = process.communicate(timeout=10)
                             assert process.returncode == 0 and stdout == ''
                         else:
-                            process.stdin.write(json.dumps({'jsonrpc':'2.0','id':1,'method':'initialize','params':{}})+'\n')
+                            process.stdin.write(json.dumps({'jsonrpc':'2.0','id':3,'method':'tools/call','params':{'name':'get_edit_allowance','arguments':{}}})+'\n')
                             process.stdin.flush()
-                            assert json.loads(process.stdout.readline())['id'] == 1
+                            ready = json.loads(process.stdout.readline())
+                            assert ready['id'] == 3 and ready['result']['isError'] is False, ready
                             process.stdin.close(); process.wait(timeout=10)
                             assert process.returncode == 0
                     finally:
@@ -120,4 +133,4 @@ with tempfile.TemporaryDirectory(prefix='ergo-login-') as temporary:
                 browser.close()
         finally:
             server.terminate(); server.wait(timeout=10)
-print('MCP login passed: explicit login, missing/rejected tokens, human browser approval, loopback POST, private storage, protocol-only stdout and callback validation.')
+print('MCP login passed: explicit login, handshake before approval, sign-in link in early tool replies, missing/rejected tokens, human browser approval, loopback POST, private storage, protocol-only stdout and callback validation.')

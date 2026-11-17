@@ -24,8 +24,9 @@ Inspector 2.14.0 requires Node `^22.23.4 || ^24.22.1 || >=26.12.1`, separately f
 Ergo's Node 20+ baseline. The downloaded configuration starts the installed
 `ergo-mcp --headless --workspace inspector.cache.json` against the page's origin.
 It includes no credentials. The separate cache avoids locking the normal agent's
-working copy. If the host's startup deadline expires during browser sign-in, run
-`ergo-mcp --login --publish-url ORIGIN` first.
+working copy. With v0.5.37 and earlier bridges, if the host's startup deadline
+expires during browser sign-in, run `ergo-mcp --login --publish-url ORIGIN`
+first; current-source bridges answer the handshake before sign-in.
 
 Enter the loopback URL printed by Inspector and select **Display Inspector**.
 Only HTTP(S) root URLs on `127.0.0.1`, `localhost` or `[::1]` with an explicit port

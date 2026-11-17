@@ -472,11 +472,6 @@ fn main() -> Result<()> {
         return publish::open_login(publish_url, publish_token_file);
     }
     measurements.validate()?;
-    let publisher = if local {
-        None
-    } else {
-        publish::Publisher::from_env(publish_url, publish_token_file)?
-    };
     // One continuously driven runtime serves HTTP jobs and remote requests even
     // while the stdio thread waits for a browser result.
     let runtime = tokio::runtime::Builder::new_multi_thread()
@@ -494,201 +489,42 @@ fn main() -> Result<()> {
         .truncate(false)
         .open(path.with_extension("mcp.lock"))?;
     fs2::FileExt::try_lock_exclusive(&lock).context("Working copy is already open")?;
-    let bound = publisher.is_some()
-        && shared::state_path(&path).exists()
-        && shared::load_binding(&shared::state_path(&path))?
-            .assembly_id
-            .is_some();
-    let mut scene = if path.exists() && !bound {
-        ensure!(
-            path.metadata()?.len() <= 128 * 1024 * 1024,
-            "Working copy exceeds 128 MiB"
-        );
-        let bytes = fs::read(&path)?;
-        let raw: Value = serde_json::from_slice(&bytes)?;
-        let mut scene = if raw["format"] == "ergo-authoring-cache-1" {
-            ensure!(
-                publisher.is_some() && shared::state_path(&path).exists(),
-                "A partial authoring cache is not a standalone construction; use export_construction"
-            );
-            ensure!(
-                raw["partial"] == true
-                    && raw["schema"] == ergo_world::SCHEMA_VERSION
-                    && raw["construction"]["pieces"]
-                        .as_array()
-                        .is_some_and(Vec::is_empty),
-                "Unbound nonempty partial cache requires explicit recovery; no geometry was discarded"
-            );
-            ergo_world::storage::decode(&serde_json::to_vec(&raw["construction"])?)?
-        } else {
-            ergo_world::storage::decode(&bytes)?
-        };
-        normalize(&mut scene, &measurements)?;
-        scene
-    } else {
-        WorldExport {
-            schema: ergo_world::SCHEMA_VERSION,
-            name: "Agent construction".into(),
-            geo: Default::default(),
-            bricks: Vec::new(),
-            meshes: Default::default(),
-            joints: Vec::new(),
-            fixed_bricks: Vec::new(),
-            ground: Vec::new(),
-            groups: Vec::new(),
-            model: None,
-        }
-    };
-    let common = if let Some(publisher) = &publisher {
-        if let Some(world) = runtime.block_on(publisher.common_world())? {
-            let sidecar = shared::state_path(&path);
-            let mut binding = if sidecar.exists() {
-                let binding = shared::load_binding(&sidecar)?;
-                ensure!(
-                    binding.world_id == world && binding.origin == publisher.url("/")?.as_str(),
-                    "Shared cache belongs to another world/origin"
-                );
-                binding
-            } else {
-                runtime.block_on(publisher.new_binding(world))?
-            };
-            ensure!(
-                !binding.pending || binding.assembly_id.is_some(),
-                "An import outcome is unresolved; reconcile its shared-world history before opening this cache"
-            );
-            if let Some(assembly) = binding.assembly_id.clone() {
-                if let Ok(requested) = std::env::var("ERGO_SHARED_ASSEMBLY_ID") {
-                    ensure!(
-                        requested == assembly,
-                        "This cache is bound to another assembly; use a new path or open_shared_construction explicitly"
-                    );
-                }
-                scene = runtime.block_on(publisher.load_shared_file(
-                    &mut binding,
-                    &assembly,
-                    Some(&path),
-                ))?;
-                persist_page(&path, &scene)?;
-            } else if let Ok(assembly) = std::env::var("ERGO_SHARED_ASSEMBLY_ID") {
-                ensure!(
-                    scene.bricks.is_empty(),
-                    "Use a new cache path for this shared assembly"
-                );
-                scene = runtime.block_on(publisher.load_shared_file(
-                    &mut binding,
-                    &assembly,
-                    Some(&path),
-                ))?;
-                persist_page(&path, &scene)?;
-            } else if let Ok(position) = std::env::var("ERGO_POSITION_WORLD") {
-                ensure!(
-                    scene.bricks.is_empty(),
-                    "Use a new cache path for a position-based shared workspace, or call open_shared_construction explicitly"
-                );
-                let position: [f64; 3] = serde_json::from_str(&position)?;
-                let located = runtime.block_on(publisher.locate_shared(position))?;
-                if let Some(assembly) = located["assembly_id"].as_str() {
-                    scene = runtime.block_on(publisher.load_shared_file(
-                        &mut binding,
-                        assembly,
-                        Some(&path),
-                    ))?;
-                } else {
-                    scene.geo = serde_json::from_value(located["geo"].clone())?;
-                }
-                persist_page(&path, &scene)?;
-            }
-            atomic_write(&sidecar, &binding)?;
-            Some(Arc::new(tokio::sync::Mutex::new(binding)))
-        } else {
-            None
-        }
-    } else {
+    // The mode is public server configuration, so the handshake can describe
+    // it before credentials exist.
+    let world = if local {
         None
-    };
-    let parent = path
-        .parent()
-        .filter(|p| !p.as_os_str().is_empty())
-        .unwrap_or(FsPath::new("."));
-    let assets = std::env::var_os("ERGO_MCP_ASSET_DIR")
-        .map(PathBuf::from)
-        .unwrap_or_else(|| parent.join(".ergo-assets"));
-    fs::create_dir_all(&assets)?;
-    // The hosted origin's synthesized library is mirrored and verified
-    // locally; later sessions keep working offline from the mirror.
-    let origin = match &publisher {
-        Some(publisher) => publisher.url("/")?.to_string(),
-        None => std::env::var("ERGO_API_URL").unwrap_or_else(|_| DEFAULT_ORIGIN.into()),
-    };
-    let http = reqwest::Client::builder()
-        .timeout(Duration::from_secs(90))
-        .build()?;
-    let store: Arc<dyn object_store::ObjectStore> = Arc::new(
-        object_store::local::LocalFileSystem::new_with_prefix(assets)?,
-    );
-    let (library, part_library) =
-        runtime.block_on(ergo_assets::library::mirror(&*store, &http, &origin))?;
-    ergo_world::part_library::install(library)?;
-    let parts =
-        ergo_assets::PartCache::new(store, String::new())?.with_origin(http.clone(), &origin);
-    let bridge = Bridge {
-        hub: Arc::new(Mutex::new(Hub {
-            workspace: Workspace {
-                scene,
-                revision: 0,
-                path: path.clone(),
-                measurements,
-            },
-            queue: VecDeque::new(),
-            pending: HashMap::new(),
-        })),
-        token: format!(
-            "{}{}",
-            uuid::Uuid::new_v4().simple(),
-            uuid::Uuid::new_v4().simple()
-        ),
-        parts,
-        part_library: part_library.into(),
-        publisher: publisher.clone().map(Arc::new),
-        common,
-    };
-    let listener = std::net::TcpListener::bind("127.0.0.1:0")?;
-    let address = listener.local_addr()?;
-    listener.set_nonblocking(true)?;
-    let app = Router::new()
-        .route("/api/local/workspace", get(workspace).put(update))
-        .route("/api/local/jobs/next", get(next_job))
-        .route("/api/local/jobs/result", post(complete))
-        .route("/api/local/parts/{name}", get(part))
-        .route("/api/local/library.json", get(serve_part_library))
-        .fallback_service(ServeDir::new(web))
-        .layer(DefaultBodyLimit::max(128 * 1024 * 1024))
-        .layer(SetResponseHeaderLayer::overriding(
-            header::CACHE_CONTROL,
-            HeaderValue::from_static("no-store"),
-        ))
-        .layer(SetResponseHeaderLayer::overriding(
-            header::REFERRER_POLICY,
-            HeaderValue::from_static("no-referrer"),
-        ))
-        .with_state(bridge.clone());
-    let (shutdown_tx, shutdown_rx) = tokio::sync::oneshot::channel::<()>();
-    let server = runtime.spawn(async move {
-        let listener = tokio::net::TcpListener::from_std(listener).unwrap();
-        axum::serve(listener, app)
-            .with_graceful_shutdown(async {
-                let _ = shutdown_rx.await;
+    } else {
+        runtime
+            .block_on(async {
+                tokio::time::timeout(
+                    Duration::from_secs(15),
+                    publish::public_common_world(publish_url.clone()),
+                )
+                .await
             })
-            .await
-            .unwrap();
-    });
-    let profile = tempfile::tempdir()?;
-    let _browser = launch(
-        &format!("http://{address}/mcp.html#mcp={}", bridge.token),
+            .context("Timed out reading the Ergo server configuration")??
+    };
+    let shared_mode = world.is_some();
+    // Sign-in, shared-world loading, library mirroring and the WASM client
+    // start in the background: hosts give the handshake a short deadline,
+    // while browser approval can take minutes.
+    let (started, startup) = mpsc::channel();
+    let options = Options {
+        path: path.clone(),
+        measurements,
+        web,
         headless,
         attach,
-        profile.path(),
-    )?;
+        local,
+        publish_url,
+        publish_token_file,
+        world,
+    };
+    let handle = runtime.handle().clone();
+    std::thread::spawn(move || {
+        let _ = started.send(start(&handle, options).map_err(|e| format!("{e:#}")));
+    });
+    let mut startup = Startup::Pending(startup);
     let input = io::stdin();
     let mut input = input.lock();
     let mut output = io::stdout().lock();
@@ -726,15 +562,15 @@ fn main() -> Result<()> {
                     .filter(|v| ["2025-11-25", "2025-06-18", "2024-11-05"].contains(v))
                     .unwrap_or("2025-06-18");
                 Ok(
-                    json!({"protocolVersion":version,"capabilities":{"tools":{"listChanged":false}},"serverInfo":{"name":"ergo-local-wasm-bridge","version":env!("CARGO_PKG_VERSION")},"instructions":format!("{} Coordinates are X east, Y north, Z height. Editing/rendering execute in WASM. {}",ergo_world::mcp::BUILDING_GUIDANCE,if bridge.common.is_some(){"This is the common S3 world: accepted edits commit automatically with server validation and author attribution. Open an existing construction with open_shared_construction using assembly_id or position_world. The workspace file is only a cache; never treat local JSON edits as shared commits."}else{"Local development mode: publish_construction explicitly publishes through the configured API; only a confirmed result establishes publication."})}),
+                    json!({"protocolVersion":version,"capabilities":{"tools":{"listChanged":false}},"serverInfo":{"name":"ergo-local-wasm-bridge","version":env!("CARGO_PKG_VERSION")},"instructions":format!("{} Coordinates are X east, Y north, Z height. Editing/rendering execute in WASM. {}",ergo_world::mcp::BUILDING_GUIDANCE,if shared_mode{"This is the common S3 world: accepted edits commit automatically with server validation and author attribution. Open an existing construction with open_shared_construction using assembly_id or position_world. The workspace file is only a cache; never treat local JSON edits as shared commits."}else{"Local development mode: publish_construction explicitly publishes through the configured API; only a confirmed result establishes publication."})}),
                 )
             }
             "ping" => Ok(json!({})),
             _ if !initialized => Err((-32000, "Initialize first".into())),
-            "tools/list" => Ok(tool_schemas(bridge.common.is_some())),
+            "tools/list" => Ok(tool_schemas(shared_mode)),
             "tools/call" => {
                 let name = params.get("name").and_then(Value::as_str).unwrap_or("");
-                let available = tool_schemas(bridge.common.is_some());
+                let available = tool_schemas(shared_mode);
                 if let Some(tool) = available["tools"]
                     .as_array()
                     .unwrap()
@@ -757,6 +593,9 @@ fn main() -> Result<()> {
                                 json!({"content":[{"type":"text","text":value.to_string()}],"structuredContent":value,"isError":false}),
                             );
                         }
+                        let Ready {
+                            publisher, bridge, ..
+                        } = startup.wait().map_err(anyhow::Error::msg)?;
                         if name == "open_shared_construction" {
                             let publisher = publisher
                                 .as_ref()
@@ -1038,8 +877,307 @@ fn main() -> Result<()> {
         writeln!(output, "{response}")?;
         output.flush()?;
     }
-    let _ = shutdown_tx.send(());
-    drop(_browser);
-    let _ = runtime.block_on(server);
+    if let Startup::Ready(ready) = startup {
+        let _ = ready.shutdown.send(());
+        drop(ready.browser);
+        let _ = runtime.block_on(ready.server);
+    }
+    drop(lock);
     Ok(())
+}
+
+struct Options {
+    path: PathBuf,
+    measurements: ConnectionMeasurements,
+    web: PathBuf,
+    headless: bool,
+    attach: bool,
+    local: bool,
+    publish_url: Option<String>,
+    publish_token_file: Option<PathBuf>,
+    /// Common world advertised by the public server configuration.
+    world: Option<String>,
+}
+
+/// Everything tool calls need once background startup has finished.
+struct Ready {
+    publisher: Option<publish::Publisher>,
+    bridge: Bridge,
+    shutdown: tokio::sync::oneshot::Sender<()>,
+    server: tokio::task::JoinHandle<()>,
+    browser: Browser,
+    _profile: tempfile::TempDir,
+}
+
+enum Startup {
+    Pending(mpsc::Receiver<std::result::Result<Ready, String>>),
+    Ready(Box<Ready>),
+    Failed(String),
+}
+
+/// How long a tool call waits while browser approval is outstanding before
+/// replying with the sign-in link instead.
+const SIGN_IN_WAIT: Duration = Duration::from_secs(10);
+/// How long a tool call waits for the rest of startup (shared world, library
+/// mirror, WASM client).
+const STARTUP_WAIT: Duration = Duration::from_secs(120);
+
+impl Startup {
+    fn wait(&mut self) -> std::result::Result<&Ready, String> {
+        if let Startup::Pending(receiver) = self {
+            let begun = std::time::Instant::now();
+            let outcome = loop {
+                match receiver.recv_timeout(Duration::from_millis(200)) {
+                    Ok(outcome) => break outcome,
+                    Err(mpsc::RecvTimeoutError::Disconnected) => {
+                        break Err("the startup thread stopped unexpectedly".into());
+                    }
+                    Err(mpsc::RecvTimeoutError::Timeout) => {
+                        if let Some(url) = publish::pending_sign_in() {
+                            if begun.elapsed() >= SIGN_IN_WAIT {
+                                return Err(format!(
+                                    "Ergo is waiting for browser sign-in. Ask the user to open {url}, sign in and approve this MCP server, then retry; the approved token is saved for later sessions."
+                                ));
+                            }
+                        } else if begun.elapsed() >= STARTUP_WAIT {
+                            return Err("Ergo MCP is still loading the shared world and part library; retry shortly.".into());
+                        }
+                    }
+                }
+            };
+            *self = match outcome {
+                Ok(ready) => Startup::Ready(Box::new(ready)),
+                Err(error) => Startup::Failed(error),
+            };
+        }
+        match self {
+            Startup::Ready(ready) => Ok(ready),
+            Startup::Failed(error) => Err(format!(
+                "Ergo MCP startup failed: {error}. Reconnect the MCP server to retry."
+            )),
+            Startup::Pending(_) => unreachable!(),
+        }
+    }
+}
+
+fn start(runtime: &tokio::runtime::Handle, options: Options) -> Result<Ready> {
+    let Options {
+        path,
+        measurements,
+        web,
+        headless,
+        attach,
+        local,
+        publish_url,
+        publish_token_file,
+        world,
+    } = options;
+    let publisher = if local {
+        None
+    } else {
+        publish::Publisher::from_env(publish_url, publish_token_file)?
+    };
+    let bound = publisher.is_some()
+        && shared::state_path(&path).exists()
+        && shared::load_binding(&shared::state_path(&path))?
+            .assembly_id
+            .is_some();
+    let mut scene = if path.exists() && !bound {
+        ensure!(
+            path.metadata()?.len() <= 128 * 1024 * 1024,
+            "Working copy exceeds 128 MiB"
+        );
+        let bytes = fs::read(&path)?;
+        let raw: Value = serde_json::from_slice(&bytes)?;
+        let mut scene = if raw["format"] == "ergo-authoring-cache-1" {
+            ensure!(
+                publisher.is_some() && shared::state_path(&path).exists(),
+                "A partial authoring cache is not a standalone construction; use export_construction"
+            );
+            ensure!(
+                raw["partial"] == true
+                    && raw["schema"] == ergo_world::SCHEMA_VERSION
+                    && raw["construction"]["pieces"]
+                        .as_array()
+                        .is_some_and(Vec::is_empty),
+                "Unbound nonempty partial cache requires explicit recovery; no geometry was discarded"
+            );
+            ergo_world::storage::decode(&serde_json::to_vec(&raw["construction"])?)?
+        } else {
+            ergo_world::storage::decode(&bytes)?
+        };
+        normalize(&mut scene, &measurements)?;
+        scene
+    } else {
+        WorldExport {
+            schema: ergo_world::SCHEMA_VERSION,
+            name: "Agent construction".into(),
+            geo: Default::default(),
+            bricks: Vec::new(),
+            meshes: Default::default(),
+            joints: Vec::new(),
+            fixed_bricks: Vec::new(),
+            ground: Vec::new(),
+            groups: Vec::new(),
+            model: None,
+        }
+    };
+    let common = if let Some(publisher) = &publisher {
+        if let Some(world) = world {
+            let sidecar = shared::state_path(&path);
+            let mut binding = if sidecar.exists() {
+                let binding = shared::load_binding(&sidecar)?;
+                ensure!(
+                    binding.world_id == world && binding.origin == publisher.url("/")?.as_str(),
+                    "Shared cache belongs to another world/origin"
+                );
+                binding
+            } else {
+                runtime.block_on(publisher.new_binding(world))?
+            };
+            ensure!(
+                !binding.pending || binding.assembly_id.is_some(),
+                "An import outcome is unresolved; reconcile its shared-world history before opening this cache"
+            );
+            if let Some(assembly) = binding.assembly_id.clone() {
+                if let Ok(requested) = std::env::var("ERGO_SHARED_ASSEMBLY_ID") {
+                    ensure!(
+                        requested == assembly,
+                        "This cache is bound to another assembly; use a new path or open_shared_construction explicitly"
+                    );
+                }
+                scene = runtime.block_on(publisher.load_shared_file(
+                    &mut binding,
+                    &assembly,
+                    Some(&path),
+                ))?;
+                persist_page(&path, &scene)?;
+            } else if let Ok(assembly) = std::env::var("ERGO_SHARED_ASSEMBLY_ID") {
+                ensure!(
+                    scene.bricks.is_empty(),
+                    "Use a new cache path for this shared assembly"
+                );
+                scene = runtime.block_on(publisher.load_shared_file(
+                    &mut binding,
+                    &assembly,
+                    Some(&path),
+                ))?;
+                persist_page(&path, &scene)?;
+            } else if let Ok(position) = std::env::var("ERGO_POSITION_WORLD") {
+                ensure!(
+                    scene.bricks.is_empty(),
+                    "Use a new cache path for a position-based shared workspace, or call open_shared_construction explicitly"
+                );
+                let position: [f64; 3] = serde_json::from_str(&position)?;
+                let located = runtime.block_on(publisher.locate_shared(position))?;
+                if let Some(assembly) = located["assembly_id"].as_str() {
+                    scene = runtime.block_on(publisher.load_shared_file(
+                        &mut binding,
+                        assembly,
+                        Some(&path),
+                    ))?;
+                } else {
+                    scene.geo = serde_json::from_value(located["geo"].clone())?;
+                }
+                persist_page(&path, &scene)?;
+            }
+            atomic_write(&sidecar, &binding)?;
+            Some(Arc::new(tokio::sync::Mutex::new(binding)))
+        } else {
+            None
+        }
+    } else {
+        None
+    };
+    let parent = path
+        .parent()
+        .filter(|p| !p.as_os_str().is_empty())
+        .unwrap_or(FsPath::new("."));
+    let assets = std::env::var_os("ERGO_MCP_ASSET_DIR")
+        .map(PathBuf::from)
+        .unwrap_or_else(|| parent.join(".ergo-assets"));
+    fs::create_dir_all(&assets)?;
+    // The hosted origin's synthesized library is mirrored and verified
+    // locally; later sessions keep working offline from the mirror.
+    let origin = match &publisher {
+        Some(publisher) => publisher.url("/")?.to_string(),
+        None => std::env::var("ERGO_API_URL").unwrap_or_else(|_| DEFAULT_ORIGIN.into()),
+    };
+    let http = reqwest::Client::builder()
+        .timeout(Duration::from_secs(90))
+        .build()?;
+    let store: Arc<dyn object_store::ObjectStore> = Arc::new(
+        object_store::local::LocalFileSystem::new_with_prefix(assets)?,
+    );
+    let (library, part_library) =
+        runtime.block_on(ergo_assets::library::mirror(&*store, &http, &origin))?;
+    ergo_world::part_library::install(library)?;
+    let parts =
+        ergo_assets::PartCache::new(store, String::new())?.with_origin(http.clone(), &origin);
+    let bridge = Bridge {
+        hub: Arc::new(Mutex::new(Hub {
+            workspace: Workspace {
+                scene,
+                revision: 0,
+                path: path.clone(),
+                measurements,
+            },
+            queue: VecDeque::new(),
+            pending: HashMap::new(),
+        })),
+        token: format!(
+            "{}{}",
+            uuid::Uuid::new_v4().simple(),
+            uuid::Uuid::new_v4().simple()
+        ),
+        parts,
+        part_library: part_library.into(),
+        publisher: publisher.clone().map(Arc::new),
+        common,
+    };
+    let listener = std::net::TcpListener::bind("127.0.0.1:0")?;
+    let address = listener.local_addr()?;
+    listener.set_nonblocking(true)?;
+    let app = Router::new()
+        .route("/api/local/workspace", get(workspace).put(update))
+        .route("/api/local/jobs/next", get(next_job))
+        .route("/api/local/jobs/result", post(complete))
+        .route("/api/local/parts/{name}", get(part))
+        .route("/api/local/library.json", get(serve_part_library))
+        .fallback_service(ServeDir::new(web))
+        .layer(DefaultBodyLimit::max(128 * 1024 * 1024))
+        .layer(SetResponseHeaderLayer::overriding(
+            header::CACHE_CONTROL,
+            HeaderValue::from_static("no-store"),
+        ))
+        .layer(SetResponseHeaderLayer::overriding(
+            header::REFERRER_POLICY,
+            HeaderValue::from_static("no-referrer"),
+        ))
+        .with_state(bridge.clone());
+    let (shutdown_tx, shutdown_rx) = tokio::sync::oneshot::channel::<()>();
+    let server = runtime.spawn(async move {
+        let listener = tokio::net::TcpListener::from_std(listener).unwrap();
+        axum::serve(listener, app)
+            .with_graceful_shutdown(async {
+                let _ = shutdown_rx.await;
+            })
+            .await
+            .unwrap();
+    });
+    let profile = tempfile::tempdir()?;
+    let browser = launch(
+        &format!("http://{address}/mcp.html#mcp={}", bridge.token),
+        headless,
+        attach,
+        profile.path(),
+    )?;
+    Ok(Ready {
+        publisher,
+        bridge,
+        shutdown: shutdown_tx,
+        server,
+        browser,
+        _profile: profile,
+    })
 }

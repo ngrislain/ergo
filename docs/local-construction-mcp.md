@@ -22,8 +22,22 @@ Chrome/Chromium execution host, not Rust. `--headless` uses isolated Chrome;
 opens the minimal client. The npm launcher defaults tokenless runs to the hosted
 Sandbox; `--local` explicitly disables publication/sign-in for isolated proposals.
 Bare native runs with no configured URL retain local-only behavior. `--headless`
-affects the WASM execution host, not the human's sign-in browser. Complete
-`ergo-mcp --login` first if the MCP host cannot wait for interactive setup.
+affects the WASM execution host, not the human's sign-in browser.
+
+In the current source (after v0.5.37), the bridge answers `initialize`,
+`ping` and `tools/list` as soon as it has read the server's public
+`/api/config` (bounded to 15 s). Browser sign-in, shared-world loading, the
+part-library mirror and the WASM client start in the background
+(`crates/mcp/src/main.rs`, `start`), so a host's short connection deadline no
+longer expires during human approval. `get_lego_models` works immediately.
+Other tool calls wait for background startup: while sign-in is outstanding a
+call waits up to 10 s, then returns an error carrying the sign-in link so the
+agent can direct the human to it and retry; otherwise it waits up to 120 s for
+the remaining startup. A startup failure, including a 10-minute sign-in
+timeout, is reported by every later tool call; reconnect the MCP server to
+retry. `ergo-mcp --login` still completes approval up front. v0.5.37 and
+earlier answer the handshake only after sign-in, so with those versions run
+`ergo-mcp --login` first if the host cannot wait for interactive setup.
 
 ### OpenCode
 

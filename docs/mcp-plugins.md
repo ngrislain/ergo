@@ -33,10 +33,13 @@ it from its own `node_modules`; checkout-local loads, failed dependency installs
 and the portable package fall back to a globally installed `ergo-mcp` on the
 host's PATH. Every package starts the bridge with `--headless` and the canonical
 hosted origin; normal startup opens human sign-in if credentials are missing or
-rejected. For hosts with short startup deadlines, complete sign-in first with any
-bridge copy — `ergo-mcp --login` from a global install, or
-`npx @ngrislain/ergo-mcp@0.5.37 --login` — then reconnect; the origin-scoped
-token file is shared by every copy. Secrets live in that private token file,
+rejected. In the current source the handshake no longer waits for that
+approval; tool calls made before it finishes return the sign-in link (see
+[startup](local-construction-mcp.md#install-and-configure)). With v0.5.37 and
+earlier, hosts with short startup deadlines (Claude Code allows 30 s) need sign-in
+completed first with any bridge copy — `ergo-mcp --login` from a global install,
+or `npx @ngrislain/ergo-mcp@0.5.37 --login` — then a reconnect; the
+origin-scoped token file is shared by every copy. Secrets live in that private token file,
 never the plugin manifests or chat.
 
 The public [website setup guide](https://www.ergosandbox.com/#connect) uses npm
