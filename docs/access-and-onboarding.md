@@ -37,7 +37,7 @@ are reused on subsequent connections.
 
 Browser pickup requires both the updated bridge and browser UI. It is implemented
 in v0.5.26, not retroactively present in older v0.5.25 assets. Manual
-copy/download remains supported. In the current source the bridge answers the
+copy/download remains supported. Since v0.5.38 the bridge answers the
 MCP handshake before sign-in completes and returns the sign-in link from early
 tool calls ([startup](local-construction-mcp.md#install-and-configure)). With
 v0.5.37 and earlier, if an MCP host's startup deadline is too short for human

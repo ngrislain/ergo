@@ -26,7 +26,7 @@ Ergo's Node 20+ baseline. The downloaded configuration starts the installed
 It includes no credentials. The separate cache avoids locking the normal agent's
 working copy. With v0.5.37 and earlier bridges, if the host's startup deadline
 expires during browser sign-in, run `ergo-mcp --login --publish-url ORIGIN`
-first; current-source bridges answer the handshake before sign-in.
+first; v0.5.38 and later answer the handshake before sign-in.
 
 Enter the loopback URL printed by Inspector and select **Display Inspector**.
 Only HTTP(S) root URLs on `127.0.0.1`, `localhost` or `[::1]` with an explicit port

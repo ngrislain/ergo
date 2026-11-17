@@ -5,12 +5,12 @@
 The current prebuilt client is published on npm with GitHub Actions provenance:
 
 ```sh
-npm install --global --ignore-scripts @ngrislain/ergo-mcp@0.5.37
+npm install --global --ignore-scripts @ngrislain/ergo-mcp@0.5.38
 ergo-mcp --version
 ```
 
-The identical complete tarball and `ngrislain-ergo-mcp-0.5.37.tgz.sha256` are also available on the
-[v0.5.37 GitHub Release](https://github.com/ngrislain/ergo/releases/tag/v0.5.37).
+The identical complete tarball and `ngrislain-ergo-mcp-0.5.38.tgz.sha256` are also available on the
+[v0.5.38 GitHub Release](https://github.com/ngrislain/ergo/releases/tag/v0.5.38).
 Verify its checksum sidecar, registry integrity/provenance and an installed MCP client
 using the release verification workflow below.
 
@@ -28,9 +28,9 @@ human-approved browser token pickup; `--local` explicitly selects isolated
 proposals. This requires a rebuilt client and matching browser deployment and is
 not retroactively available in the published v0.5.25 artifact. Plugin sources
 for Claude Code, ChatGPT/Codex desktop, OpenCode and Pi live under `plugins/`,
-with repo-local marketplace manifests. `@ngrislain/opencode-ergo@0.5.37` and
-`@ngrislain/ergo-pi@0.5.37` are public npm packages that install the exact
-`@ngrislain/ergo-mcp@0.5.37` dependency; no checkout or global bridge is needed.
+with repo-local marketplace manifests. `@ngrislain/opencode-ergo@0.5.38` and
+`@ngrislain/ergo-pi@0.5.38` are public npm packages that install the exact
+`@ngrislain/ergo-mcp@0.5.38` dependency; no checkout or global bridge is needed.
 Claude Code's marketplace cache installs the portable package's locked bridge
 dependency; local-path and OpenAI desktop loads use the globally installed
 bridge. The portable packages are not public marketplace listings. See
@@ -174,11 +174,50 @@ coordinated storage migration and matching client upgrade accompany a breaking
 format change. Bound caches reload authoritative state; they are not data roots.
 
 `ERGO_MCP_PACKAGE` is the public website's installation-source setting. Production
-is promoted to `@ngrislain/ergo-mcp@0.5.37` only after registry/consumer verification;
+is promoted to `@ngrislain/ergo-mcp@0.5.38` only after registry/consumer verification;
 npm trusted publication is enabled. Never embed a token,
 S3 credentials or a credential-bearing URL in the package configuration.
 
-## Verified v0.5.37 release
+## Verified v0.5.38 release
+
+The tagged source is `c02551b7b2eec04add1977ea26a38ac27b0d9e0c`; the only
+behavioral change is the bridge answering the MCP handshake before browser
+sign-in. [Release workflow 44110341842](https://github.com/ngrislain/ergo/actions/runs/44110341842)
+passed the four native platforms, WASM/WebGL, bundle/consumer checks, container
+smoke and all three trusted npm publications. Local validation passed 417 Rust
+tests in release mode (one live-S3 test skipped), eight site tests, the
+packaging/publication guards, ten infrastructure tests and the browser-approval
+login integration test against a disposable server.
+
+All three npm `latest` tags resolve to 0.5.38. The complete bridge tarball is
+byte-identical to the CI artifact and attached, with its checksum sidecar, to
+the GitHub Release. Its SHA-256 is
+`baea1e314b2af2a936da7df1bb59ae75303c6b8957c5c0e677277078fac873dc` and npm
+integrity is
+`sha512-pRK7GpL06UZ5Xui55QBiv9FTgLWiGlIAFNZ0EsBalckSCNCvyc6ck6f/nRZcmYG91CW0/xoIPdjS96J2UHQPLA==`.
+Plugin npm integrities:
+
+- OpenCode:
+  `sha512-jXyKMlICw6VLCwBuO7Fil5Hw6QTNO85QVu2ssIbRwcK73n0ssd8FCfCQm0ykKMhsyQxJwP9Ev0/3AU3727eVVA==`.
+- Pi:
+  `sha512-8MU1vCBIFqrcB1Wnv5kNq5zYyPkFLrkLJ1o/8pqSa44v1k2Ta8OkMX/dr0SxzdHq/hlkdg/LF+kZtbYySofBQg==`.
+
+An outside-checkout run of the registry tarball's launcher reported 0.5.38,
+answered `initialize` and `tools/list` within one second without a token while
+opening browser sign-in, and with an existing token returned the production
+edit allowance from a tool call. No production construction edit was attempted.
+
+The publicly pullable Linux/AMD64 image is
+`ghcr.io/ngrislain/ergo@sha256:a490431bb7ba3b39c046f7f0ffa83c6f63254e41156f083bd754a3f5c1764191`.
+Its source/version labels match the tag and it runs as non-root user 10001.
+The inspected saved OpenTofu plan changed only the image on the existing
+container; the same image override was supplied when applying it. The private
+image pointer was updated afterward and a new plan reported no changes.
+Post-deployment `/api/config` returned 0.5.38 with every other public field
+unchanged; the app, viewer and MCP pages returned 200. No storage migration or
+production construction write accompanied this image-only deployment.
+
+## Historical v0.5.37 verification
 
 The tagged source is `c50b3b3f9287d13d339719e9b1d29f367232dc45`.
 [Release workflow 44063353691](https://github.com/ngrislain/ergo/actions/runs/44063353691)
@@ -188,7 +227,7 @@ Local validation passed 417 Rust tests (one live-S3 test skipped), eight site
 tests, mobile/clipboard/no-JavaScript onboarding, 24 responsive projection
 checks, packaging/publication guards and ten infrastructure tests.
 
-All three npm `latest` tags resolve to 0.5.37. Registry tarball integrity and npm
+At that verification all three npm `latest` tags resolved to 0.5.37. Registry tarball integrity and npm
 provenance bind each package to the tagged commit and release workflow. The
 OpenCode/Pi tarball contents match their tagged source files; the complete
 four-platform bridge tarball is byte-identical to the CI artifact. Its SHA-256

@@ -59,7 +59,7 @@ ergo-mcp --login
 This completes approval and saves the token before exiting. Up to v0.5.37,
 normal startup answers the MCP handshake only after sign-in, so use it before
 connecting clients whose startup deadline is too short for interactive sign-in.
-The current source answers the handshake immediately and returns the sign-in
+Since v0.5.38 it answers the handshake immediately and returns the sign-in
 link from tool calls made before approval.
 The default token path is `~/.config/ergo/tokens/<origin-sha256>.token`
 (`$XDG_CONFIG_HOME` is honored), with Unix mode 0600. No token is put in chat,

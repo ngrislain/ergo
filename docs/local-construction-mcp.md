@@ -24,7 +24,7 @@ Sandbox; `--local` explicitly disables publication/sign-in for isolated proposal
 Bare native runs with no configured URL retain local-only behavior. `--headless`
 affects the WASM execution host, not the human's sign-in browser.
 
-In the current source (after v0.5.37), the bridge answers `initialize`,
+Since v0.5.38, the bridge answers `initialize`,
 `ping` and `tools/list` as soon as it has read the server's public
 `/api/config` (bounded to 15 s). Browser sign-in, shared-world loading, the
 part-library mirror and the WASM client start in the background
