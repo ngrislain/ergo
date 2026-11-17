@@ -38,7 +38,12 @@ with sync_playwright() as playwright:
         fog.evaluate('(input)=>{input.value=400;input.dispatchEvent(new Event("input",{bubbles:true}));}')
         canvas = page.locator('#world-canvas')
         expect(canvas).to_have_attribute('data-ground-patterns', '1', timeout=30000)
-        page.wait_for_timeout(2000)
+        # Ground requests are pumped four at a time every twelve rendered
+        # frames. Software WebGL in CI may need more than two seconds to reach
+        # the next wave; wait for completed responses, not a frame-rate guess.
+        page.wait_for_function('''minimum => performance.getEntriesByType('resource')
+            .filter(entry => new URL(entry.name).pathname.startsWith('/api/ground/'))
+            .length >= minimum''', arg=5, timeout=30000)
         assert len(requests) > 4, requests
         uploads = canvas.get_attribute('data-ground-pattern-uploads')
         assert uploads == '1', f'Identical fields were uploaded more than once: {uploads}'
@@ -64,7 +69,7 @@ with sync_playwright() as playwright:
         requests.clear()
         page.reload(wait_until='domcontentloaded')
         expect(page.locator('.status-message')).to_contain_text('Construction loaded', timeout=30000)
-        page.wait_for_timeout(2000)
+        expect(canvas).to_have_attribute('data-ground-patterns', '1', timeout=30000)
         assert not set(cached).intersection(requests), 'Fresh public floor patterns were downloaded again'
         # A new source/palette/algorithm identity must not use old floor data.
         config['ground_revision'] = 'b' * 64

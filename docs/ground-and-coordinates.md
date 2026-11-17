@@ -131,6 +131,13 @@ fields use conditional HTTP revalidation; palette fallback/error responses are
 revision change cannot reuse the previous field. This public floor cache does
 not authorize offline access to constructions.
 
+`scripts/test-ground-cache.py` checks cross-reload reuse, source-revision
+invalidation and shared GPU textures. It waits for at least five completed
+ground responses (beyond the four-request first wave), then for an actual
+rendered pattern after reload, rather than assuming software WebGL completes
+those steps within a fixed two-second sleep. Its bounded test waits are not
+production loading-latency guarantees.
+
 ## Natural map palette
 
 The default basic OSM style draws available forest/woodland, grass/parks, water,
