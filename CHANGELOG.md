@@ -1,5 +1,11 @@
 # Changelog
 
+## v0.5.40 — 2026-11-18
+
+- Speed up MCP construction lookup by map position. Search close to the target
+  first and widen only as needed, keeping the same nearest-match rule and
+  maximum search area.
+
 ## v0.5.39 — 2026-11-17
 
 - Fix the HTTP 403 Chrome could show after MCP approval. The HTTPS sign-in
