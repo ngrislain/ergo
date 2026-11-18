@@ -13,6 +13,8 @@ __pycache__/
 /docs/examples/haussmann.mpd
 *.mcp.lock
 **/ergo-mcp-token
+# Ergo MCP local working-copy caches; the shared world is authoritative.
+**/*.ergo.shared.json
 **/.terraform/
 **/*.tfstate
 **/*.tfstate.*
