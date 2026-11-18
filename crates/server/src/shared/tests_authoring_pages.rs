@@ -1,5 +1,30 @@
 use super::*;
 
+#[tokio::test]
+async fn locate_finds_nearby_and_distant_pieces_without_exceeding_the_search_box() {
+    let mut service = service();
+    let source = scene(192.);
+    let position = ergo_world::coordinates::public(source.bricks[0].position);
+    let (head, imported) = seeded(&service, source).await;
+    service.common_world = Some(head.id);
+    let (app, headers) = http(&service);
+    for (offset, expected) in [(0., true), (700., true), (2000., false)] {
+        let path = format!(
+            "/api/common-world/locate?x={}&y={}&z={}",
+            position.x + offset,
+            position.y,
+            position.z,
+        );
+        let (status, body) = json(&app, "GET", &path, &headers, None).await;
+        assert_eq!(status, StatusCode::OK, "{body}");
+        if expected {
+            assert_eq!(body["assembly_id"], imported.assembly.to_string());
+        } else {
+            assert!(body["assembly_id"].is_null());
+        }
+    }
+}
+
 fn query(values: &[(&str, String)]) -> String {
     url::form_urlencoded::Serializer::new(String::new())
         .extend_pairs(values.iter().map(|(k, v)| (*k, v.as_str())))

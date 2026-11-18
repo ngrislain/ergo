@@ -620,23 +620,66 @@ pub(super) async fn locate(
         "Invalid world position"
     );
     let mut ws = s.shared.working(id, &actor, &head.revision).await?;
-    let bounds = ergo_world::Aabb::new(
-        position - glam::DVec3::splat(1536.),
-        position + glam::DVec3::splat(1536.),
-    );
-    let mut nearest: Option<(f64, ContentId)> = None;
-    for cid in ws.neighbors(bounds).await? {
-        if let Some(piece) = ws.piece(&cid).await? {
-            let brick = ws.brick(&piece, 1).await?;
-            let point = position.clamp(brick.bounds.min, brick.bounds.max);
-            let distance = ergo_world::physical::to_meters(position - point).length_squared();
-            if nearest.as_ref().is_none_or(|(old, _)| distance < *old) {
-                nearest = Some((distance, piece.assembly));
+    let mut nearest: Option<(f64, ContentId, ContentId)> = None;
+    let mut seen = BTreeSet::new();
+    for radius in [16., 64., 256., LOCATE_RADIUS] {
+        let offset = glam::DVec3::splat(radius);
+        let bounds = ergo_world::Aabb::new(position - offset, position + offset);
+        for cid in ws.neighbors(bounds).await? {
+            if seen.insert(cid.clone())
+                && let Some(piece) = ws.piece(&cid).await?
+            {
+                let brick = ws.brick(&piece, 1).await?;
+                let point = position.clamp(brick.bounds.min, brick.bounds.max);
+                let distance = ergo_world::physical::to_meters(position - point).length_squared();
+                if nearest.as_ref().is_none_or(|(old, old_id, _)| {
+                    distance < *old || (distance == *old && cid < *old_id)
+                }) {
+                    nearest = Some((distance, cid, piece.assembly));
+                }
             }
+        }
+        if nearest
+            .as_ref()
+            .is_some_and(|(distance, _, _)| closer_than_outside(*distance, position, bounds))
+        {
+            break;
         }
     }
     Ok(Json(
         serde_json::json!({"world_id":id,"base_revision":head.revision,"geo":head.metadata.geo,
-        "assembly_id":nearest.map(|(_,id)|id),"position_world":[q.x,q.y,q.z],"search_radius_world":1536}),
+        "assembly_id":nearest.map(|(_,_,id)|id),"position_world":[q.x,q.y,q.z],"search_radius_world":LOCATE_RADIUS}),
     ))
+}
+
+const LOCATE_RADIUS: f64 = 1536.;
+
+/// A piece omitted by the box cannot be closer than its nearest face. Use
+/// physical units (vertical and horizontal scales differ) and keep searching
+/// on ties so the winning piece ID is independent of the order of the boxes.
+fn closer_than_outside(distance_sq: f64, position: glam::DVec3, bounds: ergo_world::Aabb) -> bool {
+    let inner_offset = (position - bounds.min).min(bounds.max - position);
+    let limit = ergo_world::physical::to_meters(inner_offset).min_element();
+    distance_sq < limit * limit
+}
+
+#[cfg(test)]
+mod locate_tests {
+    use super::*;
+    use glam::DVec3;
+
+    #[test]
+    fn locate_can_stop_only_below_the_smallest_physical_face_distance() {
+        let query = DVec3::new(192., 0., -160.);
+        let bounds = ergo_world::Aabb::new(query - DVec3::splat(16.), query + DVec3::splat(16.));
+        let faces = ergo_world::physical::to_meters(DVec3::splat(16.));
+        let closest = faces.min_element();
+        assert!(closer_than_outside((closest / 2.).powi(2), query, bounds));
+        assert!(!closer_than_outside(closest.powi(2), query, bounds));
+        assert!(!closer_than_outside(
+            faces.max_element().powi(2),
+            query,
+            bounds
+        ));
+    }
 }

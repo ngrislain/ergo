@@ -116,7 +116,9 @@ To choose a known construction exactly:
 ```
 
 Position lookup chooses the nearest assembly among candidates in a bounded
-±1536-unit search box. It is not a whole-world nearest-neighbor scan. An exact
+±1536-unit search box. It searches smaller boxes first and stops as soon as a
+candidate is strictly closer in physical distance than anything outside the
+current box. It is not a whole-world nearest-neighbor scan. An exact
 assembly ID is preferable when several constructions are close together. Inspect
 `list_bricks`/bounds after opening. An empty search is reported explicitly; on
 startup an empty position can initialize a new construction cache with the
