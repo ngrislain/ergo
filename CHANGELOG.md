@@ -1,5 +1,11 @@
 # Changelog
 
+## v0.5.41 — 2026-11-18
+
+- Resolve MCP positions from packed cells and reuse a bounded server-disk
+  index of physical bounds. Unchanged cells retain their cache entries across
+  revisions; low disk space falls back to an uncached lookup.
+
 ## v0.5.40 — 2026-11-18
 
 - Speed up MCP construction lookup by map position. Search close to the target
