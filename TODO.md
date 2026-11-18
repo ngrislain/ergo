@@ -14,6 +14,10 @@ updating the relevant current documentation.
   complete contextual CAD editing, history and gameplay triggers.
 - [Assets and imports](todo/assets.md): bulk conversion, catalogue discovery,
   specialty parts/materials and explicit import positioning.
+- [Garrison weapons rollout](todo/garrison-weapons.md): arming the 300 accepted
+  castle figures with the reviewed `medieval-guard-v3` assembly; includes the
+  completed survey, an uncertain first test edit to reconcile, and the
+  publication-API stability blocker.
 - [Collaboration and scale-out](todo/collaboration.md): distributed publication,
   mechanical boundaries, recovery and workload qualification.
 - [Operations and product](todo/operations.md): billing, revocation, resource
