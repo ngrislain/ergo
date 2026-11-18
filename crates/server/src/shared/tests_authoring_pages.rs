@@ -6,9 +6,25 @@ async fn locate_finds_nearby_and_distant_pieces_without_exceeding_the_search_box
     let source = scene(192.);
     let position = ergo_world::coordinates::public(source.bricks[0].position);
     let (head, imported) = seeded(&service, source).await;
+    let other = service
+        .import(
+            &head.id,
+            "alice",
+            ImportRequest {
+                base: head.revision,
+                scene: scene(384.),
+            },
+        )
+        .await
+        .unwrap();
     service.common_world = Some(head.id);
     let (app, headers) = http(&service);
-    for (offset, expected) in [(0., true), (700., true), (2000., false)] {
+    for (offset, expected) in [
+        (0., Some(&imported.assembly)),
+        (192., Some(&other.assembly)),
+        (-700., Some(&imported.assembly)),
+        (2000., None),
+    ] {
         let path = format!(
             "/api/common-world/locate?x={}&y={}&z={}",
             position.x + offset,
@@ -17,11 +33,7 @@ async fn locate_finds_nearby_and_distant_pieces_without_exceeding_the_search_box
         );
         let (status, body) = json(&app, "GET", &path, &headers, None).await;
         assert_eq!(status, StatusCode::OK, "{body}");
-        if expected {
-            assert_eq!(body["assembly_id"], imported.assembly.to_string());
-        } else {
-            assert!(body["assembly_id"].is_null());
-        }
+        assert_eq!(body["assembly_id"], serde_json::json!(expected));
     }
 }
 

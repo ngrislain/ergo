@@ -20,7 +20,9 @@ accepted records or increase server RAM settings.
 
 On Scaleway sandbox v2, `/tmp` is RAM-backed. The v0.5.35 image and module set
 `TMPDIR=SQLITE_TMPDIR=/var/lib/ergo-tmp` on the writable disk layer, owned by UID/GID
-10001 with mode 0700. The module adds approximately 4 GiB of ephemeral disk and
+10001 with mode 0700. The position-lookup index shares this scratch device with
+other jobs, but has its own [256 MiB cache budget and free-space check](persistence-indexing.md#bulk-spatial-reads-and-local-traversal).
+The module adds approximately 4 GiB of ephemeral disk and
 keeps the existing RAM/CPU settings. Verify the image's scratch variables and
 filesystem smoke; do not solve disk exhaustion by silently using tmpfs or more RAM.
 

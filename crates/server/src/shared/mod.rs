@@ -10,6 +10,7 @@ mod authoring_groups;
 mod authoring_pages;
 mod bulk;
 pub(crate) mod catalog;
+mod cell_lookup_cache;
 mod edits;
 mod equilibrium_workspace;
 mod events;
@@ -165,6 +166,7 @@ pub struct SharedWorlds {
     group_commit: bool,
     pub(crate) pacing: pacing::Pacing,
     read_cache: std::sync::Arc<read_cache::ReadCache>,
+    cell_lookup_cache: std::sync::Arc<cell_lookup_cache::Cache>,
 }
 impl SharedWorlds {
     async fn actor_name(&self, actor: &str) -> Result<Option<String>> {
@@ -195,10 +197,12 @@ impl SharedWorlds {
             queues: std::sync::Arc::new(group_commit::Queues::default()),
             group_commit: false,
             read_cache: std::sync::Arc::new(read_cache::ReadCache::default()),
+            cell_lookup_cache: std::sync::Arc::new(cell_lookup_cache::Cache::default()),
         })
     }
     pub fn from_env(store: Store) -> Result<Self> {
         let mut service = Self::new(store)?;
+        service.cell_lookup_cache = cell_lookup_cache::Cache::production();
         let mut spill = service.root.spill_limits();
         if let Ok(value) = std::env::var("ERGO_SHARED_SPILL_BYTES") {
             spill.database_bytes = value.parse()?;

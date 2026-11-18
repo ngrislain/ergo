@@ -527,6 +527,26 @@ async fn cold_packed_block_loading_reduces_object_store_gets_without_changing_ge
     assert_eq!(status, StatusCode::OK);
     assert_eq!(packed["scene"]["bricks"].as_array().unwrap().len(), 4096);
     let packed_gets = store.gets.load(Ordering::SeqCst);
+    let position = ergo_world::coordinates::public(first.geometry.position);
+    let locate = format!(
+        "/api/common-world/locate?x={}&y={}&z={}",
+        position.x, position.y, position.z
+    );
+    let mut reader = SharedWorlds::new(service.store.clone()).unwrap();
+    reader.common_world = Some(head.id.clone());
+    reader.cell_lookup_cache = cell_lookup_cache::Cache::production();
+    let (app, headers) = http(&reader);
+    store.gets.store(0, Ordering::SeqCst);
+    let (status, found) = json(&app, "GET", &locate, &headers, None).await;
+    assert_eq!(status, StatusCode::OK, "{found}");
+    assert_eq!(found["assembly_id"], imported.assembly.to_string());
+    let packed_locate_gets = store.gets.load(Ordering::SeqCst);
+    store.gets.store(0, Ordering::SeqCst);
+    let (status, warm) = json(&app, "GET", &locate, &headers, None).await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(warm, found);
+    let warm_locate_gets = store.gets.load(Ordering::SeqCst);
+    assert!(warm_locate_gets < packed_locate_gets);
     let mut tx = service.repo(&head.id).unwrap().begin("main").await.unwrap();
     for coord in cells {
         let mut header: spatial::BlockHeader =
@@ -561,4 +581,17 @@ async fn cold_packed_block_loading_reduces_object_store_gets_without_changing_ge
         packed_gets * 5 < legacy_gets,
         "Bulk pages must avoid per-brick traversal and payload reads"
     );
+
+    let mut reader = SharedWorlds::new(service.store.clone()).unwrap();
+    reader.common_world = Some(head.id.clone());
+    let (app, headers) = http(&reader);
+    store.gets.store(0, Ordering::SeqCst);
+    let (status, found) = json(&app, "GET", &locate, &headers, None).await;
+    assert_eq!(status, StatusCode::OK, "{found}");
+    assert_eq!(found["assembly_id"], imported.assembly.to_string());
+    let unpacked_locate_gets = store.gets.load(Ordering::SeqCst);
+    println!(
+        "4096-brick cold lookup: {packed_locate_gets} packed GETs vs {unpacked_locate_gets} unpacked GETs"
+    );
+    assert!(packed_locate_gets * 5 < unpacked_locate_gets);
 }

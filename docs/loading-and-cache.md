@@ -90,14 +90,14 @@ representation could previously prevent that admission.
 
 A client can supply its previous centre as `from_x`, `from_y`, `from_z`. A
 nearby camera move reuses the previous packet only for the exact same accepted
-revision, radius and budgets, when all its occupied blocks remain inside the new region
-and every newly included cell has no allocated-block directory entry. Otherwise
+revision, radius and budgets, when all its occupied cells remain inside the new region
+and every newly included cell has no allocated-cell directory entry. Otherwise
 the normal read runs. Allocated-but-empty cells conservatively prevent reuse.
 The hint never authorizes missing geometry or avoids the current permission check.
 Wider views prove newly added space empty through the sparse allocated-cell
 directory, avoiding another per-piece materialization merely because the camera
 crossed a small storage cell. Proof work retains the read-byte bound.
-For radius-1 views without a useful hint, the server probes the 27 allocated-block directory
+For radius-1 views without a useful hint, the server probes the 27 allocated-cell directory
 entries and tries one deterministic nearby center, computed from their coordinate
 extrema. The same empty-added-cell / retained-occupied-cell proof must pass before
 reuse. Clicking a construction whose first piece crosses a cell boundary can
@@ -115,7 +115,7 @@ versioned spatial projection below runs only in the current layout-4 cell format
 
 ## Fewer storage round trips
 
-Current layout-4 blocks marked `packed:true` use bulk spatial pages rather than the
+Current layout-4 cells marked `packed:true` use bulk spatial pages rather than the
 per-brick reference walk. Pages contain complete Piece metadata plus mesh CIDs;
 their records are deduplicated and charged to the same logical piece/byte budgets.
 Each fetched page is at most 1 MiB/1,024 records. Current unpacked cells use the
@@ -212,7 +212,7 @@ five-second index deadline, then optionally warms bounded referenced values.
 Returned rows are hints only: their birth IDs can warm canonical piece lookups,
 but they never become observed membership or a validation domain. The ordinary
 queries still record their precise predicates, inspect pending edits, verify
-spatial references and charge every required value. No whole-block predicate is
+spatial references and charge every required value. No whole-cell predicate is
 substituted, and large/custom bounds fall back to the unchanged required query.
 Replacement logs identify preparation, old dependency discovery, staging,
 checking, publication and acceptance; periodic closure counts are diagnostics,
@@ -532,7 +532,7 @@ preview batches never re-frame the camera, and completion only re-fits when the
 camera is untouched since that first fit, so a view the user adjusted while the
 region streamed in is kept. Background navigation/refreshes retain the completed
 resident scene. Editing, export and walking are blocked on a partial preview;
-its geometry never enters the authoritative client blocks or a completed region
+its geometry never enters the authoritative client cells or a completed region
 cache. The previous completed scene/camera is retained for cancellation, error
 or radius fallback, including selection of a resident construction. Only a
 successfully decoded and partitioned full response replaces it.
@@ -564,7 +564,7 @@ distance (radius 21 at the default 2,200-stud cutoff). A default radius-1 warm-u
 only covers the 3×3×3 centre cube and never matches a radius-21 browser read.
 For a district-sized region, first backfill the packed read projection with
 `shared-pack-region "$ERGO_COMMON_WORLD_ID" 156 0 0 21` (see [the storage
-runbook](storage-operations.md#packed-block-backfill)); bulk pages remove the
+runbook](storage-operations.md#packed-cell-backfill)); bulk pages remove the
 per-brick discovery walk that dominates cold materialization. Each cell pack is
 its own storage-only commit that advances the head, so warm the packet once
 after the backfill finishes.
@@ -631,7 +631,7 @@ of reported server work. This identifies storage traversal for cold reads and
 avoidable decode/re-encoding for warm reads, not transfer or distant drawing, as
 the dominant costs. The CBOR-cache and neighboring-view changes address warm
 costs; cache-only changes do not eliminate the cold canonical-reference walk.
-The packed-page path described above addresses that walk for backfilled blocks.
+The packed-page path described above addresses that walk for backfilled cells.
 
 On 2026-10-29 the v0.5.12 existing-browser check preserved model storage and
 verified/migrated all five legacy packet entries. Identical content shared blobs

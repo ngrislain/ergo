@@ -1,0 +1,67 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1120" height="704" viewBox="0 0 1120 704" role="img" aria-labelledby="title desc">
+  <title id="title">Use coarse S3 reads for regions and exact indexes for edits</title>
+  <desc id="desc">The browser uses packed pages and builds a resident octree. MCP position lookup uses a bounded disk cache of sorted physical bounds keyed by the packed cell's subtree hash. ID reads use membership; edit validation uses canonical spatial and rules indexes.</desc>
+  <defs>
+    <marker id="arrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0L10 5L0 10Z" fill="#547184"/></marker>
+    <style>text{font-family:Arial,sans-serif;fill:#21394a}.title{font-size:30px;font-weight:700}.label{font-size:18px;font-weight:700}.body{font-size:15px}.sub{font-size:15px;fill:#446174}.arrow{fill:none;stroke:#547184;stroke-width:1.7;marker-end:url(#arrow)}</style>
+  </defs>
+  <rect width="1120" height="704" rx="16" fill="#f5f9fc"/>
+  <text x="40" y="53" class="title">Use coarse S3 reads for regions and exact indexes for edits</text>
+  <text x="40" y="81" class="sub">Fetch batches when an operation needs a neighbourhood; take a direct path when it already knows an ID.</text>
+
+  <text x="58" y="122" class="label">Operation</text>
+  <text x="372" y="122" class="label">What the server reads from S3</text>
+  <text x="750" y="122" class="label">Where the fine work happens</text>
+
+  <rect x="40" y="138" width="1040" height="58" rx="6" fill="#e4f2ed"/>
+  <text x="58" y="163" class="label">Browser region</text><text x="58" y="184" class="sub">In use</text>
+  <text x="372" y="163" class="body">Directory → packed pages + meshes</text><text x="372" y="184" class="body">Revalidate the packet with its root-backed ETag.</text>
+  <text x="750" y="163" class="body">Browser builds a resident octree.</text><text x="750" y="184" class="body">Picking and visibility use local data.</text>
+
+  <rect x="40" y="203" width="1040" height="58" rx="6" fill="#e4f2ed"/>
+  <text x="58" y="228" class="label">MCP lookup by position</text><text x="58" y="249" class="sub">Bounded server-disk cache</text>
+  <text x="372" y="228" class="body">Directory → packed pages + mesh bounds</text><text x="372" y="249" class="body">Unpacked cells still use canonical pieces.</text>
+  <text x="750" y="228" class="body">Server scores physical bounds in memory.</text><text x="750" y="249" class="body">Disk stores the sorted bounds by cell hash.</text>
+
+  <rect x="40" y="268" width="1040" height="58" rx="6" fill="#e8f1f6"/>
+  <text x="58" y="293" class="label">MCP open by assembly ID</text><text x="58" y="314" class="sub">In use</text>
+  <text x="372" y="293" class="body">Assembly header; member or spatial index</text><text x="372" y="314" class="body">when a bounded authoring page is requested.</text>
+  <text x="750" y="293" class="body">No map-position search. Workspace</text><text x="750" y="314" class="body">contains only the geometry requested.</text>
+
+  <rect x="40" y="333" width="1040" height="58" rx="6" fill="#f6ebe5"/>
+  <text x="58" y="358" class="label">Validate and publish edits</text><text x="58" y="379" class="sub">In use</text>
+  <text x="372" y="358" class="body">Fine spatial references, canonical pieces,</text><text x="372" y="379" class="body">membership, constraints and joints.</text>
+  <text x="750" y="358" class="body">Validated against the affected domain,</text><text x="750" y="379" class="body">not whatever happens to be cached.</text>
+
+  <text x="40" y="435" class="label">MCP lookup: read packed cells, cache their derived index</text>
+  <rect x="40" y="451" width="273" height="170" rx="7" fill="#e4f2ed"/>
+  <text x="58" y="476" class="body">S3: coarse, bounded chunks</text><text x="58" y="496" class="sub">Plan reads by cell coverage.</text>
+  <g transform="translate(61 521)" stroke="#6d998d" fill="white">
+    <rect width="96" height="72"/>
+    <rect x="24" y="24" width="48" height="24" fill="#98c9b9"/>
+    <path d="M24 0v72m24 0V0m24 0v72M0 24h96M0 48h96" fill="none"/>
+    <rect x="23" y="23" width="50" height="26" rx="2" fill="none" stroke="#216457" stroke-width="2"/>
+  </g>
+  <text x="172" y="551" class="body">Select cells</text><text x="172" y="574" class="sub">covering the query.</text>
+  <path d="M322 557H389" class="arrow"/>
+  <rect x="398" y="451" width="309" height="170" rx="7" fill="#e4f2ed"/>
+  <text x="416" y="476" class="body">Disk: sorted bounds, not raw chunks</text><text x="416" y="496" class="sub">Same subtree hash → reuse bounds.</text>
+  <g fill="white" stroke="#6d998d">
+    <rect x="416" y="524" width="232" height="28" rx="4"/><rect x="416" y="562" width="232" height="28" rx="4"/>
+  </g>
+  <text x="428" y="543" class="body">Cell A hash → bounds</text><text x="428" y="581" class="body">Cell B hash → bounds</text>
+  <path d="M716 557H803" class="arrow"/>
+  <rect x="812" y="451" width="268" height="170" rx="7" fill="#e4f2ed"/>
+  <text x="830" y="476" class="body">Local: score nearby bounds</text><text x="830" y="496" class="sub">Skip reloading pages and meshes.</text>
+  <g transform="translate(831 521)" stroke="#6d998d" fill="white">
+    <rect width="88" height="80"/>
+    <path d="M44 0v80M0 40h88M66 0v40M44 20h44M22 40v40M0 60h44"/>
+    <rect x="49" y="10" width="26" height="23" rx="2" fill="#faedcf" fill-opacity=".78" stroke="#aa7735" stroke-width="2" stroke-dasharray="4 2"/>
+    <circle cx="61" cy="17" r="3" fill="#21394a" stroke="none"/>
+    <circle cx="70" cy="27" r="3" fill="#21394a" stroke="none"/>
+    <circle cx="27" cy="53" r="3" fill="#21394a" stroke="none"/>
+  </g>
+  <text x="931" y="550" class="body">Search the box;</text><text x="931" y="573" class="sub">skip the sorted tail.</text>
+  <text x="40" y="653" class="body">256 MiB per process, least-recently-used eviction. Skip caching if free space is too low.</text>
+  <text x="40" y="678" class="sub">Keep the accepted revision and coverage explicit. Disk copies are disposable and do not grant access or authorize a commit.</text>
+</svg>

@@ -6,7 +6,7 @@ A construction may contain far more bricks than the browser can draw or hold in
 memory. The renderer should never need to enumerate the entire world every frame.
 There are two distinct questions:
 
-1. Which persisted blocks should be resident near the camera?
+1. Which persisted cells should be resident near the camera?
 2. Which resident objects participate in a draw, pick, or proximity query?
 
 ![Camera neighborhood, resident octree, shared meshes, and drawing](figures/display-pipeline.svg)
@@ -16,7 +16,7 @@ range, then builds a resident octree. The tree prunes individual draw candidates
 geometry is batched by part and detail level. Display residency, render LOD, and
 the complete working set required by physics are separate concerns.
 
-## One block-oriented engine, three entry points
+## One cell-oriented engine, three entry points
 
 The navigator, homepage and MCP captures use one scene-planning and WebGL2
 pipeline. Entry points select explicit quality/visibility policies, camera/input
@@ -34,7 +34,7 @@ and lighting parameters; background transparency does not select geometry policy
   draw submission and resource release. Replacing a prototype invalidates its
   derived LOD/GPU entries; unchanged prototypes survive streaming updates.
 - `renderer/illumination.rs` prepares the light, then renders depth from the
-  independent caster list. `renderer/shaders.rs` supplies shared block deformation
+  independent caster list. `renderer/shaders.rs` supplies shared cell deformation
   and material code. Stud thresholds are generated from the Rust detail constants.
 - `renderer.rs` orchestrates planning, upload, depth, sky and opaque-color passes.
   Preview, navigator and MCP wrappers do not implement alternative draw backends.
@@ -42,7 +42,7 @@ and lighting parameters; background transparency does not select geometry policy
 This adopts game-engine ideas of shared prototypes, data-oriented instance batches,
 hierarchical visibility, explicit passes, change-driven uploads and LOD hysteresis;
 see [instancing references](references.md#s5-engine-style-instancing-and-pass-reuse).
-Blocks make prototype reuse unusually effective: palette colors/transforms are
+Cells make prototype reuse unusually effective: palette colors/transforms are
 instance attributes, not separate copies of a part's vertices. Render chunks are
 derived from residency, not mechanical assembly boundaries or S3 file boundaries.
 This is a small ordered pass pipeline. Its hierarchy, quality policies and buffer
@@ -55,7 +55,7 @@ resident shadow casters; camera clipping no longer removes an offscreen caster.
 
 ## Distance-bounded residency and prefetched shared views
 
-For camera position $\mathbf{c}$ and block side $B=128$:
+For camera position $\mathbf{c}$ and cell side $B=128$:
 
 $$
 \mathbf{k}_c=\left\lfloor\frac{\mathbf{c}}{B}\right\rfloor.
@@ -70,13 +70,13 @@ $$
 $$
 
 Only existing persisted construction cells in this set are fetched, with four concurrent
-block requests. The ground layer independently creates missing **visible**
+cell requests. The ground layer independently creates missing **visible**
 horizontal cells lazily, each with one imagery-derived palette color. There is no
 infinite-world pre-generation; see [ground and coordinates](ground-and-coordinates.md).
 
 Fog starts at $0.65d_f$ and reaches the background color at $d_f$. The default
 cutoff is 2,200 stud-scaled render units; the UI range is 200–4,096. Residency is
-bounded to 1,024 construction blocks and 200,000 references. If the desired set
+bounded to 1,024 construction cells and 200,000 references. If the desired set
 exceeds those bounds, the client shortens its effective fog distance instead of
 silently omitting cells inside that distance. A single dense cell can still need
 smaller render pages; an explicit budget failure is reported in that case.
@@ -128,7 +128,7 @@ objects and $K$ results, but this is **not a worst-case guarantee**. A large num
 of objects spanning the same split plane can cause $O(N)$ traversal.
 
 Currently a bounded resident octree is rebuilt after loading/eviction or a pose
-update. For larger resident sets, build independent per-block/page trees, reuse
+update. For larger resident sets, build independent per-cell or per-page trees, reuse
 unchanged trees, and keep a small top-level index over those pages. Physics should
 use its own temporally coherent broad phase, not rebuild the display tree at
 every solver substep.
@@ -497,7 +497,7 @@ the limits of per-instance sorting and baked fixed-RGB face materials.
 
 Global coordinates are float64 on the CPU. GPU transforms are float32. At a world
 coordinate of magnitude $10^9$, float32 no longer resolves single-brick details.
-Before uploading positions, subtract a nearby block-aligned origin:
+Before uploading positions, subtract a nearby cell-aligned origin:
 
 $$
 \mathbf{o}_r=B\left\lfloor\frac{\mathbf{c}_{target}}B\right\rfloor,
@@ -514,7 +514,7 @@ a new origin cell without modifying persisted coordinates.
   world-authorized URL containing a SHA-256 object hash. The service worker uses
   a 128 MiB / 512-response budget and insertion-order eviction. This is FIFO,
   not a claimed full LRU implementation.
-- **CPU cache:** nearby decoded blocks, deduplicated brick records, shared meshes,
+- **CPU cache:** nearby decoded cells, deduplicated brick records, shared meshes,
   and the resident octree. A raw CBOR byte count understates decoded memory.
 - **GPU cache:** shared mesh buffers and instance buffers for the current scene.
   A prototype is released when neither pass references it, when replaced, or when

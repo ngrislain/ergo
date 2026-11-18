@@ -603,53 +603,250 @@ pub(super) async fn locate(
         .common_world
         .as_deref()
         .context("No common world is configured")?;
-    let actor = reader(&s, &h)?.required()?;
-    let head = s
-        .shared
-        .head(
-            id,
-            &Principal {
-                id: Some(actor.clone()),
-            },
-            None,
-        )
-        .await?;
+    let start = std::time::Instant::now();
     let position = ergo_world::coordinates::internal(glam::DVec3::new(q.x, q.y, q.z));
     ensure!(
         position.is_finite() && position.abs().max_element() <= ergo_world::MAX_WORLD_COORD,
         "Invalid world position"
     );
-    let mut ws = s.shared.working(id, &actor, &head.revision).await?;
-    let mut nearest: Option<(f64, ContentId, ContentId)> = None;
-    let mut seen = BTreeSet::new();
+    let snapshot = snapshot(&s, id, &h, None).await?;
+    let metadata: Metadata = snapshot
+        .get_limited(&root(2), 64 * 1024)
+        .await?
+        .context("Missing world metadata")?;
+    metadata.require_current_cells()?;
+    let assembly = nearest_assembly(
+        &snapshot,
+        position,
+        s.shared.view_limits,
+        &s.shared.cell_lookup_cache,
+    )
+    .await?;
+    tracing::debug!(
+        elapsed_ms = start.elapsed().as_millis() as u64,
+        found = assembly.is_some(),
+        "Located shared construction"
+    );
+    Ok(Json(
+        serde_json::json!({"world_id":id,"base_revision":snapshot.id(),"geo":metadata.geo,
+        "assembly_id":assembly,"position_world":[q.x,q.y,q.z],"search_radius_world":LOCATE_RADIUS}),
+    ))
+}
+
+async fn nearest_assembly(
+    snapshot: &Snapshot,
+    position: glam::DVec3,
+    limits: view::Limits,
+    cache: &Arc<cell_lookup_cache::Cache>,
+) -> SharedResult<Option<ContentId>> {
+    use ergo_world::{Aabb, BLOCK_SIZE, geometry::Mesh};
+    use futures::{StreamExt, TryStreamExt};
+
+    let started = std::time::Instant::now();
+    let extent = glam::DVec3::splat(LOCATE_RADIUS);
+    let search = Aabb::new(position - extent, position + extent);
+    let mut matches = LocateMatches::default();
+    let mut cells = BTreeSet::new();
+    let mut mesh_bounds = BTreeMap::<ContentId, (String, Aabb)>::new();
+    let mut remaining = limits.bytes;
     for radius in [16., 64., 256., LOCATE_RADIUS] {
         let offset = glam::DVec3::splat(radius);
-        let bounds = ergo_world::Aabb::new(position - offset, position + offset);
-        for cid in ws.neighbors(bounds).await? {
-            if seen.insert(cid.clone())
-                && let Some(piece) = ws.piece(&cid).await?
-            {
-                let brick = ws.brick(&piece, 1).await?;
-                let point = position.clamp(brick.bounds.min, brick.bounds.max);
-                let distance = ergo_world::physical::to_meters(position - point).length_squared();
-                if nearest.as_ref().is_none_or(|(old, old_id, _)| {
-                    distance < *old || (distance == *old && cid < *old_id)
-                }) {
-                    nearest = Some((distance, cid, piece.assembly));
+        let bounds = Aabb::new(position - offset, position + offset);
+        for prefix in address::cover(bounds)? {
+            let mut path = prefix.octants().to_vec();
+            path[0] = 5;
+            let prefix = OctreePath::new(path)?;
+            let mut after = None;
+            loop {
+                let page = snapshot
+                    .scan_page_prefetched(&prefix, after.as_ref(), 128)
+                    .await?;
+                for (path, header_cid) in page.leaves {
+                    let coord = spatial::coordinate(&path)?;
+                    let c: [i64; 3] = coord.into();
+                    let lo = glam::DVec3::from_array(c.map(|v| v as f64 * BLOCK_SIZE));
+                    let a = ergo_world::coordinates::internal(lo);
+                    let b = ergo_world::coordinates::internal(lo + glam::DVec3::splat(BLOCK_SIZE));
+                    if !Aabb::new(a.min(b), a.max(b)).intersects(bounds) || !cells.insert(coord) {
+                        continue;
+                    }
+                    // A packed subtree binds every pose and mesh CID represented
+                    // in the derived index, including appearance-only changes.
+                    // An absent subtree is never a cache hit for unpacked data.
+                    let key = if cache.enabled()
+                        && snapshot
+                            .blob_limited::<spatial::BlockHeader>(&header_cid, 4096)
+                            .await
+                            .is_ok_and(|header| header.coord == coord && header.packed)
+                    {
+                        let prefix = bulk::block_path(coord);
+                        snapshot
+                            .scan_level(&prefix, prefix.octants().len(), None, 1)
+                            .await
+                            .ok()
+                            .and_then(|page| page.leaves.into_iter().next().map(|(_, cid)| cid))
+                    } else {
+                        None
+                    };
+                    if let Some(key) = key.as_ref()
+                        && let Some(rows) = cache.get(key.clone()).await
+                    {
+                        matches.consider(rows, position, search, limits.pieces)?;
+                        continue;
+                    }
+                    let mut pieces = Vec::new();
+                    let mut collect = |piece: Piece| -> SharedResult<()> {
+                        if pieces.len() >= limits.pieces {
+                            return Err(SharedError::working_limit("position lookup pieces"));
+                        }
+                        remaining = remaining
+                            .checked_sub(canonical_cbor(&piece)?.len())
+                            .ok_or_else(|| SharedError::working_limit("position lookup bytes"))?;
+                        pieces.push(piece);
+                        Ok(())
+                    };
+                    let packed = bulk::read_block(snapshot, coord, |page| {
+                        for piece in page.pieces.into_values() {
+                            collect(piece)?;
+                        }
+                        Ok(())
+                    })
+                    .await?;
+                    if !packed {
+                        // An unpacked block is also a current storage state. Its spatial
+                        // keys already contain the IDs, so no per-piece reference GETs.
+                        let mut cursor = None;
+                        loop {
+                            let refs = snapshot
+                                .scan_page_prefetched(&block_path(coord), cursor.as_ref(), 128)
+                                .await?;
+                            let mut batch = futures::stream::iter(refs.leaves)
+                                .map(|(path, _)| async move {
+                                    let id = spatial::reference_piece(&path, coord)?;
+                                    let piece: Piece = snapshot
+                                        .get_limited(&entity_path(3, &id), 64 * 1024)
+                                        .await?
+                                        .context("Missing indexed piece")?;
+                                    ensure!(piece.id == id, "Indexed piece identity mismatch");
+                                    Ok::<_, SharedError>(piece)
+                                })
+                                .buffered(READ_CONCURRENCY);
+                            while let Some(piece) = batch.try_next().await? {
+                                collect(piece)?;
+                            }
+                            cursor = refs.next;
+                            if cursor.is_none() {
+                                break;
+                            }
+                        }
+                    }
+
+                    let missing: BTreeSet<_> = pieces
+                        .iter()
+                        .map(|p| &p.mesh)
+                        .filter(|id| !mesh_bounds.contains_key(*id))
+                        .cloned()
+                        .collect();
+                    let limit = remaining;
+                    let mut meshes = futures::stream::iter(missing)
+                        .map(|id| async move {
+                            let mesh: Mesh = snapshot.blob_limited(&id, limit).await?;
+                            ensure!(mesh.schema == SCHEMA_VERSION, "Invalid indexed mesh schema");
+                            let size = canonical_cbor(&mesh)?.len();
+                            Ok::<_, SharedError>((id, (mesh.part, mesh.body_bounds), size))
+                        })
+                        .buffered(8);
+                    while let Some((id, body, size)) = meshes.try_next().await? {
+                        remaining = remaining.checked_sub(size).ok_or_else(|| {
+                            SharedError::working_limit("position lookup mesh bytes")
+                        })?;
+                        mesh_bounds.insert(id, body);
+                    }
+                    drop(meshes);
+                    let mut rows = Vec::with_capacity(pieces.len());
+                    for piece in pieces {
+                        let (part, body) = &mesh_bounds[&piece.mesh];
+                        ensure!(
+                            *part == piece.geometry.part,
+                            "Geometry/mesh identity mismatch"
+                        );
+                        let body =
+                            body.transformed(piece.geometry.transform, piece.geometry.position);
+                        rows.push(cell_lookup_cache::Row {
+                            piece: piece.id,
+                            assembly: piece.assembly,
+                            body,
+                        });
+                    }
+                    // A one-dimensional spatial index: ascending lower X bounds
+                    // permit skipping the tail before exact 3D distance tests.
+                    rows.sort_unstable_by(|a, b| a.body.min.x.total_cmp(&b.body.min.x));
+                    if packed && let Some(key) = key {
+                        rows = cache.put(key, rows).await;
+                    }
+                    matches.consider(rows, position, search, limits.pieces)?;
+                }
+                after = page.next;
+                if after.is_none() {
+                    break;
                 }
             }
         }
-        if nearest
+        tracing::debug!(
+            radius,
+            blocks = cells.len(),
+            pieces = matches.seen.len(),
+            meshes = mesh_bounds.len(),
+            elapsed_ms = started.elapsed().as_millis() as u64,
+            "Position lookup wave"
+        );
+        if matches
+            .nearest
             .as_ref()
             .is_some_and(|(distance, _, _)| closer_than_outside(*distance, position, bounds))
         {
             break;
         }
     }
-    Ok(Json(
-        serde_json::json!({"world_id":id,"base_revision":head.revision,"geo":head.metadata.geo,
-        "assembly_id":nearest.map(|(_,_,id)|id),"position_world":[q.x,q.y,q.z],"search_radius_world":LOCATE_RADIUS}),
-    ))
+    Ok(matches.nearest.map(|(_, _, id)| id))
+}
+
+#[derive(Default)]
+struct LocateMatches {
+    nearest: Option<(f64, ContentId, ContentId)>,
+    seen: BTreeSet<ContentId>,
+}
+
+impl LocateMatches {
+    fn consider(
+        &mut self,
+        rows: Vec<cell_lookup_cache::Row>,
+        position: glam::DVec3,
+        search: ergo_world::Aabb,
+        limit: usize,
+    ) -> SharedResult<()> {
+        for row in rows {
+            if row.body.min.x > search.max.x {
+                break;
+            }
+            if !row.body.intersects(search) || !self.seen.insert(row.piece.clone()) {
+                continue;
+            }
+            if self.seen.len() > limit {
+                return Err(SharedError::working_limit("position lookup pieces"));
+            }
+            let point = position.clamp(row.body.min, row.body.max);
+            let distance = ergo_world::physical::to_meters(position - point).length_squared();
+            if self
+                .nearest
+                .as_ref()
+                .is_none_or(|(old, id, _)| distance < *old || (distance == *old && row.piece < *id))
+            {
+                self.nearest = Some((distance, row.piece, row.assembly));
+            }
+        }
+        Ok(())
+    }
 }
 
 const LOCATE_RADIUS: f64 = 1536.;

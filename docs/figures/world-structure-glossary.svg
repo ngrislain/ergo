@@ -1,0 +1,119 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1120" height="1034" viewBox="0 0 1120 1034" role="img" aria-labelledby="title desc">
+  <title id="title">Ergo’s spatial vocabulary: one arch from template to storage</title>
+  <desc id="desc">A part names a reusable shape; its mesh holds shared geometry. A construct is a reusable recipe. A placed assembly owns three piece records; the bridge piece B17 spans two cells but has one Birth ID. Each cell has a grid address, a directory header when allocated, a fine SpatialRef and optionally a packed SpatialPage copy of B17. A materialized cell payload contains bricks. Moving B17 changes the affected page and Merkle root hashes, not the piece identity.</desc>
+  <defs>
+    <style>text{font-family:Arial,sans-serif;fill:#21394a}.title{font-size:32px;font-weight:700}.label{font-size:19px;font-weight:700}.body{font-size:15px}.sub{font-size:15px;fill:#446174}.code{font:14px monospace}.id{font:700 13px monospace}.arrow{stroke:#547184;fill:none;stroke-width:1.6;marker-end:url(#arrow)}</style>
+    <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0L10 5L0 10Z" fill="#547184"/></marker>
+    <g id="arch">
+      <g fill="#7ab1a4" stroke="#38766b"><rect x="1" y="24" width="23" height="50" rx="2"/><rect x="76" y="24" width="23" height="50" rx="2"/></g>
+      <g fill="#f5d38b" stroke="#a4722c"><rect x="0" y="6" width="100" height="21" rx="3"/><path d="M12 6V1h11v5m15 0V1h11v5m13 0V1h11v5m13 0V1h7v5"/></g>
+    </g>
+  </defs>
+  <rect width="1120" height="1034" rx="16" fill="#f5f9fc"/>
+  <text x="40" y="55" class="title">Ergo’s world structure, from template to storage</text>
+  <text x="40" y="85" class="sub">One illustrative arch, three placed pieces, and two cells. Shapes and IDs are schematic.</text>
+
+  <g role="group" aria-label="A catalog part and its mesh, then a reusable construct template">
+    <rect x="40" y="108" width="350" height="202" rx="8" fill="#e8f1f6"/>
+    <text x="58" y="139" class="label">Part + mesh · reusable shape</text>
+    <g transform="translate(60 161)" stroke="#38766b" stroke-width="1.2">
+      <path d="M0 17L54 17l20-13H20Z" fill="#b3d6cc"/><path d="M0 17v29h54V17Z" fill="#85b9ac"/><path d="M54 17l20-13v29L54 46Z" fill="#5d9e91"/>
+    </g>
+    <path d="M147 186h37" class="arrow"/>
+    <g transform="translate(197 161)" stroke="#38766b" stroke-width="1.2" fill="none">
+      <path d="M0 17L54 17l20-13H20Z M0 17v29h54V17 M54 46l20-13V4 M0 17L74 4 M0 46L54 17 M54 46L74 4"/>
+    </g>
+    <text x="58" y="230" class="code">Part ID</text><text x="196" y="230" class="code">Mesh CID</text>
+    <text x="58" y="263" class="body">A part is the catalog identity.</text>
+    <text x="58" y="285" class="body">A mesh stores shared geometry and bounds.</text>
+
+    <rect x="40" y="323" width="350" height="205" rx="8" fill="#e8f1f6"/>
+    <text x="58" y="355" class="label">Construct · reusable recipe</text>
+    <use href="#arch" transform="translate(63 378) scale(.88)"/>
+    <rect x="177" y="378" width="193" height="71" rx="5" fill="white" stroke="#90adbc"/>
+    <text x="189" y="400" class="code">PlacedPart × 3</text>
+    <text x="189" y="424" class="body">Part, pose, colour</text>
+    <text x="58" y="477" class="body">A model can reference this recipe.</text>
+    <text x="58" y="500" class="body">The recipe is not a placed S3 assembly.</text>
+    <path d="M397 407h39" class="arrow"/>
+  </g>
+
+  <g role="group" aria-label="An assembly of three pieces across two neighboring 3D cells">
+    <rect x="443" y="108" width="637" height="420" rx="8" fill="#e4f2ed"/>
+    <text x="463" y="139" class="label">Assembly · a placed construction</text>
+    <text x="463" y="165" class="body">Assembly ID → member rows for pieces B16, B17, B18.</text>
+    <rect x="472" y="195" width="382" height="238" rx="6" fill="white" stroke="#5d9486" stroke-dasharray="6 4"/>
+    <path d="M663 195v238" stroke="#5d9486" stroke-dasharray="6 4"/>
+    <text x="488" y="220" class="code">Cell A · (0,0,0)</text><text x="681" y="220" class="code">Cell B · (1,0,0)</text>
+    <text x="488" y="245" class="sub">Front slice of two cells</text>
+    <use href="#arch" transform="translate(547 282) scale(2.32 1.67)"/>
+    <text x="555" y="367" class="id">B16</text><text x="649" y="316" class="id">B17</text><text x="733" y="367" class="id">B18</text>
+    <path d="M663 290v38" stroke="#526e7f" stroke-dasharray="3 4"/>
+    <path d="M781 311h88" class="arrow"/>
+    <rect x="877" y="266" width="181" height="121" rx="6" fill="#faedcf" stroke="#b29862"/>
+    <text x="890" y="294" class="label">Piece B17</text>
+    <text x="890" y="317" class="body">One placed part</text>
+    <text x="890" y="339" class="body">One stable Birth ID</text>
+    <text x="890" y="361" class="body">Pose, mesh CID, cells</text>
+    <text x="463" y="463" class="body">A cell is a 128 × 128 × 128 world-unit region with a grid address (x, y, z).</text>
+    <text x="463" y="489" class="body">The middle piece crosses the boundary. Both cells index B17, but it is still one piece.</text>
+  </g>
+
+  <g role="group" aria-label="The two cell rows store a reference or packed copy of the same crossing piece">
+    <rect x="40" y="547" width="1040" height="189" rx="8" fill="#edf3f6"/>
+    <text x="58" y="579" class="label">How the shared world indexes that same arch</text>
+    <text x="228" y="609" class="body">Cell header · directory entry</text>
+    <text x="509" y="609" class="body">SpatialRef · fine index</text>
+    <text x="781" y="609" class="body">SpatialPage · packed shard</text>
+    <g fill="white" stroke="#9bb4c2">
+      <rect x="211" y="620" width="236" height="31" rx="4"/><rect x="211" y="662" width="236" height="31" rx="4"/>
+      <rect x="492" y="620" width="222" height="31" rx="4"/><rect x="492" y="662" width="222" height="31" rx="4"/>
+      <rect x="764" y="620" width="284" height="31" rx="4"/><rect x="764" y="662" width="284" height="31" rx="4"/>
+    </g>
+    <g class="code">
+      <text x="63" y="641">Cell A</text><text x="63" y="683">Cell B</text>
+      <text x="228" y="641">coord A · packed</text><text x="228" y="683">coord B · packed</text>
+      <text x="509" y="641">B17 → ID + bounds</text><text x="509" y="683">B17 → ID + bounds</text>
+      <text x="781" y="641">shard 42: B17 metadata + …</text><text x="781" y="683">shard 42: B17 metadata + …</text>
+    </g>
+    <g class="arrow"><path d="M127 636h77M127 678h77M453 636h30M453 678h30"/></g>
+    <path d="M740 621v72" stroke="#9bb4c2" stroke-dasharray="3 4"/>
+    <text x="58" y="720" class="sub">Fine rows point to the canonical piece; packed pages carry copies of its metadata, not copies of the mesh geometry.</text>
+  </g>
+
+  <g role="group" aria-label="A materialized cell payload is not the shared world's packed S3 page">
+    <rect x="40" y="752" width="1040" height="91" rx="8" fill="#faedcf"/>
+    <text x="58" y="783" class="label">Cell payload · materialized bricks</text>
+    <text x="58" y="813" class="body">The grid region is not the data stored for it.</text>
+    <text x="400" y="781" class="code">{ schema, coord, bricks: Vec&lt;Brick&gt; }</text>
+    <text x="400" y="813" class="body">This is not a shared-world <tspan class="code">SpatialPage</tspan>.</text>
+    <g transform="translate(908 769)">
+      <rect width="149" height="56" rx="5" fill="white" stroke="#b29862"/>
+      <path d="M0 23h149" stroke="#b29862"/>
+      <text x="12" y="17" class="code">coord A</text>
+      <rect x="12" y="32" width="19" height="14" rx="2" fill="#7ab1a4" stroke="#38766b"/>
+      <rect x="39" y="34" width="37" height="10" rx="2" fill="#f5d38b" stroke="#a4722c"/>
+      <text x="86" y="45" class="code">bricks</text>
+    </g>
+  </g>
+  <g role="group" aria-label="At revision R1 the brick indexes into cells A and B. After moving at R2 it indexes into B only and keeps its Birth ID. The local workspace lock does not lock the shared assembly.">
+    <rect x="40" y="859" width="1040" height="151" rx="8" fill="#e8f1f6"/>
+    <text x="58" y="890" class="label">Revision · same addresses, new Merkle root</text>
+    <g fill="white" stroke="#87a6b8">
+      <rect x="58" y="923" width="224" height="39" rx="4"/><rect x="340" y="923" width="224" height="39" rx="4"/>
+      <path d="M170 923v39m282-39v39"/>
+    </g>
+    <text x="58" y="914" class="sub">R1 · root M1</text><text x="340" y="914" class="sub">R2 · root M2</text>
+    <rect x="124" y="932" width="94" height="21" rx="3" fill="#f5d38b"/>
+    <rect x="464" y="932" width="72" height="21" rx="3" fill="#f5d38b"/>
+    <text x="69" y="948" class="id">A</text><text x="259" y="948" class="id">B</text>
+    <text x="352" y="948" class="id">A</text><text x="546" y="948" class="id">B</text>
+    <text x="143" y="948" class="id">B17</text><text x="487" y="948" class="id">B17</text>
+    <path d="M288 942h43" class="arrow"/>
+    <text x="58" y="986" class="sub">B17 keeps its Birth ID; affected page hashes change.</text>
+    <text x="609" y="914" class="label">Lock · depends on what you protect</text>
+    <text x="609" y="942" class="body">A workspace lock protects one local cache file.</text>
+    <text x="609" y="966" class="body">It does not lock an assembly, cell, or revision.</text>
+    <text x="609" y="990" class="sub">Shared edits use conflict checks and an atomic head update.</text>
+  </g>
+</svg>

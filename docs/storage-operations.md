@@ -5,7 +5,7 @@ transaction format 3, indexed accepted history and spatial layout 4 with 128-uni
 
 ## Bounded reads
 
-Shared APIs page assemblies, allocated blocks, spatial references, rules, pieces,
+Shared APIs page assemblies, allocated cells, spatial references, rules, pieces,
 joints and history. Cursors are ordered/exclusive application paths or accepted
 revision identifiers; callers pass returned cursors back unchanged. Each request
 rechecks current authorization. Dense domains exceeding the byte/piece budgets
@@ -64,7 +64,9 @@ region key never matches a browser read. It does not
 advance the world head or publish geometry. See [cache warm-up](loading-and-cache.md#operator-warm-up)
 for the source-built command and required storage configuration.
 
-### Packed-block backfill
+<a id="packed-block-backfill"></a>
+
+### Packed cell backfill
 
 Source-built servers after v0.5.11 support
 `shared-pack-block WORLD_ID X Y Z`. This is an explicit storage-only commit, not
@@ -72,7 +74,7 @@ a read-cache warm-up: it packs one allocated current-format cell. Use existing
 storage credentials and the same read budgets as the viewer. A whole-root watch rejects concurrent changes.
 No geometry, births, ownership, geographic reference or frozen physics is changed.
 Only layout 4 and the 128-unit cell marker are accepted. Run
-`shared-resize-cells WORLD_ID` for the [old-block migration](cells-and-migration.md)
+`shared-resize-cells WORLD_ID` for the [older cell layout migration](cells-and-migration.md)
 before serving an old world; incompatible caches are deleted. Other current
 unpacked cells use the reference reader until explicitly packed.
 
@@ -118,6 +120,25 @@ normal authorized read path; no origin-wide deletion or asset-cache flush is
 needed. A retained historical snapshot remains valid for its own revision and
 never aliases the new current root. Warm frequently visited regions **after** the
 last pack to avoid invalidating each warm-up with the next storage commit.
+
+#### Release gate for the packed-cell lookup
+
+The documentation rename to **cell** does not change S3 keys, encoded records,
+or API routes. The packed-cell lookup uses the existing layout-4 projection;
+it does not introduce a storage format or require rewriting retained revisions.
+Before deploying it, run `shared-pack-world "$ERGO_COMMON_WORLD_ID" --check`
+against production and record the accepted revision and canonical fingerprint.
+If any allocated cells in the current head are unpacked, run the eager backfill
+during a controlled write window. Recheck and require `fully_packed: true`,
+`unpacked_before: 0`, and the same canonical fingerprint before deployment.
+Afterwards, verify a fresh position lookup and load a bounded page without
+publishing an edit.
+
+The unpacked read path is for valid layout-4 cells whose projection is absent
+or has been disabled by edit budgets. It is **not** a lazy migration: reads
+never publish new pages. If the eager backfill cannot complete, stop and
+report the affected cells and limit rather than treating a fallback read as a
+successful migration.
 
 #### Verified common-world backfill
 

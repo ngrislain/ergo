@@ -34,7 +34,7 @@ summary, `next`, `partial:true` and `external_dependencies:true`. Each has at mo
 512 pieces and 2 MiB encoded JSON. At most 2,048 reference/member/directory records
 are examined per request: an empty page can still have a continuation. Boundary
 replicas are deduplicated by the first query-intersecting replica in canonical
-block order. Pieces remain whole with their existing identities.
+cell order. Pieces remain whole with their existing identities.
 
 Reads are revision-pinned, not durable long-lived sessions: current authorization
 and accepted-history availability are rechecked on every request. If retention

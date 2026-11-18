@@ -1,0 +1,89 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1120" height="717" viewBox="0 0 1120 717" role="img" aria-labelledby="title desc">
+  <title id="title">One accepted world, several ways to address it</title>
+  <desc id="desc">A mutable S3 head selects an immutable commit and root. The root addresses canonical records by piece or assembly ID, region data by cell and shard, and fine spatial references by cell and octant. An example brick B17 appears in all three paths: as a record by ID, as a copy in a shard page, and as a bounds reference in a subdivided cell.</desc>
+  <defs>
+    <marker id="arrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0L10 5L0 10Z" fill="#547184"/></marker>
+    <style>text{font-family:Arial,sans-serif;fill:#21394a}.title{font-size:30px;font-weight:700}.label{font-size:18px;font-weight:700}.body{font-size:15px}.sub{font-size:15px;fill:#446174}.code{font:15px monospace}.arrow{fill:none;stroke:#547184;stroke-width:1.7;marker-end:url(#arrow)}</style>
+  </defs>
+  <rect width="1120" height="717" rx="16" fill="#f5f9fc"/>
+  <text x="40" y="53" class="title">One accepted world, several ways to address it</text>
+  <text x="40" y="81" class="sub">Private object store · authoritative keys under s3://ergo/ergo/world/</text>
+
+  <rect x="40" y="105" width="300" height="78" rx="8" fill="#faedcf"/>
+  <text x="60" y="133" class="label">Mutable head</text>
+  <text x="60" y="160" class="code">refs/main.cbor</text>
+  <path d="M344 144H390" class="arrow"/>
+  <rect x="398" y="105" width="320" height="78" rx="8" fill="#e4edf4"/>
+  <text x="418" y="133" class="label">Accepted commit → Merkle root</text>
+  <text x="418" y="160" class="code">objects/&lt;SHA-256&gt;.cbor</text>
+  <text x="750" y="134" class="body">Immutable objects: nodes, rows and blobs.</text>
+  <text x="750" y="157" class="sub">Logical tree paths are not S3 folders.</text>
+  <text x="750" y="179" class="sub">Nodes link children by content hash.</text>
+
+  <path d="M558 186V209H204V235" class="arrow"/>
+  <path d="M558 199V235" class="arrow"/>
+  <path d="M558 209H916V235" class="arrow"/>
+
+  <rect x="40" y="244" width="328" height="212" rx="8" fill="#e8f1f6"/>
+  <text x="58" y="275" class="label">By identity · canonical records</text>
+  <text x="58" y="311" class="body"><tspan font-weight="bold">[3] Piece</tspan> · stable Birth ID, current pose,</text>
+  <text x="58" y="334" class="body">colour, assembly, mesh CID and cells</text>
+  <text x="58" y="368" class="body"><tspan font-weight="bold">[4] Assembly</tspan> · header, paged members,</text>
+  <text x="58" y="391" class="body">groups, anchors and rules</text>
+  <text x="58" y="426" class="body"><tspan font-weight="bold">[6] / [7]</tspan> · global joints / incident lookup</text>
+
+  <rect x="396" y="244" width="328" height="212" rx="8" fill="#e4f2ed"/>
+  <text x="414" y="275" class="label">By cell · coarse read path</text>
+  <text x="414" y="311" class="body"><tspan font-weight="bold">[5] Directory</tspan> · allocated cells and</text>
+  <text x="414" y="334" class="body">whether their packed data is complete</text>
+  <text x="414" y="368" class="body"><tspan font-weight="bold">[3,2] Packed pages</tspan> · cell + Birth shard</text>
+  <text x="414" y="391" class="body">Each page stores many Piece records;</text>
+  <text x="414" y="426" class="body">mesh vertices still live in shared blobs.</text>
+
+  <rect x="752" y="244" width="328" height="212" rx="8" fill="#f6ebe5"/>
+  <text x="770" y="275" class="label">By bounds · fine spatial index</text>
+  <text x="770" y="311" class="body"><tspan font-weight="bold">[1] SpatialRef</tspan> · subdivide inside a cell,</text>
+  <text x="770" y="334" class="body">then follow references to Piece IDs.</text>
+  <text x="770" y="368" class="body">One reference per intersected cell;</text>
+  <text x="770" y="391" class="body">a boundary-crossing brick keeps one ID.</text>
+  <text x="770" y="426" class="body">Used for exact edit and contact queries.</text>
+
+  <g role="group" aria-label="Three indexes pointing to the same example brick B17">
+    <rect x="40" y="469" width="328" height="166" rx="8" fill="#e8f1f6"/>
+    <text x="58" y="495" class="label">Direct ID lookup</text>
+    <rect x="58" y="522" width="82" height="37" rx="5" fill="white" stroke="#87a6b8"/>
+    <text x="76" y="545" class="body">ID B17</text>
+    <path d="M145 540H178" class="arrow"/>
+    <rect x="186" y="522" width="157" height="37" rx="5" fill="#faedcf" stroke="#b29b62"/>
+    <text x="200" y="545" class="body">Canonical Piece</text>
+    <text x="58" y="604" class="sub">One key selects one record.</text>
+
+    <rect x="396" y="469" width="328" height="166" rx="8" fill="#e4f2ed"/>
+    <text x="414" y="495" class="label">Cell → shard page</text>
+    <g transform="translate(418 517)" stroke="#6d998d">
+      <rect width="72" height="72" fill="white"/>
+      <rect x="48" y="24" width="24" height="24" fill="#98c9b9"/>
+      <path d="M24 0v72m24 0V0M0 24h72M0 48h72" fill="none"/>
+    </g>
+    <path d="M496 553H542" class="arrow"/>
+    <rect x="550" y="517" width="149" height="72" rx="5" fill="white" stroke="#6d998d"/>
+    <path d="M550 542H699" stroke="#6d998d"/>
+    <text x="563" y="536" class="body">Shard 42</text>
+    <text x="563" y="569" class="code">B17  B31  …</text>
+    <text x="414" y="615" class="sub">Page holds records, not just pointers.</text>
+
+    <rect x="752" y="469" width="328" height="166" rx="8" fill="#f6ebe5"/>
+    <text x="770" y="495" class="label">Cell → octants → reference</text>
+    <g transform="translate(772 517)" stroke="#a78472" fill="white">
+      <rect width="72" height="72"/>
+      <path d="M36 0v72M0 36h72M54 36v36M36 54h36"/>
+      <rect x="54" y="36" width="18" height="18" fill="#e8b79c"/>
+    </g>
+    <path d="M850 562H896" class="arrow"/>
+    <rect x="904" y="541" width="150" height="40" rx="5" fill="white" stroke="#a78472"/>
+    <text x="918" y="566" class="body">B17 · bounds</text>
+    <text x="770" y="615" class="sub">2D slice of a 3D subdivision.</text>
+  </g>
+  <text x="40" y="668" class="body">A cell is 128 × 128 × 128 world units. Its packed projection has up to 256 shards; each page is limited to 1 MiB and 1,024 records.</text>
+  <text x="40" y="695" class="sub">Example: a reusable car can be one model reference, but its placed component bricks still have independent Piece records.</text>
+</svg>

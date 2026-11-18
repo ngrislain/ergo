@@ -3,7 +3,7 @@
 ## Implementation and scope
 
 [`ergo-transactions`](../crates/transactions/src/lib.rs) is a reusable Rust library
-for concurrent edits to immutable, content-addressed CBOR geometry blocks. It uses
+for concurrent edits to immutable, content-addressed CBOR cell payloads. It uses
 the same `object_store` 0.12 backend interface as Ergo's server, including S3 and
 S3-compatible endpoints. A persistent octree, optimistic dependency validation,
 and a conditional head replacement provide **serializable transactions within
@@ -12,7 +12,7 @@ reads. Read-only transactions observe their immutable starting snapshot.
 
 The library also backs the implemented authenticated
 [shared-world REST service](concurrent-global-editing.md). That service adds stable
-creation-record IDs, grants, reference-only spatial blocks, on-demand dependency
+creation-record IDs, grants, reference-only spatial cells, on-demand dependency
 closure discovery, and static validation. Persistent worlds have no aggregate size
 cap; only individual working sets are bounded. Private snapshots still use
 `crates/server/src/store.rs`, and the local MCP working copy remains a separate
@@ -142,7 +142,7 @@ An octant is $q=b_x+2b_y+4b_z$, using public X east, Y north, Z up. The empty pa
 `2` and `2/1` overlap. `OctreePath::is_disjoint_from` exposes this structural test.
 Depth is at most 192. `OctreePath::for_block([x,y,z])` maps signed i64 coordinates
 to 64 octants by flipping each coordinate's sign bit and interleaving bits from
-most to least significant. Append octants for a block-local hierarchy. Convert
+most to least significant. Append octants for a hierarchy within a cell. Convert
 `ergo_world::BlockCoord` to its public `[i64; 3]` representation first.
 
 For paths $p,q$, define:
@@ -218,7 +218,7 @@ suffix hash, preserving the same logical prefix conflict rules.
 Successful transactions are serializable because their reads still match the
 state immediately preceding their successful root CAS; all writes become visible
 together. Readers see an immutable snapshot plus their own edits. Abandoned
-uploads cannot make a partial multi-block move visible. This is a storage
+uploads cannot make a partial cross-cell move visible. This is a storage
 guarantee, not automatic verification that arbitrary caller-produced geometry is
 valid. All shared state used in the decision must be accessed through that
 transaction, or be immutable data discovered through tracked references.
@@ -287,7 +287,7 @@ with CBOR tags and byte strings; the library does not impose a mesh schema.
 `ContentId` is lowercase hexadecimal SHA-256 of those uncompressed CBOR bytes.
 Downloads verify hashes before decoding. Identical geometry deduplicates;
 replacement generations intentionally distinguish edits to that geometry.
-`Repository::put_blob`/`blob` support shared immutable meshes referenced by blocks.
+`Repository::put_blob`/`blob` support shared immutable meshes referenced by cell payloads.
 Prefer `Transaction::stage_blob` for new meshes and `retain_blob` when reusing an
 older standalone blob. Attachments are recorded in the commit and retained by GC.
 `retain_blob` verifies remote existence while the writer is pinned, bypassing a
@@ -465,7 +465,7 @@ cargo fmt -p ergo-transactions --check
 
 Tests cover 64 concurrent independent transactions, both orders of commutative
 edits, same-leaf and ancestor/descendant conflicts, tombstone generations, phantom
-reads, write skew, support dependencies, multi-block moves, historical reads,
+reads, write skew, support dependencies, cross-cell moves, historical reads,
 deterministic encoding, hash corruption, partial staging, bounded contention, and
 lost/hidden publication acknowledgements. An unsupported local-filesystem CAS is
 also tested to ensure there is no unconditional fallback.
@@ -490,7 +490,7 @@ those external resources and is not inferred from them.
 - [`tree.rs`](../crates/transactions/src/tree.rs): persistent octree, dependency
   tokens, replacement fences, path-copying, bounded uploads.
 - [`path.rs`](../crates/transactions/src/path.rs): validated octant paths and signed
-  block-coordinate mapping.
+  cell-coordinate mapping.
 - [`codec.rs`](../crates/transactions/src/codec.rs): deterministic CBOR profile.
 - [`cache.rs`](../crates/transactions/src/cache.rs): namespace-scoped byte LRU.
 - [`maintenance.rs`](../crates/transactions/src/maintenance.rs): durable pins,

@@ -30,8 +30,8 @@ designs live in `todo/` and are indexed by [TODO.md](../TODO.md).
   printed Lion Knights torsos and supported pennant standards.
 - [S3 organization](object-store-layout.md)
 - [Every persisted record family](object-store-formats.md)
-- [Spatial persistence indexing](persistence-indexing.md)
-  includes packed block reads and projection backfill.
+- [Illustrated S3 layout, edit lifecycle, and coarse reads with local indexing](persistence-indexing.md)
+  includes packed cell reads and projection backfill.
 - [128-stud cells, atomic migration and incompatible-cache deletion](cells-and-migration.md)
 - [Shared-world protocol](concurrent-global-editing.md)
 - [Transactional CBOR library](transactional-storage.md)
@@ -44,7 +44,7 @@ designs live in `todo/` and are indexed by [TODO.md](../TODO.md).
 ## Engine and validation
 
 - [Architecture and execution boundaries](architecture.md)
-- [Block display pipeline, buried-part rejection, LOD and walking benchmarks](3d-display-indexing.md)
+- [Cell display pipeline, buried-part rejection, LOD and walking benchmarks](3d-display-indexing.md)
 - [Lighting and shadows](lighting.md)
 - [Stud-specific LOD](stud-lod.md)
 - [Clean OSM ground, cached floor patterns and coordinate/placement rules](ground-and-coordinates.md)

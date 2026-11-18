@@ -15,7 +15,7 @@ application layouts and budgets.
 Francesco Carucci, [Inside Geometry Instancing](https://developer.nvidia.com/gpugems/gpugems2/part-i-geometric-complexity/chapter-3-inside-geometry-instancing),
 GPU Gems 2, chapter 3 (2005), separates prototype geometry, instance attributes,
 batch updates and repeated draw passes. Ergo applies those ideas to reusable
-block prototypes, shared color/depth geometry and change-driven uploads using
+cell prototypes, shared color/depth geometry and change-driven uploads using
 [WebGL2 instanced drawing](https://developer.mozilla.org/en-US/docs/Web/API/WebGL2RenderingContext/drawArraysInstanced).
 The chapter's Direct3D implementation and historical performance numbers are
 not Ergo's backend or performance claims.

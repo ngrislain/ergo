@@ -38,7 +38,7 @@ For the local sandbox, include `ERGO_COMMON_WORLD_ID=WORLD_ID` and
 settings. No new world or network migration endpoint is created.
 
 The command watches the complete accepted root and reads canonical pieces in
-bounded pages with at most 64 payload reads in flight. It recomputes block
+bounded pages with at most 64 payload reads in flight. It recomputes cell
 replicas/spatial references from the same frozen meshes and poses. Birth IDs,
 assembly membership, colours, groups, joints, physical-model records and source
 models remain unchanged. Permission prefixes are rescaled exactly: one old cell

@@ -1,0 +1,67 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1120" height="837" viewBox="0 0 1120 837" role="img" aria-labelledby="title desc">
+  <title id="title">A revision selects the indexes; different locks protect different work</title>
+  <desc id="desc">The head advances from R1 to R2. A changed shard gets a new hash, which changes its ancestor hashes up to the Merkle root. An untouched branch keeps its hash and can reuse cached objects. A complete view is revalidated separately with a root-backed HTTP ETag. Pinned reads, conditional publication, local locks and maintenance pins have different scopes.</desc>
+  <defs>
+    <style>text{font-family:Arial,sans-serif;fill:#21394a}.title{font-size:30px;font-weight:700}.label{font-size:18px;font-weight:700}.body{font-size:15px}.sub{font-size:15px;fill:#446174}.code{font:15px monospace}.arrow{fill:none;stroke:#547184;stroke-width:1.7;marker-end:url(#arrow)}</style>
+    <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0L10 5L0 10Z" fill="#547184"/></marker>
+  </defs>
+  <rect width="1120" height="837" rx="16" fill="#f5f9fc"/>
+  <text x="40" y="53" class="title">A revision selects the indexes; a lock protects an operation</text>
+  <text x="40" y="82" class="sub">A lookup is “where or what?” inside one accepted snapshot — not a fourth coordinate in the octree.</text>
+
+  <rect x="40" y="107" width="1040" height="260" rx="8" fill="#e8f1f6"/>
+  <text x="58" y="137" class="label">Merkle tree · an edit changes the leaf hash and its ancestors</text>
+  <g fill="white" stroke="#8ca9b9">
+    <rect x="58" y="159" width="244" height="50" rx="5"/><rect x="58" y="233" width="244" height="50" rx="5"/>
+    <rect x="403" y="159" width="263" height="50" rx="5"/><rect x="403" y="233" width="263" height="50" rx="5"/>
+    <rect x="791" y="187" width="265" height="68" rx="5" fill="#e4f2ed"/>
+  </g>
+  <rect x="58" y="233" width="244" height="50" rx="5" fill="#faedcf" stroke="#b29862"/>
+  <text x="73" y="181" class="label">R1 → Merkle root M1</text><text x="73" y="199" class="sub">Accepted history, if retained</text>
+  <text x="73" y="255" class="label">R2 → Merkle root M2</text><text x="73" y="273" class="sub">Current head after publish</text>
+  <path d="M309 184H393M309 258H393" class="arrow"/>
+  <text x="316" y="202" class="sub">path H1</text><text x="316" y="276" class="sub">path H2</text>
+  <text x="419" y="181" class="label">Cell A · shard 42</text><text x="419" y="199" class="code">CID P1 · includes B17</text>
+  <text x="419" y="255" class="label">Cell A · shard 42</text><text x="419" y="273" class="code">CID P2 · B17 moved away</text>
+  <path d="M346 184V150H758V206H783M346 258V292H758V236H783" class="arrow"/>
+  <text x="807" y="213" class="label">Untouched branch</text><text x="807" y="237" class="code">Same CID Q → reuse</text>
+  <text x="58" y="318" class="body">The canonical Piece, membership if changed, and affected fine rows and packed pages all resolve through the same root.</text>
+  <text x="58" y="343" class="sub">Unchanged immutable objects can be reused by CID; that does not let a cursor from R1 continue in R2.</text>
+
+  <rect x="40" y="382" width="1040" height="146" rx="8" fill="#e4f2ed"/>
+  <text x="58" y="411" class="label">Complete browser view · revalidate with a root-backed ETag</text>
+  <rect x="58" y="429" width="247" height="36" rx="5" fill="white"/>
+  <text x="71" y="452" class="body">Authorized HEAD + saved ETag</text>
+  <path d="M313 447h39" class="arrow"/>
+  <rect x="360" y="429" width="263" height="36" rx="5" fill="white"/>
+  <text x="374" y="452" class="body">Compare current view ETag</text>
+  <path d="M631 447h46" class="arrow"/>
+  <text x="692" y="450" class="body">Match → 304, keep the packet</text>
+  <text x="692" y="478" class="body">Mismatch → fetch if needed</text>
+  <text x="58" y="505" class="sub">A new root can invalidate the complete packet even when the selected region’s immutable objects did not change.</text>
+
+  <g transform="translate(0 174)">
+  <text x="40" y="406" class="label">Three mechanisms, three different scopes</text>
+  <rect x="40" y="423" width="328" height="184" rx="8" fill="#e8f1f6"/>
+  <text x="58" y="454" class="label">Local MCP lock</text>
+  <text x="58" y="481" class="code">Process A → workspace file</text>
+  <text x="58" y="506" class="code">Process B × same workspace</text>
+  <text x="58" y="542" class="body">Exclusive only for one local cache.</text>
+  <text x="58" y="567" class="body">No server-side cell or assembly lock.</text>
+
+  <rect x="396" y="423" width="328" height="184" rx="8" fill="#faedcf"/>
+  <text x="414" y="454" class="label">Shared publish · optimistic</text>
+  <text x="414" y="481" class="code">Base → validate → head CAS</text>
+  <text x="414" y="506" class="body">Compare-and-swap, not an edit lock.</text>
+  <text x="414" y="542" class="body">Unchanged dependencies can rebase;</text>
+  <text x="414" y="567" class="body">a conflict requires a fresh base.</text>
+
+  <rect x="752" y="423" width="328" height="184" rx="8" fill="#e4f2ed"/>
+  <text x="770" y="454" class="label">Maintenance · pins and barrier</text>
+  <text x="770" y="481" class="code">Readers / writers → shared pins</text>
+  <text x="770" y="506" class="code">No active pins → exclusive barrier</text>
+  <text x="770" y="542" class="body">Pins prevent exclusive maintenance.</text>
+  <text x="770" y="567" class="body">A held barrier blocks new operations.</text>
+  <text x="40" y="641" class="sub">A read revision gives consistency, not permission or permanent retention. A pagination token does not hold a durable pin between requests.</text>
+  </g>
+</svg>

@@ -17,7 +17,7 @@ Three entry points use the same Rust/WASM WebGL2 implementation:
 - The public homepage supplies a small illustration/input adapter with explicit
   full-detail and cursor-light parameters.
 
-`crates/client/src/scene.rs` and `scene/{view,ground}.rs` plan native block instances,
+`crates/client/src/scene.rs` and `scene/{view,ground}.rs` plan native cell instances,
 camera/light visibility, projected detail and ground. `renderer/batches.rs` shares
 prototype buffers between separate color/depth lists and skips unchanged uploads.
 Lighting, sky, shadows and material code are shared. See the
@@ -59,7 +59,7 @@ simulation or rendering. Important routes include:
 - `/api/shared-worlds` and `/api/shared-worlds/{id}`: the one hosted world/head.
 - Assembly lists, bounded `/location`, metadata-only `/workspace`, authoring
   `/workspace/pages`, shared mesh, rules and piece APIs.
-- `/view`, block pages, accepted history, events, grants and retention controls.
+- `/view`, cell pages, accepted history, events, grants and retention controls.
 - `/api/user-position`: private own-user last camera/target context.
 - `/api/auth/me`, `/api/auth/mcp-token`, `/api/auth/logout` and Google callbacks.
 

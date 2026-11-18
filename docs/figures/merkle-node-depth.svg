@@ -1,0 +1,45 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1120" height="548" viewBox="0 0 1120 548" role="img" aria-labelledby="title desc">
+  <title id="title">Merkle nodes and logical index depth</title>
+  <desc id="desc">A branch has up to eight child hashes. An extension packs consecutive single-child steps. A leaf links to a typed payload by hash. A deleted node fences a removed path. Cell headers have 65 logical steps, packed pages 69, canonical pieces 87, and fine spatial references 152 to 172. Up to 192 logical steps are supported. The number of stored nodes fetched varies.</desc>
+  <defs>
+    <style>text{font-family:Arial,sans-serif;fill:#21394a}.title{font-size:30px;font-weight:700}.label{font-size:18px;font-weight:700}.body{font-size:15px}.sub{font-size:15px;fill:#446174}.code{font:15px monospace}.arrow{fill:none;stroke:#547184;stroke-width:1.7;marker-end:url(#arrow)}</style>
+    <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0L10 5L0 10Z" fill="#547184"/></marker>
+  </defs>
+  <rect width="1120" height="548" rx="16" fill="#f5f9fc"/>
+  <text x="40" y="53" class="title">What is inside the Merkle tree?</text>
+  <text x="40" y="82" class="sub">An index path is a sequence of digits 0–7. Stored nodes compress that path and link to other objects by hash.</text>
+
+  <rect x="40" y="106" width="1040" height="184" rx="8" fill="#e8f1f6"/>
+  <text x="58" y="136" class="label">Example lookup · from an accepted root to a cell header</text>
+  <g fill="white" stroke="#8ca9b9">
+    <rect x="58" y="160" width="200" height="53" rx="5"/><rect x="310" y="160" width="221" height="53" rx="5"/>
+    <rect x="582" y="160" width="182" height="53" rx="5"/><rect x="817" y="160" width="241" height="53" rx="5" fill="#e4f2ed"/>
+  </g>
+  <path d="M265 187h36m238 0h35m198 0h37" class="arrow"/>
+  <text x="70" y="182" class="label">Branch</text><text x="70" y="203" class="sub">Up to 8 child hashes</text>
+  <text x="323" y="182" class="label">Extension</text><text x="323" y="203" class="sub">Skip a single-child run</text>
+  <text x="595" y="182" class="label">Leaf</text><text x="595" y="203" class="sub">Stores the payload hash</text>
+  <text x="830" y="182" class="label">Typed payload</text><text x="830" y="203" class="sub">Cell header, piece, page, …</text>
+  <rect x="58" y="232" width="105" height="32" rx="5" fill="#f6ebe5"/>
+  <text x="69" y="253" class="label">Deleted</text>
+  <text x="178" y="253" class="body">Marks and fences a removed path. A fenced branch stays explicit even with just one child.</text>
+
+  <text x="40" y="329" class="label">Logical address lengths · count octant digits, not S3 reads</text>
+  <g fill="#6d998d">
+    <rect x="255" y="355" width="226" height="12" rx="3"/>
+    <rect x="255" y="385" width="240" height="12" rx="3"/>
+    <rect x="255" y="415" width="303" height="12" rx="3"/>
+    <rect x="255" y="445" width="529" height="12" rx="3"/>
+  </g>
+  <rect x="784" y="445" width="70" height="12" rx="3" fill="#98c9b9"/>
+  <g class="body">
+    <text x="40" y="366">Cell header</text><text x="492" y="366">65</text>
+    <text x="40" y="396">Packed cell page</text><text x="506" y="396">69</text>
+    <text x="40" y="426">Canonical piece</text><text x="569" y="426">87</text>
+    <text x="40" y="456">Fine spatial reference</text><text x="865" y="456">152–172</text>
+  </g>
+  <path d="M923 349v121" stroke="#8ca9b9" stroke-dasharray="4 4"/>
+  <text x="936" y="363" class="sub">192 maximum</text>
+  <text x="40" y="494" class="body">A fine reference can subdivide the cell up to 10 times; each subdivision adds two path digits.</text>
+  <text x="40" y="521" class="sub">Actual stored depth depends on branching and fences; cache hits avoid reads. No measured typical production depth is shown.</text>
+</svg>

@@ -1,0 +1,76 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1120" height="683" viewBox="0 0 1120 683" role="img" aria-labelledby="title desc">
+  <title id="title">An accepted edit changes only affected world records</title>
+  <desc id="desc">Add creates new Birth IDs and membership; move retains identity and updates affected old and new cells; remove unlinks current records without deleting immutable history. The server discovers dependencies and validates, then writes changed objects and conditionally publishes a new head.</desc>
+  <defs>
+    <marker id="arrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0L10 5L0 10Z" fill="#547184"/></marker>
+    <style>text{font-family:Arial,sans-serif;fill:#21394a}.title{font-size:30px;font-weight:700}.label{font-size:18px;font-weight:700}.body{font-size:15px}.sub{font-size:15px;fill:#446174}.arrow{fill:none;stroke:#547184;stroke-width:1.7;marker-end:url(#arrow)}</style>
+  </defs>
+  <rect width="1120" height="683" rx="16" fill="#f5f9fc"/>
+  <text x="40" y="53" class="title">An accepted edit changes only affected records</text>
+  <text x="40" y="81" class="sub">Example: modify a brick in a castle. The same record changes apply to the members of a larger import or removal.</text>
+
+  <rect x="40" y="108" width="328" height="152" rx="8" fill="#e4f2ed"/>
+  <text x="58" y="138" class="label">Add</text>
+  <text x="58" y="168" class="body">Create Birth IDs, Piece records and</text>
+  <text x="58" y="190" class="body">assembly membership. A new construction</text>
+  <text x="58" y="212" class="body">also gets its own assembly ID and header.</text>
+  <text x="58" y="238" class="body">Add rows and packed entries to its cells.</text>
+
+  <rect x="396" y="108" width="328" height="152" rx="8" fill="#e8f1f6"/>
+  <text x="414" y="138" class="label">Move or repaint</text>
+  <text x="414" y="168" class="body">Keep the Birth ID; write a new Piece state.</text>
+  <text x="414" y="190" class="body">Moving updates old and new cell entries.</text>
+  <text x="414" y="212" class="body">A colour-only edit updates the packed</text>
+  <text x="414" y="234" class="body">metadata without changing spatial bounds.</text>
+
+  <rect x="752" y="108" width="328" height="152" rx="8" fill="#f6ebe5"/>
+  <text x="770" y="138" class="label">Remove</text>
+  <text x="770" y="168" class="body">Unlink current Piece and membership</text>
+  <text x="770" y="190" class="body">records, cell rows and packed entries.</text>
+  <text x="770" y="212" class="body">Update affected rules and joints.</text>
+  <text x="770" y="238" class="body">Retained snapshots still see the brick.</text>
+
+  <path d="M204 263V283M560 263V283M916 263V283M204 283H916" stroke="#547184" fill="none"/>
+  <path d="M560 283V303" class="arrow"/>
+
+  <rect x="40" y="310" width="328" height="93" rx="8" fill="#e8f1f6"/>
+  <text x="58" y="338" class="label">1 · Validate the edit</text>
+  <text x="58" y="363" class="body">Find affected neighbours and rules.</text>
+  <text x="58" y="385" class="body">Check permissions and physical stability.</text>
+  <path d="M371 357H391" class="arrow"/>
+  <rect x="396" y="310" width="328" height="93" rx="8" fill="#e8f1f6"/>
+  <text x="414" y="338" class="label">2 · Stage a new root</text>
+  <text x="414" y="363" class="body">Upload changed rows, touched packed</text>
+  <text x="414" y="385" class="body">shards and rehash their Merkle paths.</text>
+  <path d="M727 357H747" class="arrow"/>
+  <rect x="752" y="310" width="328" height="93" rx="8" fill="#faedcf"/>
+  <text x="770" y="338" class="label">3 · Publish one head update</text>
+  <text x="770" y="363" class="body">Conditional write after validation.</text>
+  <text x="770" y="385" class="body">Readers see the whole old or new revision.</text>
+
+  <g role="group" aria-label="Moving B17 removes it from cell A's fine index and packed shard, then inserts it into cell B. B31 is unchanged.">
+    <rect x="40" y="422" width="1040" height="144" rx="8" fill="#edf3f6"/>
+    <text x="58" y="450" class="label">Example move · one Birth ID, two cell indexes change</text>
+    <text x="58" y="479" class="sub">Before</text>
+    <text x="606" y="479" class="sub">After</text>
+    <g fill="white" stroke="#89a3b4">
+      <rect x="58" y="489" width="185" height="56" rx="5"/>
+      <rect x="243" y="489" width="185" height="56" rx="5"/>
+      <rect x="606" y="489" width="185" height="56" rx="5"/>
+      <rect x="791" y="489" width="185" height="56" rx="5"/>
+    </g>
+    <g class="body">
+      <text x="70" y="510">Cell A · shard 42</text><text x="255" y="510">Cell B · shard 42</text>
+      <text x="618" y="510">Cell A · shard 42</text><text x="803" y="510">Cell B · shard 42</text>
+      <text x="175" y="530" fill="#446174">B31</text><text x="723" y="530" fill="#446174">B31</text>
+      <rect x="112" y="513" width="47" height="22" rx="4" fill="#faedcf"/><text x="122" y="530">B17</text>
+      <rect x="845" y="513" width="47" height="22" rx="4" fill="#faedcf"/><text x="855" y="530">B17</text>
+    </g>
+    <path d="M448 517H583" class="arrow"/>
+    <text x="451" y="507" class="sub">Same Birth ID</text>
+    <text x="992" y="509" class="sub">Fine rows</text><text x="992" y="532" class="sub">move too.</text>
+  </g>
+  <text x="40" y="594" class="body">Packed pages are a read projection, not a second source of truth. If packing exceeds its budget, the cell becomes unpacked.</text>
+  <text x="40" y="624" class="sub">Removing a piece is not an immediate S3 delete. Garbage collection reclaims only objects no longer reachable from protected state.</text>
+  <text x="40" y="650" class="sub">Unchanged branches keep their hashes. Fine indexes and packed pages publish together under one new root.</text>
+</svg>

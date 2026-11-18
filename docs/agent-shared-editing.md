@@ -118,11 +118,19 @@ To choose a known construction exactly:
 Position lookup chooses the nearest assembly among candidates in a bounded
 ±1536-unit search box. It searches smaller boxes first and stops as soon as a
 candidate is strictly closer in physical distance than anything outside the
-current box. It is not a whole-world nearest-neighbor scan. An exact
+current box. Lookup reads a single accepted snapshot, reads each relevant cell
+once using the same packed cell pages as the viewer where available, and uses
+transformed physical bounds rather than building editable geometry. Repeat lookups
+can use a [bounded server-disk index](persistence-indexing.md#bulk-spatial-reads-and-local-traversal).
+Lookup uses the
+read-only view budgets, not the edit budgets. It is not a whole-world
+nearest-neighbor scan. An exact
 assembly ID is preferable when several constructions are close together. Inspect
 `list_bricks`/bounds after opening. An empty search is reported explicitly; on
 startup an empty position can initialize a new construction cache with the
 sandbox's geographic reference.
+
+![MCP position lookup: how the server reads construction data from S3 before and after the packed-page change](figures/mcp-position-lookup.svg)
 
 For GPS, first use the viewer's **Go to a location** dialog, then the handoff.
 The conversion is documented in [ground and coordinates](ground-and-coordinates.md):
@@ -130,7 +138,7 @@ The conversion is documented in [ground and coordinates](ground-and-coordinates.
 `y = Δlatitude × 3600 × 128 / arcseconds_per_block`, with longitude wrapping.
 For example, in the default Paris reference, `[128,64,0]` is approximately
 48.8567388889° N, 2.3524777778° E. Viewer `/app?x=...&y=...&z=...` links use
-**block indices**; `/login` handoff coordinates and MCP positions use construction
+**cell indices**; `/login` handoff coordinates and MCP positions use construction
 units. Do not interchange them.
 
 ## A useful agent prompt

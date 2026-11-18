@@ -27,6 +27,9 @@ Only current persisted formats are supported by the application.
 
 ## Resource references: parts, constructs and occurrences
 
+See the [visual glossary](figures/world-structure-glossary.svg) for how one
+placed construction connects these resources to cells and indexes.
+
 The [part library](part-library.md) is one synthesized, content-addressed
 document in the application namespace (below). `crates/world/library/constructs.json`
 defines immutable common models and is compiled in. Neither is copied into each
@@ -58,6 +61,8 @@ CBOR `{format:3,commit:CID,history:{root:CID|null,retained_from:u64}}`.
 The acceptance index is required. Its root indexes `{revision,sequence}` records
 by both revision CID and sequence. The current commit is selected with a
 conditional head PUT after every referenced immutable object has been staged.
+See [revisions and locks](persistence-indexing.md#revisions-and-locks) for how a
+selected commit determines the indexes visible to a lookup.
 
 ## `world/maintenance.cbor`: Control
 
@@ -85,7 +90,7 @@ to the reference being followed. The current object families are:
 
 ### Application tree paths and records
 
-The leading octant selects a family. Signed block addresses use 64 sign-biased,
+The leading octant selects a family. Signed cell addresses use 64 sign-biased,
 interleaved coordinate bits with octant `x_bit + 2*y_bit + 4*z_bit`. Entity IDs use
 all 256 hash bits, padded by two bits and split into 86 octants.
 
@@ -98,26 +103,26 @@ all 256 hash bits, padded by two bits and split into 86 octants.
 - **`[3]+entity-ID` Piece:** `{id,assembly,local_id,geometry,mesh,replicas}`. The stable
   ID is the Birth CID, not this state payload's CID. Geometry is
   `{part,color,rgb?,position,transform,step}`; its 3×3 matrix is flat column-major
-  public coordinates. Mesh is a world-namespace geometry CID. Replicas are block
+  public coordinates. Mesh is a world-namespace geometry CID. Replicas are cell
   coordinates containing references to the same piece.
-- **`[1]+block-address` spatial rows:** adaptive local children `0` hold references;
+- **`[1]+cell-address` spatial rows:** adaptive local children `0` hold references;
   children `1/q` descend by octant, up to ten levels. **SpatialRef** is
   `{coord,piece,bounds}` using render bounds. There is one reference per piece/
-  intersected storage block, not one in every fine cell it crosses.
-- **`[5]+block-address` BlockHeader:** `{coord,paged:true,packed?:bool}`. Missing
-  `packed` means false. Layout 3 may supply a complete packed read projection.
+  intersected storage cell, not one in every octree subdivision it crosses.
+- **`[5]+cell-address` cell header** (`BlockHeader` in Rust): `{coord,paged:true,packed?:bool}`. Missing
+  `packed` means false. Layout 4 may supply a complete packed read projection.
   This sparse allocated
-  block directory is not a preallocated world grid.
-- **`[3,2]+block-address+shard` SpatialPage:**
+  cell directory is not a preallocated world grid.
+- **`[3,2]+cell-address+shard` SpatialPage:**
   `{format:"ergo-spatial-page-1",coord,shard,pieces:{BirthCID:Piece}}`.
   Entity IDs begin with padded octants 0/1, so child 2 cannot collide with canonical
   Piece paths. The first byte of the birth hash selects one of 256 shards, encoded
   in three octants. Pages contain inline complete Piece metadata and mesh CIDs,
   not duplicated mesh vertices. Each page is limited to 1 MiB and 1,024 records.
-  `packed:true` means complete coverage for that block in this accepted snapshot.
+  `packed:true` means complete coverage for that cell in this accepted snapshot.
   Edit transactions maintain pages atomically, including colour-only edits and
-  cross-block replica changes. Page overflow or a projection update exceeding its
-  separate 64 MiB read-and-update budget disables the block projection and removes its pages;
+  cross-cell replica changes. Page overflow or a projection update exceeding its
+  separate 64 MiB read-and-update budget disables the cell projection and removes its pages;
   it does not impose a world-size limit or bypass canonical validation.
 - **`[4]+assembly-ID` paged rules:** child `0` is
   **RulesHeader** `{id,name,meshes,paged:true,source_model?,creation?,piece_count?}`;
@@ -312,12 +317,12 @@ These paths are supported by `store.rs`/`catalog.rs`; the production common-worl
 configuration disables creating new private snapshots:
 
 - **`worlds/<owner>/<uuid>/manifest.json`:** uncompressed UTF-8 `WorldManifest`
-  JSON with `schema`, UUID/name/owner/source, total count/bounds/geo, block
+  JSON with `schema`, UUID/name/owner/source, total count/bounds/geo, cell
   `{coord,key,brick_count}` references, part-to-mesh `geometry` CID map, proxy-part
   list, notes, joints/anchors/groups, validation, ground and optional native model.
   Its objects must exist before publishing the manifest. Owner-scoped lookup
   checks the authenticated principal; manifest discovery is not authorization.
-- **`objects/<CID>.cbor` Block:** ordinary native CBOR `{schema,coord,bricks}`.
+- **`objects/<CID>.cbor` materialized cell payload** (`Block` in Rust): native CBOR `{schema,coord,bricks}`.
   The manifest selects this type; the same namespace also holds native Mesh
   objects. Bounds, transforms and part/colour values use schema-2 coordinates.
 - **`_private_catalog/<owner-hash>/...`:** a transactional repository with

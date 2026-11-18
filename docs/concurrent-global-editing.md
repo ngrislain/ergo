@@ -9,7 +9,7 @@ is **optimistic**, without region leases. Private `/api/worlds` snapshots and th
 local MCP working copy are separate workflows. The browser and MCP edit the
 configured common world; their working copies are caches of accepted state.
 
-**There is no aggregate world-size, piece-count, or block-reference limit.** A
+**There is no aggregate world-size, piece-count, or cell-reference limit.** A
 world may grow to the capacity of its object store. No head contains a flat list
 of its geometry, and no normal route exports or scans its complete geometry.
 Limits apply to each request's working set, not to persistent world cardinality.
@@ -21,15 +21,15 @@ Limits apply to each request's working set, not to persistent world cardinality.
 Each world has a separate namespace and a `main` head. Root octants select:
 
 - `0`: versioned owner/region-grant policy.
-- `1`: adaptive block-local spatial-reference octrees under signed block addresses.
+- `1`: adaptive spatial-reference octrees within cells, keyed by signed cell addresses.
 - `2`: small immutable world metadata: name, geographic origin, frozen model CID.
 - `3`: authoritative piece records, indexed by full SHA-256 piece IDs.
 - `4`: paged authoring-assembly headers, membership, adjacency, and rule rows.
-- `5`: allocated-block directory, addressed by the signed block octree.
+- `5`: allocated-cell directory, addressed by the signed cell octree.
 - `6`: explicit global joint records; `7`: per-piece incident-joint directories.
 
 Packed unary edges avoid allocating a storage object for each bit-group in a
-64-level coordinate or 256-bit content ID. A spatial block contains **references**
+64-level coordinate or 256-bit content ID. A spatial cell contains **references**
 to pieces, not independent copies of their geometry. Each piece record selects
 its pose, immutable mesh CID, assembly, assembly-local authoring number, and
 complete set of spatial replicas. Its current content hash is its version.
@@ -57,8 +57,8 @@ See [storage operations](storage-operations.md) for layouts, paging, and migrati
 
 Creating a world makes the authenticated creator its owner. Existing-world access
 requires ownership or an explicit grant. A grant names a user and octree prefixes
-relative to the signed block-coordinate tree. A grant permits reading that world
-and writing covered blocks; it is not regional data secrecy.
+relative to the signed cell-coordinate tree. A grant permits reading that world
+and writing covered cells; it is not regional data secrecy.
 
 Only the owner changes grants. Google authentication alone grants no editing
 authority in another user's world. All writes use the existing signed session,
@@ -84,10 +84,10 @@ The server does not load a whole world to discover an edit's dependencies:
    rule records.
 2. Discover the **old** closure by following explicit constraints, authoring-group
    relationships, and spatially touching body boxes. Spatial queries traverse only
-   covered octree prefixes and paged block records. Load candidate identities and
-   meshes within the operation budget; use an in-memory octree per loaded block.
+   covered octree prefixes and paged cell records. Load candidate identities and
+   meshes within the operation budget; use an in-memory octree per loaded cell.
 3. Stage piece changes and atomically maintain their authoritative records and
-   all original/destination block references. Update assembly-local mappings for
+   all original/destination cell references. Update assembly-local mappings for
    deletion and validate changed rule references.
 4. Observe a conservative swept footprint. Rediscover the **new** closure, starting
    with both old-domain and edited identities. Removing a support cannot omit its
@@ -110,8 +110,8 @@ replicas. The swept sphere covers translation and rotation about the piece origi
 it registers dependencies, **not** a continuous-path collision-clearance claim.
 
 Spatial scans protect against phantom insertions and missing neighbors. Loading
-candidate piece versions protects against an existing block member moving into
-the neighborhood without changing block membership. Cross-assembly contacts and
+candidate piece versions protects against an existing cell member moving into
+the neighborhood without changing cell membership. Cross-assembly contacts and
 long support chains are followed until the closure is complete or the operation
 budget is exceeded. No unloaded support is silently treated as empty space.
 
@@ -177,7 +177,7 @@ directly. See [MCP setup and outcome handling](local-construction-mcp.md#publica
   Construction pieces, joints, fixed references, and groups are persisted; ground
   cache records are not authored terrain. The world uses the declared Z=0 floor.
 - `GET /api/shared-worlds/{id}`: small head/metadata only, never a world export.
-- `GET /api/shared-worlds/{id}/view?x=0&y=0&z=0`: bounded read-only block
+- `GET /api/shared-worlds/{id}/view?x=0&y=0&z=0`: bounded read-only cell
   region for browser navigation, with accepted revision and geometry. Optional
   `radius=1..32` selects a `(2r+1)³` cell region; omitted radius retains 3×3×3.
   Wider views traverse the sparse allocated-cell directory rather than every
@@ -202,11 +202,11 @@ directly. See [MCP setup and outcome handling](local-construction-mcp.md#publica
   See [read-packet caching](loading-and-cache.md).
 - `GET /api/shared-worlds/allowance`: the current actor's pacing allowance.
 - `GET /api/shared-worlds/{id}/blocks?revision=CID&region=PATH&limit=64&after=PATH`:
-  spatial block-reference page. Region is a block-octree prefix (`/` by default);
+  spatial cell-reference page. Region is a cell octree prefix (`/` by default);
   limit is 1–128. The returned `next` is passed as `after` with the same revision.
-- `GET /api/shared-worlds/{id}/blocks/{x}/{y}/{z}?revision=CID`: one block record.
+- `GET /api/shared-worlds/{id}/blocks/{x}/{y}/{z}?revision=CID`: one cell record.
 - `GET /api/shared-worlds/{id}/blocks/{x}/{y}/{z}/pieces?revision=CID&limit=64&after=PATH`:
-  spatial reference pages for a dense block. Allocated headers may outlive occupancy.
+  spatial reference pages for a dense cell. Allocated headers may outlive occupancy.
 - `GET /api/shared-worlds/{id}/pieces/{piece}?revision=CID`: one authoritative
   piece record, with its stable ID, geometry values, mesh CID, and replicas.
 - `GET /api/shared-worlds/{id}/pieces/{piece}/mesh?revision=CID`: referenced mesh
