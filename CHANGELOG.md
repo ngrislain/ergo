@@ -1,5 +1,10 @@
 # Changelog
 
+## v0.5.42 — 2026-11-23
+
+- Log request IDs and stage timings for shared construction edits, including
+  the accepted revision, to distinguish server stalls from MCP read-back timeouts.
+
 ## v0.5.41 — 2026-11-18
 
 - Resolve MCP positions from packed cells and reuse a bounded server-disk

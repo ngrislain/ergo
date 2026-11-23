@@ -41,10 +41,10 @@ Ergo requires Node.js 20+ and Chrome/Chromium on macOS/Linux; host clients may
 require a newer Node version. Review plugins before installing.
 
 - OpenCode: merge {"$schema":"https://opencode.ai/config.json",
-  "plugins":["@ngrislain/opencode-ergo@0.5.41"]} into your project's opencode.json,
+  "plugins":["@ngrislain/opencode-ergo@0.5.42"]} into your project's opencode.json,
   preserving existing settings and plugin entries. Invoke @ergo-build with the
   goal; /reload can force a reload.
-- Pi: pi install npm:@ngrislain/ergo-pi@0.5.41
+- Pi: pi install npm:@ngrislain/ergo-pi@0.5.42
   Start Pi or /reload, check pi mcp list or /mcp, then use /skill:build with the goal.
 - Claude Code: run these in your terminal:
   claude plugin marketplace add ngrislain/ergo
@@ -52,7 +52,7 @@ require a newer Node version. Review plugins before installing.
   Claude Code installs the plugin's locked bridge dependency automatically.
   Start a session and invoke /ergo:build followed by the goal.
 - Codex and ChatGPT desktop: install the bridge and register the marketplace:
-  npm install --global --ignore-scripts @ngrislain/ergo-mcp@0.5.41
+  npm install --global --ignore-scripts @ngrislain/ergo-mcp@0.5.42
   codex plugin marketplace add ngrislain/ergo
   Open the Plugins Directory in a supported desktop client, select the Ergo
   marketplace and install Ergo. Its catalog is .agents/plugins/marketplace.json.
@@ -61,7 +61,7 @@ require a newer Node version. Review plugins before installing.
 The bridge opens human browser sign-in when needed. Complete sign-in first if
 the host has a short connection deadline:
 
-npx @ngrislain/ergo-mcp@0.5.41 --login --publish-url https://ergosandbox.com
+npx @ngrislain/ergo-mcp@0.5.42 --login --publish-url https://ergosandbox.com
 
 Finish human browser approval before connecting. Every bridge copy on this
 computer shares the private origin-scoped sign-in state. Never paste a token
