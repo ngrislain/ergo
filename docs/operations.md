@@ -121,6 +121,18 @@ Operator JSON goes to stdout; progress and server logs go to stderr so a
 completed profile can be parsed without stripping log prefixes. This operator
 diagnostic still materializes a complete scene; the new paged MCP open does not.
 
+For a slow workspace `PATCH`, look for the server's `sparse_edit` span in
+container stderr (the default `ergo_server=info` filter includes it). Group
+events by `request_id`, using the world, base revision and incident time to
+find the request. Stage start and elapsed-time events distinguish precondition
+reads, old dependency discovery, delta staging, new dependency discovery,
+validation, commit preparation and publication. An accepted revision event
+means the server published, even if the MCP client later timed out reading it
+back. An `interrupted` outcome means the server future was dropped; it does not
+prove a publish already in progress failed. A missing finish event can also
+mean log loss or process termination. Reconcile with accepted history before
+retrying, and use a staging copy to reproduce a persistent stall.
+
 For the v0.5.35 paged-authoring transport/cache cutover, follow
 [paged authoring](paged-authoring.md#forward-migration). Deploy matching server,
 native and WASM first, stop clients, reconcile pending outcomes, and run the

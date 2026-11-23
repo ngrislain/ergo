@@ -2,6 +2,59 @@
 //! to be deletions. The ordinary old/new closure and publication gate remain.
 use super::*;
 use ergo_world::{WorldExport, authoring::Delta};
+use std::time::Instant;
+use tracing::Instrument;
+
+struct EditProgress {
+    stage: &'static str,
+    started: Instant,
+    stage_started: Instant,
+    finished: bool,
+}
+
+impl EditProgress {
+    fn new() -> Self {
+        let started = Instant::now();
+        let stage = "preconditions";
+        tracing::info!(stage, "Sparse edit stage started");
+        Self {
+            stage,
+            started,
+            stage_started: started,
+            finished: false,
+        }
+    }
+
+    fn advance(&mut self, stage: &'static str) {
+        tracing::info!(
+            stage = self.stage,
+            elapsed_ms = self.stage_started.elapsed().as_millis() as u64,
+            "Sparse edit stage completed"
+        );
+        self.stage = stage;
+        self.stage_started = Instant::now();
+        tracing::info!(stage, "Sparse edit stage started");
+    }
+
+    fn finish(&mut self, outcome: &'static str) {
+        tracing::info!(
+            stage = self.stage,
+            stage_ms = self.stage_started.elapsed().as_millis() as u64,
+            elapsed_ms = self.started.elapsed().as_millis() as u64,
+            outcome,
+            "Sparse edit finished"
+        );
+        self.finished = true;
+    }
+}
+
+impl Drop for EditProgress {
+    fn drop(&mut self) {
+        if !self.finished {
+            self.finish("interrupted");
+        }
+    }
+}
 
 #[derive(Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -60,6 +113,32 @@ impl SharedWorlds {
         id: &str,
         actor: &str,
         request: BatchEditRequest,
+    ) -> SharedResult<authoring::BatchReplaced> {
+        let span = tracing::info_span!(
+            "sparse_edit",
+            request_id = %uuid::Uuid::new_v4(),
+            world = id,
+            base = %request.base,
+            assembly_count = request.assemblies.len(),
+        );
+        async {
+            let mut progress = EditProgress::new();
+            let result = self
+                .apply_sparse_edit(id, actor, request, &mut progress)
+                .await;
+            progress.finish(if result.is_ok() { "accepted" } else { "error" });
+            result
+        }
+        .instrument(span)
+        .await
+    }
+
+    async fn apply_sparse_edit(
+        &self,
+        id: &str,
+        actor: &str,
+        request: BatchEditRequest,
+        progress: &mut EditProgress,
     ) -> SharedResult<authoring::BatchReplaced> {
         self.destination(id)?;
         ensure!(
@@ -190,7 +269,14 @@ impl SharedWorlds {
                 ws.permit(actor, &piece)?;
             }
         }
+        progress.advance("discover_before");
         let before = ws.discover(&seeds).await?;
+        tracing::info!(
+            seeds = seeds.len(),
+            affected = before.len(),
+            "Old edit domain found"
+        );
+        progress.advance("stage_delta");
         let mut changed = BTreeSet::new();
         let mut results = Vec::new();
         let actor_name = self.actor_name(actor).await?;
@@ -365,11 +451,19 @@ impl SharedWorlds {
         ws.reset_dependencies()?;
         seeds.extend(before);
         seeds.extend(changed.iter().cloned());
+        progress.advance("discover_after");
         let affected = ws.discover(&seeds).await?;
+        tracing::info!(
+            changed = changed.len(),
+            affected = affected.len(),
+            "New edit domain found"
+        );
+        progress.advance("validate");
         let report = ws.validate(&affected).await?;
+        progress.advance("prepare");
         self.advertise_blocks(id, ws.metadata.geo, &ws.new_blocks)
             .await?;
-        let accepted = self
+        let prepared = self
             .prepared(
                 id,
                 actor,
@@ -380,9 +474,10 @@ impl SharedWorlds {
                 report,
                 ws,
             )
-            .await?
-            .publish_with(self)
             .await?;
+        progress.advance("publish");
+        let accepted = prepared.publish_with(self).await?;
+        tracing::info!(revision = %accepted.revision, "Sparse edit revision accepted");
         Ok(authoring::BatchReplaced {
             accepted,
             assemblies: results,
