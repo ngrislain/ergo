@@ -2,13 +2,12 @@
 
 `plugins/` packages the stdio MCP connection and a build/inspiration skill for
 Claude Code, ChatGPT and Codex (desktop), OpenCode and Pi. It contains no
-credentials, hooks or remote shell endpoint. Every package but the OpenAI
-desktop one installs the version-matched `@ngrislain/ergo-mcp` bridge
-automatically: the OpenCode and Pi packages declare it as an npm dependency of
-the plugin, and the portable package's `package.json` plus
-`npm-shrinkwrap.json` let Claude Code install it into the plugin cache. The
-OpenAI desktop hosts have no dependency installer and use a globally installed
-bridge on PATH. The human still approves browser delegation.
+credentials, hooks or remote shell endpoint. All marketplace plugins select the
+version-matched `@ngrislain/ergo-mcp` bridge without a global install. OpenCode
+and Pi declare the bridge as an npm dependency. Claude Code prefers its locked
+plugin-local copy and otherwise uses `npm exec` with the exact version. OpenAI
+desktop hosts launch the same pinned version via `npm exec`. The human still
+approves browser delegation.
 
 `plugins/ergo` is the portable Agent Plugins 1.0.0 package shared by Claude Code
 and the OpenAI desktop clients: root `plugin.json`, root `mcp.json` and
@@ -24,14 +23,12 @@ integrity, which npm and Claude Code both install and record on first use.
 The OpenCode and Pi plugins are published on npm at **0.5.38** and can be
 installed without a repository checkout or a global bridge installation. The
 Claude Code and OpenAI packages remain source/repo-marketplace distributions,
-not public marketplace listings. The bridge must match the browser UI;
-installing a plugin does not update an older bridge already on PATH.
+not public marketplace listings.
 Node 20+ and Chrome/Chromium are required for Ergo; the host clients have their own
 requirements. When the OpenCode or Pi package is installed from npm or Git, the
 pinned `@ngrislain/ergo-mcp` dependency supplies the bridge and the plugin launches
-it from its own `node_modules`; checkout-local loads, failed dependency installs
-and the portable package fall back to a globally installed `ergo-mcp` on the
-host's PATH. Every package starts the bridge with `--headless` and the canonical
+it from its own `node_modules`; checkout-local OpenCode/Pi loads can fall
+back to `ergo-mcp` on PATH. Every package starts the bridge with `--headless` and the canonical
 hosted origin; normal startup opens human sign-in if credentials are missing or
 rejected. Since v0.5.38 the handshake no longer waits for that
 approval; tool calls made before it finishes return the sign-in link (see
@@ -47,8 +44,9 @@ for OpenCode/Pi and remote marketplace registration for Claude Code/Codex;
 no manual checkout is needed. The bridge requests human browser approval when
 needed, with an optional login command for short host startup deadlines. Its
 manual MCP tab remains a separate, verified-release installation path.
-Local-path and OpenAI desktop loads use the globally installed bridge on PATH;
-keep it matched to the plugin version when updating.
+Marketplace launchers that use `npm exec` require npm on the host's PATH and
+may need registry access on first launch. They disable npm lifecycle scripts,
+but do not bypass registry configuration or package-firewall policy.
 
 ## Claude Code
 
@@ -66,9 +64,9 @@ Claude's supported layout. `/ergo:build` provides the workflow; the same skill
 can load for LEGO/Ergo building tasks. When Claude Code copies a marketplace
 plugin into its cache it also installs the dependencies pinned by
 `plugins/ergo/package.json` and `npm-shrinkwrap.json`, so the matching bridge
-arrives with the plugin; the install is skipped if it exceeds Claude Code's
-60-second budget or the lock is out of sync, and the documented global
-install remains the manual fallback. Developers can test a checkout with
+arrives with the plugin when that installation succeeds. If it is skipped or
+the cached bridge is missing or mismatched, Claude's launcher uses npm to run
+the pinned bridge without a global install. Developers can test a checkout with
 `claude --plugin-dir ./plugins/ergo` or add it as a local marketplace with
 `/plugin marketplace add ./` and `/plugin install ergo@ergo`.
 
@@ -84,9 +82,8 @@ schemas, with OpenAI-host presentation metadata under `extensions.com.openai`.
 desktop app and Codex read. Register it with
 `codex plugin marketplace add ngrislain/ergo` (Git required; the CLI fetches the
 marketplace), then select the Ergo marketplace and install the plugin in the
-supported desktop Plugins Directory. Install the matching global bridge first;
-these hosts do not install the plugin's npm dependencies. Like Claude's
-`.mcp.json`, these OpenAI hosts run the local
+supported desktop Plugins Directory. These hosts do not install the plugin's
+npm dependencies; `mcp.json` invokes npm to run the pinned local
 stdio bridge. This is a **local/desktop stdio integration**, not a cloud/remote
 MCP service; a host without local executable support cannot run the bridge
 merely by reading its manifest. Publishing to the shared public plugin directory

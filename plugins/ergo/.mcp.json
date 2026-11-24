@@ -1,8 +1,8 @@
 {
   "mcpServers": {
     "ergo": {
-      "command": "ergo-mcp",
-      "args": ["--headless"],
+      "command": "node",
+      "args": ["${CLAUDE_PLUGIN_ROOT}/launch-mcp.cjs", "--headless"],
       "env": {"ERGO_PUBLISH_URL": "https://ergosandbox.com"}
     }
   }

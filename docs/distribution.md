@@ -31,9 +31,9 @@ for Claude Code, ChatGPT/Codex desktop, OpenCode and Pi live under `plugins/`,
 with repo-local marketplace manifests. `@ngrislain/opencode-ergo@0.5.38` and
 `@ngrislain/ergo-pi@0.5.38` are public npm packages that install the exact
 `@ngrislain/ergo-mcp@0.5.38` dependency; no checkout or global bridge is needed.
-Claude Code's marketplace cache installs the portable package's locked bridge
-dependency; local-path and OpenAI desktop loads use the globally installed
-bridge. The portable packages are not public marketplace listings. See
+Claude Code uses the portable package's installed, locked bridge when present
+and falls back to pinned `npm exec`; OpenAI desktop launches via pinned
+`npm exec`. The portable packages are not public marketplace listings. See
 [plugin setup](mcp-plugins.md) and [browser approval](access-and-onboarding.md).
 
 ## Release automation

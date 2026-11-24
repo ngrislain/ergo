@@ -49,14 +49,13 @@ require a newer Node version. Review plugins before installing.
 - Claude Code: run these in your terminal:
   claude plugin marketplace add ngrislain/ergo
   claude plugin install ergo@ergo
-  Claude Code installs the plugin's locked bridge dependency automatically.
+  The plugin uses its locked local bridge or launches the pinned version via npm.
   Start a session and invoke /ergo:build followed by the goal.
-- Codex and ChatGPT desktop: install the bridge and register the marketplace:
-  npm install --global --ignore-scripts @ngrislain/ergo-mcp@0.5.42
+- Codex and ChatGPT desktop: register the marketplace:
   codex plugin marketplace add ngrislain/ergo
   Open the Plugins Directory in a supported desktop client, select the Ergo
   marketplace and install Ergo. Its catalog is .agents/plugins/marketplace.json.
-  The app must find ergo-mcp on PATH. Ask it to use Ergo's build skill.
+  The app must find npm on PATH to launch the pinned bridge. Ask it to use Ergo's build skill.
 
 The bridge opens human browser sign-in when needed. Complete sign-in first if
 the host has a short connection deadline:

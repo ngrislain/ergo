@@ -3,8 +3,8 @@
   "mcpServers": {
     "ergo": {
       "type": "stdio",
-      "command": "ergo-mcp",
-      "args": ["--headless"],
+      "command": "npm",
+      "args": ["exec", "--yes", "--ignore-scripts", "--", "@ngrislain/ergo-mcp@0.5.42", "--headless"],
       "env": {"ERGO_PUBLISH_URL": "https://ergosandbox.com"}
     }
   }

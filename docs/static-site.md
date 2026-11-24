@@ -24,8 +24,8 @@ Agent instructions follow [access and onboarding](access-and-onboarding.md),
 The plugin tab installs published OpenCode/Pi npm packages with their matching
 bridge dependencies, without Git or a global bridge. Claude Code and Codex use
 remote marketplace registration: they fetch the repository internally and need
-Git, not a manual checkout. Claude Code installs the locked bridge dependency;
-OpenAI desktop clients require the documented global bridge installation. These
+Git, not a manual checkout. Claude Code prefers the locked bridge dependency
+and can launch the pinned npm package on demand, as can OpenAI desktop. These
 are repository marketplaces, not public directory listings. The OpenCode
 instructions are expanded by default and remain usable without JavaScript.
 Both paths install a prebuilt bridge with Node, not Rust. Manual MCP setup uses

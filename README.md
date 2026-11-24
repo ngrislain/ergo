@@ -63,6 +63,10 @@ WASM. The native MCP process is a thin I/O/stdio bridge.
 
 ## Install the MCP client
 
+For Claude Code, Codex/ChatGPT desktop, OpenCode, or Pi, see
+[plugin setup](docs/mcp-plugins.md). Marketplace plugins launch a pinned bridge
+without a global install. The steps below are for standalone MCP clients.
+
 The prebuilt bundle includes native binaries and WASM assets; consumers need
 Node.js 20+ and Chrome/Chromium, not Rust.
 

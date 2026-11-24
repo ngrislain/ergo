@@ -299,7 +299,7 @@
                 </details>
                 <details class="build-details" data-plugin-client="claude">
                   <summary>Claude Code</summary>
-                  <p>Add the remote marketplace and install Ergo. Claude Code fetches the plugin and its matching bridge.</p>
+                  <p>Add the remote marketplace and install Ergo. The plugin uses its matching local bridge or launches it through npm.</p>
                   <div class="code-heading">
                     <span>In your terminal</span>
                     <button type="button" class="copy-button" data-copy="plugin-claude">Copy commands</button>
@@ -310,20 +310,19 @@ claude plugin install ergo@ergo</code></pre>
                 </details>
                 <details class="build-details" data-plugin-client="openai">
                   <summary>Codex &amp; ChatGPT desktop</summary>
-                  <p>Install the desktop bridge and register the remote marketplace with Codex CLI:</p>
+                  <p>Register the remote marketplace with Codex CLI:</p>
                   <div class="code-heading">
                     <span>In your terminal</span>
                     <button type="button" class="copy-button" data-copy="plugin-openai">Copy commands</button>
                   </div>
-                  <pre><code id="plugin-openai">npm install --global --ignore-scripts @ngrislain/ergo-mcp@0.5.42
-codex plugin marketplace add ngrislain/ergo</code></pre>
+                  <pre><code id="plugin-openai">codex plugin marketplace add ngrislain/ergo</code></pre>
                   <p>
                     Open the Plugins Directory in a supported desktop client,
                     select the <strong>Ergo</strong> marketplace, and install
                     <strong>Ergo</strong>. Its catalog is
                     <code>.agents/plugins/marketplace.json</code>. Ask the agent
                     to use Ergo’s build skill with your idea. The app must find
-                    <code>ergo-mcp</code> on PATH; a cloud-only chat or remote
+                    <code>npm</code> on PATH to launch the pinned bridge; a cloud-only chat or remote
                     connector cannot run this local plugin.
                   </p>
                 </details>

@@ -2,8 +2,11 @@
 """Offline release guard tests; no registry credentials or foreign executables."""
 import importlib.util
 import json
+import os
 import pathlib
+import shutil
 import struct
+import subprocess
 import tempfile
 import unittest
 
@@ -25,10 +28,44 @@ class DistributionTests(unittest.TestCase):
         standard=json.loads((root/'mcp.json').read_text())['mcpServers']['ergo']
         compatible=json.loads((root/'.mcp.json').read_text())['mcpServers']['ergo']
         self.assertEqual(standard.pop('type'),'stdio')
-        self.assertEqual(standard,compatible)
         self.assertEqual(standard['env'],{'ERGO_PUBLISH_URL':'https://ergosandbox.com'})
-        self.assertEqual(standard['args'],['--headless'])
+        self.assertEqual(compatible['env'],standard['env'])
+        self.assertEqual(standard['command'],'npm')
+        self.assertEqual(standard['args'],['exec','--yes','--ignore-scripts','--',
+                                          f'@ngrislain/ergo-mcp@{packaging.version()}','--headless'])
+        self.assertEqual(compatible['command'],'node')
+        self.assertEqual(compatible['args'],['${CLAUDE_PLUGIN_ROOT}/launch-mcp.cjs','--headless'])
         self.assertIn('get_build_feedback',(root/'skills/build/SKILL.md').read_text())
+
+    def test_claude_launcher_uses_matching_local_bridge_or_exact_npm_pin(self):
+        node=shutil.which('node')
+        self.assertIsNotNone(node, 'Node is required to test the plugin launcher')
+        source=ROOT/'plugins/ergo'
+        with tempfile.TemporaryDirectory(prefix='ergo plugin ') as temporary:
+            root=pathlib.Path(temporary)
+            for file in ('launch-mcp.cjs','package.json'):
+                shutil.copyfile(source/file,root/file)
+            npm=root/'npm'
+            npm.write_text('#!/bin/sh\nprintf "%s\\n" "$@"\n')
+            npm.chmod(0o755)
+            local=root/'node_modules/@ngrislain/ergo-mcp'
+            entry=local/'bin/ergo-mcp.cjs'
+            entry.parent.mkdir(parents=True)
+            def launch():
+                return subprocess.check_output(
+                    [node,str(root/'launch-mcp.cjs'),'--headless'],cwd=ROOT,
+                    env={**os.environ,'PATH':str(root)},text=True,
+                ).splitlines()
+            version=packaging.version()
+            fallback=['exec','--yes','--ignore-scripts','--',
+                      f'@ngrislain/ergo-mcp@{version}','--headless']
+            self.assertEqual(launch(),fallback)
+            (local/'package.json').write_text(json.dumps({'version':version}))
+            self.assertEqual(launch(),fallback)  # Incomplete cache.
+            entry.write_text('console.log("plugin-local", ...process.argv.slice(2));')
+            self.assertEqual(launch(),['plugin-local --headless'])
+            (local/'package.json').write_text('{"version":"0.0.0"}')
+            self.assertEqual(launch(),fallback)
 
     def test_client_plugin_packages_reuse_the_portable_package(self):
         root=ROOT/'plugins'
